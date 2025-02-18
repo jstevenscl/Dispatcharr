@@ -10,6 +10,7 @@
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addM3UModal">Add M3U</button>
         </div>
         <div class="card-body">
+            <!-- The table body will be populated via AJAX -->
             <table id="m3uTable" class="table table-striped">
                 <thead>
                     <tr>
@@ -19,28 +20,7 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for m3u in m3u_accounts %}
-                    <tr>
-                        <td>{{ m3u.name }}</td>
-                        <td>
-                            {% if m3u.server_url %}
-                                <a href="{{ m3u.server_url }}" target="_blank">M3U URL</a>
-                            {% elif m3u.uploaded_file and m3u.uploaded_file.url %}
-                                <a href="{{ m3u.uploaded_file.url }}" download>Download File</a>
-                            {% else %}
-                                No URL or file
-                            {% endif %}
-                        </td>
-                        <td>{{ m3u.max_streams|default:"N/A" }}</td>
-                        <td>
-                            <button class="btn btn-sm btn-warning" onclick="editM3U({{ m3u.id }})">Edit</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteM3U({{ m3u.id }})">Delete</button>
-                            <button class="btn btn-sm btn-info" onclick="refreshM3U({{ m3u.id }})">Refresh</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
     </div>
@@ -55,22 +35,24 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="m3uForm">
+                <!-- Note: The form does not submit normally; JavaScript handles submission -->
+                <form id="m3uForm" enctype="multipart/form-data" action="/api/m3u/accounts/">
+                    {% csrf_token %}
                     <div class="mb-3">
                         <label class="form-label">Name</label>
-                        <input type="text" class="form-control" id="m3uName" required>
+                        <input type="text" class="form-control" id="m3uName" name="name" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">M3U URL</label>
-                        <input type="url" class="form-control" id="m3uURL">
+                        <input type="url" class="form-control" id="m3uURL" name="server_url">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Upload File</label>
-                        <input type="file" class="form-control" id="m3uFile">
+                        <input type="file" class="form-control" id="m3uFile" name="uploaded_file">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Max Streams</label>
-                        <input type="number" class="form-control" id="m3uMaxStreams" value="0">
+                        <input type="number" class="form-control" id="m3uMaxStreams" name="max_streams" value="0">
                     </div>
                     <button type="submit" class="btn btn-success">Save</button>
                 </form>
@@ -82,49 +64,155 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- DataTables CSS/JS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 <script>
-    $(document).ready(function () {
-        $('#m3uTable').DataTable();
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(';');
+        for (let i=0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            // Does this cookie string begin with the name we want?
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+const csrftoken = getCookie('csrftoken');
+
+$.ajaxSetup({
+    headers: { "X-CSRFToken": csrftoken }
+});
+    
+$(document).ready(function () {
+    // Initialize the DataTable with an AJAX source.
+    var m3uTable = $('#m3uTable').DataTable({
+        ajax: {
+            url: "/api/m3u/accounts/",
+            dataSrc: ""
+        },
+        columns: [
+            { data: "name" },
+            { 
+                data: null,
+                render: function(data) {
+                    if (data.server_url) {
+                        return '<a href="' + data.server_url + '" target="_blank">M3U URL</a>';
+                    } else if (data.uploaded_file) {
+                        return '<a href="' + data.uploaded_file + '" download>Download File</a>';
+                    } else {
+                        return 'No URL or file';
+                    }
+                }
+            },
+            { 
+                data: "max_streams",
+                render: function(data) {
+                    return data ? data : "N/A";
+                }
+            },
+            { 
+                data: "id",
+                orderable: false,
+                render: function(data, type, row) {
+                    return '<button class="btn btn-sm btn-warning" onclick="editM3U('+data+')">Edit</button> ' +
+                           '<button class="btn btn-sm btn-danger" onclick="deleteM3U('+data+')">Delete</button> ' +
+                           '<button class="btn btn-sm btn-info" onclick="refreshM3U('+data+')">Refresh</button>';
+                }
+            }
+        ]
     });
 
-    function deleteM3U(id) {
-        Swal.fire({
-            title: "Are you sure?",
-            text: "You won't be able to revert this!",
-            icon: "warning",
-            showCancelButton: true,
-            confirmButtonColor: "#d33",
-            confirmButtonText: "Yes, delete it!"
-        }).then((result) => {
-            if (result.isConfirmed) {
-                $.ajax({
-                    url: `/m3u/${id}/delete/`,
-                    method: "POST",
-                    success: function () {
-                        Swal.fire("Deleted!", "The M3U account has been deleted.", "success")
-                            .then(() => location.reload());
-                    },
-                    error: function () {
-                        Swal.fire("Error", "Failed to delete the M3U account.", "error");
-                    }
-                });
-            }
-        });
-    }
+    // Handle form submission to add a new M3U account via AJAX.
+    $('#m3uForm').submit(function(e){
+        e.preventDefault();  // Prevent normal submission
 
-    function refreshM3U(id) {
-        $.ajax({
-            url: `/m3u/${id}/refresh/`,
-            method: "POST",
-            success: function () {
-                Swal.fire("Refreshed!", "The M3U has been refreshed.", "success")
-                    .then(() => location.reload());
-            },
-            error: function () {
-                Swal.fire("Error", "Failed to refresh the M3U.", "error");
+        var form = this;
+        var formData = new FormData(form);
+
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if(!response.ok) {
+                throw new Error("Failed to save M3U account.");
             }
+            return response.json();
+        })
+        .then(data => {
+            Swal.fire("Success", "M3U account saved successfully!", "success");
+            // Reload the DataTable data without reloading the whole page.
+            m3uTable.ajax.reload();
+            // Hide the modal (using Bootstrap 5)
+            var addModal = bootstrap.Modal.getInstance(document.getElementById("addM3UModal"));
+            if(addModal) addModal.hide();
+            form.reset();
+        })
+        .catch(error => {
+            Swal.fire("Error", error.message, "error");
+            console.error("Error:", error);
         });
-    }
+    });
+});
+
+function deleteM3U(id) {
+    Swal.fire({
+        title: "Are you sure?",
+        text: "You won't be able to revert this!",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#d33",
+        confirmButtonText: "Yes, delete it!"
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: `/api/m3u/accounts/${id}/`,  // Updated URL
+                method: "DELETE",                 // Use DELETE method
+                success: function () {
+                    Swal.fire("Deleted!", "The M3U account has been deleted.", "success")
+                        .then(() => {
+                            $('#m3uTable').DataTable().ajax.reload();
+                        });
+                },
+                error: function () {
+                    Swal.fire("Error", "Failed to delete the M3U account.", "error");
+                }
+            });
+        }
+    });
+}
+
+
+function refreshM3U(id) {
+    $.ajax({
+        url: `/m3u/${id}/refresh/`,
+        method: "POST",
+        success: function () {
+            Swal.fire("Refreshed!", "The M3U has been refreshed.", "success")
+                .then(() => {
+                    $('#m3uTable').DataTable().ajax.reload();
+                });
+        },
+        error: function () {
+            Swal.fire("Error", "Failed to refresh the M3U.", "error");
+        }
+    });
+}
+
+function editM3U(id) {
+    // Implement the edit functionality here.
+    Swal.fire("Info", "Edit functionality not implemented yet.", "info");
+}
 </script>
 {% endblock %}

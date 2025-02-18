@@ -13,7 +13,6 @@ WORKDIR /app
 # Install Python dependencies
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install gevent  # Install gevent for async workers with Gunicorn
 
 # Copy application files
 COPY . /app/
@@ -21,6 +20,7 @@ COPY . /app/
 # Set environment variables
 ENV DJANGO_SETTINGS_MODULE=dispatcharr.settings
 ENV PYTHONUNBUFFERED=1
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 # Run Django commands
 RUN python manage.py collectstatic --noinput || true
