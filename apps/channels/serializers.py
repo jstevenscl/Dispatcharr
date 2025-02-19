@@ -61,8 +61,5 @@ class ChannelSerializer(serializers.ModelSerializer):
             'channel_group_id',
             'tvg_id',
             'tvg_name',
-            'is_active',
-            'is_looping',
-            'shuffle_mode',
             'streams'
         ]

@@ -1,13 +1,21 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}EPG Management - Dispatcharr{% endblock %}
 {% block page_header %}EPG Management{% endblock %}
-{% block content %}
+{% block extra_head %}
+  <!-- Include DataTables CSS (adjust path if needed) -->
+  <link rel="stylesheet" href="{% static 'css/datatables.min.css' %}">
+{% endblock %}
 
+{% block content %}
 <div class="container">
-    <div class="card">
+    <div class="card my-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h3 class="card-title">EPG Sources</h3>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEPGModal">Add EPG</button>
+            <div>
+                <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#addEPGModal">Add EPG</button>
+                <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#uploadEPGModal">Upload EPG File</button>
+            </div>
         </div>
         <div class="card-body">
             <table id="epgTable" class="table table-striped">
@@ -20,51 +28,265 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for epg in epg_sources %}
-                    <tr>
-                        <td>{{ epg.name }}</td>
-                        <td>{{ epg.source_type }}</td>
-                        <td>{{ epg.url|default:epg.api_key }}</td>
-                        <td>
-                            <button class="btn btn-sm btn-warning" onclick="editEPG({{ epg.id }})">Edit</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteEPG({{ epg.id }})">Delete</button>
-                            <button class="btn btn-sm btn-info" onclick="refreshEPG({{ epg.id }})">Refresh</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
+                    <!-- DataTables will populate the table body -->
                 </tbody>
             </table>
         </div>
     </div>
 </div>
 
-<!-- Add EPG Modal -->
-<div class="modal fade" id="addEPGModal" tabindex="-1">
+<!-- Add EPG Source Modal -->
+<div class="modal fade" id="addEPGModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Add EPG Source</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="epgForm">
+            <form id="epgForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Add EPG Source</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Name</label>
-                        <input type="text" class="form-control" id="epgName" required>
+                        <label for="epgName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="epgName" name="name" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">EPG URL</label>
-                        <input type="url" class="form-control" id="epgURL">
+                        <label for="epgURL" class="form-label">EPG URL</label>
+                        <input type="url" class="form-control" id="epgURL" name="url">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">API Key</label>
-                        <input type="text" class="form-control" id="epgAPIKey">
+                        <label for="epgAPIKey" class="form-label">API Key</label>
+                        <input type="text" class="form-control" id="epgAPIKey" name="api_key">
                     </div>
+                    <div class="mb-3">
+                        <label for="epgSourceType" class="form-label">Source Type</label>
+                        <select class="form-select" id="epgSourceType" name="source_type" required>
+                            <option value="xmltv">XMLTV</option>
+                            <option value="schedules_direct">Schedules Direct</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" class="btn btn-success">Save</button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
+<!-- Upload EPG File Modal -->
+<div class="modal fade" id="uploadEPGModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="uploadEPGForm" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload EPG File</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="epgUploadName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="epgUploadName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="epgFile" class="form-label">EPG File</label>
+                        <input type="file" class="form-control" id="epgFile" name="epg_file" accept=".xml,.m3u,.txt" required>
+                    </div>
+                    <!-- Optionally include a source type if needed -->
+                    <div class="mb-3">
+                        <label for="epgUploadSourceType" class="form-label">Source Type</label>
+                        <select class="form-select" id="epgUploadSourceType" name="source_type" required>
+                            <option value="xmltv">XMLTV</option>
+                            <option value="schedules_direct">Schedules Direct</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-success">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+    // CSRF token helper from Django docs
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    // Setup AJAX to include CSRF token
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!/^http:.*/.test(settings.url) && !/^https:.*/.test(settings.url)) {
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+            }
+        }
+    });
+
+    // Initialize DataTable and load EPG sources from API
+    let epgTable;
+    $(document).ready(function() {
+        epgTable = $('#epgTable').DataTable({
+            ajax: {
+                url: '/api/epg/sources/',  // adjust if needed
+                dataSrc: ''
+            },
+            columns: [
+                { data: 'name' },
+                { data: 'source_type' },
+                {
+                    data: null,
+                    render: function(data, type, row) {
+                        return row.url ? row.url : row.api_key;
+                    }
+                },
+                {
+                    data: null,
+                    render: function(data, type, row) {
+                        return `
+                            <button class="btn btn-sm btn-warning me-1" onclick="editEPG(${row.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger me-1" onclick="deleteEPG(${row.id})">Delete</button>
+                            <button class="btn btn-sm btn-info" onclick="refreshEPG(${row.id})">Refresh</button>
+                        `;
+                    }
+                }
+            ]
+        });
+
+        // Handle form submission for adding new EPG source
+        $('#epgForm').on('submit', function(e) {
+            e.preventDefault();
+            const formData = {
+                name: $('#epgName').val(),
+                url: $('#epgURL').val(),
+                api_key: $('#epgAPIKey').val(),
+                source_type: $('#epgSourceType').val()
+            };
+            $.ajax({
+                url: '/api/epg/sources/',
+                type: 'POST',
+                data: JSON.stringify(formData),
+                contentType: 'application/json',
+                success: function(response) {
+                    $('#addEPGModal').modal('hide');
+                    $('#epgForm')[0].reset();
+                    epgTable.ajax.reload();
+                },
+                error: function(xhr) {
+                    alert('Error adding EPG Source: ' + xhr.responseText);
+                }
+            });
+        });
+
+        // Handle EPG file upload form submission using FormData
+        $('#uploadEPGForm').on('submit', function(e) {
+            e.preventDefault();
+            const uploadForm = document.getElementById('uploadEPGForm');
+            const formData = new FormData(uploadForm);
+            $.ajax({
+                url: '/api/epg/upload/',  // adjust the endpoint URL if necessary
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    $('#uploadEPGModal').modal('hide');
+                    $('#uploadEPGForm')[0].reset();
+                    epgTable.ajax.reload();
+                    alert('EPG file uploaded successfully.');
+                },
+                error: function(xhr) {
+                    alert('Error uploading EPG file: ' + xhr.responseText);
+                }
+            });
+        });
+    });
+
+    // Edit function (example using prompt; consider a modal for better UX)
+    function editEPG(id) {
+        $.ajax({
+            url: `/api/epg/sources/${id}/`,
+            type: 'GET',
+            success: function(data) {
+                const newName = prompt("Edit EPG Name:", data.name);
+                if (newName !== null) {
+                    data.name = newName;
+                    $.ajax({
+                        url: `/api/epg/sources/${id}/`,
+                        type: 'PUT',
+                        data: JSON.stringify(data),
+                        contentType: 'application/json',
+                        success: function(updatedData) {
+                            epgTable.ajax.reload();
+                        },
+                        error: function(xhr) {
+                            alert('Error updating EPG Source: ' + xhr.responseText);
+                        }
+                    });
+                }
+            },
+            error: function(xhr) {
+                alert('Error fetching EPG Source data: ' + xhr.responseText);
+            }
+        });
+    }
+
+    // Delete function
+    function deleteEPG(id) {
+        if (confirm("Are you sure you want to delete this EPG Source?")) {
+            $.ajax({
+                url: `/api/epg/sources/${id}/`,
+                type: 'DELETE',
+                success: function(response) {
+                    epgTable.ajax.reload();
+                },
+                error: function(xhr) {
+                    alert('Error deleting EPG Source: ' + xhr.responseText);
+                }
+            });
+        }
+    }
+
+    // Refresh function – triggers global import endpoint (adjust if you have per-source refresh)
+    function refreshEPG(id) {
+        if (confirm("Trigger EPG refresh for this source?")) {
+            $.ajax({
+                url: '/api/epg/import/',
+                type: 'POST',
+                data: JSON.stringify({ id: id }),
+                contentType: 'application/json',
+                success: function(response) {
+                    alert('EPG refresh initiated.');
+                },
+                error: function(xhr) {
+                    alert('Error refreshing EPG: ' + xhr.responseText);
+                }
+            });
+        }
+    }
+</script>
 {% endblock %}

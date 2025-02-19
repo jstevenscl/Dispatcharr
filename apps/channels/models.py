@@ -39,7 +39,7 @@ class Stream(models.Model):
 
 class ChannelManager(models.Manager):
     def active(self):
-        return self.filter(is_active=True)
+        return self.all()
 
 
 class Channel(models.Model):
@@ -69,10 +69,6 @@ class Channel(models.Model):
     )
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
     tvg_name = models.CharField(max_length=255, blank=True, null=True)
-    is_active = models.BooleanField(default=True)
-    is_looping = models.BooleanField(default=False, help_text="If True, loops local file(s).")
-    shuffle_mode = models.BooleanField(default=False, help_text="If True, randomize streams for failover.")
-
     objects = ChannelManager()
 
     def clean(self):

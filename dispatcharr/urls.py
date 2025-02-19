@@ -37,6 +37,8 @@ urlpatterns = [
     #path('settings/', include(('apps.settings.urls', 'settings'), namespace='settings')),
     #path('backup/', include(('apps.backup.urls', 'backup'), namespace='backup')),
     path('dashboard/', include(('apps.dashboard.urls', 'dashboard'), namespace='dashboard')),
+    path('output/', include('apps.output.urls', namespace='output')),
+    path('stream/', include(('apps.ffmpeg.urls', 'ffmpeg'), namespace='ffmpeg')),
 
 
     # Swagger UI:

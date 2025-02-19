@@ -408,7 +408,7 @@ $(document).ready(function () {
       // gather “active” streams
       const activeRows = newActiveStreamsTable.rows().data().toArray();
       activeRows.forEach((s) => {
-        formData.append("streams[]", s.id);
+        formData.append("streams", s.id);
       });
 
       $.ajax({
@@ -649,7 +649,7 @@ $(document).ready(function () {
       // gather active streams
       const activeRows = editActiveStreamsTable.rows().data().toArray();
       activeRows.forEach((s) => {
-        formData.append("streams[]", s.id);
+        formData.append("streams", s.id);
       });
 
       $.ajax({

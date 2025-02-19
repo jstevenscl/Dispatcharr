@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     'apps.epg',
     'apps.hdhr',
     'apps.m3u',
+    'apps.output',
     'drf_yasg',
     'django.contrib.admin',
     'django.contrib.auth',

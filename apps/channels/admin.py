@@ -14,10 +14,9 @@ class StreamAdmin(admin.ModelAdmin):
 @admin.register(Channel)
 class ChannelAdmin(admin.ModelAdmin):
     list_display = (
-        'channel_number', 'channel_name', 'channel_group',
-        'is_active', 'is_looping', 'shuffle_mode', 'tvg_name'
+        'channel_number', 'channel_name', 'channel_group', 'tvg_name'
     )
-    list_filter = ('channel_group', 'is_active', 'is_looping', 'shuffle_mode')
+    list_filter = ('channel_group',)
     search_fields = ('channel_name', 'channel_group__name', 'tvg_name')
     ordering = ('channel_number',)
 
