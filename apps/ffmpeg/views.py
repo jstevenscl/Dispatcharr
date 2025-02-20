@@ -15,15 +15,16 @@ from apps.channels.models import Channel, Stream
 # Configure Redis
 redis_host = os.environ.get("REDIS_HOST", "redis")
 redis_port = int(os.environ.get("REDIS_PORT", 6379))
-redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
+redis_db = int(os.environ.get("REDIS_DB", 0))
+redis_client = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
 
 def serve_hls_segment(request, stream_id, filename):
     # Remove any trailing slashes from the filename. / caused problems.
     filename = filename.rstrip('/')
-    
+
     # Construct the file path (e.g., /tmp/hls_4/segment_001.ts)
     file_path = os.path.join('/tmp', f'hls_{stream_id}', filename)
-    
+
     if os.path.exists(file_path):
         return FileResponse(open(file_path, 'rb'), content_type='video/MP2T')
     else:

@@ -12,6 +12,7 @@ services:
     volumes:
       - ../:/app
     environment:
+      - POSTGRES_HOST=db
       - POSTGRES_DB=dispatcharr
       - POSTGRES_USER=dispatch
       - POSTGRES_PASSWORD=secret
@@ -29,6 +30,7 @@ services:
     volumes:
       - ../:/app
     environment:
+      - POSTGRES_HOST=db
       - POSTGRES_DB=dispatcharr
       - POSTGRES_USER=dispatch
       - POSTGRES_PASSWORD=secret
