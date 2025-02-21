@@ -1,6 +1,6 @@
-# apps/m3u/models.py
 from django.db import models
 from django.core.exceptions import ValidationError
+from core.models import UserAgent
 import re
 
 class M3UAccount(models.Model):
@@ -43,6 +43,14 @@ class M3UAccount(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
         help_text="Time when this account was last updated"
+    )
+    user_agent = models.ForeignKey(
+        'core.UserAgent',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='m3u_accounts',
+        help_text="The User-Agent associated with this M3U account."
     )
 
     def __str__(self):
@@ -108,7 +116,7 @@ class M3UFilter(models.Model):
     def __str__(self):
         filter_type_display = dict(self.FILTER_TYPE_CHOICES).get(self.filter_type, 'Unknown')
         exclude_status = "Exclude" if self.exclude else "Include"
-        return f"[{self.m3u_account.name}] {self.filter_type}: {self.regex_pattern} ({exclude_status})"
+        return f"[{self.m3u_account.name}] {filter_type_display}: {self.regex_pattern} ({exclude_status})"
 
     @staticmethod
     def filter_streams(streams, filters):
@@ -137,10 +145,6 @@ class ServerGroup(models.Model):
         unique=True,
         help_text="Unique name for this server group."
     )
-
-    # def related_channels(self):
-    #     from apps.channels.models import Channel  # Avoid circular imports
-    #     return Channel.objects.filter(ChannelGroup=self.name)
 
     def __str__(self):
         return self.name
