@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .api_views import M3UAccountViewSet, M3UFilterViewSet, ServerGroupViewSet, RefreshM3UAPIView, RefreshSingleM3UAPIView
+from .api_views import M3UAccountViewSet, M3UFilterViewSet, ServerGroupViewSet, RefreshM3UAPIView, RefreshSingleM3UAPIView, UserAgentViewSet
 
 app_name = 'm3u'
 

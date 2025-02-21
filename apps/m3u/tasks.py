@@ -4,8 +4,7 @@ import re
 import requests
 import os
 from celery.app.control import Inspect
-from celery import shared_task
-from celery import current_app
+from celery import shared_task, current_app
 from django.conf import settings
 from django.core.cache import cache
 from .models import M3UAccount
@@ -15,15 +14,13 @@ logger = logging.getLogger(__name__)
 
 LOCK_EXPIRE = 120  # Lock expires after 120 seconds
 
-
 def _get_group_title(extinf_line: str) -> str:
     """Extract group title from EXTINF line."""
     match = re.search(r'group-title="([^"]*)"', extinf_line)
     return match.group(1) if match else "Default Group"
 
-
 def _matches_filters(stream_name: str, group_name: str, filters) -> bool:
-    logger.info(f"Testing filter")
+    logger.info("Testing filter")
     for f in filters:
         pattern = f.regex_pattern
         target = group_name if f.filter_type == 'group' else stream_name
@@ -33,7 +30,6 @@ def _matches_filters(stream_name: str, group_name: str, filters) -> bool:
             return f.exclude
     return False
 
-
 def acquire_lock(task_name, account_id):
     """Acquire a lock to prevent concurrent task execution."""
     lock_id = f"task_lock_{task_name}_{account_id}"
@@ -42,12 +38,10 @@ def acquire_lock(task_name, account_id):
         logger.warning(f"Lock for {task_name} and account_id={account_id} already acquired. Task will not proceed.")
     return lock_acquired
 
-
 def release_lock(task_name, account_id):
     """Release the lock after task execution."""
     lock_id = f"task_lock_{task_name}_{account_id}"
     cache.delete(lock_id)
-
 
 @shared_task
 def refresh_m3u_accounts():
@@ -62,10 +56,8 @@ def refresh_m3u_accounts():
     logger.info(msg)
     return msg
 
-
 @shared_task
 def refresh_single_m3u_account(account_id):
-    """Parse and refresh a single M3U account."""
     logger.info(f"Task {refresh_single_m3u_account.request.id}: Starting refresh for account_id={account_id}")
 
     if not acquire_lock('refresh_single_m3u_account', account_id):
@@ -88,7 +80,13 @@ def refresh_single_m3u_account(account_id):
     try:
         lines = []
         if account.server_url:
-            headers = {"User-Agent": "Mozilla/5.0"}
+            if not account.user_agent:
+                err_msg = f"User-Agent not provided for account id {account_id}."
+                logger.error(err_msg)
+                release_lock('refresh_single_m3u_account', account_id)
+                return err_msg
+
+            headers = {"User-Agent": account.user_agent.user_agent}
             response = requests.get(account.server_url, timeout=60, headers=headers)
             response.raise_for_status()
             lines = response.text.splitlines()
@@ -99,6 +97,7 @@ def refresh_single_m3u_account(account_id):
         else:
             err_msg = f"No server_url or uploaded_file provided for account_id={account_id}."
             logger.error(err_msg)
+            release_lock('refresh_single_m3u_account', account_id)
             return err_msg
     except Exception as e:
         err_msg = f"Failed fetching M3U: {e}"
@@ -168,7 +167,6 @@ def refresh_single_m3u_account(account_id):
     release_lock('refresh_single_m3u_account', account_id)
     return f"Account {account_id} => Created {created_count}, updated {updated_count}, excluded {excluded_count} Streams."
 
-
 def process_uploaded_m3u_file(file, account):
     """Save and parse an uploaded M3U file."""
     upload_dir = os.path.join(settings.MEDIA_ROOT, 'm3u_uploads')
@@ -183,7 +181,6 @@ def process_uploaded_m3u_file(file, account):
         parse_m3u_file(file_path, account)
     except Exception as e:
         logger.error(f"Error parsing uploaded M3U file {file_path}: {e}")
-
 
 def parse_m3u_file(file_path, account):
     """Parse a local M3U file and create or update Streams."""

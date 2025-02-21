@@ -2,217 +2,445 @@
 {% block title %}M3U Management - Dispatcharr{% endblock %}
 {% block page_header %}M3U Management{% endblock %}
 {% block content %}
-
 <div class="container">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h3 class="card-title">M3U Accounts</h3>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addM3UModal">Add M3U</button>
-        </div>
-        <div class="card-body">
-            <!-- The table body will be populated via AJAX -->
-            <table id="m3uTable" class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>URL/File</th>
-                        <th>Max Streams</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
+  <!-- M3U Accounts Card -->
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h3 class="card-title">M3U Accounts</h3>
+      <!-- Changed button id to addM3UButton and removed data-bs-toggle attribute -->
+      <button id="addM3UButton" class="btn btn-primary">Add M3U</button>
     </div>
+    <div class="card-body">
+      <!-- The table body will be populated via AJAX -->
+      <table id="m3uTable" class="table table-striped">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>URL/File</th>
+            <th>Max Streams</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- User Agent Management Card -->
+  <div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h3 class="card-title">User Agents</h3>
+      <button id="addUserAgentBtn" class="btn btn-primary">
+        <i class="bi bi-plus"></i> Add User Agent
+      </button>
+    </div>
+    <div class="card-body">
+      <table id="userAgentTable" class="table table-striped">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>User Agent</th>
+            <th>Description</th>
+            <th>Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<!-- Add M3U Modal -->
+<!-- Add/Edit M3U Account Modal -->
 <div class="modal fade" id="addM3UModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Add M3U Account</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <!-- Note: The form does not submit normally; JavaScript handles submission -->
-                <form id="m3uForm" enctype="multipart/form-data" action="/api/m3u/accounts/">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label class="form-label">Name</label>
-                        <input type="text" class="form-control" id="m3uName" name="name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">M3U URL</label>
-                        <input type="url" class="form-control" id="m3uURL" name="server_url">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Upload File</label>
-                        <input type="file" class="form-control" id="m3uFile" name="uploaded_file">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Max Streams</label>
-                        <input type="number" class="form-control" id="m3uMaxStreams" name="max_streams" value="0">
-                    </div>
-                    <button type="submit" class="btn btn-success">Save</button>
-                </form>
-            </div>
-        </div>
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="m3uModalLabel">Add M3U Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- M3U Account Form -->
+        <form id="m3uForm" enctype="multipart/form-data" action="/api/m3u/accounts/">
+          {% csrf_token %}
+          <input type="hidden" id="m3uId" name="id">
+          <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input type="text" class="form-control" id="m3uName" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">M3U URL</label>
+            <input type="url" class="form-control" id="m3uURL" name="server_url">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Upload File</label>
+            <input type="file" class="form-control" id="m3uFile" name="uploaded_file">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Max Streams</label>
+            <input type="number" class="form-control" id="m3uMaxStreams" name="max_streams" value="0">
+          </div>
+          <!-- New mandatory User Agent dropdown field -->
+          <div class="mb-3">
+            <label class="form-label">User Agent</label>
+            <select class="form-select" id="m3uUserAgentSelect" name="user_agent" required>
+              <option value="">Select a User Agent</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-success">Save</button>
+        </form>
+      </div>
     </div>
+  </div>
 </div>
 
+<!-- User Agent Add/Edit Modal -->
+<div class="modal fade" id="userAgentModal" tabindex="-1" aria-labelledby="userAgentModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="userAgentForm">
+        {% csrf_token %}
+        <input type="hidden" id="userAgentId" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="userAgentModalLabel">Add User Agent</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="userAgentString" class="form-label">User Agent</label>
+            <input type="text" class="form-control" id="userAgentString" name="user_agent" required>
+          </div>
+          <div class="mb-3">
+            <label for="userAgentDescription" class="form-label">Description</label>
+            <input type="text" class="form-control" id="userAgentDescription" name="description">
+          </div>
+          <div class="mb-3">
+            <label for="userAgentActive" class="form-label">Active</label>
+            <select class="form-select" id="userAgentActive" name="is_active" required>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save User Agent</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- User Agent Delete Modal -->
+<div class="modal fade" id="deleteUserAgentModal" tabindex="-1" aria-labelledby="deleteUserAgentModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="deleteUserAgentForm">
+        {% csrf_token %}
+        <input type="hidden" id="deleteUserAgentId" name="id">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteUserAgentModalLabel">Delete User Agent</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          Are you sure you want to delete this User Agent?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-<!-- DataTables CSS/JS -->
+<!-- DataTables and SweetAlert2 CSS/JS -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
 <script>
-
 function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== "") {
-        const cookies = document.cookie.split(';');
-        for (let i=0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
     }
-    return cookieValue;
+  }
+  return cookieValue;
 }
 const csrftoken = getCookie('csrftoken');
-
 $.ajaxSetup({
-    headers: { "X-CSRFToken": csrftoken }
+  headers: { "X-CSRFToken": csrftoken }
 });
-    
-$(document).ready(function () {
-    // Initialize the DataTable with an AJAX source.
-    var m3uTable = $('#m3uTable').DataTable({
-        ajax: {
-            url: "/api/m3u/accounts/",
-            dataSrc: ""
-        },
-        columns: [
-            { data: "name" },
-            { 
-                data: null,
-                render: function(data) {
-                    if (data.server_url) {
-                        return '<a href="' + data.server_url + '" target="_blank">M3U URL</a>';
-                    } else if (data.uploaded_file) {
-                        return '<a href="' + data.uploaded_file + '" download>Download File</a>';
-                    } else {
-                        return 'No URL or file';
-                    }
-                }
-            },
-            { 
-                data: "max_streams",
-                render: function(data) {
-                    return data ? data : "N/A";
-                }
-            },
-            { 
-                data: "id",
-                orderable: false,
-                render: function(data, type, row) {
-                    return '<button class="btn btn-sm btn-warning" onclick="editM3U('+data+')">Edit</button> ' +
-                           '<button class="btn btn-sm btn-danger" onclick="deleteM3U('+data+')">Delete</button> ' +
-                           '<button class="btn btn-sm btn-info" onclick="refreshM3U('+data+')">Refresh</button>';
-                }
-            }
-        ]
-    });
-
-    // Handle form submission to add a new M3U account via AJAX.
-    $('#m3uForm').submit(function(e){
-        e.preventDefault();  // Prevent normal submission
-
-        var form = this;
-        var formData = new FormData(form);
-
-        fetch(form.action, {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin'
-        })
-        .then(response => {
-            if(!response.ok) {
-                throw new Error("Failed to save M3U account.");
-            }
-            return response.json();
-        })
-        .then(data => {
-            Swal.fire("Success", "M3U account saved successfully!", "success");
-            // Reload the DataTable data without reloading the whole page.
-            m3uTable.ajax.reload();
-            // Hide the modal (using Bootstrap 5)
-            var addModal = bootstrap.Modal.getInstance(document.getElementById("addM3UModal"));
-            if(addModal) addModal.hide();
-            form.reset();
-        })
-        .catch(error => {
-            Swal.fire("Error", error.message, "error");
-            console.error("Error:", error);
+$(document).ready(function() {
+  // Initialize the M3U DataTable
+  var m3uTable = $('#m3uTable').DataTable({
+    ajax: {
+      url: "/api/m3u/accounts/",
+      dataSrc: ""
+    },
+    columns: [
+      { data: "name" },
+      { 
+        data: null,
+        render: function(data) {
+          if (data.server_url) {
+            return '<a href="' + data.server_url + '" target="_blank">M3U URL</a>';
+          } else if (data.uploaded_file) {
+            return '<a href="' + data.uploaded_file + '" download>Download File</a>';
+          } else {
+            return 'No URL or file';
+          }
+        }
+      },
+      { 
+        data: "max_streams",
+        render: function(data) {
+          return data ? data : "N/A";
+        }
+      },
+      {
+        data: "id",
+        orderable: false,
+        render: function(data, type, row) {
+          return '<button class="btn btn-sm btn-warning" onclick="editM3U('+data+')">Edit</button> ' +
+                 '<button class="btn btn-sm btn-danger" onclick="deleteM3U('+data+')">Delete</button> ' +
+                 '<button class="btn btn-sm btn-info" onclick="refreshM3U('+data+')">Refresh</button>';
+        }
+      }
+    ]
+  });
+  
+  // Function to load User Agent options into the M3U form dropdown
+  function loadUserAgentOptions(selectedId) {
+    fetch("/api/core/useragents/")
+      .then(res => res.json())
+      .then(data => {
+        let options = '<option value="">Select a User Agent</option>';
+        data.forEach(function(ua) {
+          options += `<option value="${ua.id}">${ua.user_agent}</option>`;
         });
+        $('#m3uUserAgentSelect').html(options);
+        if (selectedId) {
+          $('#m3uUserAgentSelect').val(selectedId);
+        }
+      })
+      .catch(err => {
+        console.error("Error loading user agents:", err);
+      });
+  }
+  
+  // When the "Add M3U" button is clicked, reset the form and load user agent options
+  $('#addM3UButton').click(function() {
+    $('#m3uForm')[0].reset();
+    $('#m3uId').val('');
+    $('#m3uModalLabel').text("Add M3U Account");
+    loadUserAgentOptions();
+    new bootstrap.Modal(document.getElementById("addM3UModal")).show();
+  });
+  
+  // Edit M3U Account
+  window.editM3U = function(id) {
+    fetch("/api/m3u/accounts/" + id + "/")
+      .then(res => res.json())
+      .then(data => {
+        $('#m3uId').val(data.id);
+        $('#m3uName').val(data.name);
+        $('#m3uURL').val(data.server_url || "");
+        $('#m3uMaxStreams').val(data.max_streams);
+        loadUserAgentOptions(data.user_agent);
+        $('#m3uModalLabel').text("Edit M3U Account");
+        new bootstrap.Modal(document.getElementById("addM3UModal")).show();
+      })
+      .catch(err => {
+        Swal.fire("Error", "Failed to load M3U account details.", "error");
+        console.error(err);
+      });
+  };
+  
+  // M3U Form Submission (handles both create and update)
+  $('#m3uForm').submit(function(e) {
+    e.preventDefault();
+    var m3uId = $('#m3uId').val();
+    var formData = new FormData(this);
+    var method = m3uId ? "PUT" : "POST";
+    var url = m3uId ? "/api/m3u/accounts/" + m3uId + "/" : "/api/m3u/accounts/";
+    fetch(url, {
+      method: method,
+      body: formData,
+      credentials: 'same-origin'
+    }).then(response => {
+      if(response.ok) {
+        bootstrap.Modal.getInstance(document.getElementById("addM3UModal")).hide();
+        Swal.fire("Success", "M3U Account saved successfully!", "success");
+        m3uTable.ajax.reload();
+        return response.json();
+      } else {
+        throw new Error("Failed to save M3U account.");
+      }
+    }).catch(error => {
+      Swal.fire("Error", error.message, "error");
+      console.error("Error:", error);
     });
-});
-
-function deleteM3U(id) {
+  });
+  
+  // Delete M3U Account
+  window.deleteM3U = function(id) {
     Swal.fire({
-        title: "Are you sure?",
-        text: "You won't be able to revert this!",
-        icon: "warning",
-        showCancelButton: true,
-        confirmButtonColor: "#d33",
-        confirmButtonText: "Yes, delete it!"
+      title: "Are you sure?",
+      text: "You won't be able to revert this!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      confirmButtonText: "Yes, delete it!"
     }).then((result) => {
-        if (result.isConfirmed) {
-            $.ajax({
-                url: `/api/m3u/accounts/${id}/`,  // Updated URL
-                method: "DELETE",                 // Use DELETE method
-                success: function () {
-                    Swal.fire("Deleted!", "The M3U account has been deleted.", "success")
-                        .then(() => {
-                            $('#m3uTable').DataTable().ajax.reload();
-                        });
-                },
-                error: function () {
-                    Swal.fire("Error", "Failed to delete the M3U account.", "error");
-                }
-            });
-        }
+      if(result.isConfirmed) {
+        $.ajax({
+          url: `/api/m3u/accounts/${id}/`,
+          method: "DELETE",
+          success: function() {
+            Swal.fire("Deleted!", "The M3U account has been deleted.", "success")
+              .then(() => {
+                m3uTable.ajax.reload();
+              });
+          },
+          error: function() {
+            Swal.fire("Error", "Failed to delete the M3U account.", "error");
+          }
+        });
+      }
     });
-}
-
-
-function refreshM3U(id) {
+  };
+  
+  // Refresh M3U Account
+  window.refreshM3U = function(id) {
     $.ajax({
-        url: `/m3u/${id}/refresh/`,
-        method: "POST",
-        success: function () {
-            Swal.fire("Refreshed!", "The M3U has been refreshed.", "success")
-                .then(() => {
-                    $('#m3uTable').DataTable().ajax.reload();
-                });
-        },
-        error: function () {
-            Swal.fire("Error", "Failed to refresh the M3U.", "error");
-        }
+      url: `/m3u/${id}/refresh/`,
+      method: "POST",
+      success: function() {
+        Swal.fire("Refreshed!", "The M3U has been refreshed.", "success")
+          .then(() => {
+            m3uTable.ajax.reload();
+          });
+      },
+      error: function() {
+        Swal.fire("Error", "Failed to refresh the M3U.", "error");
+      }
     });
-}
-
-function editM3U(id) {
-    // Implement the edit functionality here.
-    Swal.fire("Info", "Edit functionality not implemented yet.", "info");
-}
+  };
+  
+  // Initialize User Agent DataTable
+  var userAgentTable = $('#userAgentTable').DataTable({
+    ajax: {
+      url: "/api/core/useragents/",
+      dataSrc: ""
+    },
+    columns: [
+      { data: "id" },
+      { data: "user_agent" },
+      { data: "description" },
+      { 
+        data: "is_active",
+        render: function(data) {
+          return data ? "Yes" : "No";
+        }
+      },
+      { 
+        data: "id",
+        orderable: false,
+        render: function(data, type, row) {
+          return '<button class="btn btn-sm btn-warning" onclick="editUserAgent('+data+')">Edit</button> ' +
+                 '<button class="btn btn-sm btn-danger" onclick="deleteUserAgent('+data+')">Delete</button>';
+        }
+      }
+    ]
+  });
+  
+  // Open Add User Agent modal
+  $('#addUserAgentBtn').click(function () {
+    $('#userAgentForm')[0].reset();
+    $('#userAgentId').val('');
+    $('#userAgentModalLabel').text("Add User Agent");
+    new bootstrap.Modal(document.getElementById("userAgentModal")).show();
+  });
+  
+  // User Agent Form Submission
+  $('#userAgentForm').submit(function(e){
+    e.preventDefault();
+    var id = $('#userAgentId').val();
+    var method = id ? "PUT" : "POST";
+    var url = id ? "/api/core/useragents/" + id + "/" : "/api/core/useragents/";
+    var formData = new FormData(this);
+    fetch(url, {
+      method: method,
+      body: formData,
+      credentials: 'same-origin'
+    }).then(response => {
+      if(response.ok){
+        bootstrap.Modal.getInstance(document.getElementById("userAgentModal")).hide();
+        Swal.fire("Success", "User Agent saved successfully!", "success");
+        userAgentTable.ajax.reload();
+        return response.json();
+      } else {
+        throw new Error("Failed to save User Agent.");
+      }
+    }).catch(error => {
+      Swal.fire("Error", error.message, "error");
+      console.error("Error:", error);
+    });
+  });
+  
+  // Delete User Agent Form Submission
+  $('#deleteUserAgentForm').submit(function(e){
+    e.preventDefault();
+    var id = $('#deleteUserAgentId').val();
+    fetch("/api/core/useragents/" + id + "/", {
+      method: "DELETE",
+      credentials: 'same-origin'
+    }).then(response => {
+      if(response.ok){
+        bootstrap.Modal.getInstance(document.getElementById("deleteUserAgentModal")).hide();
+        Swal.fire("Deleted!", "User Agent deleted.", "success");
+        userAgentTable.ajax.reload();
+      } else {
+        throw new Error("Failed to delete User Agent.");
+      }
+    }).catch(error => {
+      Swal.fire("Error", error.message, "error");
+      console.error("Error:", error);
+    });
+  });
+  
+  // Edit User Agent function
+  window.editUserAgent = function(id) {
+    fetch("/api/core/useragents/" + id + "/")
+      .then(res => res.json())
+      .then(data => {
+        $('#userAgentId').val(data.id);
+        $('#userAgentString').val(data.user_agent);
+        $('#userAgentDescription').val(data.description);
+        $('#userAgentActive').val(data.is_active ? "true" : "false");
+        $('#userAgentModalLabel').text("Edit User Agent");
+        new bootstrap.Modal(document.getElementById("userAgentModal")).show();
+      })
+      .catch(err => {
+        Swal.fire("Error", "Failed to load User Agent details.", "error");
+        console.error(err);
+      });
+  };
+  
+  // Delete User Agent function (opens delete modal)
+  window.deleteUserAgent = function(id) {
+    $('#deleteUserAgentId').val(id);
+    new bootstrap.Modal(document.getElementById("deleteUserAgentModal")).show();
+  };
+});
 </script>
 {% endblock %}

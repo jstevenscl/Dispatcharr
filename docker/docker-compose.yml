@@ -5,7 +5,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: dispatcharr_web
     ports:
-      - "9191:8000"
+      - "9191:9191"
     depends_on:
       - db
       - redis
@@ -30,7 +30,7 @@ services:
     volumes:
       - ../:/app
     environment:
-      - POSTGRES_HOST=db
+      - POSTGRES_HOST=localhost
       - POSTGRES_DB=dispatcharr
       - POSTGRES_USER=dispatch
       - POSTGRES_PASSWORD=secret

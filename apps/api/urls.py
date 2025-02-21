@@ -21,11 +21,11 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path('accounts/', include(('apps.accounts.api_urls', 'accounts'), namespace='accounts')),
-    #path('backup/', include(('apps.backup.api_urls', 'backup'), namespace='backup')),
     path('channels/', include(('apps.channels.api_urls', 'channels'), namespace='channels')),
     path('epg/', include(('apps.epg.api_urls', 'epg'), namespace='epg')),
     path('hdhr/', include(('apps.hdhr.api_urls', 'hdhr'), namespace='hdhr')),
     path('m3u/', include(('apps.m3u.api_urls', 'm3u'), namespace='m3u')),
+    path('core/', include(('core.api_urls', 'core'), namespace='core')),
     # path('output/', include(('apps.output.api_urls', 'output'), namespace='output')),
     #path('player/', include(('apps.player.api_urls', 'player'), namespace='player')),
     #path('settings/', include(('apps.settings.api_urls', 'settings'), namespace='settings')),

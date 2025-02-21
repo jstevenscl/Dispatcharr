@@ -1,8 +1,10 @@
 FROM python:3.10-slim
 
-# Install required packages
+# Install required packages including ffmpeg, streamlink, and vlc
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    streamlink \
+    vlc \
     libpq-dev \
     gcc \
     && rm -rf /var/lib/apt/lists/*
@@ -26,8 +28,8 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 RUN python manage.py collectstatic --noinput || true
 RUN python manage.py migrate --noinput || true
 
-# Expose the port
-EXPOSE 8000
+# Expose port 9191 (this is the port the app will listen on inside the container)
+EXPOSE 9191
 
-# Command to run the application
-CMD ["gunicorn", "--workers=4", "--worker-class=gevent", "--timeout=300", "--bind", "0.0.0.0:8000", "dispatcharr.wsgi:application"]
+# Command to run the application binding to port 9191
+CMD ["gunicorn", "--workers=4", "--worker-class=gevent", "--timeout=300", "--bind", "0.0.0.0:9191", "dispatcharr.wsgi:application"]

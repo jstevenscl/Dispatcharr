@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from core.models import StreamProfile
 
 # If you have an M3UAccount model in apps.m3u, you can still import it:
 from apps.m3u.models import M3UAccount
@@ -71,6 +72,15 @@ class Channel(models.Model):
     tvg_name = models.CharField(max_length=255, blank=True, null=True)
     objects = ChannelManager()
 
+    stream_profile = models.ForeignKey(
+        StreamProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='channels'
+    )
+
+    
     def clean(self):
         # Enforce unique channel_number within a given group
         existing = Channel.objects.filter(
