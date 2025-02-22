@@ -83,5 +83,8 @@ service redis-server start
 python manage.py collectstatic --noinput || true
 python manage.py migrate --noinput || true
 
+# Start Celery
+celery -A dispatcharr worker --loglevel=info &
+
 # Start Gunicorn
 gunicorn --workers=4 --worker-class=gevent --timeout=300 --bind 0.0.0.0:9191 dispatcharr.wsgi:application
