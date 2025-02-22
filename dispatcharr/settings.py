@@ -108,4 +108,4 @@ MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
 
 
-SERVER_IP = "10.0.0.107"
+SERVER_IP = "127.0.0.1"
