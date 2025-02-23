@@ -109,6 +109,7 @@ service redis-server start
 # Run Django commands
 echo_with_timestamp "Running Django commands..."
 python manage.py collectstatic --noinput || true
+python manage.py makemigrations --noinput || true
 python manage.py migrate --noinput || true
 
 # Start Celery
