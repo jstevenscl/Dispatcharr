@@ -13,6 +13,9 @@ export POSTGRES_USER=${POSTGRES_USER:-dispatch}
 export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
 export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
 export POSTGRES_PORT=${POSTGRES_PORT:-5432}
+export DJANGO_SUPERUSER_USERNAME=${DEFAULT_USERNAME:-admin}
+export DJANGO_SUPERUSER_PASSWORD=${DEFAULT_PASSWORD:-admin}
+export DJANGO_SUPERUSER_EMAIL=${DEFAULT_EMAIL:-admin@dispatcharr.local}
 export PGDATA=${PGDATA:-/app/data/db}
 export PG_BINDIR="/usr/lib/postgresql/14/bin"
 
@@ -111,6 +114,13 @@ echo_with_timestamp "Running Django commands..."
 python manage.py collectstatic --noinput || true
 python manage.py makemigrations --noinput || true
 python manage.py migrate --noinput || true
+echo_with_timestamp "Checking if Django superuser exists..."
+if ! python manage.py shell -c "from django.contrib.auth import get_user_model; exit(0) if get_user_model().objects.filter(username='${DJANGO_SUPERUSER_USERNAME}').exists() else exit(1)"; then
+    echo_with_timestamp "Superuser does not exist. Creating..."
+    python manage.py createsuperuser --noinput || true
+else
+    echo_with_timestamp "Superuser already exists. Skipping creation."
+fi
 
 # Start Celery
 echo_with_timestamp "Starting Celery..."
