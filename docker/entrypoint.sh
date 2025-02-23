@@ -13,11 +13,14 @@ export POSTGRES_USER=${POSTGRES_USER:-dispatch}
 export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
 export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
 export POSTGRES_PORT=${POSTGRES_PORT:-5432}
+export PUID=${PUID:-1000}
+export PGID=${PGID:-1000}
 export DJANGO_SUPERUSER_USERNAME=${DEFAULT_USERNAME:-admin}
 export DJANGO_SUPERUSER_PASSWORD=${DEFAULT_PASSWORD:-admin}
 export DJANGO_SUPERUSER_EMAIL=${DEFAULT_EMAIL:-admin@dispatcharr.local}
 export PGDATA=${PGDATA:-/app/data/db}
 export PG_BINDIR="/usr/lib/postgresql/14/bin"
+
 
 # Echo environment variables for debugging
 echo_with_timestamp "POSTGRES_DB: $POSTGRES_DB"
@@ -107,7 +110,7 @@ fi
 
 # Start Redis
 echo_with_timestamp "Starting Redis..."
-service redis-server start
+su - $POSTGRES_USER -c 'redis-server --daemonize yes'
 
 # Run Django commands
 echo_with_timestamp "Running Django commands..."
@@ -124,8 +127,8 @@ fi
 
 # Start Celery
 echo_with_timestamp "Starting Celery..."
-celery -A dispatcharr worker --loglevel=info &
+su - $POSTGRES_USER -c 'cd /app && celery -A dispatcharr worker --loglevel=info &'
 
 # Start Gunicorn
 echo_with_timestamp "Starting Gunicorn..."
-gunicorn --workers=4 --worker-class=gevent --timeout=300 --bind 0.0.0.0:9191 dispatcharr.wsgi:application
+su - $POSTGRES_USER -c 'cd /app && gunicorn --workers=4 --worker-class=gevent --timeout=300 --bind 0.0.0.0:9191 dispatcharr.wsgi:application'
