@@ -28,7 +28,7 @@ urlpatterns = [
     path('api/', include(('apps.api.urls', 'api'), namespace='api')),
     path('admin/', admin.site.urls),
 
-    #path('accounts/', include(('apps.accounts.urls', 'accounts'), namespace='accounts')),
+    path('accounts/', include(('apps.accounts.urls', 'accounts'), namespace='accounts')),
     #path('streams/', include(('apps.streams.urls', 'streams'), namespace='streams')),
     #path('hdhr/', include(('apps.hdhr.urls', 'hdhr'), namespace='hdhr')),
     path('m3u/', include(('apps.m3u.urls', 'm3u'), namespace='m3u')),

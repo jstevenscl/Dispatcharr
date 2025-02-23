@@ -1,10 +1,17 @@
 from rest_framework import serializers
 from .models import Stream, Channel, ChannelGroup
+from core.models import StreamProfile
 
 #
 # Stream
 #
 class StreamSerializer(serializers.ModelSerializer):
+    stream_profile_id = serializers.PrimaryKeyRelatedField(
+        queryset=StreamProfile.objects.all(),
+        source='stream_profile',
+        allow_null=True,
+        required=False
+    )
     class Meta:
         model = Stream
         fields = [
@@ -18,9 +25,9 @@ class StreamSerializer(serializers.ModelSerializer):
             'local_file',
             'current_viewers',
             'is_transcoded',
-            'ffmpeg_preset',
             'updated_at',
             'group_name',
+            'stream_profile_id',
         ]
 
 
@@ -61,5 +68,6 @@ class ChannelSerializer(serializers.ModelSerializer):
             'channel_group_id',
             'tvg_id',
             'tvg_name',
-            'streams'
+            'streams',
+            'stream_profile_id',
         ]
