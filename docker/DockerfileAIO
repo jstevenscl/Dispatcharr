@@ -1,0 +1,45 @@
+FROM python:3.10-slim
+
+# Add PostgreSQL repository
+RUN apt-get update && apt-get install -y wget gnupg2 && \
+    echo "deb http://apt.postgresql.org/pub/repos/apt/ bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
+# Install required packages
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    streamlink \
+    vlc \
+    libpq-dev \
+    gcc \
+    postgresql-14 \
+    postgresql-contrib-14 \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
+WORKDIR /app
+
+# Copy requirements.txt from the parent directory
+COPY requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy the application source code from the parent directory
+COPY . /app/
+
+# Set environment variables
+ENV DJANGO_SETTINGS_MODULE=dispatcharr.settings
+ENV PYTHONUNBUFFERED=1
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+# Copy the entrypoint script
+COPY docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Expose the port
+EXPOSE 9191
+
+# Command to run the startup script
+CMD ["/app/entrypoint.sh"]
