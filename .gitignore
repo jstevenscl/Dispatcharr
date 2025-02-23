@@ -4,4 +4,5 @@ __pycache__/
 .vscode/launch.json
 .vscode/tasks.json
 *.pyc
-
+node_modules/
+.history/

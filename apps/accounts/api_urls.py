@@ -1,9 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .api_views import (
-    AuthViewSet, UserViewSet, GroupViewSet, 
+    AuthViewSet, UserViewSet, GroupViewSet,
     list_permissions
 )
+from rest_framework_simplejwt import views as jwt_views
 
 app_name = 'accounts'
 
@@ -29,6 +30,9 @@ urlpatterns = [
 
     # Permissions API
     path('permissions/', list_permissions, name='list-permissions'),
+
+    path('token/', jwt_views.TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', jwt_views.TokenRefreshView.as_view(), name='token_refresh'),
 ]
 
 # 🔹 Include ViewSet routes
