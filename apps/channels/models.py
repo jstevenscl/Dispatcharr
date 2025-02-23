@@ -24,10 +24,15 @@ class Stream(models.Model):
     local_file = models.FileField(upload_to='uploads/', blank=True, null=True)
     current_viewers = models.PositiveIntegerField(default=0)
     is_transcoded = models.BooleanField(default=False)
-    ffmpeg_preset = models.CharField(max_length=50, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
     group_name = models.CharField(max_length=255, blank=True, null=True)
-
+    stream_profile = models.ForeignKey(
+        StreamProfile,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='streams'
+    )
     class Meta:
         # If you use m3u_account, you might do unique_together = ('name','custom_url','m3u_account')
         verbose_name = "Stream"

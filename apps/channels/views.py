@@ -38,7 +38,4 @@ class StreamDashboardView(View):
 
 @login_required
 def channels_dashboard_view(request):
-    """
-    Example “dashboard” style view for Channels
-    """
     return render(request, 'channels/channels.html')
