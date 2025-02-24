@@ -27,9 +27,6 @@ class ChannelForm(forms.ModelForm):
             'channel_number',
             'channel_name',
             'channel_group',
-            'is_active',
-            'is_looping',
-            'shuffle_mode',
         ]
 
 
@@ -47,6 +44,5 @@ class StreamForm(forms.ModelForm):
             'tvg_id',
             'local_file',
             'is_transcoded',
-            'ffmpeg_preset',
             'group_name',
         ]
