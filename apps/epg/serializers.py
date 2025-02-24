@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Program, EPGSource
+from .models import EPGSource, EPGData, ProgramData
 from apps.channels.models import Channel
 
 class EPGSourceSerializer(serializers.ModelSerializer):
@@ -7,13 +7,18 @@ class EPGSourceSerializer(serializers.ModelSerializer):
         model = EPGSource
         fields = ['id', 'name', 'source_type', 'url', 'api_key', 'is_active']
 
+class ProgramDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProgramData
+        fields = ['id', 'start_time', 'end_time', 'title', 'sub_title', 'description']
 
-class ProgramSerializer(serializers.ModelSerializer):
+class EPGDataSerializer(serializers.ModelSerializer):
+    programs = ProgramDataSerializer(many=True, read_only=True)
     channel = serializers.SerializerMethodField()
 
     def get_channel(self, obj):
-        return {"id": obj.channel.id, "name": obj.channel.name} if obj.channel else None
+        return {"id": obj.channel.id, "name": obj.channel.channel_name} if obj.channel else None
 
     class Meta:
-        model = Program
-        fields = ['id', 'channel', 'title', 'description', 'start_time', 'end_time']
+        model = EPGData
+        fields = ['id', 'channel', 'channel_name', 'programs']

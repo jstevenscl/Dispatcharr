@@ -6,6 +6,7 @@ import logging
 from django.conf import settings
 from django.http import StreamingHttpResponse, HttpResponseServerError
 from django.db.models import F
+from django.shortcuts import render
 
 from apps.channels.models import Channel, Stream
 from core.models import StreamProfile
@@ -13,6 +14,13 @@ from core.models import StreamProfile
 # Configure logging to output to the console.
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+def settings_view(request):
+    """
+    Renders the settings page.
+    """
+    return render(request, 'settings.html')
+
 
 def stream_view(request, stream_id):
     """
