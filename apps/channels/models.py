@@ -23,7 +23,6 @@ class Stream(models.Model):
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
     local_file = models.FileField(upload_to='uploads/', blank=True, null=True)
     current_viewers = models.PositiveIntegerField(default=0)
-    is_transcoded = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
     group_name = models.CharField(max_length=255, blank=True, null=True)
     stream_profile = models.ForeignKey(

@@ -24,7 +24,6 @@ class StreamSerializer(serializers.ModelSerializer):
             'tvg_id',
             'local_file',
             'current_viewers',
-            'is_transcoded',
             'updated_at',
             'group_name',
             'stream_profile_id',

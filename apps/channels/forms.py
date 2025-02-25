@@ -43,6 +43,5 @@ class StreamForm(forms.ModelForm):
             'logo_url',
             'tvg_id',
             'local_file',
-            'is_transcoded',
             'group_name',
         ]
