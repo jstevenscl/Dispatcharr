@@ -1,53 +1,49 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import DescriptionIcon from '@mui/icons-material/Description';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+} from '@mui/material';
+import {
+  Menu as MenuIcon,
+  Home as HomeIcon,
+  Settings as SettingsIcon,
+  Info as InfoIcon,
+  Description as DescriptionIcon,
+  Tv as TvIcon,
+  CalendarMonth as CalendarMonthIcon,
+  VideoFile as VideoFileIcon,
+  LiveTv as LiveTvIcon,
+  PlaylistPlay as PlaylistPlayIcon,
+} from '@mui/icons-material';
 
-const Sidebar = () => {
+const items = [
+  { text: 'Channels', icon: <TvIcon />, route: "/channels" },
+  { text: 'M3U', icon: <PlaylistPlayIcon />, route: "/m3u" },
+  { text: 'EPG', icon: <CalendarMonthIcon />, route: "/epg" },
+  { text: 'Stream Profiles', icon: <VideoFileIcon />, route: "/stream-profiles" },
+  { text: 'TV Guide', icon: <LiveTvIcon />, route: "/guide" },
+];
+
+const Sidebar = ({ open }) => {
+  const location = useLocation();
+
   return (
-    <>
-      <div class="sidebar-brand">
-        <Link to="/daskboard" className="brand-link">
-          <img src="/images/logo.png" alt="Dispatcharr Logo" class="brand-image opacity-75 shadow" />
-          <span class="brand-text fw-light">Dispatcharr</span>
-        </Link>
-      </div>
-      <div class="sidebar-wrapper">
-        <nav class="mt-2">
-          <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu" data-accordion="false">
-            <li class="nav-item">
-              <Link to="/dashboard" className="nav-link">
-                <i class="nav-icon bi bi-speedometer"></i>
-                <p>Dashboard</p>
-              </Link>
-            </li>
-            <li class="nav-item">
-              <Link to="/channels" className="nav-link">
-                <i class="nav-icon bi bi-tv"></i>
-                <p>Channels</p>
-              </Link>
-            </li>
-            <li class="nav-item">
-              <Link to="/m3u" className="nav-link">
-                <i class="nav-icon bi bi-file-earmark-text"></i>
-                <p>M3U</p>
-              </Link>
-            </li>
-            <li class="nav-item">
-              <Link to="/epg" className="nav-link">
-                <i class="nav-icon bi bi-calendar3"></i>
-                <p>EPG</p>
-              </Link>
-            </li>
-            <li class="nav-item">
-              <Link to="/settings" className="nav-link">
-                <i class="nav-icon bi bi-gear"></i>
-                <p>Settings</p>
-              </Link>
-            </li>
-          </ul>
-        </nav>
-      </div>
-    </>
+    <List>
+      {items.map((item) => (
+        <ListItem key={item.text} disablePadding>
+            <ListItemButton component={Link} to={item.route} selected={location.pathname == item.route}>
+              <ListItemIcon>{item.icon}</ListItemIcon>
+              {open && <ListItemText primary={item.text} />}
+            </ListItemButton>
+        </ListItem>
+      ))}
+    </List>
   );
 };
 

@@ -49,6 +49,11 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
   useEffect(() => {
     if (epg) {
       formik.setValues({
+        name: epg.name,
+        source_type: epg.source_type,
+        url: epg.url,
+        api_key: epg.api_key,
+        is_active: epg.is_active,
       });
     } else {
       formik.resetForm();

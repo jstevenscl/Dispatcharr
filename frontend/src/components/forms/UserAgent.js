@@ -47,8 +47,6 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
     return <></>
   }
 
-  console.log(userAgent)
-
   return (
     <Modal
       open={isOpen}

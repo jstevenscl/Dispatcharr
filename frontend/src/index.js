@@ -8,6 +8,7 @@ import useStreamsStore from './store/streams';
 import useUserAgentsStore from './store/userAgents';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
+import useStreamProfilesStore from './store/streamProfiles';
 
 // Create a root element
 const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -18,10 +19,10 @@ const streamsStore = useStreamsStore.getState();
 const userAgentsStore = useUserAgentsStore.getState();
 const playlistsStore = usePlaylistsStore.getState();
 const epgsStore = useEPGsStore.getState()
+const streamProfilesStore = useStreamProfilesStore.getState()
 
 await authStore.initializeAuth();
 
-console.log(authStore)
 // if (authStore.isAuthenticated) {
   await Promise.all([
     authStore.initializeAuth(),
@@ -31,6 +32,7 @@ console.log(authStore)
     userAgentsStore.fetchUserAgents(),
     playlistsStore.fetchPlaylists(),
     epgsStore.fetchEPGs(),
+    streamProfilesStore.fetchProfiles(),
   ])
 // }
 

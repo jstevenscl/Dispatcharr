@@ -34,7 +34,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
       if (playlist?.id) {
         await API.updatePlaylist({id: playlist.id, ...values, uploaded_file: file})
       } else {
-        await API.addChannel({
+        await API.addPlaylist({
           ...values,
           uploaded_file: file,
         })
@@ -137,9 +137,9 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
           />
 
           <FormControl variant="standard" fullWidth>
-            <InputLabel id="channel-group-label">User-Agent</InputLabel>
+            <InputLabel id="user-agent-label">User-Agent</InputLabel>
             <Select
-              labelId="channel-group-label"
+              labelId="user-agent-label"
               id="user_agent"
               name="user_agent"
               label="User-Agent"

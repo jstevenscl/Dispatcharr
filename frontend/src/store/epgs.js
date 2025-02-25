@@ -21,7 +21,7 @@ const useEPGsStore = create((set) => ({
     epgs: [...state.epgs, newPlaylist],
   })),
 
-  removeEGPs: (epgIds) => set((state) => ({
+  removeEPGs: (epgIds) => set((state) => ({
     epgs: state.epgs.filter((epg) => !epgIds.includes(epg.id)),
   })),
 }));

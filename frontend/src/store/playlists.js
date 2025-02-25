@@ -21,6 +21,10 @@ const usePlaylistsStore = create((set) => ({
     playlists: [...state.playlists, newPlaylist],
   })),
 
+  updatePlaylist: (playlist) => set((state) => ({
+    playlists: state.playlists.map(pl => pl.id === playlist.id ? playlist : pl),
+  })),
+
   removePlaylists: (playlistIds) => set((state) => ({
     playlists: state.playlists.filter((playlist) => !playlistIds.includes(playlist.id)),
   })),

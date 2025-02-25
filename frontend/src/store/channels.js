@@ -35,6 +35,10 @@ const useChannelsStore = create((set) => ({
     channels: [...state.channels, newChannel],
   })),
 
+  updateChannel: (userAgent) => set((state) => ({
+    channels: state.channels.map(chan => chan.id === userAgent.id ? userAgent : chan),
+  })),
+
   removeChannels: (channelIds) => set((state) => ({
     channels: state.channels.filter((channel) => !channelIds.includes(channel.id)),
   })),
