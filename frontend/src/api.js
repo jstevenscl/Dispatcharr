@@ -1,4 +1,4 @@
-import Axios from 'axios'
+import Axios from 'axios';
 import useAuthStore from './store/auth';
 import useChannelsStore from './store/channels';
 import useUserAgentsStore from './store/userAgents';
@@ -7,11 +7,11 @@ import useEPGsStore from './store/epgs';
 import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
 
-const axios = Axios.create({
-  withCredentials: true,
-})
+// const axios = Axios.create({
+//   withCredentials: true,
+// });
 
-const host = "http://192.168.1.151:9191"
+const host = 'http://192.168.1.151:9191';
 
 const getAuthToken = async () => {
   const token = await useAuthStore.getState().getToken(); // Assuming token is stored in Zustand store
@@ -28,14 +28,14 @@ export default class API {
       body: JSON.stringify({ username, password }),
     });
 
-    return await response.json()
+    return await response.json();
   }
 
   static async refreshToken(refreshToken) {
     const response = await fetch(`${host}/api/accounts/token/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: refreshToken })
+      body: JSON.stringify({ refresh: refreshToken }),
     });
 
     const retval = await response.json();
@@ -45,9 +45,9 @@ export default class API {
   static async logout() {
     const response = await fetch(`${host}/api/accounts/auth/logout/`, {
       method: 'POST',
-    })
+    });
 
-    return response.data.data
+    return response.data.data;
   }
 
   static async getChannels() {
@@ -74,33 +74,72 @@ export default class API {
     return retval;
   }
 
+  static async addChannelGroup(values) {
+    const response = await fetch(`${host}/api/channels/groups/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(values),
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useChannelsStore.getState().addChannelGroup(retval);
+    }
+
+    return retval;
+  }
+
+  static async updateChannelGroup(values) {
+    const { id, ...payload } = values;
+    const response = await fetch(`${host}/api/channels/groups/${id}/`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useChannelsStore.getState().updateChannelGroup(retval);
+    }
+
+    return retval;
+  }
+
   static async addChannel(channel) {
-    let body = null
+    let body = null;
     if (channel.logo_file) {
       body = new FormData();
       for (const prop in channel) {
-        body.append(prop, channel[prop])
+        body.append(prop, channel[prop]);
       }
     } else {
-      body = {...channel}
-      delete body.logo_file
-      body = JSON.stringify(body)
+      body = { ...channel };
+      delete body.logo_file;
+      body = JSON.stringify(body);
     }
 
     const response = await fetch(`${host}/api/channels/channels/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await getAuthToken()}`,
-        ...(channel.logo_file ? {} :{
-          'Content-Type': 'application/json',
-        })
+        ...(channel.logo_file
+          ? {}
+          : {
+              'Content-Type': 'application/json',
+            }),
       },
       body: body,
     });
 
     const retval = await response.json();
     if (retval.id) {
-      useChannelsStore.getState().addChannel(retval)
+      useChannelsStore.getState().addChannel(retval);
     }
 
     return retval;
@@ -115,7 +154,7 @@ export default class API {
       },
     });
 
-    useChannelsStore.getState().removeChannels([id])
+    useChannelsStore.getState().removeChannels([id]);
   }
 
   // @TODO: the bulk delete endpoint is currently broken
@@ -133,7 +172,7 @@ export default class API {
   // }
 
   static async updateChannel(values) {
-    const {id, ...payload} = values
+    const { id, ...payload } = values;
     const response = await fetch(`${host}/api/channels/channels/${id}/`, {
       method: 'PUT',
       headers: {
@@ -145,7 +184,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useChannelsStore.getState().updateChannel(retval)
+      useChannelsStore.getState().updateChannel(retval);
     }
 
     return retval;
@@ -163,7 +202,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useChannelsStore.getState().addChannel(retval)
+      useChannelsStore.getState().addChannel(retval);
     }
 
     return retval;
@@ -181,7 +220,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useChannelsStore.getState().addChannel(retval)
+      useChannelsStore.getState().addChannel(retval);
     }
 
     return retval;
@@ -211,14 +250,14 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useStreamsStore.getState().addStream(retval)
+      useStreamsStore.getState().addStream(retval);
     }
 
     return retval;
   }
 
   static async updateStream(values) {
-    const {id, ...payload} = values
+    const { id, ...payload } = values;
     const response = await fetch(`${host}/api/channels/streams/${id}/`, {
       method: 'PUT',
       headers: {
@@ -230,7 +269,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useStreamsStore.getState().updateStream(retval)
+      useStreamsStore.getState().updateStream(retval);
     }
 
     return retval;
@@ -245,7 +284,7 @@ export default class API {
       },
     });
 
-    useStreamsStore.getState().removeStreams([id])
+    useStreamsStore.getState().removeStreams([id]);
   }
 
   static async deleteStreams(ids) {
@@ -255,10 +294,10 @@ export default class API {
         Authorization: `Bearer ${await getAuthToken()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ stream_ids: ids })
+      body: JSON.stringify({ stream_ids: ids }),
     });
 
-    useStreamsStore.getState().removeStreams(ids)
+    useStreamsStore.getState().removeStreams(ids);
   }
 
   static async getUserAgents() {
@@ -285,14 +324,14 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useUserAgentsStore.getState().addUserAgent(retval)
+      useUserAgentsStore.getState().addUserAgent(retval);
     }
 
     return retval;
   }
 
   static async updateUserAgent(values) {
-    const {id, ...payload} = values
+    const { id, ...payload } = values;
     const response = await fetch(`${host}/api/core/useragents/${id}/`, {
       method: 'PUT',
       headers: {
@@ -304,7 +343,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useUserAgentsStore.getState().updateUserAgent(retval)
+      useUserAgentsStore.getState().updateUserAgent(retval);
     }
 
     return retval;
@@ -319,7 +358,7 @@ export default class API {
       },
     });
 
-    useUserAgentsStore.getState().removeUserAgents([id])
+    useUserAgentsStore.getState().removeUserAgents([id]);
   }
 
   static async getPlaylists() {
@@ -346,7 +385,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      usePlaylistsStore.getState().addPlaylist(retval)
+      usePlaylistsStore.getState().addPlaylist(retval);
     }
 
     return retval;
@@ -387,11 +426,11 @@ export default class API {
       },
     });
 
-    usePlaylistsStore.getState().removePlaylists([id])
+    usePlaylistsStore.getState().removePlaylists([id]);
   }
 
   static async updatePlaylist(values) {
-    const {id, ...payload} = values
+    const { id, ...payload } = values;
     const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
       method: 'PUT',
       headers: {
@@ -403,7 +442,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      usePlaylistsStore.getState().updatePlaylist(retval)
+      usePlaylistsStore.getState().updatePlaylist(retval);
     }
 
     return retval;
@@ -435,32 +474,34 @@ export default class API {
   }
 
   static async addEPG(values) {
-    let body = null
+    let body = null;
     if (values.epg_file) {
       body = new FormData();
       for (const prop in values) {
-        body.append(prop, values[prop])
+        body.append(prop, values[prop]);
       }
     } else {
-      body = {...values}
-      delete body.epg_file
-      body = JSON.stringify(body)
+      body = { ...values };
+      delete body.epg_file;
+      body = JSON.stringify(body);
     }
 
     const response = await fetch(`${host}/api/epg/sources/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await getAuthToken()}`,
-        ...(values.epg_file ? {} :{
-          'Content-Type': 'application/json',
-        })
+        ...(values.epg_file
+          ? {}
+          : {
+              'Content-Type': 'application/json',
+            }),
       },
       body,
     });
 
     const retval = await response.json();
     if (retval.id) {
-      useEPGsStore.getState().addEPG(retval)
+      useEPGsStore.getState().addEPG(retval);
     }
 
     return retval;
@@ -475,7 +516,7 @@ export default class API {
       },
     });
 
-    useEPGsStore.getState().removeEPGs([id])
+    useEPGsStore.getState().removeEPGs([id]);
   }
 
   static async refreshEPG(id) {
@@ -511,18 +552,18 @@ export default class API {
         Authorization: `Bearer ${await getAuthToken()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(values)
+      body: JSON.stringify(values),
     });
 
     const retval = await response.json();
     if (retval.id) {
-      useStreamProfilesStore.getState().addStreamProfile(retval)
+      useStreamProfilesStore.getState().addStreamProfile(retval);
     }
     return retval;
   }
 
   static async updateStreamProfile(values) {
-    const {id, ...payload} = values
+    const { id, ...payload } = values;
     const response = await fetch(`${host}/api/core/streamprofiles/${id}/`, {
       method: 'PUT',
       headers: {
@@ -534,7 +575,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      useStreamProfilesStore.getState().updateStreamProfile(retval)
+      useStreamProfilesStore.getState().updateStreamProfile(retval);
     }
 
     return retval;
@@ -549,7 +590,7 @@ export default class API {
       },
     });
 
-    useStreamProfilesStore.getState().removeStreamProfiles([id])
+    useStreamProfilesStore.getState().removeStreamProfiles([id]);
   }
 
   static async getGrid() {
@@ -560,8 +601,8 @@ export default class API {
       },
     });
 
-    const retval = await response.json()
-    console.log(retval)
-    return retval
+    const retval = await response.json();
+    console.log(retval);
+    return retval;
   }
 }

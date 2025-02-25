@@ -1,51 +1,71 @@
 // Modal.js
 import React, { useState, useEffect } from "react";
-import { Box, Modal, Typography, Stack, TextField, Button, Select, MenuItem, Grid2, InputLabel, FormControl, CircularProgress, FormControlLabel, Checkbox } from "@mui/material";
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
-import API from "../../api"
-import usePlaylistsStore from "../../store/playlists";
+import {
+  Box,
+  Typography,
+  Stack,
+  TextField,
+  Button,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  CircularProgress,
+  FormControlLabel,
+  Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import { useFormik } from "formik";
+import * as Yup from "yup";
+import API from "../../api";
 import useUserAgentsStore from "../../store/userAgents";
 
 const M3U = ({ playlist = null, isOpen, onClose }) => {
-  const userAgents = useUserAgentsStore(state => state.userAgents)
-  const [file, setFile] = useState(null)
+  const userAgents = useUserAgentsStore((state) => state.userAgents);
+  const [file, setFile] = useState(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setFile(file)
+      setFile(file);
     }
   };
 
   const formik = useFormik({
     initialValues: {
-      name: '',
-      server_url: '',
+      name: "",
+      server_url: "",
       max_streams: 0,
-      user_agent: '',
+      user_agent: "",
       is_active: true,
     },
     validationSchema: Yup.object({
-      name: Yup.string().required('Name is required'),
-      user_agent: Yup.string().required('User-Agent is required'),
+      name: Yup.string().required("Name is required"),
+      user_agent: Yup.string().required("User-Agent is required"),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (playlist?.id) {
-        await API.updatePlaylist({id: playlist.id, ...values, uploaded_file: file})
+        await API.updatePlaylist({
+          id: playlist.id,
+          ...values,
+          uploaded_file: file,
+        });
       } else {
         await API.addPlaylist({
           ...values,
           uploaded_file: file,
-        })
+        });
       }
 
       resetForm();
-      setFile(null)
+      setFile(null);
       setSubmitting(false);
-      onClose()
-    }
-  })
+      onClose();
+    },
+  });
 
   useEffect(() => {
     if (playlist) {
@@ -62,20 +82,22 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
   }, [playlist]);
 
   if (!isOpen) {
-    return <></>
+    return <></>;
   }
 
   return (
-    <Modal
-      open={isOpen}
-      onClose={onClose}
-    >
-      <Box sx={style}>
-        <Typography id="form-modal-title" variant="h6" mb={2}>
-          M3U Account
-        </Typography>
+    <Dialog open={isOpen} onClose={onClose}>
+      <DialogTitle
+        sx={{
+          backgroundColor: "primary.main",
+          color: "primary.contrastText",
+        }}
+      >
+        M3U Account
+      </DialogTitle>
 
-        <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={formik.handleSubmit}>
+        <DialogContent>
           <TextField
             fullWidth
             id="name"
@@ -97,30 +119,38 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
             value={formik.values.server_url}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.server_url && Boolean(formik.errors.server_url)}
+            error={
+              formik.touched.server_url && Boolean(formik.errors.server_url)
+            }
             helperText={formik.touched.server_url && formik.errors.server_url}
             variant="standard"
           />
 
           <Box mb={2}>
-            {/* File upload input */}
-            <Stack direction="row" spacing={2}>
+            <Stack
+              direction="row"
+              spacing={2}
+              sx={{
+                alignItems: "center",
+                pt: 2,
+              }}
+            >
               <Typography>File</Typography>
-            </Stack>
 
-            <input
-              type="file"
-              id="uploaded_file"
-              name="uploaded_file"
-              accept="image/*"
-              onChange={(event) => handleFileChange(event)}
-              style={{ display: 'none' }}
-            />
-            <label htmlFor="uploaded_file">
-              <Button variant="contained" component="span">
-                Browse...
-              </Button>
-            </label>
+              <input
+                type="file"
+                id="uploaded_file"
+                name="uploaded_file"
+                accept="image/*"
+                onChange={(event) => handleFileChange(event)}
+                style={{ display: "none" }}
+              />
+              <label htmlFor="uploaded_file">
+                <Button variant="contained" component="span">
+                  Browse...
+                </Button>
+              </label>
+            </Stack>
           </Box>
 
           <TextField
@@ -131,7 +161,9 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
             value={formik.values.max_streams}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.max_streams && Boolean(formik.errors.max_streams)}
+            error={
+              formik.touched.max_streams && Boolean(formik.errors.max_streams)
+            }
             helperText={formik.touched.max_streams && formik.errors.max_streams}
             variant="standard"
           />
@@ -146,7 +178,9 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
               value={formik.values.user_agent}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
-              error={formik.touched.user_agent && Boolean(formik.errors.user_agent)}
+              error={
+                formik.touched.user_agent && Boolean(formik.errors.user_agent)
+              }
               helperText={formik.touched.user_agent && formik.errors.user_agent}
               variant="standard"
             >
@@ -163,39 +197,31 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
               <Checkbox
                 name="is_active"
                 checked={formik.values.is_active}
-                onChange={(e) => formik.setFieldValue('is_active', e.target.checked)}
+                onChange={(e) =>
+                  formik.setFieldValue("is_active", e.target.checked)
+                }
               />
-            } label="Is Active"
+            }
+            label="Is Active"
           />
+        </DialogContent>
 
-          <Box mb={2}>
-            {/* Submit button */}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={formik.isSubmitting}
-              fullWidth
-              size="small"
-            >
-              {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
-            </Button>
-          </Box>
-        </form>
-      </Box>
-    </Modal>
+        <DialogActions>
+          {/* Submit button */}
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={formik.isSubmitting}
+            fullWidth
+            size="small"
+          >
+            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
-};
-
-const style = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 400,
-  bgcolor: 'background.paper',
-  boxShadow: 24,
-  p: 4,
 };
 
 export default M3U;

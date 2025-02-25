@@ -1,34 +1,43 @@
 // Modal.js
-import React, { useState, useEffect } from "react";
-import { Box, Modal, Typography, Stack, TextField, Button, Select, MenuItem, Grid2, InputLabel, FormControl, CircularProgress, Checkbox } from "@mui/material";
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
-import API from "../../api"
+import React, { useEffect } from "react";
+import {
+  TextField,
+  Button,
+  CircularProgress,
+  Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import { useFormik } from "formik";
+import * as Yup from "yup";
+import API from "../../api";
 
 const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
-      user_agent_name: '',
-      user_agent: '',
-      description: '',
+      user_agent_name: "",
+      user_agent: "",
+      description: "",
       is_active: true,
     },
     validationSchema: Yup.object({
-      user_agent_name: Yup.string().required('Name is required'),
-      user_agent: Yup.string().required('User-Agent is required'),
+      user_agent_name: Yup.string().required("Name is required"),
+      user_agent: Yup.string().required("User-Agent is required"),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (userAgent?.id) {
-        await API.updateUserAgent({id: userAgent.id, ...values})
+        await API.updateUserAgent({ id: userAgent.id, ...values });
       } else {
-        await API.addUserAgent(values)
+        await API.addUserAgent(values);
       }
 
       resetForm();
       setSubmitting(false);
-      onClose()
-    }
-  })
+      onClose();
+    },
+  });
 
   useEffect(() => {
     if (userAgent) {
@@ -44,20 +53,22 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
   }, [userAgent]);
 
   if (!isOpen) {
-    return <></>
+    return <></>;
   }
 
   return (
-    <Modal
-      open={isOpen}
-      onClose={onClose}
-    >
-      <Box sx={style}>
-        <Typography id="form-modal-title" variant="h6" mb={2}>
-          User-Agent
-        </Typography>
+    <Dialog open={isOpen} onClose={onClose}>
+      <DialogTitle
+        sx={{
+          backgroundColor: "primary.main",
+          color: "primary.contrastText",
+        }}
+      >
+        User-Agent
+      </DialogTitle>
 
-        <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={formik.handleSubmit}>
+        <DialogContent>
           <TextField
             fullWidth
             id="user_agent_name"
@@ -66,8 +77,13 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
             value={formik.values.user_agent_name}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.user_agent_name && Boolean(formik.errors.user_agent_name)}
-            helperText={formik.touched.user_agent_name && formik.errors.user_agent_name}
+            error={
+              formik.touched.user_agent_name &&
+              Boolean(formik.errors.user_agent_name)
+            }
+            helperText={
+              formik.touched.user_agent_name && formik.errors.user_agent_name
+            }
             variant="standard"
           />
 
@@ -79,7 +95,9 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
             value={formik.values.user_agent}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.user_agent && Boolean(formik.errors.user_agent)}
+            error={
+              formik.touched.user_agent && Boolean(formik.errors.user_agent)
+            }
             helperText={formik.touched.user_agent && formik.errors.user_agent}
             variant="standard"
           />
@@ -92,7 +110,9 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
             value={formik.values.description}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.description && Boolean(formik.errors.description)}
+            error={
+              formik.touched.description && Boolean(formik.errors.description)
+            }
             helperText={formik.touched.description && formik.errors.description}
             variant="standard"
           />
@@ -102,34 +122,22 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
             checked={formik.values.is_active}
             onChange={formik.handleChange}
           />
-          <Box mb={2}>
-            {/* Submit button */}
-            <Button
-              size="small"
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={formik.isSubmitting}
-              fullWidth
-            >
-              {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
-            </Button>
-          </Box>
-        </form>
-      </Box>
-    </Modal>
-  );
-};
+        </DialogContent>
 
-const style = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 400,
-  bgcolor: 'background.paper',
-  boxShadow: 24,
-  p: 4,
+        <DialogActions>
+          <Button
+            size="small"
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={formik.isSubmitting}
+          >
+            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
 };
 
 export default UserAgent;

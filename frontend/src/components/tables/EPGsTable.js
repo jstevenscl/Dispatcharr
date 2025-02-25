@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from 'material-react-table';
-import { Box, Grid2, Stack, Typography, IconButton, Tooltip, Checkbox, Select, MenuItem, Snackbar } from '@mui/material';
-import API from '../../api'
+} from "material-react-table";
+import {
+  Box,
+  Grid2,
+  Stack,
+  Typography,
+  IconButton,
+  Tooltip,
+  Checkbox,
+  Select,
+  MenuItem,
+  Snackbar,
+} from "@mui/material";
+import API from "../../api";
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -15,35 +26,36 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-} from '@mui/icons-material'
-import useEPGsStore from '../../store/epgs';
-import EPGForm from '../forms/EPG'
+} from "@mui/icons-material";
+import useEPGsStore from "../../store/epgs";
+import EPGForm from "../forms/EPG";
+import { TableHelper } from "../../helpers";
 
 const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
   const [epgModalOpen, setEPGModalOpen] = useState(false);
-  const [rowSelection, setRowSelection] = useState([])
-  const [snackbarMessage, setSnackbarMessage] = useState("")
-  const [snackbarOpen, setSnackbarOpen] = useState(false)
+  const [rowSelection, setRowSelection] = useState([]);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-  const epgs = useEPGsStore(state => state.epgs)
+  const epgs = useEPGsStore((state) => state.epgs);
 
   const columns = useMemo(
     //column definitions...
     () => [
       {
-        header: 'Name',
+        header: "Name",
         size: 10,
-        accessorKey: 'name',
+        accessorKey: "name",
       },
       {
-        header: 'Source Type',
-        accessorKey: 'source_type',
+        header: "Source Type",
+        accessorKey: "source_type",
         size: 50,
       },
       {
-        header: 'URL / API Key',
-        accessorKey: 'max_streams',
+        header: "URL / API Key",
+        accessorKey: "max_streams",
       },
     ],
     [],
@@ -56,26 +68,26 @@ const EPGsTable = () => {
   const [sorting, setSorting] = useState([]);
 
   const closeSnackbar = () => {
-    setSnackbarOpen(false)
-  }
+    setSnackbarOpen(false);
+  };
 
   const editEPG = async (epg = null) => {
-    setEPG(epg)
-    setEPGModalOpen(true)
-  }
+    setEPG(epg);
+    setEPGModalOpen(true);
+  };
 
   const deleteEPG = async (id) => {
-    await API.deleteEPG(id)
-  }
+    await API.deleteEPG(id);
+  };
 
   const refreshEPG = async (id) => {
-    await API.refreshEPG(id)
-    setSnackbarMessage("EPG refresh initiated")
-    setSnackbarOpen(true)
-  }
+    await API.refreshEPG(id);
+    setSnackbarMessage("EPG refresh initiated");
+    setSnackbarOpen(true);
+  };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       setIsLoading(false);
     }
   }, []);
@@ -90,13 +102,10 @@ const EPGsTable = () => {
   }, [sorting]);
 
   const table = useMaterialReactTable({
+    ...TableHelper.defaultProperties,
     columns,
     data: epgs,
-    enableBottomToolbar: false,
-    // enableGlobalFilterModes: true,
-    columnFilterDisplayMode: 'popover',
     enablePagination: false,
-    // enableRowNumbers: true,
     enableRowVirtualization: true,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -109,7 +118,7 @@ const EPGsTable = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      density: "compact",
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -137,19 +146,18 @@ const EPGsTable = () => {
         </IconButton>
       </>
     ),
-    positionActionsColumn: 'last',
     muiTableContainerProps: {
       sx: {
         height: "calc(42vh - 0px)",
       },
     },
-    renderTopToolbar: ({ table }) => (
-      <Grid2 container direction="row" spacing={3} sx={{
-        justifyContent: "left",
-        alignItems: "center",
-        // height: 30,
-        ml: 2,
-      }}>
+    renderTopToolbarCustomActions: ({ table }) => (
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+        }}
+      >
         <Typography>EPGs</Typography>
         <Tooltip title="Add New EPG">
           <IconButton
@@ -161,19 +169,18 @@ const EPGsTable = () => {
             <AddIcon fontSize="small" /> {/* Small icon size */}
           </IconButton>
         </Tooltip>
-        <MRT_ShowHideColumnsButton table={table} />
-        {/* <MRT_ToggleFullScreenButton table={table} /> */}
-      </Grid2>
+      </Stack>
     ),
   });
 
   return (
-    <>
-      <Box sx={{
+    <Box
+      sx={{
         padding: 2,
-      }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      }}
+    >
+      <MaterialReactTable table={table} />
+
       <EPGForm
         epg={epg}
         isOpen={epgModalOpen}
@@ -181,13 +188,13 @@ const EPGsTable = () => {
       />
 
       <Snackbar
-        anchorOrigin={{ vertical: "top", horizontal: "right"}}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
         open={snackbarOpen}
         autoHideDuration={5000}
         onClose={closeSnackbar}
         message={snackbarMessage}
       />
-    </>
+    </Box>
   );
 };
 

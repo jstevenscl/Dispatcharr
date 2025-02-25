@@ -1,50 +1,67 @@
 // Modal.js
 import React, { useState, useEffect } from "react";
-import { Box, Modal, Typography, Stack, TextField, Button, Select, MenuItem, Grid2, InputLabel, FormControl, CircularProgress } from "@mui/material";
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
-import API from "../../api"
+import {
+  Box,
+  Modal,
+  Typography,
+  Stack,
+  TextField,
+  Button,
+  Select,
+  MenuItem,
+  Grid2,
+  InputLabel,
+  FormControl,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import { useFormik } from "formik";
+import * as Yup from "yup";
+import API from "../../api";
 import useEPGsStore from "../../store/epgs";
 
 const EPG = ({ epg = null, isOpen, onClose }) => {
-  const epgs = useEPGsStore(state => state.epgs)
-  const [file, setFile] = useState(null)
+  const epgs = useEPGsStore((state) => state.epgs);
+  const [file, setFile] = useState(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setFile(file)
+      setFile(file);
     }
   };
 
   const formik = useFormik({
     initialValues: {
-      name: '',
-      source_type: '',
-      url: '',
-      api_key: '',
+      name: "",
+      source_type: "",
+      url: "",
+      api_key: "",
       is_active: true,
     },
     validationSchema: Yup.object({
-      name: Yup.string().required('Name is required'),
-      source_type: Yup.string().required('Source type is required'),
+      name: Yup.string().required("Name is required"),
+      source_type: Yup.string().required("Source type is required"),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (epg?.id) {
-        await API.updateEPG({id: epg.id, ...values, epg_file: file})
+        await API.updateEPG({ id: epg.id, ...values, epg_file: file });
       } else {
         await API.addEPG({
           ...values,
           epg_file: file,
-        })
+        });
       }
 
       resetForm();
-      setFile(null)
+      setFile(null);
       setSubmitting(false);
-      onClose()
-    }
-  })
+      onClose();
+    },
+  });
 
   useEffect(() => {
     if (epg) {
@@ -61,20 +78,21 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
   }, [epg]);
 
   if (!isOpen) {
-    return <></>
+    return <></>;
   }
 
   return (
-    <Modal
-      open={isOpen}
-      onClose={onClose}
-    >
-      <Box sx={style}>
-        <Typography id="form-modal-title" variant="h6" mb={2}>
-          EPG Source
-        </Typography>
-
-        <form onSubmit={formik.handleSubmit}>
+    <Dialog open={isOpen} onClose={onClose}>
+      <DialogTitle
+        sx={{
+          backgroundColor: "primary.main",
+          color: "primary.contrastText",
+        }}
+      >
+        EPG Source
+      </DialogTitle>
+      <form onSubmit={formik.handleSubmit}>
+        <DialogContent>
           <TextField
             fullWidth
             id="name"
@@ -101,7 +119,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
             variant="standard"
           />
 
-<         TextField
+          <TextField
             fullWidth
             id="api_key"
             name="api_key"
@@ -124,8 +142,12 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
               value={formik.values.source_type}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
-              error={formik.touched.source_type && Boolean(formik.errors.source_type)}
-              helperText={formik.touched.source_type && formik.errors.source_type}
+              error={
+                formik.touched.source_type && Boolean(formik.errors.source_type)
+              }
+              helperText={
+                formik.touched.source_type && formik.errors.source_type
+              }
               variant="standard"
             >
               <MenuItem key="0" value="xmltv">
@@ -136,35 +158,23 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
               </MenuItem>
             </Select>
           </FormControl>
+        </DialogContent>
 
-          <Box mb={2}>
-            {/* Submit button */}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={formik.isSubmitting}
-              fullWidth
-              size="small"
-            >
-              {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
-            </Button>
-          </Box>
-        </form>
-      </Box>
-    </Modal>
+        <DialogActions>
+          {/* Submit button */}
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={formik.isSubmitting}
+            size="small"
+          >
+            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
-};
-
-const style = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 400,
-  bgcolor: 'background.paper',
-  boxShadow: 24,
-  p: 4,
 };
 
 export default EPG;

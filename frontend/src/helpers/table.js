@@ -4,11 +4,11 @@ export default {
     enableDensityToggle: false,
     enableFullScreenToggle: false,
     positionToolbarAlertBanner: "none",
-    columnFilterDisplayMode: 'popover',
+    columnFilterDisplayMode: "popover",
     enableRowNumbers: false,
-    positionActionsColumn: 'last',
+    positionActionsColumn: "last",
     initialState: {
-      density: 'compact',
+      density: "compact",
     },
-  }
-}
+  },
+};

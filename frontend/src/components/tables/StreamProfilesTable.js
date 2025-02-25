@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from 'material-react-table';
-import { Box, Grid2, Stack, Typography, IconButton, Tooltip, Checkbox, Select, MenuItem } from '@mui/material';
-import API from '../../api'
+} from "material-react-table";
+import {
+  Box,
+  Grid2,
+  Stack,
+  Typography,
+  IconButton,
+  Tooltip,
+  Checkbox,
+  Select,
+  MenuItem,
+} from "@mui/material";
+import API from "../../api";
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -15,47 +25,52 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-} from '@mui/icons-material'
-import useEPGsStore from '../../store/epgs';
-import StreamProfileForm from '../forms/StreamProfile'
-import useStreamProfilesStore from '../../store/streamProfiles';
+} from "@mui/icons-material";
+import useEPGsStore from "../../store/epgs";
+import StreamProfileForm from "../forms/StreamProfile";
+import useStreamProfilesStore from "../../store/streamProfiles";
+import { TableHelper } from "../../helpers";
 
 const StreamProfiles = () => {
   const [profile, setProfile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [rowSelection, setRowSelection] = useState([])
-  const [snackbarMessage, setSnackbarMessage] = useState("")
-  const [snackbarOpen, setSnackbarOpen] = useState(false)
-  const [activeFilterValue, setActiveFilterValue] = useState('all');
+  const [rowSelection, setRowSelection] = useState([]);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [activeFilterValue, setActiveFilterValue] = useState("all");
 
-  const streamProfiles = useStreamProfilesStore(state => state.profiles)
+  const streamProfiles = useStreamProfilesStore((state) => state.profiles);
 
   const columns = useMemo(
     //column definitions...
     () => [
       {
-        header: 'Name',
-        accessorKey: 'profile_name',
+        header: "Name",
+        accessorKey: "profile_name",
       },
       {
-        header: 'Command',
-        accessorKey: 'command',
+        header: "Command",
+        accessorKey: "command",
       },
       {
-        header: 'Parameters',
-        accessorKey: 'parameters',
+        header: "Parameters",
+        accessorKey: "parameters",
       },
       {
-        header: 'Active',
-        accessorKey: 'is_active',
+        header: "Active",
+        accessorKey: "is_active",
         size: 100,
-        sortingFn: 'basic',
+        sortingFn: "basic",
         muiTableBodyCellProps: {
-          align: 'left',
+          align: "left",
         },
         Cell: ({ cell }) => (
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <CheckIcon color="success" /> : <CloseIcon color="error" />}
+          <Box sx={{ display: "flex", justifyContent: "center" }}>
+            {cell.getValue() ? (
+              <CheckIcon color="success" />
+            ) : (
+              <CloseIcon color="error" />
+            )}
           </Box>
         ),
         Filter: ({ column }) => (
@@ -79,7 +94,7 @@ const StreamProfiles = () => {
         ),
         filterFn: (row, _columnId, filterValue) => {
           if (filterValue == "all") return true; // Show all if no filter
-          return String(row.getValue('is_active')) === filterValue;
+          return String(row.getValue("is_active")) === filterValue;
         },
       },
     ],
@@ -93,16 +108,16 @@ const StreamProfiles = () => {
   const [sorting, setSorting] = useState([]);
 
   const editStreamProfile = async (profile = null) => {
-    setProfile(profile)
-    setProfileModalOpen(true)
-  }
+    setProfile(profile);
+    setProfileModalOpen(true);
+  };
 
   const deleteStreamProfile = async (ids) => {
-    await API.deleteStreamProfile(ids)
-  }
+    await API.deleteStreamProfile(ids);
+  };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       setIsLoading(false);
     }
   }, []);
@@ -117,13 +132,10 @@ const StreamProfiles = () => {
   }, [sorting]);
 
   const table = useMaterialReactTable({
+    ...TableHelper.defaultProperties,
     columns,
     data: streamProfiles,
-    enableBottomToolbar: false,
-    // enableGlobalFilterModes: true,
-    columnFilterDisplayMode: 'popover',
     enablePagination: false,
-    // enableRowNumbers: true,
     enableRowVirtualization: true,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -136,7 +148,7 @@ const StreamProfiles = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      density: "compact",
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -157,19 +169,19 @@ const StreamProfiles = () => {
         </IconButton>
       </>
     ),
-    positionActionsColumn: 'last',
     muiTableContainerProps: {
       sx: {
-        // height: "calc(42vh - 0px)",
+        height: "calc(100vh - 100px)", // Subtract padding to avoid cutoff
+        overflowY: "auto", // Internal scrolling for the table
       },
     },
-    renderTopToolbar: ({ table }) => (
-      <Grid2 container direction="row" spacing={3} sx={{
-        justifyContent: "left",
-        alignItems: "center",
-        // height: 30,
-        ml: 2,
-      }}>
+    renderTopToolbarCustomActions: ({ table }) => (
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+        }}
+      >
         <Typography>Stream Profiles</Typography>
         <Tooltip title="Add New Stream Profile">
           <IconButton
@@ -181,26 +193,24 @@ const StreamProfiles = () => {
             <AddIcon fontSize="small" /> {/* Small icon size */}
           </IconButton>
         </Tooltip>
-        <MRT_ShowHideColumnsButton table={table} />
-        {/* <MRT_ToggleFullScreenButton table={table} /> */}
-      </Grid2>
+      </Stack>
     ),
   });
 
   return (
-    <>
-      <Box sx={{
+    <Box
+      sx={{
         padding: 2,
-      }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      }}
+    >
+      <MaterialReactTable table={table} />
 
       <StreamProfileForm
         profile={profile}
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}
       />
-    </>
+    </Box>
   );
 };
 

@@ -1,36 +1,46 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MaterialReactTable,
-  MRT_ShowHideColumnsButton,
-  MRT_ToggleFullScreenButton,
   useMaterialReactTable,
 } from 'material-react-table';
-import { Box, Grid2, Stack, Typography, Tooltip, IconButton, Button, ButtonGroup, Snackbar, Popover, TextField } from '@mui/material';
+import {
+  Box,
+  Grid2,
+  Stack,
+  Typography,
+  Tooltip,
+  IconButton,
+  Button,
+  ButtonGroup,
+  Snackbar,
+  Popover,
+  TextField,
+} from '@mui/material';
 import useChannelsStore from '../../store/channels';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
   SwapVert as SwapVertIcon,
-} from '@mui/icons-material'
-import API from '../../api'
-import ChannelForm from '../forms/Channel'
-import { TableHelper } from '../../helpers'
+} from '@mui/icons-material';
+import API from '../../api';
+import ChannelForm from '../forms/Channel';
+import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import { ContentCopy } from '@mui/icons-material';
 
 const Example = () => {
-  const [channel, setChannel] = useState(null)
+  const [channel, setChannel] = useState(null);
   const [channelModelOpen, setChannelModalOpen] = useState(false);
-  const [rowSelection, setRowSelection] = useState([])
+  const [rowSelection, setRowSelection] = useState([]);
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [textToCopy, setTextToCopy] = useState('');
 
-  const [snackbarMessage, setSnackbarMessage] = useState("")
-  const [snackbarOpen, setSnackbarOpen] = useState(false)
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-  const channels = useChannelsStore((state) => state.channels);
+  const { channels, isLoading: channelsLoading } = useChannelsStore();
 
   const columns = useMemo(
     //column definitions...
@@ -46,7 +56,7 @@ const Example = () => {
       },
       {
         header: 'Group',
-        accessorFn: row => row.channel_group?.name || '',
+        accessorFn: (row) => row.channel_group?.name || '',
       },
       {
         header: 'Logo',
@@ -57,11 +67,11 @@ const Example = () => {
             container
             direction="row"
             sx={{
-              justifyContent: "center",
-              alignItems: "center",
+              justifyContent: 'center',
+              alignItems: 'center',
             }}
           >
-            <img src={info.getValue() || "/images/logo.png"} width="20"/>
+            <img src={info.getValue() || '/images/logo.png'} width="20" />
           </Grid2>
         ),
         meta: {
@@ -69,7 +79,7 @@ const Example = () => {
         },
       },
     ],
-    [],
+    []
   );
 
   //optionally access the underlying virtualizer instance
@@ -79,32 +89,39 @@ const Example = () => {
   const [sorting, setSorting] = useState([]);
 
   const closeSnackbar = () => {
-    setSnackbarOpen(false)
-  }
+    setSnackbarOpen(false);
+  };
 
   const editChannel = async (channel = null) => {
-    setChannel(channel)
-    setChannelModalOpen(true)
-  }
+    setChannel(channel);
+    setChannelModalOpen(true);
+  };
 
   const deleteChannel = async (id) => {
-    await API.deleteChannel(id)
-  }
+    await API.deleteChannel(id);
+  };
 
   // @TODO: the bulk delete endpoint is currently broken
   const deleteChannels = async () => {
-    setIsLoading(true)
-    const selected = table.getRowModel().rows.filter(row => row.getIsSelected())
-    await utils.Limiter(4, selected.map(chan => () => {
-      return deleteChannel(chan.original.id)
-    }))
-    setIsLoading(false)
-  }
+    setIsLoading(true);
+    const selected = table
+      .getRowModel()
+      .rows.filter((row) => row.getIsSelected());
+    await utils.Limiter(
+      4,
+      selected.map((chan) => () => {
+        return deleteChannel(chan.original.id);
+      })
+    );
+    setIsLoading(false);
+  };
 
   const assignChannels = async () => {
-    const selected = table.getRowModel().rows.filter(row => row.getIsSelected())
-    await API.assignChannelNumbers(selected.map(sel => sel.id))
-  }
+    const selected = table
+      .getRowModel()
+      .rows.filter((row) => row.getIsSelected());
+    await API.assignChannelNumbers(selected.map((sel) => sel.id));
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -134,25 +151,25 @@ const Example = () => {
       setSnackbarMessage('Failed to copy');
     }
 
-    setSnackbarOpen(true)
+    setSnackbarOpen(true);
   };
 
   const open = Boolean(anchorEl);
 
   const copyM3UUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('m3u url')
-  }
+    setTextToCopy('m3u url');
+  };
 
   const copyEPGUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('epg url')
-  }
+    setTextToCopy('epg url');
+  };
 
   const copyHDHRUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('hdhr url')
-  }
+    setTextToCopy('hdhr url');
+  };
 
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
@@ -166,7 +183,7 @@ const Example = () => {
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
-      isLoading,
+      isLoading: isLoading || channelsLoading,
       sorting,
       rowSelection,
     },
@@ -182,7 +199,7 @@ const Example = () => {
           size="small" // Makes the button smaller
           color="warning" // Red color for delete actions
           onClick={() => {
-            editChannel(row.original)
+            editChannel(row.original);
           }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
@@ -198,17 +215,20 @@ const Example = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 100px)', // Subtract padding to avoid cutoff
+        height: 'calc(100vh - 90px)', // Subtract padding to avoid cutoff
         overflowY: 'auto', // Internal scrolling for the table
       },
     },
     muiSearchTextFieldProps: {
-      variant: "standard",
+      variant: 'standard',
     },
     renderTopToolbarCustomActions: ({ table }) => (
-      <Stack direction="row" sx={{
-        alignItems: "center",
-      }}>
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: 'center',
+        }}
+      >
         <Typography>Channels</Typography>
         <Tooltip title="Add New Channel">
           <IconButton
@@ -241,21 +261,20 @@ const Example = () => {
           </IconButton>
         </Tooltip>
 
-        <ButtonGroup sx={{
-          marginLeft: 1,
-        }}>
-          <Button
-            variant="contained"
-            onClick={copyHDHRUrl}
-          >HDHR URL</Button>
-          <Button
-            variant="contained"
-            onClick={copyM3UUrl}
-          >M3U URL</Button>
-          <Button
-            variant="contained"
-            onClick={copyEPGUrl}
-          >EPG</Button>
+        <ButtonGroup
+          sx={{
+            marginLeft: 1,
+          }}
+        >
+          <Button variant="contained" onClick={copyHDHRUrl}>
+            HDHR URL
+          </Button>
+          <Button variant="contained" onClick={copyM3UUrl}>
+            M3U URL
+          </Button>
+          <Button variant="contained" onClick={copyEPGUrl}>
+            EPG
+          </Button>
         </ButtonGroup>
       </Stack>
     ),
@@ -282,7 +301,6 @@ const Example = () => {
         <div style={{ padding: '16px', display: 'flex', alignItems: 'center' }}>
           <TextField
             value={textToCopy}
-            InputProps={{ readOnly: true }}
             variant="standard"
             disabled
             size="small"
@@ -296,7 +314,7 @@ const Example = () => {
       </Popover>
 
       <Snackbar
-        anchorOrigin={{ vertical: "top", horizontal: "right"}}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         open={snackbarOpen}
         autoHideDuration={5000}
         onClose={closeSnackbar}

@@ -1,58 +1,72 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from 'material-react-table';
-import { Box, Grid2, Stack, Typography, IconButton, Tooltip, Select, MenuItem } from '@mui/material';
-import API from '../../api'
+} from "material-react-table";
+import {
+  Box,
+  Grid2,
+  Stack,
+  Typography,
+  IconButton,
+  Tooltip,
+  Select,
+  MenuItem,
+} from "@mui/material";
+import API from "../../api";
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-} from '@mui/icons-material'
-import useUserAgentsStore from '../../store/userAgents';
-import UserAgentForm from '../forms/UserAgent'
+} from "@mui/icons-material";
+import useUserAgentsStore from "../../store/userAgents";
+import UserAgentForm from "../forms/UserAgent";
+import { TableHelper } from "../../helpers";
 
 const UserAgentsTable = () => {
   const [userAgent, setUserAgent] = useState(null);
   const [userAgentModalOpen, setUserAgentModalOpen] = useState(false);
-  const [rowSelection, setRowSelection] = useState([])
-  const [activeFilterValue, setActiveFilterValue] = useState('all');
+  const [rowSelection, setRowSelection] = useState([]);
+  const [activeFilterValue, setActiveFilterValue] = useState("all");
 
-  const userAgents = useUserAgentsStore(state => state.userAgents)
+  const userAgents = useUserAgentsStore((state) => state.userAgents);
 
   const columns = useMemo(
     //column definitions...
     () => [
       {
-        header: 'Name',
+        header: "Name",
         size: 10,
-        accessorKey: 'user_agent_name',
+        accessorKey: "user_agent_name",
       },
       {
-        header: 'User-Agent',
-        accessorKey: 'user_agent',
+        header: "User-Agent",
+        accessorKey: "user_agent",
         size: 50,
       },
       {
-        header: 'Desecription',
-        accessorKey: 'description',
+        header: "Desecription",
+        accessorKey: "description",
       },
       {
-        header: 'Active',
-        accessorKey: 'is_active',
+        header: "Active",
+        accessorKey: "is_active",
         size: 100,
-        sortingFn: 'basic',
+        sortingFn: "basic",
         muiTableBodyCellProps: {
-          align: 'left',
+          align: "left",
         },
         Cell: ({ cell }) => (
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <CheckIcon color="success" /> : <CloseIcon color="error" />}
+          <Box sx={{ display: "flex", justifyContent: "center" }}>
+            {cell.getValue() ? (
+              <CheckIcon color="success" />
+            ) : (
+              <CloseIcon color="error" />
+            )}
           </Box>
         ),
         Filter: ({ column }) => (
@@ -76,7 +90,7 @@ const UserAgentsTable = () => {
         ),
         filterFn: (row, _columnId, activeFilterValue) => {
           if (activeFilterValue == "all") return true; // Show all if no filter
-          return String(row.getValue('is_active')) === activeFilterValue;
+          return String(row.getValue("is_active")) === activeFilterValue;
         },
       },
     ],
@@ -90,20 +104,20 @@ const UserAgentsTable = () => {
   const [sorting, setSorting] = useState([]);
 
   const editUserAgent = async (userAgent = null) => {
-    setUserAgent(userAgent)
-    setUserAgentModalOpen(true)
-  }
+    setUserAgent(userAgent);
+    setUserAgentModalOpen(true);
+  };
 
   const deleteUserAgent = async (ids) => {
     if (Array.isArray(ids)) {
-      await API.deleteUserAgents(ids)
+      await API.deleteUserAgents(ids);
     } else {
-      await API.deleteUserAgent(ids)
+      await API.deleteUserAgent(ids);
     }
-  }
+  };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       setIsLoading(false);
     }
   }, []);
@@ -118,13 +132,10 @@ const UserAgentsTable = () => {
   }, [sorting]);
 
   const table = useMaterialReactTable({
+    ...TableHelper.defaultProperties,
     columns,
     data: userAgents,
-    enableBottomToolbar: false,
-    // enableGlobalFilterModes: true,
-    columnFilterDisplayMode: 'popover',
     enablePagination: false,
-    // enableRowNumbers: true,
     enableRowVirtualization: true,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -137,7 +148,7 @@ const UserAgentsTable = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      density: "compact",
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -146,7 +157,7 @@ const UserAgentsTable = () => {
           size="small" // Makes the button smaller
           color="warning" // Red color for delete actions
           onClick={() => {
-            editUserAgent(row.original)
+            editUserAgent(row.original);
           }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
@@ -160,19 +171,18 @@ const UserAgentsTable = () => {
         </IconButton>
       </>
     ),
-    positionActionsColumn: 'last',
     muiTableContainerProps: {
       sx: {
-        height: "calc(42vh - 0px)",
+        height: "calc(42vh - 10px)",
       },
     },
-    renderTopToolbar: ({ table }) => (
-      <Grid2 container direction="row" spacing={3} sx={{
-        justifyContent: "left",
-        alignItems: "center",
-        // height: 30,
-        ml: 2,
-      }}>
+    renderTopToolbarCustomActions: ({ table }) => (
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+        }}
+      >
         <Typography>User-Agents</Typography>
         <Tooltip title="Add New User Agent">
           <IconButton
@@ -184,17 +194,17 @@ const UserAgentsTable = () => {
             <AddIcon fontSize="small" /> {/* Small icon size */}
           </IconButton>
         </Tooltip>
-        <MRT_ShowHideColumnsButton table={table} />
-        {/* <MRT_ToggleFullScreenButton table={table} /> */}
-      </Grid2>
+      </Stack>
     ),
   });
 
   return (
     <>
-      <Box sx={{
-        padding: 2,
-      }}>
+      <Box
+        sx={{
+          padding: 2,
+        }}
+      >
         <MaterialReactTable table={table} />
       </Box>
       <UserAgentForm

@@ -1,22 +1,26 @@
 // Modal.js
-import React, { useState, useEffect, useMemo } from "react";
-import { Box, Modal, Typography, Stack, TextField, Button, Select, MenuItem, Grid2, InputLabel, FormControl, CircularProgress, IconButton } from "@mui/material";
+import React, { useEffect } from 'react';
+import {
+  TextField,
+  Button,
+  Select,
+  MenuItem,
+  Grid2,
+  InputLabel,
+  FormControl,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import useChannelsStore from "../../store/channels";
-import API from "../../api"
-import useStreamProfilesStore from "../../store/streamProfiles";
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
- } from "@mui/icons-material";
-import useStreamsStore from "../../store/streams";
-import usePlaylistsStore from "../../store/playlists";
-import { MaterialReactTable, useMaterialReactTable } from "material-react-table";
+import API from '../../api';
+import useStreamProfilesStore from '../../store/streamProfiles';
 
 const Stream = ({ stream = null, isOpen, onClose }) => {
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
-  console.log(stream)
 
   const formik = useFormik({
     initialValues: {
@@ -31,16 +35,16 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (stream?.id) {
-        await API.updateStream({id: stream.id, ...values})
+        await API.updateStream({ id: stream.id, ...values });
       } else {
-        await API.addStream(values)
+        await API.addStream(values);
       }
 
       resetForm();
       setSubmitting(false);
-      onClose()
-    }
-  })
+      onClose();
+    },
+  });
 
   useEffect(() => {
     if (stream) {
@@ -55,20 +59,22 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
   }, [stream]);
 
   if (!isOpen) {
-    return <></>
+    return <></>;
   }
 
   return (
-    <Modal
-      open={isOpen}
-      onClose={onClose}
-    >
-      <Box sx={style}>
-        <Typography id="form-modal-title" variant="h6" mb={2}>
-          Stream
-        </Typography>
+    <Dialog open={isOpen} onClose={onClose}>
+      <DialogTitle
+        sx={{
+          backgroundColor: 'primary.main',
+          color: 'primary.contrastText',
+        }}
+      >
+        Stream
+      </DialogTitle>
 
-        <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={formik.handleSubmit}>
+        <DialogContent>
           <Grid2 container spacing={2}>
             <Grid2 size={12}>
               <TextField
@@ -98,7 +104,9 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
               />
 
               <FormControl variant="standard" fullWidth>
-                <InputLabel id="stream-profile-label">Stream Profile</InputLabel>
+                <InputLabel id="stream-profile-label">
+                  Stream Profile
+                </InputLabel>
                 <Select
                   labelId="stream-profile-label"
                   id="stream_profile_id"
@@ -107,7 +115,10 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
                   value={formik.values.stream_profile_id}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
-                  error={formik.touched.stream_profile_id && Boolean(formik.errors.stream_profile_id)}
+                  error={
+                    formik.touched.stream_profile_id &&
+                    Boolean(formik.errors.stream_profile_id)
+                  }
                   // helperText={formik.touched.channel_group_id && formik.errors.stream_profile_id}
                   variant="standard"
                 >
@@ -120,33 +131,21 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
               </FormControl>
             </Grid2>
           </Grid2>
-          <Box mb={2}>
-            {/* Submit button */}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={formik.isSubmitting}
-              fullWidth
-            >
-              {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
-            </Button>
-          </Box>
-        </form>
-      </Box>
-    </Modal>
-  );
-};
+        </DialogContent>
 
-const style = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: "500px",
-  bgcolor: 'background.paper',
-  boxShadow: 24,
-  p: 4,
+        <DialogActions>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={formik.isSubmitting}
+          >
+            {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
 };
 
 export default Stream;

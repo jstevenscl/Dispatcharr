@@ -3,23 +3,32 @@ import {
   MaterialReactTable,
   useMaterialReactTable,
 } from 'material-react-table';
-import { Box, Grid2, Stack, Typography, IconButton, Tooltip, Button } from '@mui/material';
-import useStreamsStore from '../../store/streams'
-import API from '../../api'
+import {
+  Box,
+  Stack,
+  Typography,
+  IconButton,
+  Tooltip,
+  Button,
+} from '@mui/material';
+import useStreamsStore from '../../store/streams';
+import API from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
-} from '@mui/icons-material'
-import { TableHelper } from '../../helpers'
+} from '@mui/icons-material';
+import { TableHelper } from '../../helpers';
 import utils from '../../utils';
-import StreamForm from '../forms/Stream'
+import StreamForm from '../forms/Stream';
+import usePlaylistsStore from '../../store/playlists';
 
 const Example = () => {
-  const [rowSelection, setRowSelection] = useState([])
-  const [stream, setStream] = useState(null)
+  const [rowSelection, setRowSelection] = useState([]);
+  const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const streams = useStreamsStore((state) => state.streams);
+  const { streams, isLoading: streamsLoading } = useStreamsStore();
+  const { playlists } = usePlaylistsStore();
 
   const columns = useMemo(
     //column definitions...
@@ -32,8 +41,14 @@ const Example = () => {
         header: 'Group',
         accessorKey: 'group_name',
       },
+      {
+        header: 'M3U',
+        size: 100,
+        accessorFn: (row) =>
+          playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
+      },
     ],
-    [],
+    [playlists]
   );
 
   //optionally access the underlying virtualizer instance
@@ -47,32 +62,39 @@ const Example = () => {
       channel_name: stream.name,
       channel_number: 0,
       stream_id: stream.id,
-    })
-  }
+    });
+  };
 
   // @TODO: bulk create is broken, returning a 404
   const createChannelsFromStreams = async () => {
-    setIsLoading(true)
-    const selected = table.getRowModel().rows.filter(row => row.getIsSelected())
-    await utils.Limiter(4, selected.map(stream => () => {
-      return createChannelFromStream(stream.original)
-    }))
-    setIsLoading(false)
-  }
+    setIsLoading(true);
+    const selected = table
+      .getRowModel()
+      .rows.filter((row) => row.getIsSelected());
+    await utils.Limiter(
+      4,
+      selected.map((stream) => () => {
+        return createChannelFromStream(stream.original);
+      })
+    );
+    setIsLoading(false);
+  };
 
   const editStream = async (stream = null) => {
-    setStream(stream)
-    setModalOpen(true)
-  }
+    setStream(stream);
+    setModalOpen(true);
+  };
 
   const deleteStream = async (id) => {
-    await API.deleteStream(id)
-  }
+    await API.deleteStream(id);
+  };
 
   const deleteStreams = async () => {
-    const selected = table.getRowModel().rows.filter(row => row.getIsSelected())
-    await API.deleteStreams(selected.map(stream => stream.original.id))
-  }
+    const selected = table
+      .getRowModel()
+      .rows.filter((row) => row.getIsSelected());
+    await API.deleteStreams(selected.map((stream) => stream.original.id));
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -101,7 +123,7 @@ const Example = () => {
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
-      isLoading,
+      isLoading: isLoading || streamsLoading,
       sorting,
       rowSelection,
     },
@@ -110,13 +132,20 @@ const Example = () => {
     enableRowActions: true,
     renderRowActions: ({ row }) => (
       <>
-        <IconButton
-          size="small" // Makes the button smaller
-          color="warning" // Red color for delete actions
-          onClick={() => editStream(row.original)}
+        <Tooltip
+          title={
+            row.original.m3u_account ? 'M3U streams locked' : 'Edit Stream'
+          }
         >
-          <EditIcon fontSize="small" /> {/* Small icon size */}
-        </IconButton>
+          <IconButton
+            size="small" // Makes the button smaller
+            color="warning" // Red color for delete actions
+            onClick={() => editStream(row.original)}
+            disabled={row.original.m3u_account}
+          >
+            <EditIcon fontSize="small" /> {/* Small icon size */}
+          </IconButton>
+        </Tooltip>
         <IconButton
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
@@ -135,14 +164,17 @@ const Example = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 100px)', // Subtract padding to avoid cutoff
+        height: 'calc(100vh - 90px)', // Subtract padding to avoid cutoff
         overflowY: 'auto', // Internal scrolling for the table
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
-      <Stack direction="row" sx={{
-        alignItems: "center",
-      }}>
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: 'center',
+        }}
+      >
         <Typography>Streams</Typography>
         <Tooltip title="Add New Stream">
           <IconButton
@@ -171,18 +203,24 @@ const Example = () => {
           sx={{
             marginLeft: 1,
           }}
-        >Create Channels</Button>
+        >
+          Create Channels
+        </Button>
       </Stack>
     ),
   });
 
   return (
-    <Box sx={{
-      // paddingTop: 2,
-      // paddingLeft: 1,
-      // paddingRight: 2,
-      // paddingBottom: 2,
-    }}>
+    <Box
+      sx={
+        {
+          // paddingTop: 2,
+          // paddingLeft: 1,
+          // paddingRight: 2,
+          // paddingBottom: 2,
+        }
+      }
+    >
       <MaterialReactTable table={table} />
       <StreamForm
         stream={stream}

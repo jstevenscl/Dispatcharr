@@ -1,18 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // For redirection
-import useAuthStore from '../../store/auth'
-import { Box, TextField, Button, Typography, Grid2, Paper } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import useAuthStore from '../../store/auth';
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Grid2,
+  Paper,
+} from '@mui/material';
 
 const LoginForm = () => {
-  const { login, isAuthenticated } = useAuthStore(); // Get login function from AuthContext
+  const { login, isAuthenticated, initData } = useAuthStore(); // Get login function from AuthContext
   const navigate = useNavigate(); // Hook to navigate to other routes
   const [formData, setFormData] = useState({ username: '', password: '' });
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/channels')
+      navigate('/channels');
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -23,7 +30,8 @@ const LoginForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await login(formData)
+    await login(formData);
+    initData();
     navigate('/channels'); // Or any other route you'd like
   };
 
@@ -52,7 +60,12 @@ const LoginForm = () => {
           Login
         </Typography>
         <form onSubmit={handleSubmit}>
-          <Grid2 container spacing={2} justifyContent="center" direction="column">
+          <Grid2
+            container
+            spacing={2}
+            justifyContent="center"
+            direction="column"
+          >
             <Grid2 item xs={12}>
               <TextField
                 label="Username"

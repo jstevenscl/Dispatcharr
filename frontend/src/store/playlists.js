@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import api from '../api'; // Your API helper that manages token & requests
+import { create } from "zustand";
+import api from "../api";
 
 const usePlaylistsStore = create((set) => ({
   playlists: [],
@@ -12,22 +12,29 @@ const usePlaylistsStore = create((set) => ({
       const playlists = await api.getPlaylists();
       set({ playlists: playlists, isLoading: false });
     } catch (error) {
-      console.error('Failed to fetch playlists:', error);
-      set({ error: 'Failed to load playlists.', isLoading: false });
+      console.error("Failed to fetch playlists:", error);
+      set({ error: "Failed to load playlists.", isLoading: false });
     }
   },
 
-  addPlaylist: (newPlaylist) => set((state) => ({
-    playlists: [...state.playlists, newPlaylist],
-  })),
+  addPlaylist: (newPlaylist) =>
+    set((state) => ({
+      playlists: [...state.playlists, newPlaylist],
+    })),
 
-  updatePlaylist: (playlist) => set((state) => ({
-    playlists: state.playlists.map(pl => pl.id === playlist.id ? playlist : pl),
-  })),
+  updatePlaylist: (playlist) =>
+    set((state) => ({
+      playlists: state.playlists.map((pl) =>
+        pl.id === playlist.id ? playlist : pl,
+      ),
+    })),
 
-  removePlaylists: (playlistIds) => set((state) => ({
-    playlists: state.playlists.filter((playlist) => !playlistIds.includes(playlist.id)),
-  })),
+  removePlaylists: (playlistIds) =>
+    set((state) => ({
+      playlists: state.playlists.filter(
+        (playlist) => !playlistIds.includes(playlist.id),
+      ),
+    })),
 }));
 
 export default usePlaylistsStore;

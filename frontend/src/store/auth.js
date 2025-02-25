@@ -1,7 +1,11 @@
-// src/auth/authStore.js
-
-import {create} from 'zustand';
-import API from '../api'
+import { create } from 'zustand';
+import API from '../api';
+import useChannelsStore from './channels';
+import useStreamsStore from './streams';
+import useUserAgentsStore from './userAgents';
+import usePlaylistsStore from './playlists';
+import useEPGsStore from './epgs';
+import useStreamProfilesStore from './streamProfiles';
 
 const decodeToken = (token) => {
   if (!token) return null;
@@ -21,30 +25,45 @@ const useAuthStore = create((set, get) => ({
   tokenExpiration: localStorage.getItem('tokenExpiration') || null,
   isAuthenticated: false,
 
-  getToken: async () => {
-    const expiration = localStorage.getItem('tokenExpiration')
-    const tokenExpiration = localStorage.getItem('tokenExpiration');
-      let accessToken = null;
-      if (isTokenExpired(tokenExpiration)) {
-        accessToken = await get().refreshToken();
-      } else {
-        accessToken = localStorage.getItem('accessToken');
-      }
+  setIsAuthenticated: (isAuthenticated) => set({ isAuthenticated }),
 
-      return accessToken;
+  initData: async () => {
+    console.log('fetching data');
+    await Promise.all([
+      useChannelsStore.getState().fetchChannels(),
+      useChannelsStore.getState().fetchChannelGroups(),
+      useStreamsStore.getState().fetchStreams(),
+      useUserAgentsStore.getState().fetchUserAgents(),
+      usePlaylistsStore.getState().fetchPlaylists(),
+      useEPGsStore.getState().fetchEPGs(),
+      useStreamProfilesStore.getState().fetchProfiles(),
+    ]);
+  },
+
+  getToken: async () => {
+    const expiration = localStorage.getItem('tokenExpiration');
+    const tokenExpiration = localStorage.getItem('tokenExpiration');
+    let accessToken = null;
+    if (isTokenExpired(tokenExpiration)) {
+      accessToken = await get().refreshToken();
+    } else {
+      accessToken = localStorage.getItem('accessToken');
+    }
+
+    return accessToken;
   },
 
   // Action to login
-  login: async ({username, password}) => {
+  login: async ({ username, password }) => {
     try {
-      const response = await API.login(username, password)
+      const response = await API.login(username, password);
       if (response.access) {
-        const expiration = decodeToken(response.access)
+        const expiration = decodeToken(response.access);
         set({
           accessToken: response.access,
           refreshToken: response.refresh,
           tokenExpiration: expiration, // 1 hour from now
-          isAuthenticated: true
+          isAuthenticated: true,
         });
         // Store in localStorage
         localStorage.setItem('accessToken', response.access);
@@ -62,7 +81,7 @@ const useAuthStore = create((set, get) => ({
     if (!refreshToken) return;
 
     try {
-      const data = await API.refreshToken(refreshToken)
+      const data = await API.refreshToken(refreshToken);
       if (data.access) {
         set({
           accessToken: data.access,
@@ -76,7 +95,7 @@ const useAuthStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Token refresh failed:', error);
-      get().logout()
+      get().logout();
     }
 
     return false;
@@ -88,7 +107,7 @@ const useAuthStore = create((set, get) => ({
       accessToken: null,
       refreshToken: null,
       tokenExpiration: null,
-      isAuthenticated: false
+      isAuthenticated: false,
     });
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
@@ -99,10 +118,13 @@ const useAuthStore = create((set, get) => ({
     const refreshToken = localStorage.getItem('refreshToken') || null;
 
     if (refreshToken) {
-      await get().refreshToken()
-    } else {
-      await get().logout()
+      const loggedIn = await get().refreshToken();
+      if (loggedIn) {
+        return true;
+      }
     }
+
+    return false;
   },
 }));
 

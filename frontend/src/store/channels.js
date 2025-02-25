@@ -1,7 +1,5 @@
-// src/stores/channelsStore.js
-
-import { create } from 'zustand';
-import api from '../api'; // Your API helper that manages token & requests
+import { create } from "zustand";
+import api from "../api";
 
 const useChannelsStore = create((set) => ({
   channels: [],
@@ -15,8 +13,8 @@ const useChannelsStore = create((set) => ({
       const channels = await api.getChannels();
       set({ channels: channels, isLoading: false });
     } catch (error) {
-      console.error('Failed to fetch channels:', error);
-      set({ error: 'Failed to load channels.', isLoading: false });
+      console.error("Failed to fetch channels:", error);
+      set({ error: "Failed to load channels.", isLoading: false });
     }
   },
 
@@ -26,22 +24,41 @@ const useChannelsStore = create((set) => ({
       const channelGroups = await api.getChannelGroups();
       set({ channelGroups: channelGroups, isLoading: false });
     } catch (error) {
-      console.error('Failed to fetch channel groups:', error);
-      set({ error: 'Failed to load channel groups.', isLoading: false });
+      console.error("Failed to fetch channel groups:", error);
+      set({ error: "Failed to load channel groups.", isLoading: false });
     }
   },
 
-  addChannel: (newChannel) => set((state) => ({
-    channels: [...state.channels, newChannel],
-  })),
+  addChannel: (newChannel) =>
+    set((state) => ({
+      channels: [...state.channels, newChannel],
+    })),
 
-  updateChannel: (userAgent) => set((state) => ({
-    channels: state.channels.map(chan => chan.id === userAgent.id ? userAgent : chan),
-  })),
+  updateChannel: (userAgent) =>
+    set((state) => ({
+      channels: state.channels.map((chan) =>
+        chan.id === userAgent.id ? userAgent : chan,
+      ),
+    })),
 
-  removeChannels: (channelIds) => set((state) => ({
-    channels: state.channels.filter((channel) => !channelIds.includes(channel.id)),
-  })),
+  removeChannels: (channelIds) =>
+    set((state) => ({
+      channels: state.channels.filter(
+        (channel) => !channelIds.includes(channel.id),
+      ),
+    })),
+
+  addChannelGroup: (newChannelGroup) =>
+    set((state) => ({
+      channelGroups: [...state.channelGroups, newChannelGroup],
+    })),
+
+  updateChannelGroup: (channelGroup) =>
+    set((state) => ({
+      channelGroups: state.channelGroups.map((group) =>
+        group.id === channelGroup.id ? channelGroup : group,
+      ),
+    })),
 }));
 
 export default useChannelsStore;

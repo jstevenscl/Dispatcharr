@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import api from '../api'; // Your API helper that manages token & requests
+import { create } from "zustand";
+import api from "../api";
 
 const useEPGsStore = create((set) => ({
   epgs: [],
@@ -12,18 +12,20 @@ const useEPGsStore = create((set) => ({
       const epgs = await api.getEPGs();
       set({ epgs: epgs, isLoading: false });
     } catch (error) {
-      console.error('Failed to fetch epgs:', error);
-      set({ error: 'Failed to load epgs.', isLoading: false });
+      console.error("Failed to fetch epgs:", error);
+      set({ error: "Failed to load epgs.", isLoading: false });
     }
   },
 
-  addEPG: (newPlaylist) => set((state) => ({
-    epgs: [...state.epgs, newPlaylist],
-  })),
+  addEPG: (newPlaylist) =>
+    set((state) => ({
+      epgs: [...state.epgs, newPlaylist],
+    })),
 
-  removeEPGs: (epgIds) => set((state) => ({
-    epgs: state.epgs.filter((epg) => !epgIds.includes(epg.id)),
-  })),
+  removeEPGs: (epgIds) =>
+    set((state) => ({
+      epgs: state.epgs.filter((epg) => !epgIds.includes(epg.id)),
+    })),
 }));
 
 export default useEPGsStore;

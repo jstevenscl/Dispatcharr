@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api from '../api'; // Your API helper that manages token & requests
+import api from '../api';
 
 const useStreamProfilesStore = create((set) => ({
   profiles: [],
@@ -17,17 +17,24 @@ const useStreamProfilesStore = create((set) => ({
     }
   },
 
-  addStreamProfile: (profile) => set((state) => ({
-    profiles: [...state.profiles, profile],
-  })),
+  addStreamProfile: (profile) =>
+    set((state) => ({
+      profiles: [...state.profiles, profile],
+    })),
 
-  updateStreamProfile: (profile) => set((state) => ({
-    profiles: state.profiles.map(prof => prof.id === profile.id ? profile : prof),
-  })),
+  updateStreamProfile: (profile) =>
+    set((state) => ({
+      profiles: state.profiles.map((prof) =>
+        prof.id === profile.id ? profile : prof
+      ),
+    })),
 
-  removeStreamProfiles: (propfileIds) => set((state) => ({
-    profiles: state.profiles.filter((profile) => !propfileIds.includes(profile.id)),
-  })),
+  removeStreamProfiles: (propfileIds) =>
+    set((state) => ({
+      profiles: state.profiles.filter(
+        (profile) => !propfileIds.includes(profile.id)
+      ),
+    })),
 }));
 
 export default useStreamProfilesStore;

@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import api from '../api'; // Your API helper that manages token & requests
+import { create } from "zustand";
+import api from "../api";
 
 const useUserAgentsStore = create((set) => ({
   userAgents: [],
@@ -12,22 +12,29 @@ const useUserAgentsStore = create((set) => ({
       const userAgents = await api.getUserAgents();
       set({ userAgents: userAgents, isLoading: false });
     } catch (error) {
-      console.error('Failed to fetch userAgents:', error);
-      set({ error: 'Failed to load userAgents.', isLoading: false });
+      console.error("Failed to fetch userAgents:", error);
+      set({ error: "Failed to load userAgents.", isLoading: false });
     }
   },
 
-  addUserAgent: (userAgent) => set((state) => ({
-    userAgents: [...state.userAgents, userAgent],
-  })),
+  addUserAgent: (userAgent) =>
+    set((state) => ({
+      userAgents: [...state.userAgents, userAgent],
+    })),
 
-  updateUserAgent: (userAgent) => set((state) => ({
-    userAgents: state.userAgents.map(ua => ua.id === userAgent.id ? userAgent : ua),
-  })),
+  updateUserAgent: (userAgent) =>
+    set((state) => ({
+      userAgents: state.userAgents.map((ua) =>
+        ua.id === userAgent.id ? userAgent : ua,
+      ),
+    })),
 
-  removeUserAgents: (userAgentIds) => set((state) => ({
-    userAgents: state.userAgents.filter((userAgent) => !userAgentIds.includes(userAgent.id)),
-  })),
+  removeUserAgents: (userAgentIds) =>
+    set((state) => ({
+      userAgents: state.userAgents.filter(
+        (userAgent) => !userAgentIds.includes(userAgent.id),
+      ),
+    })),
 }));
 
 export default useUserAgentsStore;

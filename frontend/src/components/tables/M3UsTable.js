@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from 'material-react-table';
-import { Box, Grid2, Stack, Typography, IconButton, Tooltip, Checkbox, Select, MenuItem } from '@mui/material';
-import API from '../../api'
+} from "material-react-table";
+import {
+  Box,
+  Grid2,
+  Stack,
+  Typography,
+  IconButton,
+  Tooltip,
+  Checkbox,
+  Select,
+  MenuItem,
+} from "@mui/material";
+import API from "../../api";
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -15,15 +25,16 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-} from '@mui/icons-material'
-import usePlaylistsStore from '../../store/playlists';
-import M3UForm from '../forms/M3U'
+} from "@mui/icons-material";
+import usePlaylistsStore from "../../store/playlists";
+import M3UForm from "../forms/M3U";
+import { TableHelper } from "../../helpers";
 
 const Example = () => {
   const [playlist, setPlaylist] = useState(null);
   const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
-  const [rowSelection, setRowSelection] = useState([])
-  const [activeFilterValue, setActiveFilterValue] = useState('all');
+  const [rowSelection, setRowSelection] = useState([]);
+  const [activeFilterValue, setActiveFilterValue] = useState("all");
 
   const playlists = usePlaylistsStore((state) => state.playlists);
 
@@ -31,29 +42,33 @@ const Example = () => {
     //column definitions...
     () => [
       {
-        header: 'Name',
-        accessorKey: 'name',
+        header: "Name",
+        accessorKey: "name",
       },
       {
-        header: 'URL / File',
-        accessorKey: 'server_url',
+        header: "URL / File",
+        accessorKey: "server_url",
       },
       {
-        header: 'Max Streams',
-        accessorKey: 'max_streams',
+        header: "Max Streams",
+        accessorKey: "max_streams",
         size: 200,
       },
       {
-        header: 'Active',
-        accessorKey: 'is_active',
+        header: "Active",
+        accessorKey: "is_active",
         size: 100,
-        sortingFn: 'basic',
+        sortingFn: "basic",
         muiTableBodyCellProps: {
-          align: 'left',
+          align: "left",
         },
         Cell: ({ cell }) => (
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <CheckIcon color="success" /> : <CloseIcon color="error" />}
+          <Box sx={{ display: "flex", justifyContent: "center" }}>
+            {cell.getValue() ? (
+              <CheckIcon color="success" />
+            ) : (
+              <CloseIcon color="error" />
+            )}
           </Box>
         ),
         Filter: ({ column }) => (
@@ -77,7 +92,7 @@ const Example = () => {
         ),
         filterFn: (row, _columnId, activeFilterValue) => {
           if (!activeFilterValue) return true; // Show all if no filter
-          return String(row.getValue('is_active')) === activeFilterValue;
+          return String(row.getValue("is_active")) === activeFilterValue;
         },
       },
     ],
@@ -91,25 +106,27 @@ const Example = () => {
   const [sorting, setSorting] = useState([]);
 
   const editPlaylist = async (playlist = null) => {
-    setPlaylist(playlist)
-    setPlaylistModalOpen(true)
-  }
+    setPlaylist(playlist);
+    setPlaylistModalOpen(true);
+  };
 
   const refreshPlaylist = async (id) => {
-    await API.refreshPlaylist(id)
-  }
+    await API.refreshPlaylist(id);
+  };
 
   const deletePlaylist = async (id) => {
-    await API.deletePlaylist(id)
-  }
+    await API.deletePlaylist(id);
+  };
 
   const deletePlaylists = async (ids) => {
-    const selected = table.getRowModel().rows.filter(row => row.getIsSelected())
+    const selected = table
+      .getRowModel()
+      .rows.filter((row) => row.getIsSelected());
     // await API.deleteStreams(selected.map(stream => stream.original.id))
-  }
+  };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       setIsLoading(false);
     }
   }, []);
@@ -124,13 +141,10 @@ const Example = () => {
   }, [sorting]);
 
   const table = useMaterialReactTable({
+    ...TableHelper.defaultProperties,
     columns,
     data: playlists,
-    enableBottomToolbar: false,
-    // enableGlobalFilterModes: true,
-    columnFilterDisplayMode: 'popover',
     enablePagination: false,
-    // enableRowNumbers: true,
     enableRowVirtualization: true,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -143,7 +157,7 @@ const Example = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      density: "compact",
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -152,7 +166,7 @@ const Example = () => {
           size="small" // Makes the button smaller
           color="warning" // Red color for delete actions
           onClick={() => {
-            editPlaylist(row.original)
+            editPlaylist(row.original);
           }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
@@ -174,19 +188,18 @@ const Example = () => {
         </IconButton>
       </>
     ),
-    positionActionsColumn: 'last',
     muiTableContainerProps: {
       sx: {
         height: "calc(42vh - 0px)",
       },
     },
-    renderTopToolbar: ({ table }) => (
-      <Grid2 container direction="row" spacing={3} sx={{
-        justifyContent: "left",
-        alignItems: "center",
-        // height: 30,
-        ml: 2,
-      }}>
+    renderTopToolbarCustomActions: ({ table }) => (
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+        }}
+      >
         <Typography>M3U Accounts</Typography>
         <Tooltip title="Add New M3U Account">
           <IconButton
@@ -198,25 +211,23 @@ const Example = () => {
             <AddIcon fontSize="small" /> {/* Small icon size */}
           </IconButton>
         </Tooltip>
-        <MRT_ShowHideColumnsButton table={table} />
-        {/* <MRT_ToggleFullScreenButton table={table} /> */}
-      </Grid2>
+      </Stack>
     ),
   });
 
   return (
-    <>
-      <Box sx={{
+    <Box
+      sx={{
         padding: 2,
-      }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      }}
+    >
+      <MaterialReactTable table={table} />
       <M3UForm
         playlist={playlist}
         isOpen={playlistModalOpen}
         onClose={() => setPlaylistModalOpen(false)}
       />
-    </>
+    </Box>
   );
 };
 

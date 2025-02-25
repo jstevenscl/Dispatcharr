@@ -1,39 +1,51 @@
 // Modal.js
-import React, { useState, useEffect } from "react";
-import { Box, Modal, Typography, Stack, TextField, Button, Select, MenuItem, Grid2, InputLabel, FormControl, CircularProgress, Checkbox, FormControlLabel } from "@mui/material";
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
-import API from "../../api"
+import React, { useEffect } from "react";
+import {
+  TextField,
+  Button,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import { useFormik } from "formik";
+import * as Yup from "yup";
+import API from "../../api";
 import useUserAgentsStore from "../../store/userAgents";
 
 const StreamProfile = ({ profile = null, isOpen, onClose }) => {
-  const userAgents = useUserAgentsStore(state => state.userAgents)
+  const userAgents = useUserAgentsStore((state) => state.userAgents);
 
   const formik = useFormik({
     initialValues: {
-      profile_name: '',
-      command: '',
-      parameters: '',
+      profile_name: "",
+      command: "",
+      parameters: "",
       is_active: true,
-      user_agent: '',
+      user_agent: "",
     },
     validationSchema: Yup.object({
-      profile_name: Yup.string().required('Name is required'),
-      command: Yup.string().required('Command is required'),
-      parameters: Yup.string().required('Parameters are is required'),
+      profile_name: Yup.string().required("Name is required"),
+      command: Yup.string().required("Command is required"),
+      parameters: Yup.string().required("Parameters are is required"),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (profile?.id) {
-        await API.updateStreamProfile({id: profile.id, ...values})
+        await API.updateStreamProfile({ id: profile.id, ...values });
       } else {
-        await API.addStreamProfile(values)
+        await API.addStreamProfile(values);
       }
 
       resetForm();
       setSubmitting(false);
-      onClose()
-    }
-  })
+      onClose();
+    },
+  });
 
   useEffect(() => {
     if (profile) {
@@ -50,20 +62,22 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
   }, [profile]);
 
   if (!isOpen) {
-    return <></>
+    return <></>;
   }
 
   return (
-    <Modal
-      open={isOpen}
-      onClose={onClose}
-    >
-      <Box sx={style}>
-        <Typography id="form-modal-title" variant="h6" mb={2}>
-          Stream Profile
-        </Typography>
+    <Dialog open={isOpen} onClose={onClose}>
+      <DialogTitle
+        sx={{
+          backgroundColor: "primary.main",
+          color: "primary.contrastText",
+        }}
+      >
+        Stream Profile
+      </DialogTitle>
 
-        <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={formik.handleSubmit}>
+        <DialogContent>
           <TextField
             fullWidth
             id="profile_name"
@@ -72,8 +86,12 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
             value={formik.values.profile_name}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.profile_name && Boolean(formik.errors.profile_name)}
-            helperText={formik.touched.profile_name && formik.errors.profile_name}
+            error={
+              formik.touched.profile_name && Boolean(formik.errors.profile_name)
+            }
+            helperText={
+              formik.touched.profile_name && formik.errors.profile_name
+            }
             variant="standard"
           />
           <TextField
@@ -96,7 +114,9 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
             value={formik.values.parameters}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}
-            error={formik.touched.parameters && Boolean(formik.errors.parameters)}
+            error={
+              formik.touched.parameters && Boolean(formik.errors.parameters)
+            }
             helperText={formik.touched.parameters && formik.errors.parameters}
             variant="standard"
           />
@@ -111,7 +131,9 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
               value={formik.values.user_agent}
               onChange={formik.handleChange}
               onBlur={formik.handleBlur}
-              error={formik.touched.user_agent && Boolean(formik.errors.user_agent)}
+              error={
+                formik.touched.user_agent && Boolean(formik.errors.user_agent)
+              }
               // helperText={formik.touched.user_agent && formik.errors.user_agent}
               variant="standard"
             >
@@ -122,35 +144,22 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
               ))}
             </Select>
           </FormControl>
+        </DialogContent>
 
-          <Box mb={2}>
-            {/* Submit button */}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={formik.isSubmitting}
-              fullWidth
-              size="small"
-            >
-              {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
-            </Button>
-          </Box>
-        </form>
-      </Box>
-    </Modal>
+        <DialogActions>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={formik.isSubmitting}
+            size="small"
+          >
+            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
-};
-
-const style = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 400,
-  bgcolor: 'background.paper',
-  boxShadow: 24,
-  p: 4,
 };
 
 export default StreamProfile;
