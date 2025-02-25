@@ -5,9 +5,9 @@ from .models import Stream, Channel, ChannelGroup
 class StreamAdmin(admin.ModelAdmin):
     list_display = (
         'id', 'name', 'group_name', 'custom_url',
-        'current_viewers', 'is_transcoded', 'updated_at',
+        'current_viewers', 'updated_at',
     )
-    list_filter = ('group_name', 'is_transcoded')
+    list_filter = ('group_name',)
     search_fields = ('name', 'custom_url', 'group_name')
     ordering = ('-updated_at',)
 
