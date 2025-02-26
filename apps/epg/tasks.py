@@ -47,6 +47,7 @@ def fetch_xmltv(source):
                 'end_time': stop_time,
                 'title': title,
                 'description': desc,
+                'tvg_id': channel_tvg_id,
             })
 
         # Process each channel group
@@ -75,11 +76,11 @@ def fetch_xmltv(source):
                         epg=epg_data,
                         start_time=prog['start_time'],
                         title=prog['title'],
-                        tvg_id=tvg_id,
                         defaults={
                             'end_time': prog['end_time'],
                             'description': prog['description'],
-                            'sub_title': ''
+                            'sub_title': '',
+                            'tvg_id': tvg_id,
                         }
                     )
                     if created:
