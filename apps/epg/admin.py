@@ -10,7 +10,7 @@ class EPGSourceAdmin(admin.ModelAdmin):
 @admin.register(ProgramData)
 class ProgramAdmin(admin.ModelAdmin):
     list_display = ['title', 'get_channel_tvg_id', 'start_time', 'end_time']
-    list_filter = ['epg__channel']  # updated here
+    list_filter = ['epg__channel', 'tvg_id']  # updated here
     search_fields = ['title', 'epg__channel__channel_name']  # updated here
 
     def get_channel_tvg_id(self, obj):

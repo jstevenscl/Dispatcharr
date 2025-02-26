@@ -117,14 +117,23 @@ def refresh_single_m3u_account(account_id):
         if line.startswith('#EXTINF'):
             tvg_name_match = re.search(r'tvg-name="([^"]*)"', line)
             tvg_logo_match = re.search(r'tvg-logo="([^"]*)"', line)
+            # Extract tvg-id
+            tvg_id_match = re.search(r'tvg-id="([^"]*)"', line)
+            tvg_id = tvg_id_match.group(1) if tvg_id_match else ""
+            
             fallback_name = line.split(",", 1)[-1].strip() if "," in line else "Default Stream"
 
             name = tvg_name_match.group(1) if tvg_name_match else fallback_name
             logo_url = tvg_logo_match.group(1) if tvg_logo_match else ""
             group_title = _get_group_title(line)
 
-            logger.debug(f"Parsed EXTINF: name={name}, logo_url={logo_url}, group_title={group_title}")
-            current_info = {"name": name, "logo_url": logo_url, "group_title": group_title}
+            logger.debug(f"Parsed EXTINF: name={name}, logo_url={logo_url}, tvg_id={tvg_id}, group_title={group_title}")
+            current_info = {
+                "name": name,
+                "logo_url": logo_url,
+                "group_title": group_title,
+                "tvg_id": tvg_id,  # save the tvg-id here
+            }
 
         elif current_info and line.startswith('http'):
             lower_line = line.lower()
@@ -145,7 +154,11 @@ def refresh_single_m3u_account(account_id):
                 current_info = None
                 continue
 
-            defaults = {"logo_url": current_info["logo_url"]}
+            # Include tvg_id in the defaults so it gets saved
+            defaults = {
+                "logo_url": current_info["logo_url"],
+                "tvg_id": current_info["tvg_id"]
+            }
             try:
                 obj, created = Stream.objects.update_or_create(
                     name=current_info["name"],
@@ -203,11 +216,13 @@ def parse_m3u_file(file_path, account):
             tvg_name_match = re.search(r'tvg-name="([^"]*)"', line)
             tvg_logo_match = re.search(r'tvg-logo="([^"]*)"', line)
             fallback_name = line.split(",", 1)[-1].strip() if "," in line else "Stream"
+            tvg_id_match = re.search(r'tvg-id="([^"]*)"', line)
+            tvg_id = tvg_id_match.group(1) if tvg_id_match else ""
 
             name = tvg_name_match.group(1) if tvg_name_match else fallback_name
             logo_url = tvg_logo_match.group(1) if tvg_logo_match else ""
 
-            current_info = {"name": name, "logo_url": logo_url}
+            current_info = {"name": name, "logo_url": logo_url, "tvg_id": tvg_id}
 
         elif current_info and line.startswith('http'):
             lower_line = line.lower()
@@ -216,7 +231,11 @@ def parse_m3u_file(file_path, account):
                 current_info = None
                 continue
 
-            defaults = {"logo_url": current_info["logo_url"]}
+            defaults = {
+                "logo_url": current_info["logo_url"],
+                "tvg_id": current_info.get("tvg_id", "")
+            }
+
             try:
                 obj, created = Stream.objects.update_or_create(
                     name=current_info["name"],

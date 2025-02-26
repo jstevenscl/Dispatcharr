@@ -12,6 +12,7 @@ class StreamSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False
     )
+
     class Meta:
         model = Stream
         fields = [
@@ -24,12 +25,24 @@ class StreamSerializer(serializers.ModelSerializer):
             'tvg_id',
             'local_file',
             'current_viewers',
-            'is_transcoded',
             'updated_at',
             'group_name',
             'stream_profile_id',
         ]
 
+    def get_fields(self):
+        fields = super().get_fields()
+
+        # Unable to edit specific properties if this stream was created from an M3U account
+        if self.instance and getattr(self.instance, 'm3u_account', None):
+            fields['id'].read_only = True
+            fields['name'].read_only = True
+            fields['url'].read_only = True
+            fields['m3u_account'].read_only = True
+            fields['tvg_id'].read_only = True
+            fields['group_name'].read_only = True
+
+        return fields
 
 #
 # Channel Group

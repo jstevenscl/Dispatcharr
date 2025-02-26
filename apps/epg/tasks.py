@@ -47,8 +47,9 @@ def fetch_xmltv(source):
                 'end_time': stop_time,
                 'title': title,
                 'description': desc,
+                'tvg_id': channel_tvg_id,
             })
-        
+
         # Process each channel group
         for tvg_id, programmes in programmes_by_channel.items():
             try:
@@ -66,7 +67,7 @@ def fetch_xmltv(source):
             if not created and epg_data.channel_name != channel.channel_name:
                 epg_data.channel_name = channel.channel_name
                 epg_data.save(update_fields=['channel_name'])
-            
+
             logger.info(f"Processing {len(programmes)} programme(s) for channel '{channel.channel_name}'.")
             # For each programme, update or create a ProgramData record
             with transaction.atomic():
@@ -78,7 +79,8 @@ def fetch_xmltv(source):
                         defaults={
                             'end_time': prog['end_time'],
                             'description': prog['description'],
-                            'sub_title': ''
+                            'sub_title': '',
+                            'tvg_id': tvg_id,
                         }
                     )
                     if created:

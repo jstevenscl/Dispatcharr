@@ -10,7 +10,6 @@ from django.shortcuts import get_object_or_404
 from .models import Stream, Channel, ChannelGroup
 from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer
 
-
 # ─────────────────────────────────────────────────────────
 # 1) Stream API (CRUD)
 # ─────────────────────────────────────────────────────────
@@ -21,19 +20,18 @@ class StreamViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Exclude streams from inactive M3U accounts
+        qs = qs.exclude(m3u_account__is_active=False)
 
         assigned = self.request.query_params.get('assigned')
         if assigned is not None:
-            # Streams that belong to a given channel?
             qs = qs.filter(channels__id=assigned)
 
         unassigned = self.request.query_params.get('unassigned')
         if unassigned == '1':
-            # Streams that are not linked to any channel
             qs = qs.filter(channels__isnull=True)
 
         return qs
-
 
 # ─────────────────────────────────────────────────────────
 # 2) Channel Group Management (CRUD)
@@ -42,7 +40,6 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
     queryset = ChannelGroup.objects.all()
     serializer_class = ChannelGroupSerializer
     permission_classes = [IsAuthenticated]
-
 
 # ─────────────────────────────────────────────────────────
 # 3) Channel Management (CRUD)
@@ -103,21 +100,27 @@ class ChannelViewSet(viewsets.ModelViewSet):
         stream_id = request.data.get('stream_id')
         if not stream_id:
             return Response({"error": "Missing stream_id"}, status=status.HTTP_400_BAD_REQUEST)
-
         stream = get_object_or_404(Stream, pk=stream_id)
 
+        # Create a channel group from the stream group name if it doesn't already exist
+        channel_group, created = ChannelGroup.objects.get_or_create(
+            name=stream.group_name
+        )
+
+        # Include the stream's tvg_id in the channel data
         channel_data = {
             'channel_number': request.data.get('channel_number', 0),
             'channel_name': request.data.get('channel_name', f"Channel from {stream.name}"),
+            'tvg_id': stream.tvg_id,  # Inherit tvg-id from the stream
+            'channel_group_id': channel_group.id,
         }
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
         channel = serializer.save()
 
-        # Optionally attach the stream to that channel
+        # Optionally attach the stream to the channel
         channel.streams.add(stream)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams
@@ -144,7 +147,6 @@ class BulkDeleteStreamsAPIView(APIView):
         stream_ids = request.data.get('stream_ids', [])
         Stream.objects.filter(id__in=stream_ids).delete()
         return Response({"message": "Streams deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
-
 
 # ─────────────────────────────────────────────────────────
 # 5) Bulk Delete Channels
