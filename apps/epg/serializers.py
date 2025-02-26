@@ -10,7 +10,7 @@ class EPGSourceSerializer(serializers.ModelSerializer):
 class ProgramDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProgramData
-        fields = ['id', 'start_time', 'end_time', 'title', 'sub_title', 'description']
+        fields = ['id', 'start_time', 'end_time', 'title', 'sub_title', 'description', 'tvg_id']
 
 class EPGDataSerializer(serializers.ModelSerializer):
     programs = ProgramDataSerializer(many=True, read_only=True)

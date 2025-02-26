@@ -22,15 +22,15 @@ class StreamViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         # Exclude streams from inactive M3U accounts
         qs = qs.exclude(m3u_account__is_active=False)
-        
+
         assigned = self.request.query_params.get('assigned')
         if assigned is not None:
             qs = qs.filter(channels__id=assigned)
-        
+
         unassigned = self.request.query_params.get('unassigned')
         if unassigned == '1':
             qs = qs.filter(channels__isnull=True)
-        
+
         return qs
 
 # ─────────────────────────────────────────────────────────
@@ -102,11 +102,17 @@ class ChannelViewSet(viewsets.ModelViewSet):
             return Response({"error": "Missing stream_id"}, status=status.HTTP_400_BAD_REQUEST)
         stream = get_object_or_404(Stream, pk=stream_id)
 
+        # Create a channel group from the stream group name if it doesn't already exist
+        channel_group, created = ChannelGroup.objects.get_or_create(
+            name=stream.group_name
+        )
+
         # Include the stream's tvg_id in the channel data
         channel_data = {
             'channel_number': request.data.get('channel_number', 0),
             'channel_name': request.data.get('channel_name', f"Channel from {stream.name}"),
             'tvg_id': stream.tvg_id,  # Inherit tvg-id from the stream
+            'channel_group_id': channel_group.id,
         }
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
