@@ -193,7 +193,7 @@ const Example = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(42vh - 0px)',
+        height: 'calc(43vh - 0px)',
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
@@ -221,7 +221,7 @@ const Example = () => {
   return (
     <Box
       sx={{
-        padding: 2,
+        padding: 1,
       }}
     >
       <MaterialReactTable table={table} />

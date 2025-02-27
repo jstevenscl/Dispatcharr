@@ -3,6 +3,7 @@ import { Box, Typography, Avatar, Paper, Tooltip, Stack } from '@mui/material';
 import dayjs from 'dayjs';
 import API from '../api';
 import useChannelsStore from '../store/channels';
+import logo from '../images/logo.png';
 
 const CHANNEL_WIDTH = 100;
 const PROGRAM_HEIGHT = 80;
@@ -13,6 +14,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
 
   const [programs, setPrograms] = useState([]);
   const [guideChannels, setGuideChannels] = useState([]);
+  const [now, setNow] = useState(dayjs());
 
   const guideRef = useRef(null);
 
@@ -35,8 +37,6 @@ const TVChannelGuide = ({ startDate, endDate }) => {
 
     fetchPrograms();
   }, [channels]);
-
-  const now = dayjs();
 
   const latestHalfHour = new Date();
 
@@ -126,6 +126,14 @@ const TVChannelGuide = ({ startDate, endDate }) => {
     );
   };
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(dayjs());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
+
   const nowPosition = useMemo(() => {
     if (now.isBefore(start) || now.isAfter(end)) return -1;
     const totalMinutes = end.diff(start, 'minute');
@@ -175,7 +183,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
                   }}
                 >
                   <Avatar
-                    src={channel.logo_url || '/static/images/logo.png'}
+                    src={channel.logo_url || logo}
                     alt={channel.channel_name}
                   />
                   {/* <Typography variant="body2" sx={{ marginLeft: 1 }}>
@@ -188,7 +196,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
         </Box>
 
         {/* Timeline and Lineup */}
-        <Box sx={{ overflowY: 'auto', height: '100%' }}>
+        <Box ref={guideRef} sx={{ overflowY: 'auto', height: '100%' }}>
           <Box
             sx={{
               display: 'flex',

@@ -26,7 +26,6 @@ urlpatterns = [
     path('api/', include(('apps.api.urls', 'api'), namespace='api')),
 
     # Admin
-    path('grappelli/', include('grappelli.urls')),  # Grappelli admin
     path('admin/', admin.site.urls),
 
     # Swagger UI

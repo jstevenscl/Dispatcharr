@@ -160,7 +160,7 @@ const Example = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 90px)', // Subtract padding to avoid cutoff
+        height: 'calc(100vh - 75px)', // Subtract padding to avoid cutoff
         overflowY: 'auto', // Internal scrolling for the table
       },
     },

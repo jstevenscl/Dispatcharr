@@ -173,7 +173,7 @@ const StreamProfiles = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 100px)', // Subtract padding to avoid cutoff
+        height: 'calc(100vh - 73px)', // Subtract padding to avoid cutoff
         overflowY: 'auto', // Internal scrolling for the table
       },
     },
@@ -202,7 +202,7 @@ const StreamProfiles = () => {
   return (
     <Box
       sx={{
-        padding: 2,
+        padding: 1,
       }}
     >
       <MaterialReactTable table={table} />

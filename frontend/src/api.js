@@ -10,8 +10,7 @@ import useStreamProfilesStore from './store/streamProfiles';
 //   withCredentials: true,
 // });
 
-const host = 'http://127.0.0.1:9191';
-// const host = '';
+const host = '';
 
 const getAuthToken = async () => {
   const token = await useAuthStore.getState().getToken(); // Assuming token is stored in Zustand store

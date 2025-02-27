@@ -22,7 +22,7 @@ import {
 } from '@mui/material';
 import theme from './theme';
 import EPG from './pages/EPG';
-// import Guide from './pages/Guide';
+import Guide from './pages/Guide';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
 import logo from './images/logo.png';
@@ -150,7 +150,7 @@ const App = () => {
                     path="/stream-profiles"
                     element={<StreamProfiles />}
                   />
-                  {/* <Route exact path="/guide" element={<Guide />} /> */}
+                  <Route exact path="/guide" element={<Guide />} />
                 </>
               ) : (
                 <Route path="/login" element={<Login />} />

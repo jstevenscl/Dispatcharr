@@ -173,7 +173,7 @@ const UserAgentsTable = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(42vh - 10px)',
+        height: 'calc(42vh + 5px)',
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
@@ -202,7 +202,7 @@ const UserAgentsTable = () => {
     <>
       <Box
         sx={{
-          padding: 2,
+          padding: 1,
         }}
       >
         <MaterialReactTable table={table} />
