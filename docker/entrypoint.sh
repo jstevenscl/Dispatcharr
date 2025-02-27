@@ -49,7 +49,7 @@ if [ -z "$(ls -A "$PGDATA")" ]; then
     mkdir -p "$PGDATA"
     chown -R postgres:postgres "$PGDATA"
     chmod 700 "$PGDATA"
-    
+
     # Initialize PostgreSQL
     su - postgres -c "$PG_BINDIR/initdb -D $PGDATA"
     # Configure PostgreSQL
@@ -75,12 +75,12 @@ if ! su - postgres -c "psql -p ${POSTGRES_PORT} -tAc \"SELECT 1 FROM pg_database
     # Create user, set ownership, and grant privileges
     echo_with_timestamp "Creating PostgreSQL user..."
     su - postgres -c "psql -p ${POSTGRES_PORT} -d ${POSTGRES_DB}" <<EOF
-DO \$\$ 
-BEGIN 
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$POSTGRES_USER') THEN 
-        CREATE ROLE $POSTGRES_USER WITH LOGIN PASSWORD '$POSTGRES_PASSWORD'; 
-    END IF; 
-END 
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$POSTGRES_USER') THEN
+        CREATE ROLE $POSTGRES_USER WITH LOGIN PASSWORD '$POSTGRES_PASSWORD';
+    END IF;
+END
 \$\$;
 EOF
     echo_with_timestamp "Setting PostgreSQL user privileges..."
@@ -131,4 +131,4 @@ su - $POSTGRES_USER -c 'cd /app && celery -A dispatcharr worker --loglevel=info 
 
 # Start Gunicorn
 echo_with_timestamp "Starting Gunicorn..."
-su - $POSTGRES_USER -c 'cd /app && gunicorn --workers=4 --worker-class=gevent --timeout=300 --bind 0.0.0.0:9191 dispatcharr.wsgi:application'
+su - $POSTGRES_USER -c 'cd /app && gunicorn --workers=4 --worker-class=gevent --timeout=300 --bind 0.0.0.0:5656 dispatcharr.wsgi:application'
