@@ -1,5 +1,19 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Box, Typography, Avatar, Paper, Tooltip, Stack } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Avatar,
+  Paper,
+  Tooltip,
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  Input,
+  MenuItem,
+  Checkbox,
+  ListItemText,
+} from '@mui/material';
 import dayjs from 'dayjs';
 import API from '../api';
 import useChannelsStore from '../store/channels';
@@ -9,18 +23,40 @@ const CHANNEL_WIDTH = 100;
 const PROGRAM_HEIGHT = 80;
 const HOUR_WIDTH = 300;
 
+const ITEM_HEIGHT = 48;
+const ITEM_PADDING_TOP = 8;
+const MenuProps = {
+  PaperProps: {
+    style: {
+      // maxHeight: ITEM_HEIGHT * 4.5 + ITEM_PADDING_TOP,
+      // width: 250,
+    },
+  },
+};
+
 const TVChannelGuide = ({ startDate, endDate }) => {
   const { channels } = useChannelsStore();
 
   const [programs, setPrograms] = useState([]);
   const [guideChannels, setGuideChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
+  const [activeChannels, setActiveChannels] = useState([]);
 
   const guideRef = useRef(null);
 
   if (!channels || channels.length === 0) {
     console.warn('No channels provided or empty channels array');
   }
+
+  const activeChannelChange = (event) => {
+    const {
+      target: { value },
+    } = event;
+    setActiveChannels(
+      // On autofill we get a stringified value.
+      typeof value === 'string' ? value.split(',') : value
+    );
+  };
 
   useEffect(() => {
     const fetchPrograms = async () => {
@@ -32,6 +68,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
       );
       console.log(filteredChannels);
       setGuideChannels(filteredChannels);
+      setActiveChannels(guideChannels.map((channel) => channel.channel_name));
       setPrograms(programs);
     };
 
@@ -150,9 +187,31 @@ const TVChannelGuide = ({ startDate, endDate }) => {
         backgroundColor: '#171923',
       }}
     >
-      <Typography variant="h6">
-        Channels length: {guideChannels?.length ?? 0}
-      </Typography>
+      <Box>
+        <FormControl sx={{ m: 1, width: 300 }}>
+          <InputLabel id="select-channels-label">Channels</InputLabel>
+          <Select
+            labelId="select-channels-label"
+            id="select-channels"
+            multiple
+            value={activeChannels}
+            onChange={activeChannelChange}
+            input={<Input label="Channels" />}
+            renderValue={(selected) => selected.join(', ')}
+            MenuProps={MenuProps}
+            size="small"
+          >
+            {guideChannels.map((channel) => (
+              <MenuItem key={channel.channel_name} value={channel.channel_name}>
+                <Checkbox
+                  checked={activeChannels.includes(channel.channel_name)}
+                />
+                <ListItemText primary={channel.channel_name} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
 
       <Stack direction="row">
         <Box>
@@ -163,40 +222,53 @@ const TVChannelGuide = ({ startDate, endDate }) => {
               height: '40px',
             }}
           />
-          {guideChannels.map((channel, index) => {
-            return (
-              <Box
-                key={index}
-                sx={{
-                  display: 'flex',
-                  // borderTop: '1px solid #ccc',
-                  height: PROGRAM_HEIGHT + 1,
-                  alignItems: 'center',
-                }}
-              >
+          {guideChannels
+            .filter((channel) => activeChannels.includes(channel.channel_name))
+            .map((channel, index) => {
+              return (
                 <Box
+                  key={index}
                   sx={{
-                    width: CHANNEL_WIDTH,
                     display: 'flex',
-                    padding: 1,
+                    // borderTop: '1px solid #ccc',
+                    height: PROGRAM_HEIGHT + 1,
+                    alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Avatar
-                    src={channel.logo_url || logo}
-                    alt={channel.channel_name}
-                  />
-                  {/* <Typography variant="body2" sx={{ marginLeft: 1 }}>
+                  <Box
+                    sx={{
+                      width: CHANNEL_WIDTH,
+                      display: 'flex',
+                      padding: 1,
+                      justifyContent: 'center',
+                      maxWidth: CHANNEL_WIDTH * 0.75,
+                      maxHeight: PROGRAM_HEIGHT * 0.75,
+                    }}
+                  >
+                    <img
+                      src={channel.logo_url || logo}
+                      alt={channel.channel_name}
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        objectFit: 'contain', // This ensures aspect ratio is preserved
+                      }}
+                    />
+                    {/* <Typography variant="body2" sx={{ marginLeft: 1 }}>
                   {channel.channel_name}
                 </Typography> */}
+                  </Box>
                 </Box>
-              </Box>
-            );
-          })}
+              );
+            })}
         </Box>
 
         {/* Timeline and Lineup */}
-        <Box ref={guideRef} sx={{ overflowY: 'auto', height: '100%' }}>
+        <Box
+          ref={guideRef}
+          sx={{ overflowY: 'auto', height: '100%', overflowX: 'auto' }}
+        >
           <Box
             sx={{
               display: 'flex',
@@ -295,26 +367,30 @@ const TVChannelGuide = ({ startDate, endDate }) => {
                 }}
               />
             )}
-            {guideChannels.map((channel, index) => {
-              const channelPrograms = programs.filter(
-                (p) => p.tvg_id === channel.tvg_id
-              );
-              return (
-                <Box key={index} sx={{ display: 'flex' }}>
-                  <Box
-                    sx={{
-                      flex: 1,
-                      position: 'relative',
-                      minHeight: PROGRAM_HEIGHT,
-                    }}
-                  >
-                    {channelPrograms.map((program) =>
-                      renderProgram(program, start)
-                    )}
+            {guideChannels
+              .filter((channel) =>
+                activeChannels.includes(channel.channel_name)
+              )
+              .map((channel, index) => {
+                const channelPrograms = programs.filter(
+                  (p) => p.tvg_id === channel.tvg_id
+                );
+                return (
+                  <Box key={index} sx={{ display: 'flex' }}>
+                    <Box
+                      sx={{
+                        flex: 1,
+                        position: 'relative',
+                        minHeight: PROGRAM_HEIGHT + 1,
+                      }}
+                    >
+                      {channelPrograms.map((program) =>
+                        renderProgram(program, start)
+                      )}
+                    </Box>
                   </Box>
-                </Box>
-              );
-            })}
+                );
+              })}
           </Box>
         </Box>
       </Stack>
