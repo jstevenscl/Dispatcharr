@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from "material-react-table";
+} from 'material-react-table';
 import {
   Box,
   Grid2,
@@ -16,8 +16,8 @@ import {
   Select,
   MenuItem,
   Snackbar,
-} from "@mui/material";
-import API from "../../api";
+} from '@mui/material';
+import API from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -26,16 +26,16 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-} from "@mui/icons-material";
-import useEPGsStore from "../../store/epgs";
-import EPGForm from "../forms/EPG";
-import { TableHelper } from "../../helpers";
+} from '@mui/icons-material';
+import useEPGsStore from '../../store/epgs';
+import EPGForm from '../forms/EPG';
+import { TableHelper } from '../../helpers';
 
 const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
   const [epgModalOpen, setEPGModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
-  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   const epgs = useEPGsStore((state) => state.epgs);
@@ -44,21 +44,19 @@ const EPGsTable = () => {
     //column definitions...
     () => [
       {
-        header: "Name",
-        size: 10,
-        accessorKey: "name",
+        header: 'Name',
+        accessorKey: 'name',
       },
       {
-        header: "Source Type",
-        accessorKey: "source_type",
-        size: 50,
+        header: 'Source Type',
+        accessorKey: 'source_type',
       },
       {
-        header: "URL / API Key",
-        accessorKey: "max_streams",
+        header: 'URL / API Key',
+        accessorKey: 'max_streams',
       },
     ],
-    [],
+    []
   );
 
   //optionally access the underlying virtualizer instance
@@ -82,12 +80,12 @@ const EPGsTable = () => {
 
   const refreshEPG = async (id) => {
     await API.refreshEPG(id);
-    setSnackbarMessage("EPG refresh initiated");
+    setSnackbarMessage('EPG refresh initiated');
     setSnackbarOpen(true);
   };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       setIsLoading(false);
     }
   }, []);
@@ -118,7 +116,7 @@ const EPGsTable = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: "compact",
+      density: 'compact',
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -127,6 +125,7 @@ const EPGsTable = () => {
           size="small" // Makes the button smaller
           color="info" // Red color for delete actions
           onClick={() => editEPG(row.original)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -134,6 +133,7 @@ const EPGsTable = () => {
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
           onClick={() => deleteEPG(row.original.id)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <DeleteIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -141,6 +141,7 @@ const EPGsTable = () => {
           size="small" // Makes the button smaller
           color="info" // Red color for delete actions
           onClick={() => refreshEPG(row.original.id)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <RefreshIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -148,14 +149,14 @@ const EPGsTable = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: "calc(42vh - 0px)",
+        height: 'calc(43vh - 0px)',
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
       <Stack
         direction="row"
         sx={{
-          alignItems: "center",
+          alignItems: 'center',
         }}
       >
         <Typography>EPGs</Typography>
@@ -176,7 +177,7 @@ const EPGsTable = () => {
   return (
     <Box
       sx={{
-        padding: 2,
+        padding: 1,
       }}
     >
       <MaterialReactTable table={table} />
@@ -188,7 +189,7 @@ const EPGsTable = () => {
       />
 
       <Snackbar
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         open={snackbarOpen}
         autoHideDuration={5000}
         onClose={closeSnackbar}

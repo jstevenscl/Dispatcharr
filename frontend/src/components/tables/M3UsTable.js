@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from "material-react-table";
+} from 'material-react-table';
 import {
   Box,
   Grid2,
@@ -15,8 +15,8 @@ import {
   Checkbox,
   Select,
   MenuItem,
-} from "@mui/material";
-import API from "../../api";
+} from '@mui/material';
+import API from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -25,16 +25,16 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-} from "@mui/icons-material";
-import usePlaylistsStore from "../../store/playlists";
-import M3UForm from "../forms/M3U";
-import { TableHelper } from "../../helpers";
+} from '@mui/icons-material';
+import usePlaylistsStore from '../../store/playlists';
+import M3UForm from '../forms/M3U';
+import { TableHelper } from '../../helpers';
 
 const Example = () => {
   const [playlist, setPlaylist] = useState(null);
   const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
-  const [activeFilterValue, setActiveFilterValue] = useState("all");
+  const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const playlists = usePlaylistsStore((state) => state.playlists);
 
@@ -42,28 +42,28 @@ const Example = () => {
     //column definitions...
     () => [
       {
-        header: "Name",
-        accessorKey: "name",
+        header: 'Name',
+        accessorKey: 'name',
       },
       {
-        header: "URL / File",
-        accessorKey: "server_url",
+        header: 'URL / File',
+        accessorKey: 'server_url',
       },
       {
-        header: "Max Streams",
-        accessorKey: "max_streams",
+        header: 'Max Streams',
+        accessorKey: 'max_streams',
         size: 200,
       },
       {
-        header: "Active",
-        accessorKey: "is_active",
+        header: 'Active',
+        accessorKey: 'is_active',
         size: 100,
-        sortingFn: "basic",
+        sortingFn: 'basic',
         muiTableBodyCellProps: {
-          align: "left",
+          align: 'left',
         },
         Cell: ({ cell }) => (
-          <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
             {cell.getValue() ? (
               <CheckIcon color="success" />
             ) : (
@@ -92,11 +92,11 @@ const Example = () => {
         ),
         filterFn: (row, _columnId, activeFilterValue) => {
           if (!activeFilterValue) return true; // Show all if no filter
-          return String(row.getValue("is_active")) === activeFilterValue;
+          return String(row.getValue('is_active')) === activeFilterValue;
         },
       },
     ],
-    [],
+    []
   );
 
   //optionally access the underlying virtualizer instance
@@ -126,7 +126,7 @@ const Example = () => {
   };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       setIsLoading(false);
     }
   }, []);
@@ -157,7 +157,7 @@ const Example = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: "compact",
+      density: 'compact',
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -168,6 +168,7 @@ const Example = () => {
           onClick={() => {
             editPlaylist(row.original);
           }}
+          sx={{ pt: 0, pb: 0 }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -175,6 +176,7 @@ const Example = () => {
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
           onClick={() => deletePlaylist(row.original.id)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <DeleteIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -183,6 +185,7 @@ const Example = () => {
           color="info" // Red color for delete actions
           variant="contained"
           onClick={() => refreshPlaylist(row.original.id)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <RefreshIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -190,14 +193,14 @@ const Example = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: "calc(42vh - 0px)",
+        height: 'calc(43vh - 0px)',
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
       <Stack
         direction="row"
         sx={{
-          alignItems: "center",
+          alignItems: 'center',
         }}
       >
         <Typography>M3U Accounts</Typography>
@@ -218,7 +221,7 @@ const Example = () => {
   return (
     <Box
       sx={{
-        padding: 2,
+        padding: 1,
       }}
     >
       <MaterialReactTable table={table} />

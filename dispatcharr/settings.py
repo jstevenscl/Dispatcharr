@@ -49,7 +49,10 @@ ROOT_URLCONF = 'dispatcharr.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [
+            os.path.join(BASE_DIR, 'frontend/build'),
+            BASE_DIR / "templates"
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -98,8 +101,14 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Directory where static files will be collected
+
+# Adjust STATICFILES_DIRS to include the paths to the directories that contain your static files.
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'frontend/build/static'),  # React build static files
+    BASE_DIR / 'static',  # Django custom static files (if any)
+]
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.User'
@@ -116,16 +125,15 @@ SERVER_IP = "127.0.0.1"
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
-if os.getenv('REACT_UI', False):
-    REST_FRAMEWORK = {
-        'DEFAULT_AUTHENTICATION_CLASSES': [
-            'rest_framework_simplejwt.authentication.JWTAuthentication',
-        ],
-    }
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}
 
-    SIMPLE_JWT = {
-        'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-        'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-        'ROTATE_REFRESH_TOKENS': False,  # Optional: Whether to rotate refresh tokens
-        'BLACKLIST_AFTER_ROTATION': True,  # Optional: Whether to blacklist refresh tokens
-    }
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': False,  # Optional: Whether to rotate refresh tokens
+    'BLACKLIST_AFTER_ROTATION': True,  # Optional: Whether to blacklist refresh tokens
+}

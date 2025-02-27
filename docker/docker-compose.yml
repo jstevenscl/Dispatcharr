@@ -6,6 +6,7 @@ services:
     container_name: dispatcharr_web
     ports:
       - "9191:9191"
+      - "3031:3031"
     depends_on:
       - db
       - redis
@@ -25,11 +26,10 @@ services:
   ui:
     image: alpine
     container_name: dispatcharr_ui
+    network_mode: service:web
     volumes:
       - ../frontend:/app
     entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
-    ports:
-      - 3031:3031
 
   celery:
     build:

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from "material-react-table";
+} from 'material-react-table';
 import {
   Box,
   Grid2,
@@ -14,24 +14,24 @@ import {
   Tooltip,
   Select,
   MenuItem,
-} from "@mui/material";
-import API from "../../api";
+} from '@mui/material';
+import API from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-} from "@mui/icons-material";
-import useUserAgentsStore from "../../store/userAgents";
-import UserAgentForm from "../forms/UserAgent";
-import { TableHelper } from "../../helpers";
+} from '@mui/icons-material';
+import useUserAgentsStore from '../../store/userAgents';
+import UserAgentForm from '../forms/UserAgent';
+import { TableHelper } from '../../helpers';
 
 const UserAgentsTable = () => {
   const [userAgent, setUserAgent] = useState(null);
   const [userAgentModalOpen, setUserAgentModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
-  const [activeFilterValue, setActiveFilterValue] = useState("all");
+  const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const userAgents = useUserAgentsStore((state) => state.userAgents);
 
@@ -39,29 +39,27 @@ const UserAgentsTable = () => {
     //column definitions...
     () => [
       {
-        header: "Name",
-        size: 10,
-        accessorKey: "user_agent_name",
+        header: 'Name',
+        accessorKey: 'user_agent_name',
       },
       {
-        header: "User-Agent",
-        accessorKey: "user_agent",
-        size: 50,
+        header: 'User-Agent',
+        accessorKey: 'user_agent',
       },
       {
-        header: "Desecription",
-        accessorKey: "description",
+        header: 'Desecription',
+        accessorKey: 'description',
       },
       {
-        header: "Active",
-        accessorKey: "is_active",
+        header: 'Active',
+        accessorKey: 'is_active',
         size: 100,
-        sortingFn: "basic",
+        sortingFn: 'basic',
         muiTableBodyCellProps: {
-          align: "left",
+          align: 'left',
         },
         Cell: ({ cell }) => (
-          <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
             {cell.getValue() ? (
               <CheckIcon color="success" />
             ) : (
@@ -89,12 +87,12 @@ const UserAgentsTable = () => {
           </Box>
         ),
         filterFn: (row, _columnId, activeFilterValue) => {
-          if (activeFilterValue == "all") return true; // Show all if no filter
-          return String(row.getValue("is_active")) === activeFilterValue;
+          if (activeFilterValue == 'all') return true; // Show all if no filter
+          return String(row.getValue('is_active')) === activeFilterValue;
         },
       },
     ],
-    [],
+    []
   );
 
   //optionally access the underlying virtualizer instance
@@ -117,7 +115,7 @@ const UserAgentsTable = () => {
   };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       setIsLoading(false);
     }
   }, []);
@@ -148,7 +146,7 @@ const UserAgentsTable = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: "compact",
+      density: 'compact',
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -159,6 +157,7 @@ const UserAgentsTable = () => {
           onClick={() => {
             editUserAgent(row.original);
           }}
+          sx={{ pt: 0, pb: 0 }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -166,6 +165,7 @@ const UserAgentsTable = () => {
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
           onClick={() => deleteUserAgent(row.original.id)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <DeleteIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -173,14 +173,14 @@ const UserAgentsTable = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: "calc(42vh - 10px)",
+        height: 'calc(42vh + 5px)',
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
       <Stack
         direction="row"
         sx={{
-          alignItems: "center",
+          alignItems: 'center',
         }}
       >
         <Typography>User-Agents</Typography>
@@ -202,7 +202,7 @@ const UserAgentsTable = () => {
     <>
       <Box
         sx={{
-          padding: 2,
+          padding: 1,
         }}
       >
         <MaterialReactTable table={table} />

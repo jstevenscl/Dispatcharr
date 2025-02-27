@@ -31,6 +31,7 @@ import {
 } from 'material-react-table';
 import ChannelGroupForm from './ChannelGroup';
 import usePlaylistsStore from '../../store/playlists';
+import logo from '../../images/logo.png';
 
 const Channel = ({ channel = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((state) => state.channelGroups);
@@ -38,8 +39,8 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const { profiles: streamProfiles } = useStreamProfilesStore();
   const { playlists } = usePlaylistsStore();
 
-  const [logo, setLogo] = useState(null);
-  const [logoPreview, setLogoPreview] = useState('/images/logo.png');
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(logo);
   const [channelStreams, setChannelStreams] = useState([]);
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
 
@@ -58,7 +59,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const handleLogoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setLogo(file);
+      setLogoFile(file);
       setLogoPreview(URL.createObjectURL(file));
     }
   };
@@ -83,20 +84,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         await API.updateChannel({
           id: channel.id,
           ...values,
-          logo_file: logo,
+          logo_file: logoFile,
           streams: channelStreams.map((stream) => stream.id),
         });
       } else {
         await API.addChannel({
           ...values,
-          logo_file: logo,
+          logo_file: logoFile,
           streams: channelStreams.map((stream) => stream.id),
         });
       }
 
       resetForm();
-      setLogo(null);
-      setLogoPreview('/images/logo.png');
+      setLogoFile(null);
+      setLogoPreview(logo);
       setSubmitting(false);
       onClose();
     },

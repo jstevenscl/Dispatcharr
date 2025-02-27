@@ -66,6 +66,13 @@ class ChannelSerializer(serializers.ModelSerializer):
         required=False
     )
 
+    stream_profile_id = serializers.PrimaryKeyRelatedField(
+        queryset=StreamProfile.objects.all(),
+        source='stream_profile',
+        allow_null=True,
+        required=False
+    )
+
     # Possibly show streams inline, or just by ID
     # streams = StreamSerializer(many=True, read_only=True)
 

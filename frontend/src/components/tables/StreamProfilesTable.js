@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MaterialReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleFullScreenButton,
   useMaterialReactTable,
-} from "material-react-table";
+} from 'material-react-table';
 import {
   Box,
   Grid2,
@@ -15,8 +15,8 @@ import {
   Checkbox,
   Select,
   MenuItem,
-} from "@mui/material";
-import API from "../../api";
+} from '@mui/material';
+import API from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -25,19 +25,19 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-} from "@mui/icons-material";
-import useEPGsStore from "../../store/epgs";
-import StreamProfileForm from "../forms/StreamProfile";
-import useStreamProfilesStore from "../../store/streamProfiles";
-import { TableHelper } from "../../helpers";
+} from '@mui/icons-material';
+import useEPGsStore from '../../store/epgs';
+import StreamProfileForm from '../forms/StreamProfile';
+import useStreamProfilesStore from '../../store/streamProfiles';
+import { TableHelper } from '../../helpers';
 
 const StreamProfiles = () => {
   const [profile, setProfile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
-  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [activeFilterValue, setActiveFilterValue] = useState("all");
+  const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
 
@@ -45,27 +45,27 @@ const StreamProfiles = () => {
     //column definitions...
     () => [
       {
-        header: "Name",
-        accessorKey: "profile_name",
+        header: 'Name',
+        accessorKey: 'profile_name',
       },
       {
-        header: "Command",
-        accessorKey: "command",
+        header: 'Command',
+        accessorKey: 'command',
       },
       {
-        header: "Parameters",
-        accessorKey: "parameters",
+        header: 'Parameters',
+        accessorKey: 'parameters',
       },
       {
-        header: "Active",
-        accessorKey: "is_active",
+        header: 'Active',
+        accessorKey: 'is_active',
         size: 100,
-        sortingFn: "basic",
+        sortingFn: 'basic',
         muiTableBodyCellProps: {
-          align: "left",
+          align: 'left',
         },
         Cell: ({ cell }) => (
-          <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
             {cell.getValue() ? (
               <CheckIcon color="success" />
             ) : (
@@ -93,12 +93,12 @@ const StreamProfiles = () => {
           </Box>
         ),
         filterFn: (row, _columnId, filterValue) => {
-          if (filterValue == "all") return true; // Show all if no filter
-          return String(row.getValue("is_active")) === filterValue;
+          if (filterValue == 'all') return true; // Show all if no filter
+          return String(row.getValue('is_active')) === filterValue;
         },
       },
     ],
-    [],
+    []
   );
 
   //optionally access the underlying virtualizer instance
@@ -117,7 +117,7 @@ const StreamProfiles = () => {
   };
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       setIsLoading(false);
     }
   }, []);
@@ -148,7 +148,7 @@ const StreamProfiles = () => {
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: "compact",
+      density: 'compact',
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
@@ -157,6 +157,7 @@ const StreamProfiles = () => {
           size="small" // Makes the button smaller
           color="warning" // Red color for delete actions
           onClick={() => editStreamProfile(row.original)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -164,6 +165,7 @@ const StreamProfiles = () => {
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
           onClick={() => deleteStreamProfile(row.original.id)}
+          sx={{ pt: 0, pb: 0 }}
         >
           <DeleteIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -171,15 +173,15 @@ const StreamProfiles = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: "calc(100vh - 100px)", // Subtract padding to avoid cutoff
-        overflowY: "auto", // Internal scrolling for the table
+        height: 'calc(100vh - 73px)', // Subtract padding to avoid cutoff
+        overflowY: 'auto', // Internal scrolling for the table
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
       <Stack
         direction="row"
         sx={{
-          alignItems: "center",
+          alignItems: 'center',
         }}
       >
         <Typography>Stream Profiles</Typography>
@@ -200,7 +202,7 @@ const StreamProfiles = () => {
   return (
     <Box
       sx={{
-        padding: 2,
+        padding: 1,
       }}
     >
       <MaterialReactTable table={table} />

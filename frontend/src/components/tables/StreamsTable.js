@@ -116,7 +116,6 @@ const Example = () => {
 
     columns,
     data: streams,
-    // enableGlobalFilterModes: true,
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: true,
@@ -132,39 +131,36 @@ const Example = () => {
     enableRowActions: true,
     renderRowActions: ({ row }) => (
       <>
-        <Tooltip
-          title={
-            row.original.m3u_account ? 'M3U streams locked' : 'Edit Stream'
-          }
+        <IconButton
+          size="small" // Makes the button smaller
+          color="warning" // Red color for delete actions
+          onClick={() => editStream(row.original)}
+          disabled={row.original.m3u_account}
+          sx={{ p: 0 }}
         >
-          <IconButton
-            size="small" // Makes the button smaller
-            color="warning" // Red color for delete actions
-            onClick={() => editStream(row.original)}
-            disabled={row.original.m3u_account}
-          >
-            <EditIcon fontSize="small" /> {/* Small icon size */}
-          </IconButton>
-        </Tooltip>
+          <EditIcon fontSize="small" />
+        </IconButton>
         <IconButton
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
           onClick={() => deleteStream(row.original.id)}
+          sx={{ p: 0 }}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <DeleteIcon fontSize="small" />
         </IconButton>
         <IconButton
           size="small" // Makes the button smaller
           color="success" // Red color for delete actions
           onClick={() => createChannelFromStream(row.original)}
+          sx={{ p: 0 }}
         >
-          <AddIcon fontSize="small" /> {/* Small icon size */}
+          <AddIcon fontSize="small" />
         </IconButton>
       </>
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 90px)', // Subtract padding to avoid cutoff
+        height: 'calc(100vh - 75px)', // Subtract padding to avoid cutoff
         overflowY: 'auto', // Internal scrolling for the table
       },
     },
@@ -199,6 +195,7 @@ const Example = () => {
         <Button
           variant="contained"
           onClick={createChannelsFromStreams}
+          size="small"
           // disabled={rowSelection.length === 0}
           sx={{
             marginLeft: 1,

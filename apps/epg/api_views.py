@@ -50,8 +50,10 @@ class EPGGridAPIView(APIView):
         responses={200: ProgramDataSerializer(many=True)}
     )
     def get(self, request, format=None):
-        now = timezone.now()
-        twelve_hours_later = now + timedelta(hours=12)
+        # Get current date and reset time to midnight (00:00)
+        now = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        twelve_hours_later = now + timedelta(hours=24)
         logger.debug(f"EPGGridAPIView: Querying programs between {now} and {twelve_hours_later}.")
         # Use select_related to prefetch EPGData and Channel data
         programs = ProgramData.objects.select_related('epg__channel').filter(
