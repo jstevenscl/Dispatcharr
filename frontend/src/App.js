@@ -11,9 +11,6 @@ import Channels from './pages/Channels';
 import M3U from './pages/M3U';
 import { ThemeProvider } from '@mui/material/styles'; // Import theme tools
 import {
-  AppBar,
-  Toolbar,
-  Typography,
   Box,
   CssBaseline,
   Drawer,
@@ -25,10 +22,10 @@ import {
 } from '@mui/material';
 import theme from './theme';
 import EPG from './pages/EPG';
-import Guide from './pages/Guide';
+// import Guide from './pages/Guide';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
-import API from './api';
+import logo from './images/logo.png';
 
 const drawerWidth = 240;
 const miniDrawerWidth = 60;
@@ -104,7 +101,7 @@ const App = () => {
                   pb: 0,
                 }}
               >
-                <img src="/images/logo.png" width="33x" />
+                <img src={logo} width="33x" />
                 {open && (
                   <ListItemText primary="Dispatcharr" sx={{ paddingLeft: 3 }} />
                 )}
@@ -153,7 +150,7 @@ const App = () => {
                     path="/stream-profiles"
                     element={<StreamProfiles />}
                   />
-                  <Route exact path="/guide" element={<Guide />} />
+                  {/* <Route exact path="/guide" element={<Guide />} /> */}
                 </>
               ) : (
                 <Route path="/login" element={<Login />} />

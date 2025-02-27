@@ -28,6 +28,7 @@ import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import { ContentCopy } from '@mui/icons-material';
+import logo from '../../images/logo.png';
 
 const Example = () => {
   const [channel, setChannel] = useState(null);
@@ -71,7 +72,7 @@ const Example = () => {
               alignItems: 'center',
             }}
           >
-            <img src={info.getValue() || '/images/logo.png'} width="20" />
+            <img src={info.getValue() || logo} width="20" />
           </Grid2>
         ),
         meta: {
@@ -175,7 +176,6 @@ const Example = () => {
     ...TableHelper.defaultProperties,
     columns,
     data: channels,
-    // enableGlobalFilterModes: true,
     enablePagination: false,
     // enableRowNumbers: true,
     enableRowVirtualization: true,
@@ -194,13 +194,14 @@ const Example = () => {
     },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
-      <>
+      <Box sx={{ justifyContent: 'right' }}>
         <IconButton
           size="small" // Makes the button smaller
           color="warning" // Red color for delete actions
           onClick={() => {
             editChannel(row.original);
           }}
+          sx={{ p: 0 }}
         >
           <EditIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
@@ -208,10 +209,11 @@ const Example = () => {
           size="small" // Makes the button smaller
           color="error" // Red color for delete actions
           onClick={() => deleteChannel(row.original.id)}
+          sx={{ p: 0 }}
         >
           <DeleteIcon fontSize="small" /> {/* Small icon size */}
         </IconButton>
-      </>
+      </Box>
     ),
     muiTableContainerProps: {
       sx: {
@@ -266,13 +268,13 @@ const Example = () => {
             marginLeft: 1,
           }}
         >
-          <Button variant="contained" onClick={copyHDHRUrl}>
+          <Button variant="contained" size="small" onClick={copyHDHRUrl}>
             HDHR URL
           </Button>
-          <Button variant="contained" onClick={copyM3UUrl}>
+          <Button variant="contained" size="small" onClick={copyM3UUrl}>
             M3U URL
           </Button>
-          <Button variant="contained" onClick={copyEPGUrl}>
+          <Button variant="contained" size="small" onClick={copyEPGUrl}>
             EPG
           </Button>
         </ButtonGroup>

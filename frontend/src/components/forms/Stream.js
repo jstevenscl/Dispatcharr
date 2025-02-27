@@ -31,7 +31,7 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
       url: Yup.string().required('URL is required').min(0),
-      stream_profile_id: Yup.string().required('Stream profile is required'),
+      // stream_profile_id: Yup.string().required('Stream profile is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (stream?.id) {
