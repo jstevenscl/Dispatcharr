@@ -93,7 +93,15 @@ REST_FRAMEWORK = {
     ],
 }
 
-
+SWAGGER_SETTINGS = {
+   'SECURITY_DEFINITIONS': {
+      'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header'
+      }
+   }
+}
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
