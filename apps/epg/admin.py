@@ -9,11 +9,11 @@ class EPGSourceAdmin(admin.ModelAdmin):
 
 @admin.register(ProgramData)
 class ProgramAdmin(admin.ModelAdmin):
-    list_display = ['title', 'get_channel_tvg_id', 'start_time', 'end_time']
-    list_filter = ['epg__channel', 'tvg_id']  # updated here
-    search_fields = ['title', 'epg__channel__channel_name']  # updated here
+    list_display = ['title', 'get_epg_tvg_id', 'start_time', 'end_time']
+    list_filter = ['epg__tvg_id', 'tvg_id']
+    search_fields = ['title', 'epg__channel_name']
 
-    def get_channel_tvg_id(self, obj):
-        return obj.epg.channel.tvg_id if obj.epg and obj.epg.channel else ''
-    get_channel_tvg_id.short_description = 'Channel TVG ID'
-    get_channel_tvg_id.admin_order_field = 'epg__channel__tvg_id'
+    def get_epg_tvg_id(self, obj):
+        return obj.epg.tvg_id if obj.epg else ''
+    get_epg_tvg_id.short_description = 'Channel TVG ID'
+    get_epg_tvg_id.admin_order_field = 'epg__tvg_id'

@@ -1,7 +1,6 @@
 import logging
 from celery import shared_task
 from .models import EPGSource, EPGData, ProgramData
-from apps.channels.models import Channel
 from django.utils import timezone
 import requests
 import xml.etree.ElementTree as ET
@@ -33,43 +32,36 @@ def fetch_xmltv(source):
         root = ET.fromstring(response.content)
         logger.debug("Parsed XMLTV XML content.")
 
-        # Group programmes by channel tvg_id
+        # Group programmes by their tvg_id from the XMLTV file
         programmes_by_channel = {}
         for programme in root.findall('programme'):
             start_time = parse_xmltv_time(programme.get('start'))
             stop_time = parse_xmltv_time(programme.get('stop'))
-            channel_tvg_id = programme.get('channel')
+            tvg_id = programme.get('channel')
             title = programme.findtext('title', default='No Title')
             desc = programme.findtext('desc', default='')
 
-            programmes_by_channel.setdefault(channel_tvg_id, []).append({
+            programmes_by_channel.setdefault(tvg_id, []).append({
                 'start_time': start_time,
                 'end_time': stop_time,
                 'title': title,
                 'description': desc,
-                'tvg_id': channel_tvg_id,
+                'tvg_id': tvg_id,
             })
 
-        # Process each channel group
+        # Process each group regardless of channel existence.
         for tvg_id, programmes in programmes_by_channel.items():
-            try:
-                channel = Channel.objects.get(tvg_id=tvg_id)
-                logger.debug(f"Found Channel: {channel}")
-            except Channel.DoesNotExist:
-                logger.warning(f"No channel found for tvg_id '{tvg_id}'. Skipping programmes.")
-                continue
-
-            # Get or create the EPGData record for the channel
+            # Create (or get) an EPGData record using the tvg_id.
             epg_data, created = EPGData.objects.get_or_create(
-                channel=channel,
-                defaults={'channel_name': channel.channel_name}
+                tvg_id=tvg_id,
+                defaults={'channel_name': tvg_id}  # Use tvg_id as a fallback name
             )
-            if not created and epg_data.channel_name != channel.channel_name:
-                epg_data.channel_name = channel.channel_name
-                epg_data.save(update_fields=['channel_name'])
+            if created:
+                logger.info(f"Created new EPGData for tvg_id '{tvg_id}'.")
+            else:
+                logger.debug(f"Found existing EPGData for tvg_id '{tvg_id}'.")
 
-            logger.info(f"Processing {len(programmes)} programme(s) for channel '{channel.channel_name}'.")
-            # For each programme, update or create a ProgramData record
+            logger.info(f"Processing {len(programmes)} programme(s) for tvg_id '{tvg_id}'.")
             with transaction.atomic():
                 for prog in programmes:
                     obj, created = ProgramData.objects.update_or_create(
@@ -84,16 +76,16 @@ def fetch_xmltv(source):
                         }
                     )
                     if created:
-                        logger.info(f"Created ProgramData '{prog['title']}' for channel '{channel.channel_name}'.")
+                        logger.info(f"Created ProgramData '{prog['title']}' for tvg_id '{tvg_id}'.")
                     else:
-                        logger.info(f"Updated ProgramData '{prog['title']}' for channel '{channel.channel_name}'.")
+                        logger.info(f"Updated ProgramData '{prog['title']}' for tvg_id '{tvg_id}'.")
     except Exception as e:
         logger.error(f"Error fetching XMLTV from {source.name}: {e}", exc_info=True)
 
 def fetch_schedules_direct(source):
     logger.info(f"Fetching Schedules Direct data from source: {source.name}")
     try:
-        # NOTE: You need to provide the correct api_url for Schedules Direct.
+        # NOTE: Provide the correct api_url for Schedules Direct.
         api_url = ''
         headers = {
             'Content-Type': 'application/json',
@@ -106,30 +98,24 @@ def fetch_schedules_direct(source):
         logger.debug(f"Fetched subscriptions: {subscriptions}")
 
         for sub in subscriptions:
-            channel_tvg_id = sub.get('stationID')
-            logger.debug(f"Processing subscription for tvg_id: {channel_tvg_id}")
-            schedules_url = f"/schedules/{channel_tvg_id}"
+            tvg_id = sub.get('stationID')
+            logger.debug(f"Processing subscription for tvg_id: {tvg_id}")
+            schedules_url = f"/schedules/{tvg_id}"
             logger.debug(f"Requesting schedules from URL: {schedules_url}")
             sched_response = requests.get(schedules_url, headers=headers, timeout=30)
             sched_response.raise_for_status()
             schedules = sched_response.json()
             logger.debug(f"Fetched schedules: {schedules}")
 
-            try:
-                channel = Channel.objects.get(tvg_id=channel_tvg_id)
-                logger.debug(f"Found Channel: {channel}")
-            except Channel.DoesNotExist:
-                logger.warning(f"No channel found for tvg_id '{channel_tvg_id}'. Skipping subscription.")
-                continue
-
-            # Get or create the EPGData record for the channel
+            # Create (or get) an EPGData record using the tvg_id.
             epg_data, created = EPGData.objects.get_or_create(
-                channel=channel,
-                defaults={'channel_name': channel.channel_name}
+                tvg_id=tvg_id,
+                defaults={'channel_name': tvg_id}
             )
-            if not created and epg_data.channel_name != channel.channel_name:
-                epg_data.channel_name = channel.channel_name
-                epg_data.save(update_fields=['channel_name'])
+            if created:
+                logger.info(f"Created new EPGData for tvg_id '{tvg_id}'.")
+            else:
+                logger.debug(f"Found existing EPGData for tvg_id '{tvg_id}'.")
 
             for sched in schedules.get('schedules', []):
                 title = sched.get('title', 'No Title')
@@ -147,9 +133,9 @@ def fetch_schedules_direct(source):
                     }
                 )
                 if created:
-                    logger.info(f"Created ProgramData '{title}' for channel '{channel.channel_name}'.")
+                    logger.info(f"Created ProgramData '{title}' for tvg_id '{tvg_id}'.")
                 else:
-                    logger.info(f"Updated ProgramData '{title}' for channel '{channel.channel_name}'.")
+                    logger.info(f"Updated ProgramData '{title}' for tvg_id '{tvg_id}'.")
     except Exception as e:
         logger.error(f"Error fetching Schedules Direct data from {source.name}: {e}", exc_info=True)
 
@@ -163,7 +149,6 @@ def parse_xmltv_time(time_str):
             dt_obj = dt_obj - timedelta(hours=tz_hours, minutes=tz_minutes)
         elif tz_sign == '-':
             dt_obj = dt_obj + timedelta(hours=tz_hours, minutes=tz_minutes)
-        # Make the datetime aware with UTC using the imported dt_timezone
         aware_dt = timezone.make_aware(dt_obj, timezone=dt_timezone.utc)
         logger.debug(f"Parsed XMLTV time '{time_str}' to {aware_dt}")
         return aware_dt
