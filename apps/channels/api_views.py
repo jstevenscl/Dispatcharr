@@ -46,6 +46,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
     serializer_class = ChannelSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_next_available_channel_number(self, starting_from=1):
+        used_numbers = set(Channel.objects.all().values_list('channel_number', flat=True))
+        n = starting_from
+        while n in used_numbers:
+            n += 1
+        return n
+
     @swagger_auto_schema(
         method='post',
         operation_description="Auto-assign channel_number in bulk by an ordered list of channel IDs.",
@@ -72,18 +79,20 @@ class ChannelViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='post',
         operation_description=(
-            "Create a new channel from an existing stream.\n"
-            "Request body must contain: 'stream_id', 'channel_number', 'channel_name'."
+            "Create a new channel from an existing stream. "
+            "If 'channel_number' is provided, it will be used (if available); "
+            "otherwise, the next available channel number is assigned."
         ),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["stream_id", "channel_number", "channel_name"],
+            required=["stream_id", "channel_name"],
             properties={
                 "stream_id": openapi.Schema(
                     type=openapi.TYPE_INTEGER, description="ID of the stream to link"
                 ),
                 "channel_number": openapi.Schema(
-                    type=openapi.TYPE_INTEGER, description="Desired channel_number"
+                    type=openapi.TYPE_INTEGER,
+                    description="(Optional) Desired channel number. Must not be in use."
                 ),
                 "channel_name": openapi.Schema(
                     type=openapi.TYPE_STRING, description="Desired channel name"
@@ -98,36 +107,55 @@ class ChannelViewSet(viewsets.ModelViewSet):
         if not stream_id:
             return Response({"error": "Missing stream_id"}, status=status.HTTP_400_BAD_REQUEST)
         stream = get_object_or_404(Stream, pk=stream_id)
-        # Create a channel group from the stream group name if it doesn't exist
         channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
+        
+        # Check if client provided a channel_number; if not, auto-assign one.
+        provided_number = request.data.get('channel_number')
+        if provided_number is None:
+            channel_number = self.get_next_available_channel_number()
+        else:
+            try:
+                channel_number = int(provided_number)
+            except ValueError:
+                return Response({"error": "channel_number must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+            # If the provided number is already used, return an error.
+            if Channel.objects.filter(channel_number=channel_number).exists():
+                return Response(
+                    {"error": f"Channel number {channel_number} is already in use. Please choose a different number."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
         channel_data = {
-            'channel_number': request.data.get('channel_number', 0),
+            'channel_number': channel_number,
             'channel_name': request.data.get('channel_name', f"Channel from {stream.name}"),
-            'tvg_id': stream.tvg_id,  # Inherit tvg-id from the stream
+            'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
         }
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
         channel = serializer.save()
-        # Attach the stream to the channel
         channel.streams.add(stream)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @swagger_auto_schema(
         method='post',
-        operation_description="Bulk create channels from existing streams. "
-                              "Request body should be an array of objects with 'stream_id', 'channel_number', and 'channel_name'.",
+        operation_description=(
+            "Bulk create channels from existing streams. For each object, if 'channel_number' is provided, "
+            "it is used (if available); otherwise, the next available number is auto-assigned. "
+            "Each object must include 'stream_id' and 'channel_name'."
+        ),
         request_body=openapi.Schema(
             type=openapi.TYPE_ARRAY,
             items=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
-                required=["stream_id", "channel_number", "channel_name"],
+                required=["stream_id", "channel_name"],
                 properties={
                     "stream_id": openapi.Schema(
                         type=openapi.TYPE_INTEGER, description="ID of the stream to link"
                     ),
                     "channel_number": openapi.Schema(
-                        type=openapi.TYPE_INTEGER, description="Desired channel_number"
+                        type=openapi.TYPE_INTEGER,
+                        description="(Optional) Desired channel number. Must not be in use."
                     ),
                     "channel_name": openapi.Schema(
                         type=openapi.TYPE_STRING, description="Desired channel name"
@@ -145,12 +173,22 @@ class ChannelViewSet(viewsets.ModelViewSet):
         
         created_channels = []
         errors = []
+        
+        # Gather current used numbers once.
+        used_numbers = set(Channel.objects.all().values_list('channel_number', flat=True))
+        next_number = 1
+        def get_auto_number():
+            nonlocal next_number
+            while next_number in used_numbers:
+                next_number += 1
+            used_numbers.add(next_number)
+            return next_number
+        
         for item in data_list:
             stream_id = item.get('stream_id')
-            channel_number = item.get('channel_number')
             channel_name = item.get('channel_name')
-            if not all([stream_id, channel_number, channel_name]):
-                errors.append({"item": item, "error": "Missing required fields"})
+            if not all([stream_id, channel_name]):
+                errors.append({"item": item, "error": "Missing required fields: stream_id and channel_name are required."})
                 continue
 
             try:
@@ -159,13 +197,28 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 errors.append({"item": item, "error": str(e)})
                 continue
 
-            # Create or get the channel group based on the stream's group name
             channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
+            
+            # Determine channel number: if provided, use it (if free); else auto assign.
+            provided_number = item.get('channel_number')
+            if provided_number is None:
+                channel_number = get_auto_number()
+            else:
+                try:
+                    channel_number = int(provided_number)
+                except ValueError:
+                    errors.append({"item": item, "error": "channel_number must be an integer."})
+                    continue
+                if channel_number in used_numbers or Channel.objects.filter(channel_number=channel_number).exists():
+                    errors.append({"item": item, "error": f"Channel number {channel_number} is already in use."})
+                    continue
+                used_numbers.add(channel_number)
+            
             channel_data = {
                 "channel_number": channel_number,
                 "channel_name": channel_name,
                 "tvg_id": stream.tvg_id,
-                "channel_group_id": channel_group.id if channel_group else None,
+                "channel_group_id": channel_group.id,
             }
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
