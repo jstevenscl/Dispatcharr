@@ -25,7 +25,7 @@ export default {
       sx: {
         //stripe the rows, make odd rows a darker color
         '& tr:nth-of-type(odd) > td': {
-          backgroundColor: '#f5f5f5',
+          // backgroundColor: '#f5f5f5',
         },
       },
     },

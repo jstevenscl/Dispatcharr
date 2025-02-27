@@ -2,6 +2,7 @@ import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
   palette: {
+    mode: 'dark',
     primary: {
       main: '#495057',
       contrastText: '#ffffff', // Ensure text is visible on primary color
