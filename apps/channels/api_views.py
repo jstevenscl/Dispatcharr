@@ -108,7 +108,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             return Response({"error": "Missing stream_id"}, status=status.HTTP_400_BAD_REQUEST)
         stream = get_object_or_404(Stream, pk=stream_id)
         channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
-        
+
         # Check if client provided a channel_number; if not, auto-assign one.
         provided_number = request.data.get('channel_number')
         if provided_number is None:
@@ -124,12 +124,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     {"error": f"Channel number {channel_number} is already in use. Please choose a different number."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+
         channel_data = {
             'channel_number': channel_number,
             'channel_name': request.data.get('channel_name', f"Channel from {stream.name}"),
             'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
+            'logo_url': stream.logo_url,
         }
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
@@ -170,10 +171,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
         data_list = request.data
         if not isinstance(data_list, list):
             return Response({"error": "Expected a list of channel objects"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         created_channels = []
         errors = []
-        
+
         # Gather current used numbers once.
         used_numbers = set(Channel.objects.all().values_list('channel_number', flat=True))
         next_number = 1
@@ -183,7 +184,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 next_number += 1
             used_numbers.add(next_number)
             return next_number
-        
+
         for item in data_list:
             stream_id = item.get('stream_id')
             channel_name = item.get('channel_name')
@@ -198,7 +199,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 continue
 
             channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
-            
+
             # Determine channel number: if provided, use it (if free); else auto assign.
             provided_number = item.get('channel_number')
             if provided_number is None:
@@ -213,12 +214,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     errors.append({"item": item, "error": f"Channel number {channel_number} is already in use."})
                     continue
                 used_numbers.add(channel_number)
-            
+
             channel_data = {
                 "channel_number": channel_number,
                 "channel_name": channel_name,
                 "tvg_id": stream.tvg_id,
                 "channel_group_id": channel_group.id,
+                "logo_url": stream.logo_url,
             }
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
@@ -227,7 +229,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 created_channels.append(serializer.data)
             else:
                 errors.append({"item": item, "error": serializer.errors})
-        
+
         response_data = {"created": created_channels}
         if errors:
             response_data["errors"] = errors
