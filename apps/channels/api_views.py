@@ -22,15 +22,12 @@ class StreamViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         # Exclude streams from inactive M3U accounts
         qs = qs.exclude(m3u_account__is_active=False)
-
         assigned = self.request.query_params.get('assigned')
         if assigned is not None:
             qs = qs.filter(channels__id=assigned)
-
         unassigned = self.request.query_params.get('unassigned')
         if unassigned == '1':
             qs = qs.filter(channels__isnull=True)
-
         return qs
 
 # ─────────────────────────────────────────────────────────
@@ -101,13 +98,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
         if not stream_id:
             return Response({"error": "Missing stream_id"}, status=status.HTTP_400_BAD_REQUEST)
         stream = get_object_or_404(Stream, pk=stream_id)
-
-        # Create a channel group from the stream group name if it doesn't already exist
-        channel_group, created = ChannelGroup.objects.get_or_create(
-            name=stream.group_name
-        )
-
-        # Include the stream's tvg_id in the channel data
+        # Create a channel group from the stream group name if it doesn't exist
+        channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
         channel_data = {
             'channel_number': request.data.get('channel_number', 0),
             'channel_name': request.data.get('channel_name', f"Channel from {stream.name}"),
@@ -117,10 +109,77 @@ class ChannelViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
         channel = serializer.save()
-
-        # Optionally attach the stream to the channel
+        # Attach the stream to the channel
         channel.streams.add(stream)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @swagger_auto_schema(
+        method='post',
+        operation_description="Bulk create channels from existing streams. "
+                              "Request body should be an array of objects with 'stream_id', 'channel_number', and 'channel_name'.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                required=["stream_id", "channel_number", "channel_name"],
+                properties={
+                    "stream_id": openapi.Schema(
+                        type=openapi.TYPE_INTEGER, description="ID of the stream to link"
+                    ),
+                    "channel_number": openapi.Schema(
+                        type=openapi.TYPE_INTEGER, description="Desired channel_number"
+                    ),
+                    "channel_name": openapi.Schema(
+                        type=openapi.TYPE_STRING, description="Desired channel name"
+                    )
+                }
+            )
+        ),
+        responses={201: "Bulk channels created"}
+    )
+    @action(detail=False, methods=['post'], url_path='from-stream/bulk')
+    def from_stream_bulk(self, request):
+        data_list = request.data
+        if not isinstance(data_list, list):
+            return Response({"error": "Expected a list of channel objects"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        created_channels = []
+        errors = []
+        for item in data_list:
+            stream_id = item.get('stream_id')
+            channel_number = item.get('channel_number')
+            channel_name = item.get('channel_name')
+            if not all([stream_id, channel_number, channel_name]):
+                errors.append({"item": item, "error": "Missing required fields"})
+                continue
+
+            try:
+                stream = get_object_or_404(Stream, pk=stream_id)
+            except Exception as e:
+                errors.append({"item": item, "error": str(e)})
+                continue
+
+            # Create or get the channel group based on the stream's group name
+            channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
+            channel_data = {
+                "channel_number": channel_number,
+                "channel_name": channel_name,
+                "tvg_id": stream.tvg_id,
+                "channel_group_id": channel_group.id if channel_group else None,
+            }
+            serializer = self.get_serializer(data=channel_data)
+            if serializer.is_valid():
+                channel = serializer.save()
+                channel.streams.add(stream)
+                created_channels.append(serializer.data)
+            else:
+                errors.append({"item": item, "error": serializer.errors})
+        
+        response_data = {"created": created_channels}
+        if errors:
+            response_data["errors"] = errors
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams
