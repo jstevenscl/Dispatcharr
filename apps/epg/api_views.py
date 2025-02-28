@@ -7,7 +7,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.utils import timezone
 from datetime import timedelta
-from .models import EPGSource, ProgramData  # Updated: use ProgramData instead of Program
+from .models import EPGSource, ProgramData  # Using ProgramData
 from .serializers import ProgramDataSerializer, EPGSourceSerializer  # Updated serializer
 from .tasks import refresh_epg_data
 
@@ -31,8 +31,8 @@ class EPGSourceViewSet(viewsets.ModelViewSet):
 # ─────────────────────────────
 class ProgramViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for EPG programs"""
-    queryset = ProgramData.objects.all()  # Updated to ProgramData
-    serializer_class = ProgramDataSerializer  # Updated serializer
+    queryset = ProgramData.objects.all()
+    serializer_class = ProgramDataSerializer
     permission_classes = [IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
@@ -52,11 +52,10 @@ class EPGGridAPIView(APIView):
     def get(self, request, format=None):
         # Get current date and reset time to midnight (00:00)
         now = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
         twelve_hours_later = now + timedelta(hours=24)
         logger.debug(f"EPGGridAPIView: Querying programs between {now} and {twelve_hours_later}.")
-        # Use select_related to prefetch EPGData and Channel data
-        programs = ProgramData.objects.select_related('epg__channel').filter(
+        # Use select_related to prefetch EPGData (no channel relation now)
+        programs = ProgramData.objects.select_related('epg').filter(
             start_time__gte=now, start_time__lte=twelve_hours_later
         )
         count = programs.count()
