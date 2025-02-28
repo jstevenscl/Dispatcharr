@@ -1,0 +1,627 @@
+"""
+HLS Proxy Server with Advanced Stream Switching Support
+This proxy handles HLS live streams with support for:
+- Stream switching with proper discontinuity handling
+- Buffer management
+- Segment validation
+- Connection pooling and reuse
+"""
+
+from flask import Flask, Response, request, jsonify
+import requests
+import threading
+import logging
+import m3u8
+import time
+from urllib.parse import urlparse, urljoin
+import argparse
+from typing import Optional
+import sys
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Global state management
+manifest_buffer = None  # Stores current manifest content
+segment_buffers = {}   # Maps sequence numbers to segment data
+buffer_lock = threading.Lock()  # Synchronizes access to buffers
+
+class Config:
+    """Configuration settings for stream handling and buffering"""
+    # Buffer size settings
+    MIN_SEGMENTS = 12          # Minimum segments to maintain
+    MAX_SEGMENTS = 16          # Maximum segments to store
+    WINDOW_SIZE = 12          # Number of segments in manifest window
+    INITIAL_SEGMENTS = 3       # Initial segments to buffer before playback
+
+class StreamFetcher:
+    """Handles HTTP requests for stream segments with connection pooling"""
+    def __init__(self, stream_url):
+        self.stream_url = stream_url
+        self.session = requests.Session()
+        
+        # Set up connection pooling
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=2,    # Number of connection pools
+            pool_maxsize=4,       # Connections per pool
+            max_retries=3,        # Auto-retry failed requests
+            pool_block=False      # Don't block when pool is full
+        )
+        
+        # Apply adapter to both HTTP and HTTPS
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+        
+        # Request optimization
+        self.last_request_time = 0
+        self.min_request_interval = 0.05  # Minimum time between requests
+        self.last_host = None            # Cache last successful host
+        self.redirect_cache = {}         # Cache redirect responses
+
+    def get_base_host(self, url):
+        """Extract base host from URL using urlparse"""
+        try:
+            parsed = urlparse(url)
+            return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception as e:
+            logging.error(f"Error extracting base host: {e}")
+            return url
+    
+    def download(self, url):
+        """Download content with connection reuse"""
+        now = time.time()
+        wait_time = self.last_request_time + self.min_request_interval - now
+        if (wait_time > 0):
+            time.sleep(wait_time)
+            
+        try:
+            # Use cached redirect if available
+            if url in self.redirect_cache:
+                logging.debug(f"Using cached redirect for {url}")
+                final_url = self.redirect_cache[url]
+                response = self.session.get(final_url, timeout=10)
+            else:
+                response = self.session.get(url, allow_redirects=True, timeout=10)
+                if response.history:  # Cache redirects
+                    logging.debug(f"Caching redirect for {url} -> {response.url}")
+                    self.redirect_cache[url] = response.url
+                    
+            self.last_request_time = time.time()
+            
+            if response.status_code == 200:
+                self.last_host = self.get_base_host(response.url)
+            
+            return response.content, response.url
+            
+        except Exception as e:
+            logging.error(f"Download error: {e}")
+            if self.last_host and not url.startswith(self.last_host):
+                # Use urljoin to handle path resolution
+                new_url = urljoin(self.last_host + '/', url.split('://')[-1].split('/', 1)[-1])
+                logging.debug(f"Retrying with last host: {new_url}")
+                return self.download(new_url)
+            raise
+
+def analyze_ts_packet(data: bytes) -> dict:
+    """
+    Analyze a single MPEG-TS packet (188 bytes)
+    
+    Args:
+        data: Raw packet bytes
+        
+    Returns:
+        dict with packet analysis:
+            - sync_valid: True if sync byte is 0x47
+            - transport_error: True if TEI bit is set
+            - payload_start: True if PUSI bit is set
+            - pid: Packet ID (13 bits)
+            - hex_dump: First 16 bytes for debugging
+    """
+    # Validate minimum packet size
+    if len(data) < 188:
+        return {
+            'sync_valid': False,
+            'transport_error': True,
+            'payload_start': False,
+            'pid': 0,
+            'error': 'Packet too short'
+        }
+        
+    # Verify sync byte (0x47)
+    if data[0] != 0x47:
+        return {
+            'sync_valid': False,
+            'transport_error': True,
+            'payload_start': False,
+            'pid': 0,
+            'error': 'Invalid sync byte'
+        }
+        
+    # Extract packet header fields
+    transport_error = (data[1] & 0x80) != 0  # Transport Error Indicator
+    payload_start = (data[1] & 0x40) != 0    # Payload Unit Start Indicator
+    pid = ((data[1] & 0x1F) << 8) | data[2]  # Packet ID (13 bits)
+    
+    # Create hex dump for debugging
+    hex_dump = ' '.join(f'{b:02x}' for b in data[:16])
+    
+    return {
+        'sync_valid': True,
+        'transport_error': transport_error,
+        'payload_start': payload_start,
+        'pid': pid,
+        'hex_dump': hex_dump,
+        'packet_size': len(data)
+    }
+
+def get_segment_sequence(segment_uri: str) -> Optional[int]:
+    """
+    Extract sequence number from segment URI
+    
+    Args:
+        segment_uri: Segment filename or path
+        
+    Returns:
+        int: Sequence number if found
+        None: If no sequence can be extracted
+    """
+    try:
+        # Try numerical sequence (e.g., 1038_3693.ts)
+        if '_' in segment_uri:
+            return int(segment_uri.split('_')[-1].split('.')[0])
+        return None
+    except ValueError:
+        return None
+
+# Update verify_segment with more thorough checks
+def verify_segment(data: bytes) -> dict:
+    """
+    Verify MPEG-TS segment integrity
+    
+    Args:
+        data: Raw segment bytes
+        
+    Returns:
+        dict with verification results:
+            - valid: True if segment passes all checks
+            - packets: Number of valid packets found
+            - size: Total segment size in bytes
+            - error: Description if validation fails
+    """
+    # Check minimum size
+    if len(data) < 188:
+        return {'valid': False, 'error': 'Segment too short'}
+        
+    # Verify segment size is multiple of packet size
+    if len(data) % 188 != 0:
+        return {'valid': False, 'error': 'Invalid segment size'}
+    
+    valid_packets = 0
+    total_packets = len(data) // 188
+    
+    # Scan all packets in segment
+    for i in range(0, len(data), 188):
+        packet = data[i:i+188]
+        
+        # Check packet completeness
+        if len(packet) != 188:
+            return {'valid': False, 'error': 'Incomplete packet'}
+            
+        # Verify sync byte
+        if packet[0] != 0x47:
+            return {'valid': False, 'error': f'Invalid sync byte at offset {i}'}
+            
+        # Check transport error indicator
+        if packet[1] & 0x80:
+            return {'valid': False, 'error': 'Transport error indicator set'}
+            
+        valid_packets += 1
+    
+    return {
+        'valid': True,
+        'packets': valid_packets,
+        'size': len(data)
+    }
+
+class StreamManager:
+    """Manages HLS stream state and switching logic"""
+    def __init__(self, initial_url: str):
+        # Stream state
+        self.current_url = initial_url
+        self.running = True
+        self.switching_stream = False
+        
+        # Sequence tracking
+        self.next_sequence = 0
+        self.highest_sequence = 0
+        self.buffered_sequences = set()
+        self.downloaded_sources = {}
+        self.segment_durations = {}
+        
+        # Source tracking
+        self.current_source = None
+        self.source_changes = set()
+        self.stream_switch_count = 0
+        
+        # Threading
+        self.fetcher = None
+        self.fetch_thread = None
+        self.url_changed = threading.Event()
+        
+    def update_url(self, new_url: str) -> bool:
+        """Handle stream URL changes with proper discontinuity marking"""
+        if new_url != self.current_url:
+            with buffer_lock:
+                self.switching_stream = True
+                self.current_url = new_url
+                
+                # Set sequence numbers for stream switch
+                if segment_buffers:
+                    self.highest_sequence = max(segment_buffers.keys())
+                    self.next_sequence = self.highest_sequence + 1
+                    # Mark discontinuity at first segment of new stream
+                    self.source_changes = {self.next_sequence + 1}
+                else:
+                    self.stream_switch_count += 1
+                    self.next_sequence = self.stream_switch_count * 1000
+                    self.source_changes = {self.next_sequence}
+                
+                logging.info(f"Stream switch - next sequence will start at {self.next_sequence}")
+                
+                # Clear state but maintain sequence numbers
+                self.downloaded_sources.clear()
+                self.segment_durations.clear()
+                self.current_source = None
+                
+                # Signal thread to switch URL
+                self.url_changed.set()
+                
+            return True
+        return False
+
+    def get_next_sequence(self, source_id):
+        """Assign sequence numbers to segments with source change detection"""
+        if source_id in self.downloaded_sources:
+            return None
+            
+        seq = self.next_sequence
+        while seq in self.buffered_sequences:
+            seq += 1
+        
+        # Track source changes for discontinuity markers
+        source_prefix = source_id.split('_')[0]
+        if not self.switching_stream and self.current_source and self.current_source != source_prefix:
+            self.source_changes.add(seq)
+            logging.debug(f"Source change detected at sequence {seq}")
+        self.current_source = source_prefix
+            
+        # Update tracking
+        self.downloaded_sources[source_id] = seq
+        self.buffered_sequences.add(seq)
+        self.next_sequence = seq + 1
+        self.highest_sequence = max(self.highest_sequence, seq)
+        
+        return seq
+
+    def _fetch_loop(self):
+        """Background thread for continuous stream fetching"""
+        while self.running:
+            try:
+                self.fetcher = StreamFetcher(self.current_url)
+                fetch_stream(self.fetcher, self.url_changed, self.next_sequence)
+            except Exception as e:
+                logging.error(f"Stream error: {e}")
+                time.sleep(5)  # Wait before retry
+            
+            self.url_changed.clear()
+
+    def start(self):
+        """Start the background fetch thread"""
+        if not self.fetch_thread or not self.fetch_thread.is_alive():
+            self.running = True
+            self.fetch_thread = threading.Thread(
+                target=self._fetch_loop,
+                name="StreamFetcher",
+                daemon=True  # Thread will exit when main program does
+            )
+            self.fetch_thread.start()
+            logging.info("Stream manager started")
+
+    def stop(self):
+        """Stop the background fetch thread"""
+        self.running = False
+        if self.fetch_thread and self.fetch_thread.is_alive():
+            self.url_changed.set()  # Signal thread to exit
+            self.fetch_thread.join(timeout=5)  # Wait up to 5 seconds
+            logging.info("Stream manager stopped")
+
+def fetch_stream(fetcher: StreamFetcher, stop_event: threading.Event, start_sequence: int = 0):
+    global manifest_buffer, segment_buffers
+    retry_delay = 1
+    max_retry_delay = 8
+    last_segment_time = 0
+    buffer_initialized = False
+    manifest_update_needed = True
+    segment_duration = None
+
+    while not stop_event.is_set():
+        try:
+            now = time.time()
+            
+            # Only update manifest when it's time for next segment
+            should_update = (
+                manifest_update_needed or 
+                not segment_duration or 
+                (last_segment_time and (now - last_segment_time) >= segment_duration * 0.8)
+            )
+            
+            if should_update:
+                manifest_data, final_url = fetcher.download(fetcher.stream_url)
+                manifest = m3u8.loads(manifest_data.decode())
+                
+                if not manifest.segments:
+                    continue
+                
+                with buffer_lock:
+                    manifest_content = manifest_data.decode()
+                    new_segments = {}
+                    
+                    if stream_manager.switching_stream:
+                        # Stream switch - only get latest segment
+                        manifest_segments = [manifest.segments[-1]]
+                        seq_start = stream_manager.next_sequence
+                        max_segments = 1
+                        logging.debug(f"Processing stream switch - getting latest segment at sequence {seq_start}")
+                    elif not buffer_initialized:
+                        # Initial buffer
+                        manifest_segments = manifest.segments[-Config.INITIAL_SEGMENTS:]
+                        seq_start = stream_manager.next_sequence
+                        max_segments = Config.INITIAL_SEGMENTS
+                        logging.debug(f"Starting initial buffer at sequence {seq_start}")
+                    else:
+                        # Normal operation
+                        manifest_segments = [manifest.segments[-1]]
+                        seq_start = stream_manager.next_sequence
+                        max_segments = 1
+
+                    # Map segments
+                    segments_mapped = 0
+                    for segment in manifest_segments:
+                        if segments_mapped >= max_segments:
+                            break
+                            
+                        source_id = segment.uri.split('/')[-1].split('.')[0]
+                        next_seq = stream_manager.get_next_sequence(source_id)
+                        
+                        if next_seq is not None:
+                            duration = float(segment.duration)
+                            new_segments[next_seq] = {
+                                'uri': segment.uri,
+                                'duration': duration,
+                                'source_id': source_id
+                            }
+                            stream_manager.segment_durations[next_seq] = duration
+                            segments_mapped += 1
+                    
+                    manifest_buffer = manifest_content
+
+                # Download segments
+                for sequence_id, segment_info in new_segments.items():
+                    try:
+                        segment_url = f"{fetcher.last_host}{segment_info['uri']}"
+                        logging.debug(f"Downloading {segment_info['uri']} as segment {sequence_id}.ts "
+                                   f"(source: {segment_info['source_id']}, duration: {segment_info['duration']:.3f}s)")
+                        
+                        segment_data, _ = fetcher.download(segment_url)
+                        validation = verify_segment(segment_data)
+                        
+                        if validation.get('valid', False):
+                            with buffer_lock:
+                                segment_buffers[sequence_id] = segment_data
+                                logging.debug(f"Downloaded and verified segment {sequence_id} (packets: {validation['packets']})")
+                                
+                                if stream_manager.switching_stream:
+                                    stream_manager.switching_stream = False
+                                    stop_event.set()  # Force fetcher restart with new URL
+                                    break
+                                elif not buffer_initialized and len(segment_buffers) >= Config.INITIAL_SEGMENTS:
+                                    buffer_initialized = True
+                                    manifest_update_needed = True
+                                    break
+                    except Exception as e:
+                        logging.error(f"Segment download error: {e}")
+                        continue
+
+            else:
+                # Short sleep to prevent CPU spinning
+                threading.Event().wait(0.1)
+
+        except Exception as e:
+            logging.error(f"Manifest error: {e}")
+            threading.Event().wait(retry_delay)
+            retry_delay = min(retry_delay * 2, max_retry_delay)
+            manifest_update_needed = True
+
+# Flask Routes for HLS Proxy Server
+@app.route('/stream.m3u8')
+def master_playlist():
+    """
+    Serve the HLS master playlist
+    
+    Handles:
+    - Initial buffering state
+    - Ongoing playback with sliding window
+    - Discontinuity markers for stream switches
+    - Dynamic segment durations
+    """
+    with buffer_lock:
+        # Verify buffer state
+        if not manifest_buffer or not segment_buffers:
+            logging.warning("No manifest or segments available yet")
+            return '', 404
+            
+        available = sorted(segment_buffers.keys())
+        if not available:
+            logging.warning("No segments available")
+            return '', 404
+        
+        manifest = m3u8.loads(manifest_buffer)
+        max_seq = max(available)
+        
+        # Calculate window bounds
+        if len(available) <= Config.INITIAL_SEGMENTS:
+            # During initial buffering, show all segments
+            min_seq = min(available)
+        else:
+            # For ongoing playback, maintain sliding window
+            min_seq = max(
+                min(available),
+                max_seq - Config.WINDOW_SIZE + 1
+            )
+        
+        # Build manifest with proper tags
+        new_manifest = ['#EXTM3U']
+        new_manifest.append('#EXT-X-VERSION:3')
+        new_manifest.append(f'#EXT-X-MEDIA-SEQUENCE:{min_seq}')
+        new_manifest.append(f'#EXT-X-TARGETDURATION:{int(manifest.target_duration)}')
+        
+        # Filter segments within window
+        window_segments = [s for s in available if min_seq <= s <= max_seq]
+        
+        # Add segments with discontinuity handling
+        for seq in window_segments:
+            # Mark stream switches with discontinuity
+            if seq in stream_manager.source_changes:
+                new_manifest.append('#EXT-X-DISCONTINUITY')
+                logging.debug(f"Added discontinuity marker before segment {seq}")
+            
+            # Use actual segment duration or fallback to target
+            duration = stream_manager.segment_durations.get(seq, manifest.target_duration)
+            new_manifest.append(f'#EXTINF:{duration:.3f},')
+            new_manifest.append(f'/segments/{seq}.ts')
+        
+        manifest_content = '\n'.join(new_manifest)
+        logging.debug(f"Serving manifest with segments {min_seq}-{max_seq} (window: {len(window_segments)})")
+        return Response(manifest_content, content_type='application/vnd.apple.mpegurl')
+
+@app.route('/segments/<path:segment_name>')
+def get_segment(segment_name):
+    """
+    Serve individual MPEG-TS segments
+    
+    Args:
+        segment_name: Segment filename (e.g., '123.ts')
+    
+    Returns:
+        MPEG-TS segment data or 404 if not found
+    """
+    try:
+        segment_id = int(segment_name.split('.')[0])
+        with buffer_lock:
+            if segment_id in segment_buffers:
+                available = sorted(segment_buffers.keys())
+                logging.debug(f"Client requested segment {segment_id} (buffer: {min(available)}-{max(available)})")
+                return Response(segment_buffers[segment_id], content_type='video/MP2T')
+            
+            logging.warning(
+                f"Segment {segment_id} not found. "
+                f"Available: {min(segment_buffers.keys()) if segment_buffers else 'none'}"
+                f"-{max(segment_buffers.keys()) if segment_buffers else 'none'}"
+            )
+    except Exception as e:
+        logging.error(f"Error serving segment {segment_name}: {e}")
+    return '', 404
+
+@app.route('/change_stream', methods=['POST'])
+def change_stream():
+    """
+    Handle stream URL changes via HTTP POST
+    
+    Expected JSON body:
+        {"url": "new_stream_url"}
+    
+    Returns:
+        JSON response indicating success/failure
+    """
+    new_url = request.json.get('url')
+    if not new_url:
+        return jsonify({'error': 'No URL provided'}), 400
+        
+    if stream_manager.update_url(new_url):
+        return jsonify({'message': 'Stream URL updated', 'url': new_url})
+    return jsonify({'message': 'URL unchanged', 'url': new_url})
+
+@app.before_request
+def log_request_info():
+    """Log client connections and important requests"""
+    if request.path == '/stream.m3u8' and not segment_buffers:
+        # First manifest request from a client
+        logging.info(f"New client connected from {request.remote_addr}")
+    elif request.path.startswith('/change_stream'):
+        # Keep stream switch requests as INFO
+        logging.info(f"Stream switch requested from {request.remote_addr}")
+    else:
+        # Move routine requests to DEBUG
+        logging.debug(f"{request.remote_addr} - {request.method} {request.path}")
+
+# Configure Werkzeug logger to DEBUG
+logging.getLogger('werkzeug').setLevel(logging.DEBUG)
+
+# Main Application Setup
+if __name__ == '__main__':
+    # Command line argument parsing
+    parser = argparse.ArgumentParser(description='HLS Proxy Server with Stream Switching')
+    parser.add_argument(
+        '--url', '-u',
+        default='http://example.com/stream.m3u8',
+        help='Initial HLS stream URL to proxy'
+    )
+    parser.add_argument(
+        '--port', '-p',
+        type=int,
+        default=5000,
+        help='Local port to serve proxy on (default: 5000)'
+    )
+    parser.add_argument(
+        '--host', '-H',
+        default='0.0.0.0',
+        help='Interface to bind server to (default: all interfaces)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug logging'
+    )
+    args = parser.parse_args()
+
+    # Configure logging with separate format for access logs
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Initialize proxy components
+    try:
+        # Create and start stream manager
+        stream_manager = StreamManager(args.url)
+        stream_manager.start()
+        
+        logging.info(f"Starting HLS proxy server on {args.host}:{args.port}")
+        logging.info(f"Initial stream URL: {args.url}")
+        
+        # Run Flask development server
+        # Note: For production, use a proper WSGI server like gunicorn
+        app.run(
+            host=args.host,
+            port=args.port,
+            threaded=True,  # Enable multi-threading for segment handling
+            debug=args.debug
+        )
+    except Exception as e:
+        logging.error(f"Failed to start server: {e}")
+        if stream_manager:
+            stream_manager.running = False
+            if stream_manager.fetch_thread:
+                stream_manager.fetch_thread.join()
+        sys.exit(1)
