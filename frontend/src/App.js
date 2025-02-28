@@ -30,7 +30,7 @@ import logo from './images/logo.png';
 const drawerWidth = 240;
 const miniDrawerWidth = 60;
 
-const defaultRoute = '/m3u';
+const defaultRoute = '/channels';
 
 const App = () => {
   const [open, setOpen] = useState(true);
