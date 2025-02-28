@@ -134,7 +134,7 @@ class M3UFilter(models.Model):
         # If no include filters exist, assume all non-excluded streams are valid
         if not any(not f.exclude for f in filters):
             return streams.exclude(id__in=[s.id for s in excluded_streams])
-        
+
         return streams.filter(id__in=[s.id for s in included_streams])
 
 
@@ -148,3 +148,27 @@ class ServerGroup(models.Model):
 
     def __str__(self):
         return self.name
+
+class M3UAccountProfile(models.Model):
+    name = models.CharField(
+        max_length=255,
+        help_text="Name for the M3U account profile"
+    )
+    m3u_account_id = models.ForeignKey(M3UAccount,
+        on_delete=models.CASCADE
+    )
+    max_streams = models.PositiveIntegerField(
+        default=0,
+        help_text="Maximum number of concurrent streams (0 for unlimited)"
+    )
+    search_pattern = models.CharField(
+        max_length=255,
+    )
+    replace_pattern = models.CharField(
+        max_length=255,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['m3u_account_id', 'name'], name='unique_account_name')
+        ]

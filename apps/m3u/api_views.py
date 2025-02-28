@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.core.cache import cache
 
 # Import all models, including UserAgent.
-from .models import M3UAccount, M3UFilter, ServerGroup
+from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
 from core.serializers import UserAgentSerializer
 # Import all serializers, including the UserAgentSerializer.
@@ -17,6 +17,7 @@ from .serializers import (
     M3UAccountSerializer,
     M3UFilterSerializer,
     ServerGroupSerializer,
+    M3UAccountProfileSerializer,
 )
 
 from .tasks import refresh_single_m3u_account, refresh_m3u_accounts
@@ -68,3 +69,16 @@ class UserAgentViewSet(viewsets.ModelViewSet):
     serializer_class = UserAgentSerializer
     permission_classes = [IsAuthenticated]
 
+class M3UAccountProfileViewSet(viewsets.ModelViewSet):
+    queryset = M3UAccountProfile.objects.all()
+    serializer_class = M3UAccountProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        account_id = self.kwargs['account_id']
+        return M3UAccountProfile.objects.filter(account_id=account_id)
+
+    def perform_create(self, serializer):
+        account_id = self.kwargs['account_id']
+        account = M3UAccount.objects.get(id=account_id)
+        serializer.save(account=account)
