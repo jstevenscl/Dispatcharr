@@ -360,6 +360,18 @@ export default class API {
     useUserAgentsStore.getState().removeUserAgents([id]);
   }
 
+  static async getPlaylist(id) {
+    const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
   static async getPlaylists() {
     const response = await fetch(`${host}/api/m3u/accounts/`, {
       headers: {
@@ -602,5 +614,64 @@ export default class API {
 
     const retval = await response.json();
     return retval.data;
+  }
+
+  static async addM3UProfile(accountId, values) {
+    const response = await fetch(
+      `${host}/api/m3u/accounts/${accountId}/profiles/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      }
+    );
+
+    const retval = await response.json();
+    if (retval.id) {
+      // Fetch m3u account to update it with its new playlists
+      const playlist = await API.getPlaylist(accountId);
+      usePlaylistsStore
+        .getState()
+        .updateProfiles(playlist.id, playlist.profiles);
+    }
+
+    return retval;
+  }
+
+  static async deleteM3UProfile(accountId, id) {
+    const response = await fetch(
+      `${host}/api/m3u/accounts/${accountId}/profiles/${id}/`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const playlist = await API.getPlaylist(accountId);
+    usePlaylistsStore.getState().updatePlaylist(playlist);
+  }
+
+  static async updateM3UProfile(accountId, values) {
+    const { id, ...payload } = values;
+    const response = await fetch(
+      `${host}/api/m3u/accounts/${accountId}/profiles/${id}/`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const playlist = await API.getPlaylist(accountId);
+    usePlaylistsStore.getState().updateProfiles(playlist.id, playlist.profiles);
   }
 }

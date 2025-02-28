@@ -30,7 +30,7 @@ import logo from './images/logo.png';
 const drawerWidth = 240;
 const miniDrawerWidth = 60;
 
-const defaultRoute = '/channels';
+const defaultRoute = '/m3u';
 
 const App = () => {
   const [open, setOpen] = useState(true);
@@ -116,7 +116,6 @@ const App = () => {
 
         <Box
           sx={{
-            height: '100vh',
             display: 'flex',
             flexDirection: 'column',
             ml: `${open ? drawerWidth : miniDrawerWidth}px`,

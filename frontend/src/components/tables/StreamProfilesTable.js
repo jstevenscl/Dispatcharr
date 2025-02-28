@@ -116,6 +116,11 @@ const StreamProfiles = () => {
     await API.deleteStreamProfile(ids);
   };
 
+  const closeStreamProfileForm = () => {
+    setProfile(null);
+    setProfileModalOpen(false);
+  };
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsLoading(false);
@@ -210,7 +215,7 @@ const StreamProfiles = () => {
       <StreamProfileForm
         profile={profile}
         isOpen={profileModalOpen}
-        onClose={() => setProfileModalOpen(false)}
+        onClose={closeStreamProfileForm}
       />
     </Box>
   );

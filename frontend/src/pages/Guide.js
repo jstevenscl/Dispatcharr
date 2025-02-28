@@ -60,26 +60,18 @@ const TVChannelGuide = ({ startDate, endDate }) => {
 
   useEffect(() => {
     const fetchPrograms = async () => {
-      console.log('Fetching program grid...');
       const programs = await API.getGrid();
-      console.log(`Received ${programs.length} programs`);
       const programIds = [...new Set(programs.map((prog) => prog.tvg_id))];
-      console.log('program tvg-ids');
-      console.log(programIds);
       const filteredChannels = channels.filter((ch) =>
         programIds.includes(ch.tvg_id)
       );
-      console.log(
-        `found ${filteredChannels.length} channels with matching tvg-ids`
-      );
-      console.log(filteredChannels);
       setGuideChannels(filteredChannels);
       setActiveChannels(guideChannels.map((channel) => channel.channel_name));
       setPrograms(programs);
     };
 
     fetchPrograms();
-  }, [channels]);
+  }, [channels, activeChannels]);
 
   const latestHalfHour = new Date();
 

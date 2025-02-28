@@ -60,7 +60,7 @@ const Example = () => {
   const createChannelFromStream = async (stream) => {
     await API.createChannelFromStream({
       channel_name: stream.name,
-      channel_number: 0,
+      channel_number: null,
       stream_id: stream.id,
     });
   };
@@ -94,6 +94,11 @@ const Example = () => {
       .getRowModel()
       .rows.filter((row) => row.getIsSelected());
     await API.deleteStreams(selected.map((stream) => stream.original.id));
+  };
+
+  const closeStreamForm = () => {
+    setStream(null);
+    setModalOpen(false);
   };
 
   useEffect(() => {
@@ -222,7 +227,7 @@ const Example = () => {
       <StreamForm
         stream={stream}
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={closeStreamForm}
       />
     </Box>
   );

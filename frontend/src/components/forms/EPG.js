@@ -1,15 +1,10 @@
 // Modal.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  Modal,
-  Typography,
-  Stack,
   TextField,
   Button,
   Select,
   MenuItem,
-  Grid2,
   InputLabel,
   FormControl,
   CircularProgress,
@@ -17,11 +12,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from "@mui/material";
-import { useFormik } from "formik";
-import * as Yup from "yup";
-import API from "../../api";
-import useEPGsStore from "../../store/epgs";
+} from '@mui/material';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
+import API from '../../api';
+import useEPGsStore from '../../store/epgs';
 
 const EPG = ({ epg = null, isOpen, onClose }) => {
   const epgs = useEPGsStore((state) => state.epgs);
@@ -36,15 +31,15 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
 
   const formik = useFormik({
     initialValues: {
-      name: "",
-      source_type: "",
-      url: "",
-      api_key: "",
+      name: '',
+      source_type: '',
+      url: '',
+      api_key: '',
       is_active: true,
     },
     validationSchema: Yup.object({
-      name: Yup.string().required("Name is required"),
-      source_type: Yup.string().required("Source type is required"),
+      name: Yup.string().required('Name is required'),
+      source_type: Yup.string().required('Source type is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (epg?.id) {
@@ -85,8 +80,8 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
     <Dialog open={isOpen} onClose={onClose}>
       <DialogTitle
         sx={{
-          backgroundColor: "primary.main",
-          color: "primary.contrastText",
+          backgroundColor: 'primary.main',
+          color: 'primary.contrastText',
         }}
       >
         EPG Source
@@ -169,7 +164,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
             disabled={formik.isSubmitting}
             size="small"
           >
-            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+            {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
           </Button>
         </DialogActions>
       </form>

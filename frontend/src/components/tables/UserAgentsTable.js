@@ -114,6 +114,11 @@ const UserAgentsTable = () => {
     }
   };
 
+  const closeUserAgentForm = () => {
+    setUserAgent(null);
+    setUserAgentModalOpen(false);
+  };
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsLoading(false);
@@ -210,7 +215,7 @@ const UserAgentsTable = () => {
       <UserAgentForm
         userAgent={userAgent}
         isOpen={userAgentModalOpen}
-        onClose={() => setUserAgentModalOpen(false)}
+        onClose={closeUserAgentForm}
       />
     </>
   );
