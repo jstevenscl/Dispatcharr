@@ -35,6 +35,10 @@ class Config:
     WINDOW_SIZE = 12          # Number of segments in manifest window
     INITIAL_SEGMENTS = 3       # Initial segments to buffer before playback
     DEFAULT_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20'
+    INITIAL_CONNECTION_WINDOW = 10  # Seconds to wait for first client
+    CLIENT_TIMEOUT_FACTOR = 1.5    # Multiplier for target duration to determine client timeout
+    CLIENT_CLEANUP_INTERVAL = 10   # Seconds between client cleanup checks
+    FIRST_SEGMENT_TIMEOUT = 5.0  # Seconds to wait for first segment
 
 class StreamBuffer:
     """
@@ -84,36 +88,45 @@ class StreamBuffer:
                 del self.buffer[seq]
 
 class ClientManager:
-    """Manages client connections"""
+    """Manages client connections and activity tracking"""
     
     def __init__(self):
-        """
-        Initialize client connection tracking.
+        self.last_activity = {}  # Maps client IPs to last activity timestamp
+        self.lock = threading.Lock()
         
-        Attributes:
-            active_clients (Set[int]): Set of active client IDs
-            lock (threading.Lock): Thread safety for client operations
-        """
-        self.active_clients: Set[int] = set()
-        self.lock: threading.Lock = threading.Lock()
-
-    def add_client(self, client_id: int):
-        """Add new client connection"""
+    def record_activity(self, client_ip: str):
+        """Record client activity timestamp"""
         with self.lock:
-            self.active_clients.add(client_id)
-            logging.info(f"New client connected (total: {len(self.active_clients)})")
-
-    def remove_client(self, client_id: int) -> int:
-        """Remove client and return remaining count"""
+            prev_time = self.last_activity.get(client_ip)
+            current_time = time.time()
+            self.last_activity[client_ip] = current_time
+            if not prev_time:
+                logging.info(f"New client connected: {client_ip}")
+            else:
+                logging.debug(f"Client activity: {client_ip}")
+                
+    def cleanup_inactive(self, timeout: float) -> bool:
+        """Remove inactive clients"""
+        now = time.time()
         with self.lock:
-            self.active_clients.remove(client_id)
-            remaining = len(self.active_clients)
-            logging.info(f"Client disconnected (remaining: {remaining})")
-            return remaining
-
-    def has_clients(self) -> bool:
-        """Check if any clients are connected"""
-        return len(self.active_clients) > 0
+            active_clients = {
+                ip: last_time 
+                for ip, last_time in self.last_activity.items()
+                if (now - last_time) < timeout
+            }
+            
+            removed = set(self.last_activity.keys()) - set(active_clients.keys())
+            if removed:
+                for ip in removed:
+                    inactive_time = now - self.last_activity[ip]
+                    logging.warning(f"Client {ip} inactive for {inactive_time:.1f}s, removing")
+            
+            self.last_activity = active_clients
+            if active_clients:
+                oldest = min(now - t for t in active_clients.values())
+                logging.debug(f"Active clients: {len(active_clients)}, oldest activity: {oldest:.1f}s ago")
+            
+            return len(active_clients) == 0
 
 class StreamManager:
     """
@@ -162,6 +175,19 @@ class StreamManager:
         # Add manifest info
         self.target_duration = 10.0  # Default, will be updated from manifest
         self.manifest_version = 3    # Default, will be updated from manifest
+        
+        self.cleanup_thread = None
+        self.cleanup_running = False  # New flag to control cleanup thread
+        self.cleanup_enabled = False  # New flag to control when cleanup starts
+        self.initialization_time = time.time()  # Add initialization timestamp
+        self.first_client_connected = False
+        self.cleanup_started = False  # New flag to track cleanup state
+
+        # Add client manager reference
+        self.client_manager = None
+        self.proxy_server = None  # Reference to proxy server for cleanup
+        self.cleanup_thread = None
+        self.cleanup_interval = Config.CLIENT_CLEANUP_INTERVAL
         
         logging.info(f"Initialized stream manager for channel {channel_id}")
 
@@ -270,12 +296,59 @@ class StreamManager:
             logging.info("Stream manager started")
 
     def stop(self):
-        """Stop the background fetch thread"""
+        """Stop the stream manager and cleanup resources"""
         self.running = False
+        self.cleanup_running = False
         if self.fetch_thread and self.fetch_thread.is_alive():
-            self.url_changed.set()  # Signal thread to exit
-            self.fetch_thread.join(timeout=5)  # Wait up to 5 seconds
-            logging.info("Stream manager stopped")
+            self.url_changed.set()
+            self.fetch_thread.join(timeout=5)
+        logging.info(f"Stream manager stopped for channel {self.channel_id}")
+
+    def enable_cleanup(self):
+        """Enable cleanup after first client connects"""
+        if not self.first_client_connected:
+            self.first_client_connected = True
+            logging.info(f"First client connected to channel {self.channel_id}")
+
+    def start_cleanup_thread(self):
+        """Start background thread for client activity monitoring"""
+        def cleanup_loop():
+            # Wait for initial connection window
+            start_time = time.time()
+            while self.cleanup_running and (time.time() - start_time) < Config.INITIAL_CONNECTION_WINDOW:
+                if self.first_client_connected:
+                    break
+                time.sleep(1)
+                
+            if not self.first_client_connected:
+                logging.info(f"Channel {self.channel_id}: No clients connected within {Config.INITIAL_CONNECTION_WINDOW}s window")
+                self.proxy_server.stop_channel(self.channel_id)
+                return
+                
+            # Normal client activity monitoring
+            while self.cleanup_running and self.running:
+                try:
+                    timeout = self.target_duration * Config.CLIENT_TIMEOUT_FACTOR
+                    if self.client_manager.cleanup_inactive(timeout):
+                        logging.info(f"Channel {self.channel_id}: All clients disconnected for {timeout:.1f}s")
+                        self.proxy_server.stop_channel(self.channel_id)
+                        break
+                except Exception as e:
+                    logging.error(f"Cleanup error: {e}")
+                    if "cannot join current thread" not in str(e):
+                        time.sleep(Config.CLIENT_CLEANUP_INTERVAL)
+                time.sleep(Config.CLIENT_CLEANUP_INTERVAL)
+
+        if not self.cleanup_started:
+            self.cleanup_started = True
+            self.cleanup_running = True
+            self.cleanup_thread = threading.Thread(
+                target=cleanup_loop,
+                name=f"Cleanup-{self.channel_id}",
+                daemon=True
+            )
+            self.cleanup_thread.start()
+            logging.info(f"Started cleanup thread for channel {self.channel_id}")
 
 class StreamFetcher:
     """
@@ -765,15 +838,20 @@ class ProxyServer:
             user_agent=self.user_agent
         )
         buffer = StreamBuffer()
+        client_manager = ClientManager()
+        
+        # Set up references
+        manager.client_manager = client_manager
+        manager.proxy_server = self
         
         # Store resources
         self.stream_managers[channel_id] = manager
         self.stream_buffers[channel_id] = buffer
-        self.client_managers[channel_id] = ClientManager()
+        self.client_managers[channel_id] = client_manager
         
         # Create and store fetcher
         fetcher = StreamFetcher(manager, buffer)
-        manager.fetcher = fetcher  # Store reference to fetcher
+        manager.fetcher = fetcher
         
         # Start fetch thread
         self.fetch_threads[channel_id] = threading.Thread(
@@ -782,6 +860,9 @@ class ProxyServer:
             daemon=True
         )
         self.fetch_threads[channel_id].start()
+        
+        # Start cleanup monitoring immediately
+        manager.start_cleanup_thread()
         
         logging.info(f"Initialized channel {channel_id} with URL {url}")
         
@@ -844,40 +925,36 @@ class ProxyServer:
             self.stop_channel(channel_id)
 
     def stream_endpoint(self, channel_id: str):
-        """
-        Flask route handler for serving HLS manifests.
-        
-        Args:
-            channel_id: Unique identifier for the stream channel
-            
-        Returns:
-            Flask Response with:
-            - HLS manifest content
-            - Proper content type
-            - 404 if channel/segments not found
-            
-        The manifest includes:
-        - Current segment window
-        - Proper sequence numbering
-        - Discontinuity markers
-        - Accurate segment durations
-        """
+        """Flask route handler for serving HLS manifests."""
         try:
-            if channel_id not in self.stream_managers:
+            if (channel_id not in self.stream_managers) or (not self.stream_managers[channel_id].running):
                 return Response('Channel not found', status=404)
-                
-            buffer = self.stream_buffers[channel_id]
-            manager = self.stream_managers[channel_id]
             
-            # Verify buffer state
+            manager = self.stream_managers[channel_id]
+            buffer = self.stream_buffers[channel_id]
+            
+            # Record client activity and enable cleanup
+            client_ip = request.remote_addr
+            manager.enable_cleanup()
+            self.client_managers[channel_id].record_activity(client_ip)
+            
+            # Wait for first segment with timeout
+            start_time = time.time()
+            while True:
+                with buffer.lock:
+                    available = sorted(buffer.keys())
+                    if available:
+                        break
+                    
+                if time.time() - start_time > Config.FIRST_SEGMENT_TIMEOUT:
+                    logging.warning(f"Timeout waiting for first segment for channel {channel_id}")
+                    return Response('No segments available', status=503)
+                    
+                time.sleep(0.1)  # Short sleep to prevent CPU spinning
+            
+            # Rest of manifest generation code...
             with buffer.lock:
-                available = sorted(buffer.keys())
-                if not available:
-                    logging.warning("No segments available")
-                    return '', 404
-                
                 max_seq = max(available)
-                
                 # Find the first segment after any discontinuity
                 discontinuity_start = min(available)
                 for seq in available:
@@ -945,6 +1022,10 @@ class ProxyServer:
             return Response('Channel not found', status=404)
             
         try:
+            # Record client activity
+            client_ip = request.remote_addr
+            self.client_managers[channel_id].record_activity(client_ip)
+            
             segment_id = int(segment_name.split('.')[0])
             buffer = self.stream_buffers[channel_id]
             
