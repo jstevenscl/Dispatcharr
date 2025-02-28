@@ -6,23 +6,13 @@ app_name = 'm3u'
 
 router = DefaultRouter()
 router.register(r'accounts', M3UAccountViewSet, basename='m3u-account')
+router.register(r'accounts\/(?P<account_id>\d+)\/profiles', M3UAccountProfileViewSet, basename='m3u-account-profiles')
 router.register(r'filters', M3UFilterViewSet, basename='m3u-filter')
 router.register(r'server-groups', ServerGroupViewSet, basename='server-group')
-router.register(r'profiles', M3UAccountViewSet, basename='m3u-account-profiles')
 
 urlpatterns = [
     path('refresh/', RefreshM3UAPIView.as_view(), name='m3u_refresh'),
     path('refresh/<int:account_id>/', RefreshSingleM3UAPIView.as_view(), name='m3u_refresh_single'),
-    path('m3u/accounts/<int:account_id>/profiles/', M3UAccountProfileViewSet.as_view({
-        'get': 'list',
-        'post': 'create'
-    }), name='m3uaccountprofile-list'),
-    path('m3u/accounts/<int:account_id>/profiles/<int:pk>/', M3UAccountProfileViewSet.as_view({
-        'get': 'retrieve',
-        'put': 'update',
-        'patch': 'partial_update',
-        'delete': 'destroy'
-    }), name='m3uaccountprofile-detail'),
 ]
 
 urlpatterns += router.urls

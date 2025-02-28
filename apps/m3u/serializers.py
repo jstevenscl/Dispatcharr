@@ -15,13 +15,16 @@ from .models import M3UAccountProfile
 class M3UAccountProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = M3UAccountProfile
-        fields = ['id', 'name', 'max_streams', 'search_pattern', 'replace_pattern']
+        fields = ['id', 'name', 'max_streams', 'is_active', 'is_default', 'current_viewers', 'search_pattern', 'replace_pattern']
         read_only_fields = ['id']
 
     def create(self, validated_data):
-        # Get the account from the context and assign it directly
-        m3u_account = self.context['m3u_account']
-        return M3UAccountProfile.objects.create(m3u_account=m3u_account, **validated_data)
+        m3u_account = self.context.get('m3u_account')
+
+        # Use the m3u_account when creating the profile
+        validated_data['m3u_account_id'] = m3u_account.id
+
+        return super().create(validated_data)
 
 
 class M3UAccountSerializer(serializers.ModelSerializer):

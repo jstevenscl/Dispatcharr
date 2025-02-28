@@ -2,6 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from core.models import UserAgent
 import re
+from django.dispatch import receiver
 
 class M3UAccount(models.Model):
     """Represents an M3U Account for IPTV streams."""
@@ -163,9 +164,17 @@ class M3UAccountProfile(models.Model):
         max_length=255,
         help_text="Name for the M3U account profile"
     )
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Set to false to deactivate this profile"
+    )
     max_streams = models.PositiveIntegerField(
         default=0,
         help_text="Maximum number of concurrent streams (0 for unlimited)"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Set to false to deactivate this profile"
     )
     search_pattern = models.CharField(
         max_length=255,
@@ -173,6 +182,7 @@ class M3UAccountProfile(models.Model):
     replace_pattern = models.CharField(
         max_length=255,
     )
+    current_viewers = models.PositiveIntegerField(default=0)
 
     class Meta:
         constraints = [
@@ -181,3 +191,26 @@ class M3UAccountProfile(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.m3u_account.name})"
+
+@receiver(models.signals.post_save, sender=M3UAccount)
+def create_profile_for_m3u_account(sender, instance, created, **kwargs):
+    """Automatically create an M3UAccountProfile when M3UAccount is created."""
+    if created:
+        M3UAccountProfile.objects.create(
+            m3u_account=instance,
+            name=f'{instance.name} Default',
+            max_streams=instance.max_streams,
+            is_default=True,
+            is_active=True,
+            search_pattern="^(.*)$",
+            replace_pattern="$1",
+        )
+    else:
+        profile = M3UAccountProfile.objects.get(
+            m3u_account=instance,
+            is_default=True,
+        )
+        console.log(profile)
+
+        profile.max_streams = instance.max_streams
+        profile.save()
