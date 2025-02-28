@@ -9,12 +9,20 @@ class M3UFilterSerializer(serializers.ModelSerializer):
         model = M3UFilter
         fields = ['id', 'filter_type', 'regex_pattern', 'exclude']
 
-class M3UAccountProfileSerializer(serializers.ModelSerializer):
-    """Serializer for M3U Account Profiles"""
+from rest_framework import serializers
+from .models import M3UAccountProfile
 
+class M3UAccountProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = M3UAccountProfile
-        fields = ['id', 'name', 'm3u_account_id', 'search_pattern', 'replace_pattern']
+        fields = ['id', 'name', 'max_streams', 'search_pattern', 'replace_pattern']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        # Get the account from the context and assign it directly
+        m3u_account = self.context['m3u_account']
+        return M3UAccountProfile.objects.create(m3u_account=m3u_account, **validated_data)
+
 
 class M3UAccountSerializer(serializers.ModelSerializer):
     """Serializer for M3U Account"""

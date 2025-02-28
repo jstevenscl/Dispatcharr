@@ -13,8 +13,16 @@ router.register(r'profiles', M3UAccountViewSet, basename='m3u-account-profiles')
 urlpatterns = [
     path('refresh/', RefreshM3UAPIView.as_view(), name='m3u_refresh'),
     path('refresh/<int:account_id>/', RefreshSingleM3UAPIView.as_view(), name='m3u_refresh_single'),
-    path('accounts/<int:m3u_account_id>/profiles/', M3UAccountProfileViewSet.as_view({'get': 'list', 'post': 'create'})),
-    path('accounts/<int:m3u_account_id>/profiles/<int:pk>/', M3UAccountProfileViewSet.as_view({'put': 'update', 'delete': 'destroy'})),
+    path('m3u/accounts/<int:account_id>/profiles/', M3UAccountProfileViewSet.as_view({
+        'get': 'list',
+        'post': 'create'
+    }), name='m3uaccountprofile-list'),
+    path('m3u/accounts/<int:account_id>/profiles/<int:pk>/', M3UAccountProfileViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy'
+    }), name='m3uaccountprofile-detail'),
 ]
 
 urlpatterns += router.urls

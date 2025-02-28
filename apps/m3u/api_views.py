@@ -70,15 +70,18 @@ class UserAgentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 class M3UAccountProfileViewSet(viewsets.ModelViewSet):
-    queryset = M3UAccountProfile.objects.all()
     serializer_class = M3UAccountProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        account_id = self.kwargs['account_id']
-        return M3UAccountProfile.objects.filter(account_id=account_id)
+        m3u_account_id = self.kwargs['account_id']
+        return M3UAccountProfile.objects.filter(m3u_account_id=m3u_account_id)
 
     def perform_create(self, serializer):
-        account_id = self.kwargs['account_id']
-        account = M3UAccount.objects.get(id=account_id)
-        serializer.save(account=account)
+        m3u_account_id = self.kwargs['account_id']
+        try:
+            m3u_account = M3UAccount.objects.get(id=m3u_account_id)
+        except M3UAccount.DoesNotExist:
+            raise NotFound(f'M3UAccount with id {m3u_account_id} not found.')
+
+        serializer.save(m3u_account=m3u_account)

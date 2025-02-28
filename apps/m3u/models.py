@@ -149,13 +149,19 @@ class ServerGroup(models.Model):
     def __str__(self):
         return self.name
 
+from django.db import models
+
 class M3UAccountProfile(models.Model):
+    """Represents a profile associated with an M3U Account."""
+    m3u_account = models.ForeignKey(
+        'M3UAccount',
+        on_delete=models.CASCADE,
+        related_name='profiles',
+        help_text="The M3U account this profile belongs to."
+    )
     name = models.CharField(
         max_length=255,
         help_text="Name for the M3U account profile"
-    )
-    m3u_account_id = models.ForeignKey(M3UAccount,
-        on_delete=models.CASCADE
     )
     max_streams = models.PositiveIntegerField(
         default=0,
@@ -170,5 +176,8 @@ class M3UAccountProfile(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['m3u_account_id', 'name'], name='unique_account_name')
+            models.UniqueConstraint(fields=['m3u_account', 'name'], name='unique_account_profile_name')
         ]
+
+    def __str__(self):
+        return f"{self.name} ({self.m3u_account.name})"
