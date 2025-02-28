@@ -168,17 +168,23 @@ const Example = () => {
 
   const copyM3UUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('m3u url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/m3u`
+    );
   };
 
   const copyEPGUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('epg url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/epg`
+    );
   };
 
   const copyHDHRUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('hdhr url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/hdhr`
+    );
   };
 
   const table = useMaterialReactTable({
