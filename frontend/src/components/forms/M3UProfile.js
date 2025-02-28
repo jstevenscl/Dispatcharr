@@ -19,8 +19,6 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
   const [searchPattern, setSearchPattern] = useState('');
   const [replacePattern, setReplacePattern] = useState('');
 
-  console.log(profile);
-
   let regex;
   try {
     regex = new RegExp(searchPattern, 'g');
