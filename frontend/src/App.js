@@ -1,3 +1,4 @@
+// frontend/src/App.js
 import React, { useEffect, useState } from 'react';
 import {
   BrowserRouter as Router,
@@ -9,7 +10,7 @@ import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import Channels from './pages/Channels';
 import M3U from './pages/M3U';
-import { ThemeProvider } from '@mui/material/styles'; // Import theme tools
+import { ThemeProvider } from '@mui/material/styles';
 import {
   Box,
   CssBaseline,
@@ -26,6 +27,9 @@ import Guide from './pages/Guide';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
 import logo from './images/logo.png';
+
+// NEW: import the floating PiP component
+import FloatingVideo from './components/FloatingVideo';
 
 const drawerWidth = 240;
 const miniDrawerWidth = 60;
@@ -49,7 +53,6 @@ const App = () => {
   useEffect(() => {
     const checkAuth = async () => {
       const loggedIn = await initializeAuth();
-
       if (loggedIn) {
         await initData();
         setIsAuthenticated(true);
@@ -57,7 +60,6 @@ const App = () => {
         await logout();
       }
     };
-
     checkAuth();
   }, [initializeAuth, initData, setIsAuthenticated, logout]);
 
@@ -65,18 +67,6 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        {/* <AppBar
-          position="fixed"
-          sx={{
-            zIndex: (theme) => theme.zIndex.drawer + 1,
-            width: `calc(100% - ${open ? drawerWidth : miniDrawerWidth}px)`,
-            ml: `${open ? drawerWidth : miniDrawerWidth}px`,
-            transition: 'width 0.3s, margin-left 0.3s',
-          }}
-        >
-          <Toolbar variant="dense"></Toolbar>
-        </AppBar> */}
-
         <Drawer
           variant="permanent"
           open={open}
@@ -90,7 +80,6 @@ const App = () => {
             },
           }}
         >
-          {/* Drawer Toggle Button */}
           <List sx={{ backgroundColor: '#495057', color: 'white' }}>
             <ListItem disablePadding>
               <ListItemButton
@@ -101,7 +90,7 @@ const App = () => {
                   pb: 0,
                 }}
               >
-                <img src={logo} width="33x" />
+                <img src={logo} width="33x" alt="logo" />
                 {open && (
                   <ListItemText primary="Dispatcharr" sx={{ paddingLeft: 3 }} />
                 )}
@@ -121,15 +110,8 @@ const App = () => {
             ml: `${open ? drawerWidth : miniDrawerWidth}px`,
             transition: 'width 0.3s, margin-left 0.3s',
             backgroundColor: '#495057',
-            // pt: '64px',
           }}
         >
-          {/* Fixed Header */}
-          {/* <Box sx={{ height: '67px', backgroundColor: '#495057', color: '#fff', display: 'flex', alignItems: 'center', padding: '0 16px' }}>
-
-          </Box> */}
-
-          {/* Main Content Area between Header and Footer */}
           <Box
             sx={{
               flex: 1,
@@ -141,20 +123,18 @@ const App = () => {
             <Routes>
               {isAuthenticated ? (
                 <>
-                  <Route exact path="/channels" element={<Channels />} />
-                  <Route exact path="/m3u" element={<M3U />} />
-                  <Route exact path="/epg" element={<EPG />} />
+                  <Route path="/channels" element={<Channels />} />
+                  <Route path="/m3u" element={<M3U />} />
+                  <Route path="/epg" element={<EPG />} />
                   <Route
-                    exact
                     path="/stream-profiles"
                     element={<StreamProfiles />}
                   />
-                  <Route exact path="/guide" element={<Guide />} />
+                  <Route path="/guide" element={<Guide />} />
                 </>
               ) : (
                 <Route path="/login" element={<Login />} />
               )}
-              {/* Redirect if no match */}
               <Route
                 path="*"
                 element={
@@ -168,6 +148,9 @@ const App = () => {
           </Box>
         </Box>
       </Router>
+
+      {/* Always-available floating video; remains visible across page changes */}
+      <FloatingVideo />
     </ThemeProvider>
   );
 };

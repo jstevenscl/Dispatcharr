@@ -1,3 +1,4 @@
+// frontend/src/pages/Guide.js
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Box,
@@ -15,16 +16,16 @@ import dayjs from 'dayjs';
 import API from '../api';
 import useChannelsStore from '../store/channels';
 import logo from '../images/logo.png';
+import useVideoStore from '../store/useVideoStore'; // NEW import
 
 /** Layout constants */
 const CHANNEL_WIDTH = 120;        // Width of the channel/logo column
 const PROGRAM_HEIGHT = 90;        // Height of each channel row
 const HOUR_WIDTH = 300;           // The width for a 1-hour block
 const MINUTE_INCREMENT = 15;      // For positioning programs every 15 min
-const MINUTE_BLOCK_WIDTH = HOUR_WIDTH / (60 / MINUTE_INCREMENT); 
-// => 300 / 4 = 75px for each 15-minute block
+const MINUTE_BLOCK_WIDTH = HOUR_WIDTH / (60 / MINUTE_INCREMENT);
 
-// Modal size constants (all modals will be the same size)
+// Modal size constants
 const MODAL_WIDTH = 600;
 const MODAL_HEIGHT = 400;
 
@@ -33,17 +34,17 @@ const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
-const TVChannelGuide = ({ startDate, endDate }) => {
+export default function TVChannelGuide({ startDate, endDate }) {
   const { channels } = useChannelsStore();
 
   const [programs, setPrograms] = useState([]);
   const [guideChannels, setGuideChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
-  // State for selected program to display in modal
   const [selectedProgram, setSelectedProgram] = useState(null);
 
   const guideRef = useRef(null);
 
+  // Load program data once
   useEffect(() => {
     if (!channels || channels.length === 0) {
       console.warn('No channels provided or empty channels array');
@@ -52,47 +53,48 @@ const TVChannelGuide = ({ startDate, endDate }) => {
 
     const fetchPrograms = async () => {
       console.log('Fetching program grid...');
-      const fetchedPrograms = await API.getGrid();
-      console.log(`Received ${fetchedPrograms.length} programs`);
+      const fetched = await API.getGrid(); // GETs your EPG grid
+      console.log(`Received ${fetched.length} programs`);
 
-      // Get unique tvg_ids from the returned programs
-      const programIds = [...new Set(fetchedPrograms.map((prog) => prog.tvg_id))];
+      // Unique tvg_ids from returned programs
+      const programIds = [...new Set(fetched.map((p) => p.tvg_id))];
 
-      // Filter channels to only those that appear in the program list
+      // Filter your Redux/Zustand channels by matching tvg_id
       const filteredChannels = channels.filter((ch) =>
         programIds.includes(ch.tvg_id)
       );
-      console.log(`found ${filteredChannels.length} channels with matching tvg-ids`);
+      console.log(
+        `found ${filteredChannels.length} channels with matching tvg_ids`
+      );
 
       setGuideChannels(filteredChannels);
-      setPrograms(fetchedPrograms);
+      setPrograms(fetched);
     };
 
     fetchPrograms();
   }, [channels, activeChannels]);
 
-  // Default to "today at midnight" -> +24h if not provided
+  // Use start/end from props or default to "today at midnight" +24h
   const defaultStart = dayjs(startDate || dayjs().startOf('day'));
   const defaultEnd = endDate ? dayjs(endDate) : defaultStart.add(24, 'hour');
 
-  // Find earliest program start and latest program end to expand timeline if needed.
+  // Expand timeline if needed based on actual earliest/ latest program
   const earliestProgramStart = useMemo(() => {
     if (!programs.length) return defaultStart;
     return programs.reduce((acc, p) => {
-      const progStart = dayjs(p.start_time);
-      return progStart.isBefore(acc) ? progStart : acc;
+      const s = dayjs(p.start_time);
+      return s.isBefore(acc) ? s : acc;
     }, defaultStart);
   }, [programs, defaultStart]);
 
   const latestProgramEnd = useMemo(() => {
     if (!programs.length) return defaultEnd;
     return programs.reduce((acc, p) => {
-      const progEnd = dayjs(p.end_time);
-      return progEnd.isAfter(acc) ? progEnd : acc;
+      const e = dayjs(p.end_time);
+      return e.isAfter(acc) ? e : acc;
     }, defaultEnd);
   }, [programs, defaultEnd]);
 
-  // Timeline boundaries: use expanded timeline if needed
   const start = earliestProgramStart.isBefore(defaultStart)
     ? earliestProgramStart
     : defaultStart;
@@ -100,9 +102,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
     ? latestProgramEnd
     : defaultEnd;
 
-  /**
-   * For program positioning calculations: we step in 15-min increments.
-   */
+  // Time increments in 15-min steps (for placing programs)
   const programTimeline = useMemo(() => {
     const times = [];
     let current = start;
@@ -113,9 +113,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
     return times;
   }, [start, end]);
 
-  /**
-   * For the visible timeline at the top: hourly blocks with 4 sub-lines.
-   */
+  // Hourly marks
   const hourTimeline = useMemo(() => {
     const hours = [];
     let current = start;
@@ -126,7 +124,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
     return hours;
   }, [start, end]);
 
-  // Scroll to "now" position on load
+  // Scroll to "now" on load
   useEffect(() => {
     if (guideRef.current) {
       const nowOffset = dayjs().diff(start, 'minute');
@@ -136,7 +134,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
     }
   }, [programs, start]);
 
-  // Update "now" every minute
+  // Update “now” every 60s
   useEffect(() => {
     const interval = setInterval(() => {
       setNow(dayjs());
@@ -144,37 +142,57 @@ const TVChannelGuide = ({ startDate, endDate }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Calculate pixel offset for the "now" line
+  // Pixel offset for the “now” vertical line
   const nowPosition = useMemo(() => {
     if (now.isBefore(start) || now.isAfter(end)) return -1;
     const minutesSinceStart = now.diff(start, 'minute');
     return (minutesSinceStart / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
   }, [now, start, end]);
 
-  /** Handle program click: scroll program into view and open modal */
-  const handleProgramClick = (program, event) => {
-    // Scroll clicked element into center view
-    event.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-    setSelectedProgram(program);
-  };
+  // Helper: find channel by tvg_id
+  function findChannelByTvgId(tvgId) {
+    return guideChannels.find((ch) => ch.tvg_id === tvgId);
+  }
 
-  /** Close modal */
-  const handleCloseModal = () => {
+  // The “Watch Now” click => show floating video
+  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
+  function handleWatchStream(program) {
+    const matched = findChannelByTvgId(program.tvg_id);
+    if (!matched) {
+      console.warn(`No channel found for tvg_id=${program.tvg_id}`);
+      return;
+    }
+    // Build a playable stream URL for that channel
+    const url = window.location.origin + '/output/stream/' + matched.id;
+    showVideo(url);
+
+    // Optionally close the modal
     setSelectedProgram(null);
-  };
+  }
 
-  /** Render each program block as clickable, opening modal on click */
-  const renderProgram = (program, channelStart) => {
+  // On program click, open the details modal
+  function handleProgramClick(program, event) {
+    // Optionally scroll that element into view or do something else
+    event.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+    setSelectedProgram(program);
+  }
+
+  // Close the modal
+  function handleCloseModal() {
+    setSelectedProgram(null);
+  }
+
+  // Renders each program block
+  function renderProgram(program, channelStart) {
     const programKey = `${program.tvg_id}-${program.start_time}`;
     const programStart = dayjs(program.start_time);
     const programEnd = dayjs(program.end_time);
-
     const startOffsetMinutes = programStart.diff(channelStart, 'minute');
     const durationMinutes = programEnd.diff(programStart, 'minute');
-
     const leftPx = (startOffsetMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
     const widthPx = (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
 
+    // Highlight if currently live
     const isLive = now.isAfter(programStart) && now.isBefore(programEnd);
 
     return (
@@ -223,7 +241,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
         </Paper>
       </Box>
     );
-  };
+  }
 
   return (
     <Box
@@ -375,7 +393,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
             </Box>
           </Box>
 
-          {/* Now-position line */}
+          {/* Now line */}
           <Box sx={{ position: 'relative' }}>
             {nowPosition >= 0 && (
               <Box
@@ -391,7 +409,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
               />
             )}
 
-            {/* Channel rows with program blocks */}
+            {/* Channel rows */}
             {guideChannels.map((channel) => {
               const channelPrograms = programs.filter(
                 (p) => p.tvg_id === channel.tvg_id
@@ -407,9 +425,7 @@ const TVChannelGuide = ({ startDate, endDate }) => {
                   }}
                 >
                   <Box sx={{ flex: 1, position: 'relative' }}>
-                    {channelPrograms.map((program) =>
-                      renderProgram(program, start)
-                    )}
+                    {channelPrograms.map((prog) => renderProgram(prog, start))}
                   </Box>
                 </Box>
               );
@@ -447,13 +463,24 @@ const TVChannelGuide = ({ startDate, endDate }) => {
             </DialogTitle>
             <DialogContent sx={{ color: '#a0aec0' }}>
               <Typography variant="caption" display="block">
-                {dayjs(selectedProgram.start_time).format('h:mma')} - {dayjs(selectedProgram.end_time).format('h:mma')}
+                {dayjs(selectedProgram.start_time).format('h:mma')} -{' '}
+                {dayjs(selectedProgram.end_time).format('h:mma')}
               </Typography>
               <Typography variant="body1" sx={{ mt: 2, color: '#fff' }}>
                 {selectedProgram.description || 'No description available.'}
               </Typography>
             </DialogContent>
             <DialogActions>
+              {/* Only show the Watch button if currently live */}
+              {now.isAfter(dayjs(selectedProgram.start_time)) &&
+               now.isBefore(dayjs(selectedProgram.end_time)) && (
+                <Button
+                  onClick={() => handleWatchStream(selectedProgram)}
+                  sx={{ color: '#38b2ac' }}
+                >
+                  Watch Now
+                </Button>
+              )}
               <Button onClick={handleCloseModal} sx={{ color: '#38b2ac' }}>
                 Close
               </Button>
@@ -463,6 +490,4 @@ const TVChannelGuide = ({ startDate, endDate }) => {
       </Dialog>
     </Box>
   );
-};
-
-export default TVChannelGuide;
+}
