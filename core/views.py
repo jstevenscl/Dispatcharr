@@ -3,10 +3,12 @@ import sys
 import subprocess
 import logging
 import re
+
 from django.conf import settings
 from django.http import StreamingHttpResponse, HttpResponseServerError
-from django.db import transaction
+from django.db.models import F
 from django.shortcuts import render
+
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccountProfile
 from core.models import StreamProfile
@@ -58,7 +60,9 @@ def stream_view(request, stream_id):
 
         active_profile = None
         for profile in [default_profile] + profiles:
+            logger.debug(f'Checking profile {profile.name}...')
             if not profile.is_active:
+                logger.debug(f'Profile is not active, skipping.')
                 continue
             if profile.current_viewers < profile.max_streams:
                 logger.debug(f"Using M3U profile ID={profile.id}")
@@ -72,12 +76,17 @@ def stream_view(request, stream_id):
                 stream_url = re.sub(profile.search_pattern, safe_replace_pattern, input_url)
                 logger.debug(f"Generated stream url: {stream_url}")
                 break
+            else:
+                logger.debug(f'Profile {profile.name} as exceeded its stream count: {profile.current_viewers} / {profile.max_streams}')
+                continue
 
         if active_profile is None:
             logger.exception("No available profiles for the stream")
             return HttpResponseServerError("No available profiles for the stream")
 
+
         # Get the stream profile set on the channel.
+        # (Ensure your Channel model has a 'stream_profile' field.)
         stream_profile = channel.stream_profile
         if not stream_profile:
             logger.error("No stream profile set for channel ID=%s", channel.id)
@@ -96,34 +105,28 @@ def stream_view(request, stream_id):
         cmd = [stream_profile.command] + parameters.split()
         logger.debug("Executing command: %s", cmd)
 
-        # Transactional block to ensure atomic viewer count updates.
-        with transaction.atomic():
-            # Increment the viewer count.
-            active_profile.current_viewers += 1
-            active_profile.save()
-            logger.debug("Viewer count incremented for stream ID=%s", stream.id)
+        # Increment the viewer count.
+        active_profile.current_viewers += 1
+        active_profile.save()
+        logger.debug("Viewer count incremented for stream ID=%s", stream.id)
 
-            # Start the streaming process.
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        def stream_generator(proc, s):
-            try:
-                while True:
-                    chunk = proc.stdout.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-            finally:
-                # Decrement the viewer count once streaming ends.
-                try:
-                    with transaction.atomic():
-                        active_profile.current_viewers -= 1
-                        active_profile.save()
-                        logger.debug("Viewer count decremented for stream ID=%s", s.id)
-                except Exception as e:
-                    logger.error(f"Error updating viewer count for stream {s.id}: {e}")
-
-        return StreamingHttpResponse(stream_generator(process, stream), content_type="video/MP2T")
+        # Start the streaming process.
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except Exception as e:
         logger.exception("Error starting stream for channel ID=%s", stream_id)
         return HttpResponseServerError(f"Error starting stream: {e}")
+
+    def stream_generator(proc, s):
+        try:
+            while True:
+                chunk = proc.stdout.read(8192)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            # Decrement the viewer count once streaming ends.
+            active_profile.current_viewers -= 1
+            active_profile.save()
+            logger.debug("Viewer count decremented for stream ID=%s", s.id)
+
+    return StreamingHttpResponse(stream_generator(process, stream), content_type="video/MP2T")
