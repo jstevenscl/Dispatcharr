@@ -69,16 +69,24 @@ TEMPLATES = [
 WSGI_APPLICATION = 'dispatcharr.wsgi.application'
 ASGI_APPLICATION = 'dispatcharr.asgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_DB', 'dispatcharr'),
-        'USER': os.environ.get('POSTGRES_USER', 'dispatch'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'secret'),
-        'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-        'PORT': int(os.environ.get('POSTGRES_PORT', 5432)),
+if os.getenv('DB_ENGINE' None) == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': '/data/dispatcharr.db',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'dispatcharr'),
+            'USER': os.environ.get('POSTGRES_USER', 'dispatch'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'secret'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': int(os.environ.get('POSTGRES_PORT', 5432)),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {
