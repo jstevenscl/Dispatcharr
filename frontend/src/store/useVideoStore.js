@@ -8,15 +8,17 @@ const useVideoStore = create((set) => ({
   isVisible: false,
   streamUrl: null,
 
-  showVideo: (url) => set({
-    isVisible: true,
-    streamUrl: url,
-  }),
+  showVideo: (url) =>
+    set({
+      isVisible: true,
+      streamUrl: url,
+    }),
 
-  hideVideo: () => set({
-    isVisible: false,
-    streamUrl: null,
-  }),
+  hideVideo: () =>
+    set({
+      isVisible: false,
+      streamUrl: null,
+    }),
 }));
 
 export default useVideoStore;

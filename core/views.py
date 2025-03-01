@@ -12,7 +12,7 @@ from django.shortcuts import render
 
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccountProfile
-from core.models import StreamProfile
+from core.models import StreamProfile, CoreSettings
 
 # Import the persistent lock (the “real” lock)
 from dispatcharr.persistent_lock import PersistentLock
@@ -89,8 +89,9 @@ def stream_view(request, stream_id):
         # Get the stream profile set on the channel.
         stream_profile = channel.stream_profile
         if not stream_profile:
-            logger.error("No stream profile set for channel ID=%s", channel.id)
-            return HttpResponseServerError("No stream profile set for this channel.")
+            logger.error("No stream profile set for channel ID=%s, using default", channel.id)
+            stream_profile = StreamProfile.objects.get(id=CoreSettings.objects.get(key="default-stream-profile").value)
+
         logger.debug("Stream profile used: %s", stream_profile.profile_name)
 
         # Determine the user agent to use.

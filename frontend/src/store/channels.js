@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import api from "../api";
+import { create } from 'zustand';
+import api from '../api';
 
 const useChannelsStore = create((set) => ({
   channels: [],
@@ -13,8 +13,8 @@ const useChannelsStore = create((set) => ({
       const channels = await api.getChannels();
       set({ channels: channels, isLoading: false });
     } catch (error) {
-      console.error("Failed to fetch channels:", error);
-      set({ error: "Failed to load channels.", isLoading: false });
+      console.error('Failed to fetch channels:', error);
+      set({ error: 'Failed to load channels.', isLoading: false });
     }
   },
 
@@ -24,8 +24,8 @@ const useChannelsStore = create((set) => ({
       const channelGroups = await api.getChannelGroups();
       set({ channelGroups: channelGroups, isLoading: false });
     } catch (error) {
-      console.error("Failed to fetch channel groups:", error);
-      set({ error: "Failed to load channel groups.", isLoading: false });
+      console.error('Failed to fetch channel groups:', error);
+      set({ error: 'Failed to load channel groups.', isLoading: false });
     }
   },
 
@@ -34,17 +34,22 @@ const useChannelsStore = create((set) => ({
       channels: [...state.channels, newChannel],
     })),
 
+  addChannels: (newChannels) =>
+    set((state) => ({
+      channels: state.channels.concat(newChannels),
+    })),
+
   updateChannel: (userAgent) =>
     set((state) => ({
       channels: state.channels.map((chan) =>
-        chan.id === userAgent.id ? userAgent : chan,
+        chan.id === userAgent.id ? userAgent : chan
       ),
     })),
 
   removeChannels: (channelIds) =>
     set((state) => ({
       channels: state.channels.filter(
-        (channel) => !channelIds.includes(channel.id),
+        (channel) => !channelIds.includes(channel.id)
       ),
     })),
 
@@ -56,7 +61,7 @@ const useChannelsStore = create((set) => ({
   updateChannelGroup: (channelGroup) =>
     set((state) => ({
       channelGroups: state.channelGroups.map((group) =>
-        group.id === channelGroup.id ? channelGroup : group,
+        group.id === channelGroup.id ? channelGroup : group
       ),
     })),
 }));

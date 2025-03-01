@@ -265,7 +265,7 @@ class BulkDeleteStreamsAPIView(APIView):
 # ─────────────────────────────────────────────────────────
 # 5) Bulk Delete Channels
 # ─────────────────────────────────────────────────────────
-class BulkDeleteChannelsViewSet(viewsets.ViewSet):
+class BulkDeleteChannelsAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(

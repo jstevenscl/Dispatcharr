@@ -65,33 +65,15 @@ const StreamsTable = () => {
     // Get all selected streams from the table
     const selected = table
       .getRowModel()
-      .rows.filter((row) => row.getIsSelected())
-      .map((row) => row.original);
-    if (!selected.length) return;
+      .rows.filter((row) => row.getIsSelected());
 
-    // Build payload: an array of objects with stream_id and channel_name
-    const payload = selected.map((stream) => ({
-      stream_id: stream.id,
-      channel_name: stream.name || `Channel from ${stream.id}`,
-    }));
-
-    // Retrieve the auth token (make sure getAuthToken is exported from your API file)
-    const token = await getAuthToken();
-
-    // Send a POST request to your bulk endpoint
-    const response = await fetch(`/api/channels/channels/from-stream/bulk/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-    console.log("Bulk create result:", result);
-
-    // Refresh the channels store so new channels appear in your UI.
-    await useChannelsStore.getState().fetchChannels();
+    await API.createChannelsFromStreams(
+      selected.map((sel) => ({
+        stream_id: sel.original.id,
+        channel_name: sel.original.name,
+      }))
+    );
+    setIsLoading(false);
   };
 
   const editStream = async (stream = null) => {
@@ -219,7 +201,11 @@ const StreamsTable = () => {
   return (
     <Box>
       <MaterialReactTable table={table} />
-      <StreamForm stream={stream} isOpen={modalOpen} onClose={closeStreamForm} />
+      <StreamForm
+        stream={stream}
+        isOpen={modalOpen}
+        onClose={closeStreamForm}
+      />
     </Box>
   );
 };

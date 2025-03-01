@@ -157,18 +157,18 @@ export default class API {
   }
 
   // @TODO: the bulk delete endpoint is currently broken
-  // static async deleteChannels(channel_ids) {
-  //   const response = await fetch(`${host}/api/channels/bulk-delete-channels/0/`, {
-  //     method: 'DELETE',
-  //     headers: {
-  //       Authorization: `Bearer ${await getAuthToken()}`,
-  //       'Content-Type': 'application/json',
-  //     },
-  //     body: JSON.stringify({ channel_ids }),
-  //   });
+  static async deleteChannels(channel_ids) {
+    const response = await fetch(`${host}/api/channels/channels/bulk-delete/`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ channel_ids }),
+    });
 
-  //   useChannelsStore.getState().removeChannels(channel_ids)
-  // }
+    useChannelsStore.getState().removeChannels(channel_ids);
+  }
 
   static async updateChannel(values) {
     const { id, ...payload } = values;
@@ -230,6 +230,27 @@ static async assignChannelNumbers(channelIds) {
     const retval = await response.json();
     if (retval.id) {
       useChannelsStore.getState().addChannel(retval);
+    }
+
+    return retval;
+  }
+
+  static async createChannelsFromStreams(values) {
+    const response = await fetch(
+      `${host}/api/channels/channels/from-stream/bulk/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      }
+    );
+
+    const retval = await response.json();
+    if (retval.created.length > 0) {
+      useChannelsStore.getState().addChannels(retval.created);
     }
 
     return retval;

@@ -30,6 +30,7 @@ import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import logo from '../../images/logo.png';
+import useVideoStore from '../../store/useVideoStore'; // NEW import
 
 const ChannelsTable = () => {
   const [channel, setChannel] = useState(null);
@@ -42,6 +43,7 @@ const ChannelsTable = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   const { channels, isLoading: channelsLoading } = useChannelsStore();
+  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
 
   // Configure columns
   const columns = useMemo(
@@ -100,6 +102,10 @@ const ChannelsTable = () => {
     await API.deleteChannel(id);
   };
 
+  function handleWatchStream(channelNumber) {
+    showVideo(`/output/stream/${channelNumber}/`);
+  }
+
   // (Optional) bulk delete, but your endpoint is @TODO
   const deleteChannels = async () => {
     setIsLoading(true);
@@ -110,6 +116,7 @@ const ChannelsTable = () => {
       4,
       selected.map((chan) => () => deleteChannel(chan.original.id))
     );
+    // await API.deleteChannels(selected.map((sel) => sel.id));
     setIsLoading(false);
   };
 
@@ -176,15 +183,21 @@ const ChannelsTable = () => {
   // Example copy URLs
   const copyM3UUrl = (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy(`${window.location.protocol}//${window.location.host}/output/m3u`);
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/m3u`
+    );
   };
   const copyEPGUrl = (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy(`${window.location.protocol}//${window.location.host}/output/epg`);
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/epg`
+    );
   };
   const copyHDHRUrl = (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy(`${window.location.protocol}//${window.location.host}/output/hdhr`);
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/hdhr`
+    );
   };
 
   // Configure the MaterialReactTable
@@ -228,11 +241,14 @@ const ChannelsTable = () => {
         >
           <DeleteIcon fontSize="small" />
         </IconButton>
-        {/* If you had a channel preview:
-          <IconButton size="small" color="error" onClick={() => previewChannel(row.original.id)} sx={{ p: 0 }}>
-            <LiveTvIcon fontSize="small" />
-          </IconButton>
-        */}
+        <IconButton
+          size="small"
+          color="info"
+          onClick={() => handleWatchStream(row.original.channel_number)}
+          sx={{ p: 0 }}
+        >
+          <LiveTvIcon fontSize="small" />
+        </IconButton>
       </Box>
     ),
     muiTableContainerProps: {

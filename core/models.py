@@ -49,46 +49,16 @@ class StreamProfile(models.Model):
 
 
 class CoreSettings(models.Model):
-    default_user_agent = models.CharField(
-        max_length=512,
-        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/112.0.0.0 Safari/537.36",
-        help_text="The default User-Agent string to use if none is provided."
-    )
-    default_stream_profile = models.CharField(
+    key = models.CharField(
         max_length=255,
-        default="default_profile",
-        help_text="Name or identifier for the default stream profile."
+        unique=True,
     )
-    stream_command_timeout = models.PositiveIntegerField(
-        default=300,
-        help_text="Timeout in seconds for running stream commands."
-    )
-    enable_stream_logging = models.BooleanField(
-        default=True,
-        help_text="Toggle verbose logging for stream commands."
-    )
-    useragent_cache_timeout = models.PositiveIntegerField(
-        default=300,
-        help_text="Cache timeout in seconds for user agent data."
-    )
-    streamprofile_cache_timeout = models.PositiveIntegerField(
-        default=300,
-        help_text="Cache timeout in seconds for stream profile data."
-    )
-    streamlink_path = models.CharField(
+    name = models.CharField(
         max_length=255,
-        default="/usr/bin/streamlink",
-        help_text="Override path for the streamlink command."
     )
-    vlc_path = models.CharField(
+    value = models.CharField(
         max_length=255,
-        default="/usr/bin/vlc",
-        help_text="Override path for the VLC command."
     )
 
     def __str__(self):
         return "Core Settings"
-
-    class Meta:
-        verbose_name = "Core Setting"
-        verbose_name_plural = "Core Settings"
