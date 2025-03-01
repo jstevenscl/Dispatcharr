@@ -12,7 +12,7 @@ import useStreamProfilesStore from './store/streamProfiles';
 
 const host = '';
 
-const getAuthToken = async () => {
+export const getAuthToken = async () => {
   const token = await useAuthStore.getState().getToken(); // Assuming token is stored in Zustand store
   return token;
 };
@@ -189,23 +189,33 @@ export default class API {
     return retval;
   }
 
-  static async assignChannelNumbers(ids) {
-    const response = await fetch(`${host}/api/channels/channels/assign/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ channel_order: ids }),
-    });
+static async assignChannelNumbers(channelIds) {
+  // Make the request
+  const response = await fetch(`${host}/api/channels/channels/assign/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${await getAuthToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ channel_order: channelIds }),
+  });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().addChannel(retval);
-    }
-
-    return retval;
+  // The backend returns something like { "message": "Channels have been auto-assigned!" }
+  if (!response.ok) {
+    // If you want to handle errors gracefully:
+    const text = await response.text();
+    throw new Error(`Assign channels failed: ${response.status} => ${text}`);
   }
+
+  // Usually it has a { message: "..."} or similar
+  const retval = await response.json();
+
+  // If you want to automatically refresh the channel list in Zustand:
+  await useChannelsStore.getState().fetchChannels();
+
+  // Return the entire JSON result (so the caller can see the "message")
+  return retval;
+}
 
   static async createChannelFromStream(values) {
     const response = await fetch(`${host}/api/channels/channels/from-stream/`, {

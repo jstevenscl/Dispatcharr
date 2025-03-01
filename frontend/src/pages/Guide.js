@@ -164,7 +164,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       return;
     }
     // Build a playable stream URL for that channel
-    const url = window.location.origin + '/output/stream/' + matched.id;
+    const url = window.location.origin + '/output/stream/' + matched.channel_number;
     showVideo(url);
 
     // Optionally close the modal
