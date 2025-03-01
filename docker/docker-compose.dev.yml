@@ -1,0 +1,19 @@
+services:
+  web:
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile.dev
+    image: dispatcharr/dispatcharr:dev
+    container_name: dispatcharr_web
+    ports:
+      - "5656:5656"
+      - 9191:9191
+    volumes:
+      - ../:/app
+    environment:
+      - DISPATHCARR_ENV=dev
+      - REDIS_HOST=localhost
+      - CELERY_BROKER_URL=redis://localhost:6379/0
+
+volumes:
+  postgres_data:

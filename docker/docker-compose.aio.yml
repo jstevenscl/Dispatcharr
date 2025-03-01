@@ -1,0 +1,16 @@
+services:
+  web:
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile.alpine
+    image: dispatcharr/dispatcharr
+    container_name: dispatcharr_web
+    ports:
+      - 9191:9191
+    environment:
+      - DISPATHCARR_ENV=aio
+      - REDIS_HOST=localhost
+      - CELERY_BROKER_URL=redis://localhost:6379/0
+
+volumes:
+  postgres_data:

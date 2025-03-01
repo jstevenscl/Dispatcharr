@@ -25,23 +25,21 @@ RUN apk add \
         git \
         redis
 
+COPY ./ /app/
+
 RUN \
+    mkdir /data && \
     virtualenv /dispatcharrpy && \
-    git clone https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
     /dispatcharrpy/bin/pip install --no-cache-dir -r requirements.txt && \
     cd /app/frontend && \
     npm install && \
-    npm run build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \; && \
     cd /app && \
     python manage.py collectstatic --noinput || true
 
 # Cleanup
 RUN \
     apk del \
-        nodejs \
-        npm \
         git \
         gcc \
         musl-dev \
@@ -50,4 +48,5 @@ RUN \
 
 WORKDIR /app
 
-CMD ["/app/docker/entrypoint.aio.sh"]
+CMD ["/usr/sbin/uwsgi", "--ini", "uwsgi.ini"]
+# CMD ["gunicorn", "--workers=4", "--worker-class=gevent", "--timeout=300", "--bind", "0.0.0.0:5656", "dispatcharr.wsgi:application"]
