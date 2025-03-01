@@ -15,6 +15,3 @@ services:
       - DB_ENGINE=sqlite
       - REDIS_HOST=localhost
       - CELERY_BROKER_URL=redis://localhost:6379/0
-
-volumes:
-  postgres_data:
