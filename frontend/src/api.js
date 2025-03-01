@@ -5,6 +5,7 @@ import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
 import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
+import useSettingsStore from './store/settings';
 
 // const axios = Axios.create({
 //   withCredentials: true,
@@ -189,33 +190,33 @@ export default class API {
     return retval;
   }
 
-static async assignChannelNumbers(channelIds) {
-  // Make the request
-  const response = await fetch(`${host}/api/channels/channels/assign/`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${await getAuthToken()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ channel_order: channelIds }),
-  });
+  static async assignChannelNumbers(channelIds) {
+    // Make the request
+    const response = await fetch(`${host}/api/channels/channels/assign/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ channel_order: channelIds }),
+    });
 
-  // The backend returns something like { "message": "Channels have been auto-assigned!" }
-  if (!response.ok) {
-    // If you want to handle errors gracefully:
-    const text = await response.text();
-    throw new Error(`Assign channels failed: ${response.status} => ${text}`);
+    // The backend returns something like { "message": "Channels have been auto-assigned!" }
+    if (!response.ok) {
+      // If you want to handle errors gracefully:
+      const text = await response.text();
+      throw new Error(`Assign channels failed: ${response.status} => ${text}`);
+    }
+
+    // Usually it has a { message: "..."} or similar
+    const retval = await response.json();
+
+    // If you want to automatically refresh the channel list in Zustand:
+    await useChannelsStore.getState().fetchChannels();
+
+    // Return the entire JSON result (so the caller can see the "message")
+    return retval;
   }
-
-  // Usually it has a { message: "..."} or similar
-  const retval = await response.json();
-
-  // If you want to automatically refresh the channel list in Zustand:
-  await useChannelsStore.getState().fetchChannels();
-
-  // Return the entire JSON result (so the caller can see the "message")
-  return retval;
-}
 
   static async createChannelFromStream(values) {
     const response = await fetch(`${host}/api/channels/channels/from-stream/`, {
@@ -704,5 +705,36 @@ static async assignChannelNumbers(channelIds) {
 
     const playlist = await API.getPlaylist(accountId);
     usePlaylistsStore.getState().updateProfiles(playlist.id, playlist.profiles);
+  }
+
+  static async getSettings() {
+    const response = await fetch(`${host}/api/core/settings/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async updateSetting(values) {
+    const { id, ...payload } = values;
+    const response = await fetch(`${host}/api/core/settings/${id}/`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useSettingsStore.getState().updateSetting(retval);
+    }
+
+    return retval;
   }
 }
