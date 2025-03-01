@@ -29,7 +29,7 @@ def stream_view(request, stream_id):
     """
     try:
         # Retrieve the channel by the provided stream_id.
-        channel = Channel.objects.get(channel_number=stream_id)
+        channel = Channel.objects.get(id=stream_id)
         logger.debug("Channel retrieved: ID=%s, Name=%s", channel.id, channel.channel_name)
 
         # Ensure the channel has at least one stream.
