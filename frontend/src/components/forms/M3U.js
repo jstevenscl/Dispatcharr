@@ -1,5 +1,5 @@
 // Modal.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -17,15 +17,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from "@mui/material";
-import { useFormik } from "formik";
-import * as Yup from "yup";
-import API from "../../api";
-import useUserAgentsStore from "../../store/userAgents";
+} from '@mui/material';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
+import API from '../../api';
+import useUserAgentsStore from '../../store/userAgents';
+import M3UProfiles from './M3UProfiles';
 
 const M3U = ({ playlist = null, isOpen, onClose }) => {
   const userAgents = useUserAgentsStore((state) => state.userAgents);
   const [file, setFile] = useState(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -36,15 +38,15 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
 
   const formik = useFormik({
     initialValues: {
-      name: "",
-      server_url: "",
+      name: '',
+      server_url: '',
       max_streams: 0,
-      user_agent: "",
+      user_agent: '',
       is_active: true,
     },
     validationSchema: Yup.object({
-      name: Yup.string().required("Name is required"),
-      user_agent: Yup.string().required("User-Agent is required"),
+      name: Yup.string().required('Name is required'),
+      user_agent: Yup.string().required('User-Agent is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (playlist?.id) {
@@ -89,8 +91,8 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
     <Dialog open={isOpen} onClose={onClose}>
       <DialogTitle
         sx={{
-          backgroundColor: "primary.main",
-          color: "primary.contrastText",
+          backgroundColor: 'primary.main',
+          color: 'primary.contrastText',
         }}
       >
         M3U Account
@@ -131,7 +133,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
               direction="row"
               spacing={2}
               sx={{
-                alignItems: "center",
+                alignItems: 'center',
                 pt: 2,
               }}
             >
@@ -143,7 +145,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
                 name="uploaded_file"
                 accept="image/*"
                 onChange={(event) => handleFileChange(event)}
-                style={{ display: "none" }}
+                style={{ display: 'none' }}
               />
               <label htmlFor="uploaded_file">
                 <Button variant="contained" component="span">
@@ -198,7 +200,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
                 name="is_active"
                 checked={formik.values.is_active}
                 onChange={(e) =>
-                  formik.setFieldValue("is_active", e.target.checked)
+                  formik.setFieldValue('is_active', e.target.checked)
                 }
               />
             }
@@ -207,18 +209,33 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
         </DialogContent>
 
         <DialogActions>
-          {/* Submit button */}
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            onClick={() => setProfileModalOpen(true)}
+          >
+            Profiles
+          </Button>
+
           <Button
             type="submit"
             variant="contained"
             color="primary"
             disabled={formik.isSubmitting}
-            fullWidth
             size="small"
           >
-            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+            {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
           </Button>
         </DialogActions>
+
+        {playlist && (
+          <M3UProfiles
+            playlist={playlist}
+            isOpen={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+          />
+        )}
       </form>
     </Dialog>
   );

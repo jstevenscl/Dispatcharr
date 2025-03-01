@@ -72,7 +72,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
     };
 
     fetchPrograms();
-  }, [channels]);
+  }, [channels, activeChannels]);
 
   // Use start/end from props or default to "today at midnight" +24h
   const defaultStart = dayjs(startDate || dayjs().startOf('day'));

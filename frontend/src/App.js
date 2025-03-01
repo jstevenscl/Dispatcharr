@@ -105,7 +105,6 @@ const App = () => {
 
         <Box
           sx={{
-            height: '100vh',
             display: 'flex',
             flexDirection: 'column',
             ml: `${open ? drawerWidth : miniDrawerWidth}px`,

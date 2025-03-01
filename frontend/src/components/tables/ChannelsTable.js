@@ -22,6 +22,7 @@ import {
   Edit as EditIcon,
   Add as AddIcon,
   SwapVert as SwapVertIcon,
+  LiveTv as LiveTvIcon,
 } from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
@@ -57,13 +58,14 @@ const Example = () => {
       },
       {
         header: 'Group',
+
         accessorFn: (row) => row.channel_group?.name || '',
       },
       {
         header: 'Logo',
         accessorKey: 'logo_url',
-        size: 50,
-        cell: (info) => (
+        size: 55,
+        Cell: ({ cell }) => (
           <Grid2
             container
             direction="row"
@@ -72,7 +74,7 @@ const Example = () => {
               alignItems: 'center',
             }}
           >
-            <img src={info.getValue() || logo} width="20" />
+            <img src={cell.getValue() || logo} width="20" />
           </Grid2>
         ),
         meta: {
@@ -121,7 +123,14 @@ const Example = () => {
     const selected = table
       .getRowModel()
       .rows.filter((row) => row.getIsSelected());
-    await API.assignChannelNumbers(selected.map((sel) => sel.id));
+    await API.assignChannelNumbers(selected.map((sel) => sel.original.id));
+
+    // @TODO: update the channels that were assigned
+  };
+
+  const closeChannelForm = () => {
+    setChannel(null);
+    setChannelModalOpen(false);
   };
 
   useEffect(() => {
@@ -159,17 +168,23 @@ const Example = () => {
 
   const copyM3UUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('m3u url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/m3u`
+    );
   };
 
   const copyEPGUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('epg url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/epg`
+    );
   };
 
   const copyHDHRUrl = async (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('hdhr url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/hdhr`
+    );
   };
 
   const table = useMaterialReactTable({
@@ -177,7 +192,6 @@ const Example = () => {
     columns,
     data: channels,
     enablePagination: false,
-    // enableRowNumbers: true,
     enableRowVirtualization: true,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -196,23 +210,31 @@ const Example = () => {
     renderRowActions: ({ row }) => (
       <Box sx={{ justifyContent: 'right' }}>
         <IconButton
-          size="small" // Makes the button smaller
-          color="warning" // Red color for delete actions
+          size="small"
+          color="warning"
           onClick={() => {
             editChannel(row.original);
           }}
           sx={{ p: 0 }}
         >
-          <EditIcon fontSize="small" /> {/* Small icon size */}
+          <EditIcon fontSize="small" />
         </IconButton>
         <IconButton
-          size="small" // Makes the button smaller
-          color="error" // Red color for delete actions
+          size="small"
+          color="error"
           onClick={() => deleteChannel(row.original.id)}
           sx={{ p: 0 }}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <DeleteIcon fontSize="small" />
         </IconButton>
+        {/* <IconButton
+          size="small"
+          color="error"
+          onClick={() => previewChannel(row.original.id)}
+          sx={{ p: 0 }}
+        >
+          <LiveTvIcon fontSize="small" />
+        </IconButton> */}
       </Box>
     ),
     muiTableContainerProps: {
@@ -234,32 +256,32 @@ const Example = () => {
         <Typography>Channels</Typography>
         <Tooltip title="Add New Channel">
           <IconButton
-            size="small" // Makes the button smaller
-            color="success" // Red color for delete actions
+            size="small"
+            color="success"
             variant="contained"
             onClick={() => editChannel()}
           >
-            <AddIcon fontSize="small" /> {/* Small icon size */}
+            <AddIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Delete Channels">
           <IconButton
-            size="small" // Makes the button smaller
-            color="error" // Red color for delete actions
+            size="small"
+            color="error"
             variant="contained"
             onClick={deleteChannels}
           >
-            <DeleteIcon fontSize="small" /> {/* Small icon size */}
+            <DeleteIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Assign Channels">
           <IconButton
-            size="small" // Makes the button smaller
-            color="warning" // Red color for delete actions
+            size="small"
+            color="warning"
             variant="contained"
             onClick={assignChannels}
           >
-            <SwapVertIcon fontSize="small" /> {/* Small icon size */}
+            <SwapVertIcon fontSize="small" />
           </IconButton>
         </Tooltip>
 
@@ -288,7 +310,7 @@ const Example = () => {
       <ChannelForm
         channel={channel}
         isOpen={channelModelOpen}
-        onClose={() => setChannelModalOpen(false)}
+        onClose={closeChannelForm}
       />
 
       <Popover

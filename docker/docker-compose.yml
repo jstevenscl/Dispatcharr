@@ -5,7 +5,6 @@ services:
       dockerfile: docker/Dockerfile
     container_name: dispatcharr_web
     ports:
-      - "9191:9191"
       - "5656:5656"
     depends_on:
       - db
@@ -21,15 +20,17 @@ services:
       - POSTGRES_PASSWORD=secret
       - REDIS_HOST=redis
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - REACT_UI=true
 
   ui:
     image: alpine
     container_name: dispatcharr_ui
-    network_mode: service:web
     volumes:
       - ../frontend:/app
+    extra_hosts:
+      - host.docker.internal:host-gateway
     entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
+    ports:
+      - "9191:9191"
 
   celery:
     build:

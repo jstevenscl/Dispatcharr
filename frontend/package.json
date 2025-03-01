@@ -8,10 +8,12 @@
     "@fontsource/roboto": "^5.1.1",
     "@mui/icons-material": "^6.4.5",
     "@mui/material": "^6.4.5",
+    "@videojs/http-streaming": "^3.17.0",
     "axios": "^1.7.9",
     "dayjs": "^1.11.13",
     "eslint": "^8.57.1",
     "formik": "^2.4.6",
+    "hls.js": "^1.5.20",
     "material-react-table": "^3.2.0",
     "mpegts.js": "^1.4.2",
     "planby": "^1.1.7",
@@ -22,6 +24,7 @@
     "react-router-dom": "^7.2.0",
     "react-scripts": "5.0.1",
     "react-window": "^1.8.11",
+    "video.js": "^8.21.0",
     "web-vitals": "^2.1.4",
     "yup": "^1.6.1",
     "zustand": "^5.0.3"
@@ -51,5 +54,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://127.0.0.1:5656"
+  "proxy": "http://host.docker.internal:5656"
 }

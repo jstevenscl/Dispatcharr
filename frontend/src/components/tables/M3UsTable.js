@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MaterialReactTable,
-  MRT_ShowHideColumnsButton,
-  MRT_ToggleFullScreenButton,
   useMaterialReactTable,
 } from 'material-react-table';
 import {
   Box,
-  Grid2,
   Stack,
   Typography,
   IconButton,
   Tooltip,
-  Checkbox,
   Select,
   MenuItem,
 } from '@mui/material';
@@ -106,7 +102,9 @@ const Example = () => {
   const [sorting, setSorting] = useState([]);
 
   const editPlaylist = async (playlist = null) => {
-    setPlaylist(playlist);
+    if (playlist) {
+      setPlaylist(playlist);
+    }
     setPlaylistModalOpen(true);
   };
 
@@ -116,6 +114,11 @@ const Example = () => {
 
   const deletePlaylist = async (id) => {
     await API.deletePlaylist(id);
+  };
+
+  const closeModal = () => {
+    setPlaylistModalOpen(false);
+    setPlaylist(null);
   };
 
   const deletePlaylists = async (ids) => {
@@ -228,7 +231,7 @@ const Example = () => {
       <M3UForm
         playlist={playlist}
         isOpen={playlistModalOpen}
-        onClose={() => setPlaylistModalOpen(false)}
+        onClose={closeModal}
       />
     </Box>
   );
