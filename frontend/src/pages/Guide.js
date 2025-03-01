@@ -11,6 +11,8 @@ import {
   DialogActions,
   Button,
   Slide,
+  CircularProgress,
+  Backdrop,
 } from '@mui/material';
 import dayjs from 'dayjs';
 import API from '../api';
@@ -41,6 +43,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [guideChannels, setGuideChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
   const [selectedProgram, setSelectedProgram] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const guideRef = useRef(null);
 
@@ -69,6 +72,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
       setGuideChannels(filteredChannels);
       setPrograms(fetched);
+      setLoading(false);
     };
 
     fetchPrograms();
@@ -164,7 +168,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
       return;
     }
     // Build a playable stream URL for that channel
-    const url = window.location.origin + '/output/stream/' + matched.channel_number;
+    const url =
+      window.location.origin + '/output/stream/' + matched.channel_number;
     showVideo(url);
 
     // Optionally close the modal
@@ -244,6 +249,25 @@ export default function TVChannelGuide({ startDate, endDate }) {
           </Typography>
         </Paper>
       </Box>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Backdrop
+        sx={{
+          // color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          position: 'fixed', // Ensure it covers the entire page
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        open={loading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
     );
   }
 
