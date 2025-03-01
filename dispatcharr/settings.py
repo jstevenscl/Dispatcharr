@@ -69,7 +69,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'dispatcharr.wsgi.application'
 ASGI_APPLICATION = 'dispatcharr.asgi.application'
 
-if os.getenv('DB_ENGINE' None) == 'sqlite':
+if os.getenv('DB_ENGINE', None) == 'sqlite':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
