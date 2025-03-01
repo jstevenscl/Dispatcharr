@@ -30,6 +30,7 @@ import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import { ContentCopy } from '@mui/icons-material';
 import logo from '../../images/logo.png';
+import useVideoStore from '../../store/useVideoStore'; // NEW import
 
 const Example = () => {
   const [channel, setChannel] = useState(null);
@@ -43,6 +44,7 @@ const Example = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   const { channels, isLoading: channelsLoading } = useChannelsStore();
+  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
 
   const columns = useMemo(
     //column definitions...
@@ -104,6 +106,10 @@ const Example = () => {
     await API.deleteChannel(id);
   };
 
+  function handleWatchStream(channelNumber) {
+    showVideo(`/output/stream/${channelNumber}/`);
+  }
+
   // @TODO: the bulk delete endpoint is currently broken
   const deleteChannels = async () => {
     setIsLoading(true);
@@ -116,6 +122,7 @@ const Example = () => {
         return deleteChannel(chan.original.id);
       })
     );
+    // await API.deleteChannels(selected.map((sel) => sel.id));
     setIsLoading(false);
   };
 
@@ -227,14 +234,14 @@ const Example = () => {
         >
           <DeleteIcon fontSize="small" />
         </IconButton>
-        {/* <IconButton
+        <IconButton
           size="small"
-          color="error"
-          onClick={() => previewChannel(row.original.id)}
+          color="info"
+          onClick={() => handleWatchStream(row.original.channel_number)}
           sx={{ p: 0 }}
         >
           <LiveTvIcon fontSize="small" />
-        </IconButton> */}
+        </IconButton>
       </Box>
     ),
     muiTableContainerProps: {

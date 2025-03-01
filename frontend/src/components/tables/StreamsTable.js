@@ -71,11 +71,12 @@ const Example = () => {
     const selected = table
       .getRowModel()
       .rows.filter((row) => row.getIsSelected());
-    await utils.Limiter(
-      4,
-      selected.map((stream) => () => {
-        return createChannelFromStream(stream.original);
-      })
+
+    await API.createChannelsFromStreams(
+      selected.map((sel) => ({
+        stream_id: sel.original.id,
+        channel_name: sel.original.name,
+      }))
     );
     setIsLoading(false);
   };
