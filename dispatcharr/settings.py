@@ -5,6 +5,7 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'REPLACE_ME_WITH_A_REAL_SECRET'
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 
 DEBUG = True
 ALLOWED_HOSTS = ["*"]

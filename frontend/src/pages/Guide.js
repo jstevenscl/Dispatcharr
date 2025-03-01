@@ -72,7 +72,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
     };
 
     fetchPrograms();
-  }, [channels, activeChannels]);
+  }, [channels]);
 
   // Use start/end from props or default to "today at midnight" +24h
   const defaultStart = dayjs(startDate || dayjs().startOf('day'));
@@ -163,7 +163,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       return;
     }
     // Build a playable stream URL for that channel
-    const url = window.location.origin + '/output/stream/' + matched.id;
+    const url = window.location.origin + '/output/stream/' + matched.channel_number;
     showVideo(url);
 
     // Optionally close the modal

@@ -210,7 +210,7 @@ def create_profile_for_m3u_account(sender, instance, created, **kwargs):
             m3u_account=instance,
             is_default=True,
         )
-        console.log(profile)
+        
 
         profile.max_streams = instance.max_streams
         profile.save()

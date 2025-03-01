@@ -12,18 +12,21 @@ import {
   Button,
 } from '@mui/material';
 import useStreamsStore from '../../store/streams';
+import useChannelsStore from '../../store/channels'; // NEW: Import channels store
 import API from '../../api';
+// Make sure your api.js exports getAuthToken as a named export:
+// e.g. export const getAuthToken = async () => { ... }
+import { getAuthToken } from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
 import { TableHelper } from '../../helpers';
-import utils from '../../utils';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 
-const Example = () => {
+const StreamsTable = () => {
   const [rowSelection, setRowSelection] = useState([]);
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,16 +34,9 @@ const Example = () => {
   const { playlists } = usePlaylistsStore();
 
   const columns = useMemo(
-    //column definitions...
     () => [
-      {
-        header: 'Name',
-        accessorKey: 'name',
-      },
-      {
-        header: 'Group',
-        accessorKey: 'group_name',
-      },
+      { header: 'Name', accessorKey: 'name' },
+      { header: 'Group', accessorKey: 'group_name' },
       {
         header: 'M3U',
         size: 100,
@@ -51,12 +47,11 @@ const Example = () => {
     [playlists]
   );
 
-  //optionally access the underlying virtualizer instance
   const rowVirtualizerInstanceRef = useRef(null);
-
   const [isLoading, setIsLoading] = useState(true);
   const [sorting, setSorting] = useState([]);
 
+  // Fallback: Individual creation (optional)
   const createChannelFromStream = async (stream) => {
     await API.createChannelFromStream({
       channel_name: stream.name,
@@ -65,19 +60,38 @@ const Example = () => {
     });
   };
 
-  // @TODO: bulk create is broken, returning a 404
+  // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
-    setIsLoading(true);
+    // Get all selected streams from the table
     const selected = table
       .getRowModel()
-      .rows.filter((row) => row.getIsSelected());
-    await utils.Limiter(
-      4,
-      selected.map((stream) => () => {
-        return createChannelFromStream(stream.original);
-      })
-    );
-    setIsLoading(false);
+      .rows.filter((row) => row.getIsSelected())
+      .map((row) => row.original);
+    if (!selected.length) return;
+
+    // Build payload: an array of objects with stream_id and channel_name
+    const payload = selected.map((stream) => ({
+      stream_id: stream.id,
+      channel_name: stream.name || `Channel from ${stream.id}`,
+    }));
+
+    // Retrieve the auth token (make sure getAuthToken is exported from your API file)
+    const token = await getAuthToken();
+
+    // Send a POST request to your bulk endpoint
+    const response = await fetch(`/api/channels/channels/from-stream/bulk/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    console.log("Bulk create result:", result);
+
+    // Refresh the channels store so new channels appear in your UI.
+    await useChannelsStore.getState().fetchChannels();
   };
 
   const editStream = async (stream = null) => {
@@ -108,7 +122,6 @@ const Example = () => {
   }, []);
 
   useEffect(() => {
-    //scroll to the top of the table when the sorting changes
     try {
       rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
     } catch (error) {
@@ -118,7 +131,6 @@ const Example = () => {
 
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
-
     columns,
     data: streams,
     enablePagination: false,
@@ -131,14 +143,14 @@ const Example = () => {
       sorting,
       rowSelection,
     },
-    rowVirtualizerInstanceRef, //optional
-    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
+    rowVirtualizerInstanceRef,
+    rowVirtualizerOptions: { overscan: 5 },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
       <>
         <IconButton
-          size="small" // Makes the button smaller
-          color="warning" // Red color for delete actions
+          size="small"
+          color="warning"
           onClick={() => editStream(row.original)}
           disabled={row.original.m3u_account}
           sx={{ p: 0 }}
@@ -146,16 +158,16 @@ const Example = () => {
           <EditIcon fontSize="small" />
         </IconButton>
         <IconButton
-          size="small" // Makes the button smaller
-          color="error" // Red color for delete actions
+          size="small"
+          color="error"
           onClick={() => deleteStream(row.original.id)}
           sx={{ p: 0 }}
         >
           <DeleteIcon fontSize="small" />
         </IconButton>
         <IconButton
-          size="small" // Makes the button smaller
-          color="success" // Red color for delete actions
+          size="small"
+          color="success"
           onClick={() => createChannelFromStream(row.original)}
           sx={{ p: 0 }}
         >
@@ -165,46 +177,38 @@ const Example = () => {
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 75px)', // Subtract padding to avoid cutoff
-        overflowY: 'auto', // Internal scrolling for the table
+        height: 'calc(100vh - 75px)',
+        overflowY: 'auto',
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (
-      <Stack
-        direction="row"
-        sx={{
-          alignItems: 'center',
-        }}
-      >
+      <Stack direction="row" sx={{ alignItems: 'center' }}>
         <Typography>Streams</Typography>
         <Tooltip title="Add New Stream">
           <IconButton
-            size="small" // Makes the button smaller
-            color="success" // Red color for delete actions
+            size="small"
+            color="success"
             variant="contained"
             onClick={() => editStream()}
           >
-            <AddIcon fontSize="small" /> {/* Small icon size */}
+            <AddIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Delete Streams">
           <IconButton
-            size="small" // Makes the button smaller
-            color="error" // Red color for delete actions
+            size="small"
+            color="error"
             variant="contained"
             onClick={deleteStreams}
           >
-            <DeleteIcon fontSize="small" /> {/* Small icon size */}
+            <DeleteIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Button
           variant="contained"
           onClick={createChannelsFromStreams}
           size="small"
-          // disabled={rowSelection.length === 0}
-          sx={{
-            marginLeft: 1,
-          }}
+          sx={{ marginLeft: 1 }}
         >
           Create Channels
         </Button>
@@ -213,24 +217,11 @@ const Example = () => {
   });
 
   return (
-    <Box
-      sx={
-        {
-          // paddingTop: 2,
-          // paddingLeft: 1,
-          // paddingRight: 2,
-          // paddingBottom: 2,
-        }
-      }
-    >
+    <Box>
       <MaterialReactTable table={table} />
-      <StreamForm
-        stream={stream}
-        isOpen={modalOpen}
-        onClose={closeStreamForm}
-      />
+      <StreamForm stream={stream} isOpen={modalOpen} onClose={closeStreamForm} />
     </Box>
   );
 };
 
-export default Example;
+export default StreamsTable;
