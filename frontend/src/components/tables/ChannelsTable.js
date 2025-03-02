@@ -24,13 +24,14 @@ import {
   SwapVert as SwapVertIcon,
   LiveTv as LiveTvIcon,
   ContentCopy,
+  Tv as TvIcon,            // <-- ADD THIS IMPORT
 } from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import logo from '../../images/logo.png';
-import useVideoStore from '../../store/useVideoStore'; // NEW import
+import useVideoStore from '../../store/useVideoStore';
 
 const ChannelsTable = () => {
   const [channel, setChannel] = useState(null);
@@ -116,6 +117,7 @@ const ChannelsTable = () => {
       4,
       selected.map((chan) => () => deleteChannel(chan.original.id))
     );
+    // If you have a real bulk-delete endpoint, call it here:
     // await API.deleteChannels(selected.map((sel) => sel.id));
     setIsLoading(false);
   };
@@ -142,6 +144,32 @@ const ChannelsTable = () => {
       setSnackbarMessage('Failed to assign channels');
       setSnackbarOpen(true);
     }
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // The new "Match EPG" button logic
+  // ─────────────────────────────────────────────────────────
+  const matchEpg = async () => {
+    try {
+      // Hit our new endpoint that triggers the fuzzy matching Celery task
+      const resp = await fetch('/api/channels/channels/match-epg/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+      });
+
+      if (resp.ok) {
+        setSnackbarMessage('EPG matching task started!');
+      } else {
+        const text = await resp.text();
+        setSnackbarMessage(`Failed to start EPG matching: ${text}`);
+      }
+    } catch (err) {
+      setSnackbarMessage(`Error: ${err.message}`);
+    }
+    setSnackbarOpen(true);
   };
 
   const closeChannelForm = () => {
@@ -291,6 +319,18 @@ const ChannelsTable = () => {
             onClick={assignChannels}
           >
             <SwapVertIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
+        {/* Our brand-new button for EPG matching */}
+        <Tooltip title="Auto-match EPG with fuzzy logic">
+          <IconButton
+            size="small"
+            color="success"
+            variant="contained"
+            onClick={matchEpg}
+          >
+            <TvIcon fontSize="small" />
           </IconButton>
         </Tooltip>
 

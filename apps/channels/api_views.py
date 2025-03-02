@@ -9,6 +9,8 @@ from django.shortcuts import get_object_or_404
 
 from .models import Stream, Channel, ChannelGroup
 from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer
+from .tasks import match_epg_channels
+
 
 # ─────────────────────────────────────────────────────────
 # 1) Stream API (CRUD)
@@ -30,6 +32,7 @@ class StreamViewSet(viewsets.ModelViewSet):
             qs = qs.filter(channels__isnull=True)
         return qs
 
+
 # ─────────────────────────────────────────────────────────
 # 2) Channel Group Management (CRUD)
 # ─────────────────────────────────────────────────────────
@@ -37,6 +40,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
     queryset = ChannelGroup.objects.all()
     serializer_class = ChannelGroupSerializer
     permission_classes = [IsAuthenticated]
+
 
 # ─────────────────────────────────────────────────────────
 # 3) Channel Management (CRUD)
@@ -131,6 +135,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
             'logo_url': stream.logo_url,
+            'streams': [stream_id]
         }
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
@@ -178,6 +183,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         # Gather current used numbers once.
         used_numbers = set(Channel.objects.all().values_list('channel_number', flat=True))
         next_number = 1
+
         def get_auto_number():
             nonlocal next_number
             while next_number in used_numbers:
@@ -221,6 +227,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 "tvg_id": stream.tvg_id,
                 "channel_group_id": channel_group.id,
                 "logo_url": stream.logo_url,
+                "streams": [stream_id],
             }
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
@@ -235,6 +242,20 @@ class ChannelViewSet(viewsets.ModelViewSet):
             response_data["errors"] = errors
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    # ─────────────────────────────────────────────────────────
+    # 6) EPG Fuzzy Matching
+    # ─────────────────────────────────────────────────────────
+    @swagger_auto_schema(
+        method='post',
+        operation_description="Kick off a Celery task that tries to fuzzy-match channels with EPG data.",
+        responses={202: "EPG matching task initiated"}
+    )
+    @action(detail=False, methods=['post'], url_path='match-epg')
+    def match_epg(self, request):
+        match_epg_channels.delay()
+        return Response({"message": "EPG matching task initiated."}, status=status.HTTP_202_ACCEPTED)
+
 
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams
@@ -261,6 +282,7 @@ class BulkDeleteStreamsAPIView(APIView):
         stream_ids = request.data.get('stream_ids', [])
         Stream.objects.filter(id__in=stream_ids).delete()
         return Response({"message": "Streams deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
+
 
 # ─────────────────────────────────────────────────────────
 # 5) Bulk Delete Channels

@@ -69,7 +69,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       channel_name: '',
       channel_number: '',
       channel_group_id: '',
-      stream_profile_id: '',
+      stream_profile_id: '0',
       tvg_id: '',
       tvg_name: '',
     },
@@ -79,6 +79,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       channel_group_id: Yup.string().required('Channel group is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
+      if (values.stream_profile_id == '0') {
+        values.stream_profile_id = null;
+      }
+
       console.log(values);
       if (channel?.id) {
         await API.updateChannel({
@@ -109,21 +113,18 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         channel_name: channel.channel_name,
         channel_number: channel.channel_number,
         channel_group_id: channel.channel_group?.id,
-        stream_profile_id: channel.stream_profile_id,
+        stream_profile_id: channel.stream_profile_id || '0',
         tvg_id: channel.tvg_id,
         tvg_name: channel.tvg_name,
       });
 
-      console.log('channel streams');
-      console.log(channel.streams);
+      console.log(channel);
       const filteredStreams = streams
-        .filter((stream) => channel.streams.includes(stream.id))
+        .filter((stream) => channel.stream_ids.includes(stream.id))
         .sort(
           (a, b) =>
-            channel.streams.indexOf(a.id) - channel.streams.indexOf(b.id)
+            channel.stream_ids.indexOf(a.id) - channel.stream_ids.indexOf(b.id)
         );
-      console.log('filtered streams');
-      console.log(filteredStreams);
       setChannelStreams(filteredStreams);
     } else {
       formik.resetForm();
@@ -334,7 +335,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     labelId="stream-profile-label"
                     id="stream_profile_id"
                     name="stream_profile_id"
-                    label="Stream Profile (optional)"
                     value={formik.values.stream_profile_id}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
@@ -345,6 +345,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     // helperText={formik.touched.channel_group_id && formik.errors.stream_profile_id}
                     variant="standard"
                   >
+                    <MenuItem value="0" selected>
+                      <em>Use Default</em>
+                    </MenuItem>
                     {streamProfiles.map((option, index) => (
                       <MenuItem key={index} value={option.id}>
                         {option.profile_name}
@@ -401,7 +404,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   helperText={formik.touched.tvg_id && formik.errors.tvg_id}
                   variant="standard"
                 />
-                
+
                 <TextField
                   fullWidth
                   id="logo_url"
@@ -414,7 +417,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   onBlur={formik.handleBlur}
                   helperText="If you have a direct image URL, set it here."
                 />
-
 
                 <Box mt={2} mb={2}>
                   {/* File upload input */}

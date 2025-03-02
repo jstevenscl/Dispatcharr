@@ -1,28 +1,34 @@
-FROM alpine
+FROM python:3.13-slim
 
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
     DJANGO_SETTINGS_MODULE=dispatcharr.settings \
     PYTHONUNBUFFERED=1
 
-RUN apk add \
-        python3 \
-        python3-dev \
-        gcc \
-        musl-dev \
-        linux-headers \
-        py3-pip \
+RUN apt-get update && \
+    apt-get install -y \
+        curl \
         ffmpeg \
-        streamlink \
-        vlc \
-        libpq-dev \
         gcc \
-        py3-virtualenv  \
-        uwsgi \
-        uwsgi-python \
-        nodejs \
-        npm \
         git \
+        gpg \
+        libpq-dev \
+        lsb-release \
+        python3-virtualenv \
+        streamlink
+
+RUN \
+    curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh && \
+    bash /tmp/nodesource_setup.sh && \
+    curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
+    chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list && \
+    apt-get update && \
+    apt-get install -y redis
+
+RUN apt-get update && \
+    apt-get install -y \
+        nodejs \
         redis
 
 RUN \
@@ -30,24 +36,26 @@ RUN \
     virtualenv /dispatcharrpy && \
     git clone https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
-    /dispatcharrpy/bin/pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
     cd /app/frontend && \
     npm install && \
     npm run build && \
     find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \; && \
     cd /app && \
-    python manage.py collectstatic --noinput || true
-
-# Cleanup
-RUN \
-    apk del \
-        nodejs \
-        npm \
-        git \
+    python manage.py collectstatic --noinput || true && \
+    apt-get remove -y \
         gcc \
-        musl-dev \
-        python3-dev \
-        linux-headers
+        git \
+        gpg \
+        libpq-dev \
+        lsb-release \
+        nodejs && \
+    apt-get clean && \
+    apt-get autoremove -y && \
+    rm -rf \
+        /tmp/* \
+        /var/lib/apt/lists/* \
+        /var/tmp/*
 
 WORKDIR /app
 

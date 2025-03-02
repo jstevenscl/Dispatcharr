@@ -1,3 +1,4 @@
+// src/api.js (updated)
 import useAuthStore from './store/auth';
 import useChannelsStore from './store/channels';
 import useUserAgentsStore from './store/userAgents';
@@ -7,18 +8,17 @@ import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
 import useSettingsStore from './store/settings';
 
-// const axios = Axios.create({
-//   withCredentials: true,
-// });
-
+// If needed, you can set a base host or keep it empty if relative requests
 const host = '';
 
-export const getAuthToken = async () => {
-  const token = await useAuthStore.getState().getToken(); // Assuming token is stored in Zustand store
-  return token;
-};
-
 export default class API {
+  /**
+   * A static method so we can do:  await API.getAuthToken()
+   */
+  static async getAuthToken() {
+    return await useAuthStore.getState().getToken(); 
+  }
+
   static async login(username, password) {
     const response = await fetch(`${host}/api/accounts/token/`, {
       method: 'POST',
@@ -31,11 +31,11 @@ export default class API {
     return await response.json();
   }
 
-  static async refreshToken(refreshToken) {
+  static async refreshToken(refresh) {
     const response = await fetch(`${host}/api/accounts/token/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: refreshToken }),
+      body: JSON.stringify({ refresh }),
     });
 
     const retval = await response.json();
@@ -54,7 +54,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/`, {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
       },
     });
 
@@ -66,7 +66,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/groups/`, {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
       },
     });
 
@@ -78,7 +78,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/groups/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(values),
@@ -97,7 +97,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/groups/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -114,6 +114,7 @@ export default class API {
   static async addChannel(channel) {
     let body = null;
     if (channel.logo_file) {
+      // Must send FormData for file upload
       body = new FormData();
       for (const prop in channel) {
         body.append(prop, channel[prop]);
@@ -127,7 +128,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         ...(channel.logo_file
           ? {}
           : {
@@ -149,7 +150,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/${id}/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -162,7 +163,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/bulk-delete/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ channel_ids }),
@@ -176,7 +177,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -195,26 +196,22 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/assign/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ channel_order: channelIds }),
     });
 
-    // The backend returns something like { "message": "Channels have been auto-assigned!" }
     if (!response.ok) {
-      // If you want to handle errors gracefully:
       const text = await response.text();
       throw new Error(`Assign channels failed: ${response.status} => ${text}`);
     }
 
-    // Usually it has a { message: "..."} or similar
     const retval = await response.json();
 
-    // If you want to automatically refresh the channel list in Zustand:
+    // Optionally refresh the channel list in Zustand
     await useChannelsStore.getState().fetchChannels();
 
-    // Return the entire JSON result (so the caller can see the "message")
     return retval;
   }
 
@@ -222,7 +219,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/channels/from-stream/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(values),
@@ -242,7 +239,7 @@ export default class API {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${await getAuthToken()}`,
+          Authorization: `Bearer ${await API.getAuthToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(values),
@@ -261,7 +258,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/streams/`, {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
       },
     });
 
@@ -273,7 +270,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/streams/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(values),
@@ -292,7 +289,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/streams/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -310,7 +307,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/streams/${id}/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -322,7 +319,7 @@ export default class API {
     const response = await fetch(`${host}/api/channels/streams/bulk-delete/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ stream_ids: ids }),
@@ -335,7 +332,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/useragents/`, {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
       },
     });
 
@@ -347,7 +344,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/useragents/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(values),
@@ -366,7 +363,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/useragents/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -384,7 +381,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/useragents/${id}/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -395,7 +392,7 @@ export default class API {
   static async getPlaylist(id) {
     const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -407,7 +404,7 @@ export default class API {
   static async getPlaylists() {
     const response = await fetch(`${host}/api/m3u/accounts/`, {
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -420,7 +417,7 @@ export default class API {
     const response = await fetch(`${host}/api/m3u/accounts/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(values),
@@ -438,7 +435,7 @@ export default class API {
     const response = await fetch(`${host}/api/m3u/refresh/${id}/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -451,7 +448,7 @@ export default class API {
     const response = await fetch(`${host}/api/m3u/refresh/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -464,7 +461,7 @@ export default class API {
     const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -477,7 +474,7 @@ export default class API {
     const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -494,7 +491,7 @@ export default class API {
   static async getEPGs() {
     const response = await fetch(`${host}/api/epg/sources/`, {
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -503,18 +500,8 @@ export default class API {
     return retval;
   }
 
-  static async refreshPlaylist(id) {
-    const response = await fetch(`${host}/api/m3u/refresh/${id}/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const retval = await response.json();
-    return retval;
-  }
+  // Notice there's a duplicated "refreshPlaylist" method above; 
+  // you might want to rename or remove one if it's not needed.
 
   static async addEPG(values) {
     let body = null;
@@ -532,7 +519,7 @@ export default class API {
     const response = await fetch(`${host}/api/epg/sources/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         ...(values.epg_file
           ? {}
           : {
@@ -554,7 +541,7 @@ export default class API {
     const response = await fetch(`${host}/api/epg/sources/${id}/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -566,7 +553,7 @@ export default class API {
     const response = await fetch(`${host}/api/epg/import/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ id }),
@@ -579,7 +566,7 @@ export default class API {
   static async getStreamProfiles() {
     const response = await fetch(`${host}/api/core/streamprofiles/`, {
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -592,7 +579,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/streamprofiles/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(values),
@@ -610,7 +597,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/streamprofiles/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -628,7 +615,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/streamprofiles/${id}/`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -639,7 +626,7 @@ export default class API {
   static async getGrid() {
     const response = await fetch(`${host}/api/epg/grid/`, {
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
@@ -654,7 +641,7 @@ export default class API {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${await getAuthToken()}`,
+          Authorization: `Bearer ${await API.getAuthToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(values),
@@ -663,7 +650,7 @@ export default class API {
 
     const retval = await response.json();
     if (retval.id) {
-      // Fetch m3u account to update it with its new playlists
+      // Refresh the playlist
       const playlist = await API.getPlaylist(accountId);
       usePlaylistsStore
         .getState()
@@ -679,7 +666,7 @@ export default class API {
       {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${await getAuthToken()}`,
+          Authorization: `Bearer ${await API.getAuthToken()}`,
           'Content-Type': 'application/json',
         },
       }
@@ -696,7 +683,7 @@ export default class API {
       {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${await getAuthToken()}`,
+          Authorization: `Bearer ${await API.getAuthToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -711,7 +698,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/settings/`, {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
       },
     });
 
@@ -724,7 +711,7 @@ export default class API {
     const response = await fetch(`${host}/api/core/settings/${id}/`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${await getAuthToken()}`,
+        Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),

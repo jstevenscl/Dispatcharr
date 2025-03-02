@@ -61,6 +61,7 @@ class Channel(models.Model):
     streams = models.ManyToManyField(
         Stream,
         blank=True,
+        through='ChannelStream',
         related_name='channels'
     )
 
@@ -84,7 +85,7 @@ class Channel(models.Model):
         related_name='channels'
     )
 
-    
+
     def clean(self):
         # Enforce unique channel_number within a given group
         existing = Channel.objects.filter(
@@ -109,3 +110,11 @@ class ChannelGroup(models.Model):
 
     def __str__(self):
         return self.name
+
+class ChannelStream(models.Model):
+    channel = models.ForeignKey(Channel, on_delete=models.CASCADE)
+    stream = models.ForeignKey(Stream, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0)  # Ordering field
+
+    class Meta:
+        ordering = ['order']  # Ensure streams are retrieved in order
