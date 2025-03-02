@@ -30,9 +30,13 @@ urlpatterns = [
     path('admin', RedirectView.as_view(url='/admin/', permanent=True)),  # This fixes the issue
     path('admin/', admin.site.urls),
 
-    # Admin
+    # Outputs
     path('output', RedirectView.as_view(url='/output/', permanent=True)),  # This fixes the issue
     path('output/', include(('apps.output.urls', 'output'), namespace='output')),
+
+    # HDHR
+    path('hdhr', RedirectView.as_view(url='/hdhr/', permanent=True)),  # This fixes the issue
+    path('hdhr/', include(('apps.hdhr.urls', 'hdhr'), namespace='hdhr')),
 
     # Swagger UI
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
