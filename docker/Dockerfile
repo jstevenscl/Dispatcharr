@@ -15,9 +15,7 @@ RUN apt-get update && \
         libpq-dev \
         lsb-release \
         python3-virtualenv \
-        streamlink \
-        uwsgi \
-        python3-django-uwsgi
+        streamlink
 
 RUN \
     curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh && \
