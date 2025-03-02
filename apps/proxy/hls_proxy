@@ -39,6 +39,11 @@ class Config:
     CLIENT_TIMEOUT_FACTOR = 1.5    # Multiplier for target duration to determine client timeout
     CLIENT_CLEANUP_INTERVAL = 10   # Seconds between client cleanup checks
     FIRST_SEGMENT_TIMEOUT = 5.0  # Seconds to wait for first segment
+    
+    # Initial buffering settings
+    INITIAL_BUFFER_SECONDS = 25.0  # Initial buffer in seconds before allowing clients
+    MAX_INITIAL_SEGMENTS = 10      # Maximum segments to fetch during initialization
+    BUFFER_READY_TIMEOUT = 30.0    # Maximum time to wait for initial buffer (seconds)
 
 class StreamBuffer:
     """
@@ -190,6 +195,11 @@ class StreamManager:
         self.cleanup_interval = Config.CLIENT_CLEANUP_INTERVAL
         
         logging.info(f"Initialized stream manager for channel {channel_id}")
+
+        # Buffer state tracking
+        self.buffer_ready = threading.Event()
+        self.buffered_duration = 0.0
+        self.initial_buffering = True
 
     def update_url(self, new_url: str) -> bool:
         """
@@ -476,91 +486,129 @@ class StreamFetcher:
             raise
 
     def fetch_loop(self):
-        """
-        Main fetching loop that continuously downloads stream content.
-        
-        Features:
-            - Automatic manifest updates
-            - Rate-limited downloads
-            - Exponential backoff on errors
-            - Stream switch handling
-            - Segment validation
-            
-        Error handling:
-            - HTTP 509 rate limiting
-            - Connection drops
-            - Invalid segments
-            - Manifest parsing errors
-            
-        Thread safety:
-            Coordinates with StreamManager and StreamBuffer
-            using proper locking mechanisms
-        """
+        """Main fetch loop for stream data"""
         retry_delay = 1
         max_retry_delay = 8
         last_manifest_time = 0
+        downloaded_segments = set()  # Track downloaded segment URIs
 
         while self.manager.running:
             try:
-                now = time.time()
+                current_time = time.time()
                 
-                # Get manifest data
-                try:
-                    manifest_data, final_url = self.download(self.manager.current_url)
-                    manifest = m3u8.loads(manifest_data.decode())
-                    
-                    # Reset retry delay on successful fetch
-                    retry_delay = 1
-                    
-                except requests.exceptions.HTTPError as e:
-                    if e.response.status_code == 509:
-                        logging.warning("Rate limit exceeded, backing off...")
-                        time.sleep(retry_delay)
-                        retry_delay = min(retry_delay * 2, max_retry_delay)
+                # Check manifest update timing
+                if last_manifest_time:
+                    time_since_last = current_time - last_manifest_time
+                    if time_since_last < (self.manager.target_duration * 0.5):
+                        time.sleep(self.manager.target_duration * 0.5 - time_since_last)
                         continue
-                    raise
+
+                # Get manifest data
+                manifest_data, final_url = self.download(self.manager.current_url)
+                manifest = m3u8.loads(manifest_data.decode())
                 
                 # Update manifest info
                 if manifest.target_duration:
                     self.manager.target_duration = float(manifest.target_duration)
                 if manifest.version:
                     self.manager.manifest_version = manifest.version
-                
+
                 if not manifest.segments:
-                    logging.warning("No segments in manifest")
-                    time.sleep(retry_delay)
                     continue
 
-                # Calculate proper manifest polling interval
-                target_duration = float(manifest.target_duration)
-                manifest_interval = target_duration * 0.5  # Poll at half the segment duration
-                
-                # Process latest segment
+                if self.manager.initial_buffering:
+                    segments_to_fetch = []
+                    current_duration = 0.0
+                    successful_downloads = 0  # Initialize counter here
+                    
+                    # Start from the end of the manifest
+                    for segment in reversed(manifest.segments):
+                        current_duration += float(segment.duration)
+                        segments_to_fetch.append(segment)
+                        
+                        # Stop when we have enough duration or hit max segments
+                        if (current_duration >= Config.INITIAL_BUFFER_SECONDS or 
+                            len(segments_to_fetch) >= Config.MAX_INITIAL_SEGMENTS):
+                            break
+                    
+                    # Reverse back to chronological order
+                    segments_to_fetch.reverse()
+                    
+                    # Download initial segments
+                    for segment in segments_to_fetch:
+                        try:
+                            segment_url = urljoin(final_url, segment.uri)
+                            segment_data, _ = self.download(segment_url)
+                            
+                            validation = verify_segment(segment_data)
+                            if validation.get('valid', False):
+                                with self.buffer.lock:
+                                    seq = self.manager.next_sequence
+                                    self.buffer[seq] = segment_data
+                                    duration = float(segment.duration)
+                                    self.manager.segment_durations[seq] = duration
+                                    self.manager.buffered_duration += duration
+                                    self.manager.next_sequence += 1
+                                    successful_downloads += 1
+                                    logging.debug(f"Buffered initial segment {seq} (source: {segment.uri}, duration: {duration}s)")
+                        except Exception as e:
+                            logging.error(f"Initial segment download error: {e}")
+                    
+                    # Only mark buffer ready if we got some segments
+                    if successful_downloads > 0:
+                        self.manager.initial_buffering = False
+                        self.manager.buffer_ready.set()
+                        logging.info(f"Initial buffer ready with {successful_downloads} segments "
+                                   f"({self.manager.buffered_duration:.1f}s of content)")
+                    continue
+
+                # Normal operation - get latest segment if we haven't already
                 latest_segment = manifest.segments[-1]
+                if latest_segment.uri in downloaded_segments:
+                    # Wait for next manifest update
+                    time.sleep(self.manager.target_duration * 0.5)
+                    continue
+
                 try:
                     segment_url = urljoin(final_url, latest_segment.uri)
                     segment_data, _ = self.download(segment_url)
                     
-                    verification = verify_segment(segment_data)
-                    if not verification.get('valid', False):
-                        logging.warning(f"Invalid segment: {verification.get('error')}")
-                        continue
+                    # Try several times if segment validation fails
+                    max_retries = 3
+                    retry_count = 0
+                    while retry_count < max_retries:
+                        verification = verify_segment(segment_data)
+                        if verification.get('valid', False):
+                            break
+                        logging.warning(f"Invalid segment, retry {retry_count + 1}/{max_retries}: {verification.get('error')}")
+                        time.sleep(0.5)  # Short delay before retry
+                        segment_data, _ = self.download(segment_url)
+                        retry_count += 1
 
-                    # Store segment with proper locking
-                    with self.buffer.lock:
-                        seq = self.manager.next_sequence
-                        self.buffer[seq] = segment_data
-                        self.manager.segment_durations[seq] = float(latest_segment.duration)
-                        self.manager.next_sequence += 1
-                        logging.debug(f"Stored segment {seq} (duration: {latest_segment.duration}s)")
+                    if verification.get('valid', False):
+                        with self.buffer.lock:
+                            seq = self.manager.next_sequence
+                            self.buffer[seq] = segment_data
+                            self.manager.segment_durations[seq] = float(latest_segment.duration)
+                            self.manager.next_sequence += 1
+                            downloaded_segments.add(latest_segment.uri)
+                            logging.debug(f"Stored segment {seq} (source: {latest_segment.uri}, "
+                                       f"duration: {latest_segment.duration}s, "
+                                       f"size: {len(segment_data)})")
+
+                        # Update timing
+                        last_manifest_time = time.time()
+                        retry_delay = 1  # Reset retry delay on success
+                    else:
+                        logging.error(f"Segment validation failed after {max_retries} retries")
 
                 except Exception as e:
                     logging.error(f"Segment download error: {e}")
                     continue
 
-                # Update last manifest time and wait for next interval
-                last_manifest_time = now
-                time.sleep(manifest_interval)
+                # Cleanup old segment URIs from tracking
+                if len(downloaded_segments) > 100:
+                    downloaded_segments.clear()
 
             except Exception as e:
                 logging.error(f"Fetch error: {e}")
@@ -926,6 +974,16 @@ class ProxyServer:
 
     def stream_endpoint(self, channel_id: str):
         """Flask route handler for serving HLS manifests."""
+        if channel_id not in self.stream_managers:
+            return Response('Channel not found', status=404)
+            
+        manager = self.stream_managers[channel_id]
+        
+        # Wait for initial buffer
+        if not manager.buffer_ready.wait(Config.BUFFER_READY_TIMEOUT):
+            logging.error(f"Timeout waiting for initial buffer for channel {channel_id}")
+            return Response('Initial buffer not ready', status=503)
+        
         try:
             if (channel_id not in self.stream_managers) or (not self.stream_managers[channel_id].running):
                 return Response('Channel not found', status=404)
