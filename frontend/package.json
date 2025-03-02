@@ -30,7 +30,7 @@
     "zustand": "^5.0.3"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "PORT=9191 react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
@@ -54,5 +54,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://host.docker.internal:5656"
+  "proxy": "http://localhost:5656"
 }

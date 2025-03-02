@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker build -t dispatcharr/dispatcharr:dev ..
+docker build -t dispatcharr/dispatcharr:dev -f Dockerfile ..

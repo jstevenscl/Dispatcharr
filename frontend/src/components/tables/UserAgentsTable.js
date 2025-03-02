@@ -26,6 +26,8 @@ import {
 import useUserAgentsStore from '../../store/userAgents';
 import UserAgentForm from '../forms/UserAgent';
 import { TableHelper } from '../../helpers';
+import useSettingsStore from '../../store/settings';
+import useAlertStore from '../../store/alerts';
 
 const UserAgentsTable = () => {
   const [userAgent, setUserAgent] = useState(null);
@@ -34,6 +36,8 @@ const UserAgentsTable = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const userAgents = useUserAgentsStore((state) => state.userAgents);
+  const { settings } = useSettingsStore();
+  const { showAlert } = useAlertStore();
 
   const columns = useMemo(
     //column definitions...
@@ -108,8 +112,18 @@ const UserAgentsTable = () => {
 
   const deleteUserAgent = async (ids) => {
     if (Array.isArray(ids)) {
+      if (ids.includes(settings['default-user-agent'].value)) {
+        showAlert('Cannot delete default user-agent', 'error');
+        return;
+      }
+
       await API.deleteUserAgents(ids);
     } else {
+      if (ids == settings['default-user-agent'].value) {
+        showAlert('Cannot delete default user-agent', 'error');
+        return;
+      }
+
       await API.deleteUserAgent(ids);
     }
   };
