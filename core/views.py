@@ -32,10 +32,16 @@ def settings_view(request):
 def stream_view(request, stream_id):
     """
     Streams the first available stream for the given channel.
-    It uses the channel’s assigned StreamProfile.
+    It uses the channel’s assigned StreamProfile with a fallback to core default
     A persistent Redis lock is used to prevent concurrent streaming on the same channel.
+    Priority:
+        - iterate through all streams
+        - iterate through each stream's m3u profile
     """
     try:
+        redis_host = getattr(settings, "REDIS_HOST", "localhost")
+        redis_client = redis.Redis(host=settings.REDIS_HOST, port=6379, db=0)
+
         # Retrieve the channel by the provided stream_id.
         channel = Channel.objects.get(channel_number=stream_id)
         logger.debug("Channel retrieved: ID=%s, Name=%s", channel.id, channel.channel_name)
@@ -45,46 +51,78 @@ def stream_view(request, stream_id):
             logger.error("No streams found for channel ID=%s", channel.id)
             return HttpResponseServerError("No stream found for this channel.")
 
-        # Get the first available stream.
-        stream = channel.streams.first()
-        logger.debug("Using stream: ID=%s, Name=%s", stream.id, stream.name)
-
-        # Retrieve the M3U account associated with the stream.
-        m3u_account = stream.m3u_account
-        logger.debug("Using M3U account ID=%s, Name=%s", m3u_account.id, m3u_account.name)
-
-        # Use the custom URL if available; otherwise, use the standard URL.
-        input_url = stream.custom_url or stream.url
-        logger.debug("Input URL: %s", input_url)
-
-        # Determine which profile we can use.
-        m3u_profiles = m3u_account.profiles.all()
-        default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
-        profiles = [obj for obj in m3u_profiles if not obj.is_default]
-
         active_profile = None
-        # -- Loop through profiles and pick the first active one --
-        for profile in [default_profile] + profiles:
-            logger.debug(f'Checking profile {profile.name}...')
-            if not profile.is_active:
-                logger.debug('Profile is not active, skipping.')
+        lock_key = None
+        persistent_lock = None
+
+        # iterate through channel's streams
+        for stream in channel.streams.all().order_by('channelstream__order'):
+            logger.debug(f"Checking stream: ID={stream.id}, Name={stream.name}")
+
+            # Retrieve the M3U account associated with the stream.
+            m3u_account = stream.m3u_account
+            logger.debug(f"Using M3U account ID={m3u_account.id}, Name={m3u_account.name}")
+
+            # Use the custom URL if available; otherwise, use the standard URL.
+            input_url = stream.custom_url or stream.url
+            logger.debug(f"Input URL: {input_url}")
+
+            # Determine which profile we can use.
+            m3u_profiles = m3u_account.profiles.all()
+            default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
+            profiles = [obj for obj in m3u_profiles if not obj.is_default]
+
+            # -- Loop through profiles and pick the first active one --
+            for profile in [default_profile] + profiles:
+                logger.debug(f'Checking profile {profile.name}...')
+                if not profile.is_active:
+                    logger.debug('Profile is not active, skipping.')
+                    continue
+
+                # Acquire the persistent Redis lock, indexed by 0 through max_streams available in the profile
+                stream_index = 0
+                while True:
+                    stream_index += 1
+                    if stream_index > profile.max_streams:
+                        # @TODO: we are bailing here if no profile was found, but we need to end up supporting looping through
+                        # all available channel streams
+                        logger.debug(f"Profile is using all available streams.")
+                        break
+
+                    lock_key = f"lock:{channel.id}:{stream.id}:{profile.id}:{stream_index}"
+                    persistent_lock = PersistentLock(redis_client, lock_key, lock_timeout=120)
+
+                    if not persistent_lock.acquire():
+                        logger.error(f"Could not acquire persistent lock for profile {profile.id} index {stream_index}, currently in use.")
+                        continue
+
+                    break
+
+                if persistent_lock.has_lock:
+                    break
+
+            if persistent_lock.has_lock == False:
+                logger.debug(f'Unable to get lock for profile {profile.id}:{profile.name}. Skipping...')
                 continue
-            # *** DISABLE FAKE LOCKS: Ignore current_viewers/max_streams check ***
-            logger.debug(f"Using M3U profile ID={profile.id} (ignoring viewer count limits)")
-            active_profile = M3UAccountProfile.objects.get(id=profile.id)
-            # Prepare the pattern replacement.
-            logger.debug("Executing the following pattern replacement:")
-            logger.debug(f"  search: {profile.search_pattern}")
-            safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', profile.replace_pattern)
-            logger.debug(f"  replace: {profile.replace_pattern}")
-            logger.debug(f"  safe replace: {safe_replace_pattern}")
-            stream_url = re.sub(profile.search_pattern, safe_replace_pattern, input_url)
-            logger.debug(f"Generated stream url: {stream_url}")
+
             break
 
-        if active_profile is None:
-            logger.exception("No available profiles for the stream")
-            return HttpResponseServerError("No available profiles for the stream")
+        if persistent_lock.has_lock == False:
+            logger.debug(f"Unable to find any available streams or stream profiles.")
+            return HttpResponseServerError("Resource busy, please try again later.")
+
+        # *** DISABLE FAKE LOCKS: Ignore current_viewers/max_streams check ***
+        logger.debug(f"Using stream {stream.id}{stream.name}, M3U profile {profile.id}{profile.name}, stream index {stream_index}")
+        active_profile = M3UAccountProfile.objects.get(id=profile.id)
+
+        # Prepare the pattern replacement.
+        logger.debug("Executing the following pattern replacement:")
+        logger.debug(f"  search: {active_profile.search_pattern}")
+        safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', active_profile.replace_pattern)
+        logger.debug(f"  replace: {active_profile.replace_pattern}")
+        logger.debug(f"  safe replace: {safe_replace_pattern}")
+        stream_url = re.sub(active_profile.search_pattern, safe_replace_pattern, input_url)
+        logger.debug(f"Generated stream url: {stream_url}")
 
         # Get the stream profile set on the channel.
         stream_profile = channel.stream_profile
@@ -106,19 +144,9 @@ def stream_view(request, stream_id):
         cmd = [stream_profile.command] + parameters.split()
         logger.debug("Executing command: %s", cmd)
 
-        # Acquire the persistent Redis lock.
-        redis_host = getattr(settings, "REDIS_HOST", "localhost")
-        redis_client = redis.Redis(host=settings.REDIS_HOST, port=6379, db=0)
-        lock_key = f"lock:channel:{channel.id}"
-        persistent_lock = PersistentLock(redis_client, lock_key, lock_timeout=120)
-
-        if not persistent_lock.acquire():
-            logger.error("Could not acquire persistent lock for channel %s", channel.id)
-            return HttpResponseServerError("Resource busy, please try again later.")
-
         try:
             # Start the streaming process.
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=8192)
         except Exception as e:
             persistent_lock.release()  # Ensure the lock is released on error.
             logger.exception("Error starting stream for channel ID=%s", stream_id)
@@ -137,12 +165,14 @@ def stream_view(request, stream_id):
                 yield chunk
         finally:
             try:
+
                 proc.terminate()
                 logger.debug("Streaming process terminated for stream ID=%s", s.id)
             except Exception as e:
                 logger.error("Error terminating process for stream ID=%s: %s", s.id, e)
             persistent_lock.release()
             logger.debug("Persistent lock released for channel ID=%s", channel.id)
+
 
     return StreamingHttpResponse(
         stream_generator(process, stream, persistent_lock),
