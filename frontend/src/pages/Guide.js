@@ -19,6 +19,7 @@ import API from '../api';
 import useChannelsStore from '../store/channels';
 import logo from '../images/logo.png';
 import useVideoStore from '../store/useVideoStore'; // NEW import
+import useAlertStore from '../store/alerts';
 
 /** Layout constants */
 const CHANNEL_WIDTH = 120; // Width of the channel/logo column
@@ -44,6 +45,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [now, setNow] = useState(dayjs());
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { showAlert } = useAlertStore();
 
   const guideRef = useRef(null);
 
@@ -51,6 +53,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
   useEffect(() => {
     if (!channels || channels.length === 0) {
       console.warn('No channels provided or empty channels array');
+      showAlert('No channels available', 'error');
+      setLoading(false);
       return;
     }
 
