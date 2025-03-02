@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Stream, Channel, ChannelGroup
+from .models import Stream, Channel, ChannelGroup, ChannelStream
 from core.models import StreamProfile
 
 #
@@ -73,8 +73,10 @@ class ChannelSerializer(serializers.ModelSerializer):
         required=False
     )
 
-    # Possibly show streams inline, or just by ID
-    # streams = StreamSerializer(many=True, read_only=True)
+    streams = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True
+    )
+    stream_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Channel
@@ -89,5 +91,39 @@ class ChannelSerializer(serializers.ModelSerializer):
             'tvg_id',
             'tvg_name',
             'streams',
+            'stream_ids',
             'stream_profile_id',
         ]
+
+    def get_stream_ids(self, obj):
+        """Retrieve ordered stream IDs for GET requests."""
+        return list(obj.streams.all().order_by('channelstream__order').values_list('id', flat=True))
+
+    def create(self, validated_data):
+        stream_ids = validated_data.pop('streams', [])
+        channel = Channel.objects.create(**validated_data)
+
+        # Add streams in the specified order
+        for index, stream_id in enumerate(stream_ids):
+            ChannelStream.objects.create(channel=channel, stream_id=stream_id, order=index)
+
+        return channel
+
+    def update(self, instance, validated_data):
+        print("Validated Data:", validated_data)
+        stream_ids = validated_data.get('streams', None)
+        print(f'stream ids: {stream_ids}')
+
+        # Update basic fields
+        instance.name = validated_data.get('channel_name', instance.channel_name)
+        instance.save()
+
+        if stream_ids is not None:
+            # Clear existing relationships
+            instance.channelstream_set.all().delete()
+
+            # Add new streams in order
+            for index, stream_id in enumerate(stream_ids):
+                ChannelStream.objects.create(channel=instance, stream_id=stream_id, order=index)
+
+        return instance

@@ -135,6 +135,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
             'logo_url': stream.logo_url,
+            'streams': [stream_id]
         }
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
@@ -226,6 +227,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 "tvg_id": stream.tvg_id,
                 "channel_group_id": channel_group.id,
                 "logo_url": stream.logo_url,
+                "streams": [stream_id],
             }
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
