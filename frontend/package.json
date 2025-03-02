@@ -54,5 +54,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://host.docker.internal:5656"
+  "proxy": "http://localhost:5656"
 }
