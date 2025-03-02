@@ -14,3 +14,5 @@ yt-dlp
 gevent==24.11.1
 django-cors-headers
 djangorestframework-simplejwt
+rapidfuzz==3.12.1
+sentence-transformers==3.4.1

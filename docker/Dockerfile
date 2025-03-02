@@ -16,7 +16,8 @@ RUN apt-get update && \
         lsb-release \
         python3-virtualenv \
         streamlink \
-        uwsgi
+        uwsgi \
+        python3-django-uwsgi
 
 RUN \
     curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh && \
@@ -52,6 +53,7 @@ RUN \
         lsb-release \
         nodejs && \
     apt-get clean && \
+    apt-get autoremove -y && \
     rm -rf \
         /tmp/* \
         /var/lib/apt/lists/* \
