@@ -401,6 +401,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   helperText={formik.touched.tvg_id && formik.errors.tvg_id}
                   variant="standard"
                 />
+                
+                <TextField
+                  fullWidth
+                  id="logo_url"
+                  name="logo_url"
+                  label="Logo URL (Optional)"
+                  variant="standard"
+                  sx={{ marginBottom: 2 }}
+                  value={formik.values.logo_url}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  helperText="If you have a direct image URL, set it here."
+                />
+
 
                 <Box mt={2} mb={2}>
                   {/* File upload input */}

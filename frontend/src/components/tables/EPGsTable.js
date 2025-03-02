@@ -84,6 +84,11 @@ const EPGsTable = () => {
     setSnackbarOpen(true);
   };
 
+  const closeEPGForm = () => {
+    setEPG(null);
+    setEPGModalOpen(false);
+  };
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsLoading(false);
@@ -182,11 +187,7 @@ const EPGsTable = () => {
     >
       <MaterialReactTable table={table} />
 
-      <EPGForm
-        epg={epg}
-        isOpen={epgModalOpen}
-        onClose={() => setEPGModalOpen(false)}
-      />
+      <EPGForm epg={epg} isOpen={epgModalOpen} onClose={closeEPGForm} />
 
       <Snackbar
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}

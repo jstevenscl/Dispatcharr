@@ -36,34 +36,6 @@ class CoreSettingsAdmin(admin.ModelAdmin):
     just list and allow editing of any instance.
     """
     list_display = (
-        "default_user_agent",
-        "default_stream_profile",
-        "stream_command_timeout",
-        "enable_stream_logging",
-        "useragent_cache_timeout",
-        "streamprofile_cache_timeout",
-        "streamlink_path",
-        "vlc_path",
-    )
-    fieldsets = (
-        (None, {
-            "fields": (
-                "default_user_agent",
-                "default_stream_profile",
-                "stream_command_timeout",
-                "enable_stream_logging",
-            )
-        }),
-        ("Caching", {
-            "fields": (
-                "useragent_cache_timeout",
-                "streamprofile_cache_timeout",
-            )
-        }),
-        ("Paths", {
-            "fields": (
-                "streamlink_path",
-                "vlc_path",
-            )
-        }),
+        "key",
+        "value",
     )

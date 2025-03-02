@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.core.cache import cache
 
 # Import all models, including UserAgent.
-from .models import M3UAccount, M3UFilter, ServerGroup
+from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
 from core.serializers import UserAgentSerializer
 # Import all serializers, including the UserAgentSerializer.
@@ -17,6 +17,7 @@ from .serializers import (
     M3UAccountSerializer,
     M3UFilterSerializer,
     ServerGroupSerializer,
+    M3UAccountProfileSerializer,
 )
 
 from .tasks import refresh_single_m3u_account, refresh_m3u_accounts
@@ -68,3 +69,24 @@ class UserAgentViewSet(viewsets.ModelViewSet):
     serializer_class = UserAgentSerializer
     permission_classes = [IsAuthenticated]
 
+class M3UAccountProfileViewSet(viewsets.ModelViewSet):
+    queryset = M3UAccountProfile.objects.all()
+    serializer_class = M3UAccountProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        m3u_account_id = self.kwargs['account_id']
+        return M3UAccountProfile.objects.filter(m3u_account_id=m3u_account_id)
+
+    def perform_create(self, serializer):
+        # Get the account ID from the URL
+        account_id = self.kwargs['account_id']
+
+        # Get the M3UAccount instance for the account_id
+        m3u_account = M3UAccount.objects.get(id=account_id)
+
+        # Save the 'm3u_account' in the serializer context
+        serializer.context['m3u_account'] = m3u_account
+
+        # Perform the actual save
+        serializer.save(m3u_account_id=m3u_account)

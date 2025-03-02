@@ -22,29 +22,31 @@ import {
   Edit as EditIcon,
   Add as AddIcon,
   SwapVert as SwapVertIcon,
+  LiveTv as LiveTvIcon,
+  ContentCopy,
 } from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
-import { ContentCopy } from '@mui/icons-material';
 import logo from '../../images/logo.png';
+import useVideoStore from '../../store/useVideoStore'; // NEW import
 
-const Example = () => {
+const ChannelsTable = () => {
   const [channel, setChannel] = useState(null);
-  const [channelModelOpen, setChannelModalOpen] = useState(false);
+  const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [textToCopy, setTextToCopy] = useState('');
-
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   const { channels, isLoading: channelsLoading } = useChannelsStore();
+  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
 
+  // Configure columns
   const columns = useMemo(
-    //column definitions...
     () => [
       {
         header: '#',
@@ -62,8 +64,8 @@ const Example = () => {
       {
         header: 'Logo',
         accessorKey: 'logo_url',
-        size: 50,
-        cell: (info) => (
+        size: 55,
+        Cell: ({ cell }) => (
           <Grid2
             container
             direction="row"
@@ -72,7 +74,7 @@ const Example = () => {
               alignItems: 'center',
             }}
           >
-            <img src={info.getValue() || logo} width="20" />
+            <img src={cell.getValue() || logo} width="20" alt="channel logo" />
           </Grid2>
         ),
         meta: {
@@ -83,18 +85,16 @@ const Example = () => {
     []
   );
 
-  //optionally access the underlying virtualizer instance
+  // Access the row virtualizer instance (optional)
   const rowVirtualizerInstanceRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [sorting, setSorting] = useState([]);
 
-  const closeSnackbar = () => {
-    setSnackbarOpen(false);
-  };
+  const closeSnackbar = () => setSnackbarOpen(false);
 
-  const editChannel = async (channel = null) => {
-    setChannel(channel);
+  const editChannel = async (ch = null) => {
+    setChannel(ch);
     setChannelModalOpen(true);
   };
 
@@ -102,7 +102,11 @@ const Example = () => {
     await API.deleteChannel(id);
   };
 
-  // @TODO: the bulk delete endpoint is currently broken
+  function handleWatchStream(channelNumber) {
+    showVideo(`/output/stream/${channelNumber}/`);
+  }
+
+  // (Optional) bulk delete, but your endpoint is @TODO
   const deleteChannels = async () => {
     setIsLoading(true);
     const selected = table
@@ -110,18 +114,39 @@ const Example = () => {
       .rows.filter((row) => row.getIsSelected());
     await utils.Limiter(
       4,
-      selected.map((chan) => () => {
-        return deleteChannel(chan.original.id);
-      })
+      selected.map((chan) => () => deleteChannel(chan.original.id))
     );
+    // await API.deleteChannels(selected.map((sel) => sel.id));
     setIsLoading(false);
   };
 
+  // ─────────────────────────────────────────────────────────
+  // The "Assign Channels" button logic
+  // ─────────────────────────────────────────────────────────
   const assignChannels = async () => {
-    const selected = table
-      .getRowModel()
-      .rows.filter((row) => row.getIsSelected());
-    await API.assignChannelNumbers(selected.map((sel) => sel.id));
+    try {
+      // Get row order from the table
+      const rowOrder = table.getRowModel().rows.map((row) => row.original.id);
+
+      // Call our custom API endpoint
+      const result = await API.assignChannelNumbers(rowOrder);
+
+      // We might get { message: "Channels have been auto-assigned!" }
+      setSnackbarMessage(result.message || 'Channels assigned');
+      setSnackbarOpen(true);
+
+      // Refresh the channel list
+      await useChannelsStore.getState().fetchChannels();
+    } catch (err) {
+      console.error(err);
+      setSnackbarMessage('Failed to assign channels');
+      setSnackbarOpen(true);
+    }
+  };
+
+  const closeChannelForm = () => {
+    setChannel(null);
+    setChannelModalOpen(false);
   };
 
   useEffect(() => {
@@ -131,7 +156,7 @@ const Example = () => {
   }, []);
 
   useEffect(() => {
-    //scroll to the top of the table when the sorting changes
+    // Scroll to the top of the table when sorting changes
     try {
       rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
     } catch (error) {
@@ -143,6 +168,7 @@ const Example = () => {
     setAnchorEl(null);
     setSnackbarMessage('');
   };
+  const openPopover = Boolean(anchorEl);
 
   const handleCopy = async () => {
     try {
@@ -151,33 +177,35 @@ const Example = () => {
     } catch (err) {
       setSnackbarMessage('Failed to copy');
     }
-
     setSnackbarOpen(true);
   };
 
-  const open = Boolean(anchorEl);
-
-  const copyM3UUrl = async (event) => {
+  // Example copy URLs
+  const copyM3UUrl = (event) => {
     setAnchorEl(event.currentTarget);
-    setTextToCopy('m3u url');
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/m3u`
+    );
+  };
+  const copyEPGUrl = (event) => {
+    setAnchorEl(event.currentTarget);
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/epg`
+    );
+  };
+  const copyHDHRUrl = (event) => {
+    setAnchorEl(event.currentTarget);
+    setTextToCopy(
+      `${window.location.protocol}//${window.location.host}/output/hdhr`
+    );
   };
 
-  const copyEPGUrl = async (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy('epg url');
-  };
-
-  const copyHDHRUrl = async (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy('hdhr url');
-  };
-
+  // Configure the MaterialReactTable
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
     data: channels,
     enablePagination: false,
-    // enableRowNumbers: true,
     enableRowVirtualization: true,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -187,8 +215,8 @@ const Example = () => {
       sorting,
       rowSelection,
     },
-    rowVirtualizerInstanceRef, //optional
-    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
+    rowVirtualizerInstanceRef, // optional
+    rowVirtualizerOptions: { overscan: 5 },
     initialState: {
       density: 'compact',
     },
@@ -196,78 +224,77 @@ const Example = () => {
     renderRowActions: ({ row }) => (
       <Box sx={{ justifyContent: 'right' }}>
         <IconButton
-          size="small" // Makes the button smaller
-          color="warning" // Red color for delete actions
+          size="small"
+          color="warning"
           onClick={() => {
             editChannel(row.original);
           }}
           sx={{ p: 0 }}
         >
-          <EditIcon fontSize="small" /> {/* Small icon size */}
+          <EditIcon fontSize="small" />
         </IconButton>
         <IconButton
-          size="small" // Makes the button smaller
-          color="error" // Red color for delete actions
+          size="small"
+          color="error"
           onClick={() => deleteChannel(row.original.id)}
           sx={{ p: 0 }}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+        <IconButton
+          size="small"
+          color="info"
+          onClick={() => handleWatchStream(row.original.channel_number)}
+          sx={{ p: 0 }}
+        >
+          <LiveTvIcon fontSize="small" />
         </IconButton>
       </Box>
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 75px)', // Subtract padding to avoid cutoff
-        overflowY: 'auto', // Internal scrolling for the table
+        height: 'calc(100vh - 75px)',
+        overflowY: 'auto',
       },
     },
     muiSearchTextFieldProps: {
       variant: 'standard',
     },
     renderTopToolbarCustomActions: ({ table }) => (
-      <Stack
-        direction="row"
-        sx={{
-          alignItems: 'center',
-        }}
-      >
+      <Stack direction="row" sx={{ alignItems: 'center' }}>
         <Typography>Channels</Typography>
         <Tooltip title="Add New Channel">
           <IconButton
-            size="small" // Makes the button smaller
-            color="success" // Red color for delete actions
+            size="small"
+            color="success"
             variant="contained"
             onClick={() => editChannel()}
           >
-            <AddIcon fontSize="small" /> {/* Small icon size */}
+            <AddIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Delete Channels">
           <IconButton
-            size="small" // Makes the button smaller
-            color="error" // Red color for delete actions
+            size="small"
+            color="error"
             variant="contained"
             onClick={deleteChannels}
           >
-            <DeleteIcon fontSize="small" /> {/* Small icon size */}
+            <DeleteIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Assign Channels">
           <IconButton
-            size="small" // Makes the button smaller
-            color="warning" // Red color for delete actions
+            size="small"
+            color="warning"
             variant="contained"
             onClick={assignChannels}
           >
-            <SwapVertIcon fontSize="small" /> {/* Small icon size */}
+            <SwapVertIcon fontSize="small" />
           </IconButton>
         </Tooltip>
 
-        <ButtonGroup
-          sx={{
-            marginLeft: 1,
-          }}
-        >
+        <ButtonGroup sx={{ marginLeft: 1 }}>
           <Button variant="contained" size="small" onClick={copyHDHRUrl}>
             HDHR URL
           </Button>
@@ -285,14 +312,17 @@ const Example = () => {
   return (
     <Box>
       <MaterialReactTable table={table} />
+
+      {/* Channel Form Modal */}
       <ChannelForm
         channel={channel}
-        isOpen={channelModelOpen}
-        onClose={() => setChannelModalOpen(false)}
+        isOpen={channelModalOpen}
+        onClose={closeChannelForm}
       />
 
+      {/* Popover for the "copy" URLs */}
       <Popover
-        open={open}
+        open={openPopover}
         anchorEl={anchorEl}
         onClose={closePopover}
         anchorOrigin={{
@@ -300,7 +330,7 @@ const Example = () => {
           horizontal: 'left',
         }}
       >
-        <div style={{ padding: '16px', display: 'flex', alignItems: 'center' }}>
+        <div style={{ padding: 16, display: 'flex', alignItems: 'center' }}>
           <TextField
             value={textToCopy}
             variant="standard"
@@ -312,9 +342,9 @@ const Example = () => {
             <ContentCopy />
           </IconButton>
         </div>
-        {/* {copySuccess && <Typography variant="caption" sx={{ paddingLeft: 2 }}>{copySuccess}</Typography>} */}
       </Popover>
 
+      {/* Snackbar for feedback */}
       <Snackbar
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         open={snackbarOpen}
@@ -326,4 +356,4 @@ const Example = () => {
   );
 };
 
-export default Example;
+export default ChannelsTable;

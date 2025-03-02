@@ -13,6 +13,7 @@ import {
   VideoFile as VideoFileIcon,
   LiveTv as LiveTvIcon,
   PlaylistPlay as PlaylistPlayIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 
 const items = [
@@ -25,6 +26,7 @@ const items = [
     route: '/stream-profiles',
   },
   { text: 'TV Guide', icon: <LiveTvIcon />, route: '/guide' },
+  { text: 'Settings', icon: <SettingsIcon />, route: '/settings' },
 ];
 
 const Sidebar = ({ open }) => {

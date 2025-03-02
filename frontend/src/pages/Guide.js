@@ -11,6 +11,8 @@ import {
   DialogActions,
   Button,
   Slide,
+  CircularProgress,
+  Backdrop,
 } from '@mui/material';
 import dayjs from 'dayjs';
 import API from '../api';
@@ -19,10 +21,10 @@ import logo from '../images/logo.png';
 import useVideoStore from '../store/useVideoStore'; // NEW import
 
 /** Layout constants */
-const CHANNEL_WIDTH = 120;        // Width of the channel/logo column
-const PROGRAM_HEIGHT = 90;        // Height of each channel row
-const HOUR_WIDTH = 300;           // The width for a 1-hour block
-const MINUTE_INCREMENT = 15;      // For positioning programs every 15 min
+const CHANNEL_WIDTH = 120; // Width of the channel/logo column
+const PROGRAM_HEIGHT = 90; // Height of each channel row
+const HOUR_WIDTH = 300; // The width for a 1-hour block
+const MINUTE_INCREMENT = 15; // For positioning programs every 15 min
 const MINUTE_BLOCK_WIDTH = HOUR_WIDTH / (60 / MINUTE_INCREMENT);
 
 // Modal size constants
@@ -41,6 +43,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [guideChannels, setGuideChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
   const [selectedProgram, setSelectedProgram] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const guideRef = useRef(null);
 
@@ -69,6 +72,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
       setGuideChannels(filteredChannels);
       setPrograms(fetched);
+      setLoading(false);
     };
 
     fetchPrograms();
@@ -129,7 +133,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
     if (guideRef.current) {
       const nowOffset = dayjs().diff(start, 'minute');
       const scrollPosition =
-        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
+        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH -
+        MINUTE_BLOCK_WIDTH;
       guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
     }
   }, [programs, start]);
@@ -163,7 +168,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
       return;
     }
     // Build a playable stream URL for that channel
-    const url = window.location.origin + '/output/stream/' + matched.id;
+    const url =
+      window.location.origin + '/output/stream/' + matched.channel_number;
     showVideo(url);
 
     // Optionally close the modal
@@ -173,7 +179,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
   // On program click, open the details modal
   function handleProgramClick(program, event) {
     // Optionally scroll that element into view or do something else
-    event.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+    event.currentTarget.scrollIntoView({
+      behavior: 'smooth',
+      inline: 'center',
+    });
     setSelectedProgram(program);
   }
 
@@ -240,6 +249,25 @@ export default function TVChannelGuide({ startDate, endDate }) {
           </Typography>
         </Paper>
       </Box>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Backdrop
+        sx={{
+          // color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          position: 'fixed', // Ensure it covers the entire page
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        open={loading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
     );
   }
 
@@ -383,7 +411,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                           width: '1px',
                           height: '10px',
                           backgroundColor: '#718096',
-                          marginRight: i < 3 ? (HOUR_WIDTH / 4 - 1) + 'px' : 0,
+                          marginRight: i < 3 ? HOUR_WIDTH / 4 - 1 + 'px' : 0,
                         }}
                       />
                     ))}
@@ -473,14 +501,14 @@ export default function TVChannelGuide({ startDate, endDate }) {
             <DialogActions>
               {/* Only show the Watch button if currently live */}
               {now.isAfter(dayjs(selectedProgram.start_time)) &&
-               now.isBefore(dayjs(selectedProgram.end_time)) && (
-                <Button
-                  onClick={() => handleWatchStream(selectedProgram)}
-                  sx={{ color: '#38b2ac' }}
-                >
-                  Watch Now
-                </Button>
-              )}
+                now.isBefore(dayjs(selectedProgram.end_time)) && (
+                  <Button
+                    onClick={() => handleWatchStream(selectedProgram)}
+                    sx={{ color: '#38b2ac' }}
+                  >
+                    Watch Now
+                  </Button>
+                )}
               <Button onClick={handleCloseModal} sx={{ color: '#38b2ac' }}>
                 Close
               </Button>

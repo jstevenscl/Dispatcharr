@@ -6,6 +6,7 @@ import useUserAgentsStore from './userAgents';
 import usePlaylistsStore from './playlists';
 import useEPGsStore from './epgs';
 import useStreamProfilesStore from './streamProfiles';
+import useSettingsStore from './settings';
 
 const decodeToken = (token) => {
   if (!token) return null;
@@ -37,6 +38,7 @@ const useAuthStore = create((set, get) => ({
       usePlaylistsStore.getState().fetchPlaylists(),
       useEPGsStore.getState().fetchEPGs(),
       useStreamProfilesStore.getState().fetchProfiles(),
+      useSettingsStore.getState().fetchSettings(),
     ]);
   },
 

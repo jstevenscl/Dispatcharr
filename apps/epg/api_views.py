@@ -59,7 +59,7 @@ class EPGGridAPIView(APIView):
             start_time__gte=now, start_time__lte=twelve_hours_later
         )
         count = programs.count()
-        logger.debug(f"EPGGridAPIView: Found {count} program(s).")
+        logger.debug(f"EPG`Grid`APIView: Found {count} program(s).")
         serializer = ProgramDataSerializer(programs, many=True)
         return Response({'data': serializer.data}, status=status.HTTP_200_OK)
 

@@ -5,6 +5,7 @@ import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
 import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
+import useSettingsStore from './store/settings';
 
 // const axios = Axios.create({
 //   withCredentials: true,
@@ -12,7 +13,7 @@ import useStreamProfilesStore from './store/streamProfiles';
 
 const host = '';
 
-const getAuthToken = async () => {
+export const getAuthToken = async () => {
   const token = await useAuthStore.getState().getToken(); // Assuming token is stored in Zustand store
   return token;
 };
@@ -157,18 +158,18 @@ export default class API {
   }
 
   // @TODO: the bulk delete endpoint is currently broken
-  // static async deleteChannels(channel_ids) {
-  //   const response = await fetch(`${host}/api/channels/bulk-delete-channels/0/`, {
-  //     method: 'DELETE',
-  //     headers: {
-  //       Authorization: `Bearer ${await getAuthToken()}`,
-  //       'Content-Type': 'application/json',
-  //     },
-  //     body: JSON.stringify({ channel_ids }),
-  //   });
+  static async deleteChannels(channel_ids) {
+    const response = await fetch(`${host}/api/channels/channels/bulk-delete/`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ channel_ids }),
+    });
 
-  //   useChannelsStore.getState().removeChannels(channel_ids)
-  // }
+    useChannelsStore.getState().removeChannels(channel_ids);
+  }
 
   static async updateChannel(values) {
     const { id, ...payload } = values;
@@ -189,21 +190,31 @@ export default class API {
     return retval;
   }
 
-  static async assignChannelNumbers(ids) {
+  static async assignChannelNumbers(channelIds) {
+    // Make the request
     const response = await fetch(`${host}/api/channels/channels/assign/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await getAuthToken()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ channel_order: ids }),
+      body: JSON.stringify({ channel_order: channelIds }),
     });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().addChannel(retval);
+    // The backend returns something like { "message": "Channels have been auto-assigned!" }
+    if (!response.ok) {
+      // If you want to handle errors gracefully:
+      const text = await response.text();
+      throw new Error(`Assign channels failed: ${response.status} => ${text}`);
     }
 
+    // Usually it has a { message: "..."} or similar
+    const retval = await response.json();
+
+    // If you want to automatically refresh the channel list in Zustand:
+    await useChannelsStore.getState().fetchChannels();
+
+    // Return the entire JSON result (so the caller can see the "message")
     return retval;
   }
 
@@ -220,6 +231,27 @@ export default class API {
     const retval = await response.json();
     if (retval.id) {
       useChannelsStore.getState().addChannel(retval);
+    }
+
+    return retval;
+  }
+
+  static async createChannelsFromStreams(values) {
+    const response = await fetch(
+      `${host}/api/channels/channels/from-stream/bulk/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      }
+    );
+
+    const retval = await response.json();
+    if (retval.created.length > 0) {
+      useChannelsStore.getState().addChannels(retval.created);
     }
 
     return retval;
@@ -358,6 +390,18 @@ export default class API {
     });
 
     useUserAgentsStore.getState().removeUserAgents([id]);
+  }
+
+  static async getPlaylist(id) {
+    const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
   }
 
   static async getPlaylists() {
@@ -602,5 +646,95 @@ export default class API {
 
     const retval = await response.json();
     return retval.data;
+  }
+
+  static async addM3UProfile(accountId, values) {
+    const response = await fetch(
+      `${host}/api/m3u/accounts/${accountId}/profiles/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      }
+    );
+
+    const retval = await response.json();
+    if (retval.id) {
+      // Fetch m3u account to update it with its new playlists
+      const playlist = await API.getPlaylist(accountId);
+      usePlaylistsStore
+        .getState()
+        .updateProfiles(playlist.id, playlist.profiles);
+    }
+
+    return retval;
+  }
+
+  static async deleteM3UProfile(accountId, id) {
+    const response = await fetch(
+      `${host}/api/m3u/accounts/${accountId}/profiles/${id}/`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const playlist = await API.getPlaylist(accountId);
+    usePlaylistsStore.getState().updatePlaylist(playlist);
+  }
+
+  static async updateM3UProfile(accountId, values) {
+    const { id, ...payload } = values;
+    const response = await fetch(
+      `${host}/api/m3u/accounts/${accountId}/profiles/${id}/`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${await getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const playlist = await API.getPlaylist(accountId);
+    usePlaylistsStore.getState().updateProfiles(playlist.id, playlist.profiles);
+  }
+
+  static async getSettings() {
+    const response = await fetch(`${host}/api/core/settings/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async updateSetting(values) {
+    const { id, ...payload } = values;
+    const response = await fetch(`${host}/api/core/settings/${id}/`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useSettingsStore.getState().updateSetting(retval);
+    }
+
+    return retval;
   }
 }

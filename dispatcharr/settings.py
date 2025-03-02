@@ -5,6 +5,7 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'REPLACE_ME_WITH_A_REAL_SECRET'
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
@@ -68,16 +69,24 @@ TEMPLATES = [
 WSGI_APPLICATION = 'dispatcharr.wsgi.application'
 ASGI_APPLICATION = 'dispatcharr.asgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_DB', 'dispatcharr'),
-        'USER': os.environ.get('POSTGRES_USER', 'dispatch'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'secret'),
-        'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-        'PORT': int(os.environ.get('POSTGRES_PORT', 5432)),
+if os.getenv('DB_ENGINE', None) == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': '/data/dispatcharr.db',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'dispatcharr'),
+            'USER': os.environ.get('POSTGRES_USER', 'dispatch'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'secret'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': int(os.environ.get('POSTGRES_PORT', 5432)),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {

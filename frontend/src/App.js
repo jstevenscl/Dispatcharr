@@ -24,6 +24,7 @@ import {
 import theme from './theme';
 import EPG from './pages/EPG';
 import Guide from './pages/Guide';
+import Settings from './pages/Settings';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
 import logo from './images/logo.png';
@@ -105,11 +106,11 @@ const App = () => {
 
         <Box
           sx={{
-            height: '100vh',
             display: 'flex',
             flexDirection: 'column',
             ml: `${open ? drawerWidth : miniDrawerWidth}px`,
             transition: 'width 0.3s, margin-left 0.3s',
+            // height: '100vh',
             backgroundColor: '#495057',
           }}
         >
@@ -127,11 +128,9 @@ const App = () => {
                   <Route path="/channels" element={<Channels />} />
                   <Route path="/m3u" element={<M3U />} />
                   <Route path="/epg" element={<EPG />} />
-                  <Route
-                    path="/stream-profiles"
-                    element={<StreamProfiles />}
-                  />
+                  <Route path="/stream-profiles" element={<StreamProfiles />} />
                   <Route path="/guide" element={<Guide />} />
+                  <Route path="/settings" element={<Settings />} />
                 </>
               ) : (
                 <Route path="/login" element={<Login />} />
