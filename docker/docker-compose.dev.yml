@@ -9,7 +9,7 @@ services:
       - "5656:5656"
       - 9191:9191
     volumes:
-      - ../:/app
+      - /home/ghost/code/Dispatcharr:/app
     environment:
       - DISPATCHARR_ENV=dev
       - DB_ENGINE=sqlite

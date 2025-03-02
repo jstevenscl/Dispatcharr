@@ -26,6 +26,7 @@ RUN apk add \
         redis
 
 RUN \
+    mkdir /data && \
     virtualenv /dispatcharrpy && \
     git clone https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \

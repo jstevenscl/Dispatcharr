@@ -6,6 +6,7 @@ case "$DISPATCHARR_ENV" in
         echo "DISPATCHARR_ENV is set to 'dev'. Running Development Program..."
         apk add nodejs npm
         cd /app/frontend && npm install
+        cd /app
         exec /usr/sbin/uwsgi --ini uwsgi.dev.ini
         ;;
     "aio")
