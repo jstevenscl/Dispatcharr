@@ -28,6 +28,7 @@ import Settings from './pages/Settings';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
 import logo from './images/logo.png';
+import Alert from './components/Alert';
 
 // NEW: import the floating PiP component
 import FloatingVideo from './components/FloatingVideo';
@@ -110,8 +111,8 @@ const App = () => {
             flexDirection: 'column',
             ml: `${open ? drawerWidth : miniDrawerWidth}px`,
             transition: 'width 0.3s, margin-left 0.3s',
-            // height: '100vh',
             backgroundColor: '#495057',
+            height: '100%',
           }}
         >
           <Box
@@ -148,6 +149,9 @@ const App = () => {
           </Box>
         </Box>
       </Router>
+
+      {/* Global Snackbar for system-wide messages */}
+      <Alert />
 
       {/* Always-available floating video; remains visible across page changes */}
       <FloatingVideo />

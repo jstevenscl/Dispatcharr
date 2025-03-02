@@ -30,6 +30,8 @@ import useEPGsStore from '../../store/epgs';
 import StreamProfileForm from '../forms/StreamProfile';
 import useStreamProfilesStore from '../../store/streamProfiles';
 import { TableHelper } from '../../helpers';
+import useSettingsStore from '../../store/settings';
+import useAlertStore from '../../store/alerts';
 
 const StreamProfiles = () => {
   const [profile, setProfile] = useState(null);
@@ -40,6 +42,8 @@ const StreamProfiles = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
+  const { settings } = useSettingsStore();
+  const { showAlert } = useAlertStore();
 
   const columns = useMemo(
     //column definitions...
@@ -112,8 +116,13 @@ const StreamProfiles = () => {
     setProfileModalOpen(true);
   };
 
-  const deleteStreamProfile = async (ids) => {
-    await API.deleteStreamProfile(ids);
+  const deleteStreamProfile = async (id) => {
+    if (id == settings['default-stream-profile'].value) {
+      showAlert('Cannot delete default stream-profile', 'error');
+      return;
+    }
+
+    await API.deleteStreamProfile(id);
   };
 
   const closeStreamProfileForm = () => {

@@ -1,5 +1,5 @@
 // Modal.js
-import React, { useEffect } from "react";
+import React, { useEffect } from 'react';
 import {
   TextField,
   Button,
@@ -9,22 +9,23 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from "@mui/material";
-import { useFormik } from "formik";
-import * as Yup from "yup";
-import API from "../../api";
+} from '@mui/material';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
+import API from '../../api';
+import useSettingsStore from '../../store/settings';
 
 const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
-      user_agent_name: "",
-      user_agent: "",
-      description: "",
+      user_agent_name: '',
+      user_agent: '',
+      description: '',
       is_active: true,
     },
     validationSchema: Yup.object({
-      user_agent_name: Yup.string().required("Name is required"),
-      user_agent: Yup.string().required("User-Agent is required"),
+      user_agent_name: Yup.string().required('Name is required'),
+      user_agent: Yup.string().required('User-Agent is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (userAgent?.id) {
@@ -60,8 +61,8 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
     <Dialog open={isOpen} onClose={onClose}>
       <DialogTitle
         sx={{
-          backgroundColor: "primary.main",
-          color: "primary.contrastText",
+          backgroundColor: 'primary.main',
+          color: 'primary.contrastText',
         }}
       >
         User-Agent
@@ -132,7 +133,7 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
             color="primary"
             disabled={formik.isSubmitting}
           >
-            {formik.isSubmitting ? <CircularProgress size={24} /> : "Submit"}
+            {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
           </Button>
         </DialogActions>
       </form>
