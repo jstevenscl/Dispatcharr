@@ -76,7 +76,7 @@ class LineupAPIView(APIView):
         responses={200: openapi.Response("Channel Lineup JSON")}
     )
     def get(self, request):
-        channels = Channel.objects.filter(is_active=True).order_by('channel_number')
+        channels = Channel.objects.all().order_by('channel_number')
         lineup = [
             {
                 "GuideNumber": str(ch.channel_number),
