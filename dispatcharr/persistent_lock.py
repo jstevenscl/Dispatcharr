@@ -5,7 +5,7 @@ import redis
 class PersistentLock:
     """
     A persistent, auto-expiring lock that uses Redis.
-    
+
     Usage:
       1. Instantiate with a Redis client, a unique lock key (e.g. "lock:account:123"),
          and an optional timeout (in seconds).
@@ -16,7 +16,7 @@ class PersistentLock:
     def __init__(self, redis_client: redis.Redis, lock_key: str, lock_timeout: int = 120):
         """
         Initialize the lock.
-        
+
         :param redis_client: An instance of redis.Redis.
         :param lock_key: The unique key for the lock.
         :param lock_timeout: Time-to-live for the lock in seconds.
@@ -25,6 +25,10 @@ class PersistentLock:
         self.lock_key = lock_key
         self.lock_timeout = lock_timeout
         self.lock_token = None
+        self.has_lock = False
+
+    def has_lock(self) -> bool:
+        return self.has_lock
 
     def acquire(self) -> bool:
         """
@@ -33,6 +37,9 @@ class PersistentLock:
         self.lock_token = str(uuid.uuid4())
         # Set the lock with NX (only if not exists) and EX (expire time)
         result = self.redis_client.set(self.lock_key, self.lock_token, nx=True, ex=self.lock_timeout)
+        if result is not None:
+            self.has_lock = True
+
         return result is not None
 
     def refresh(self) -> bool:
@@ -43,6 +50,7 @@ class PersistentLock:
         current_value = self.redis_client.get(self.lock_key)
         if current_value and current_value.decode("utf-8") == self.lock_token:
             self.redis_client.expire(self.lock_key, self.lock_timeout)
+            self.has_lock = False
             return True
         return False
 
