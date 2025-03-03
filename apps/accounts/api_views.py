@@ -1,14 +1,39 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import Group, Permission
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import viewsets
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+import json
+
 from .models import User
 from .serializers import UserSerializer, GroupSerializer, PermissionSerializer
 
+@csrf_exempt  # In production, consider CSRF protection strategies or ensure this endpoint is only accessible when no superuser exists.
+def initialize_superuser(request):
+    # If a superuser already exists, always indicate that
+    if User.objects.filter(is_superuser=True).exists():
+        return JsonResponse({"superuser_exists": True})
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            username = data.get("username")
+            password = data.get("password")
+            email = data.get("email", "")
+            if not username or not password:
+                return JsonResponse({"error": "Username and password are required."}, status=400)
+            # Create the superuser
+            User.objects.create_superuser(username=username, password=password, email=email)
+            return JsonResponse({"superuser_exists": True})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    # For GET requests, indicate no superuser exists
+    return JsonResponse({"superuser_exists": False})
 
 # 🔹 1) Authentication APIs
 class AuthViewSet(viewsets.ViewSet):

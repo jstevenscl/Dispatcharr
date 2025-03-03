@@ -1,5 +1,6 @@
 // frontend/src/App.js
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import {
   BrowserRouter as Router,
   Route,
@@ -29,17 +30,16 @@ import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
 import logo from './images/logo.png';
 import Alert from './components/Alert';
-
-// NEW: import the floating PiP component
 import FloatingVideo from './components/FloatingVideo';
+import SuperuserForm from './components/forms/SuperuserForm';
 
 const drawerWidth = 240;
 const miniDrawerWidth = 60;
-
 const defaultRoute = '/channels';
 
 const App = () => {
   const [open, setOpen] = useState(true);
+  const [needsSuperuser, setNeedsSuperuser] = useState(false);
   const {
     isAuthenticated,
     setIsAuthenticated,
@@ -52,6 +52,22 @@ const App = () => {
     setOpen(!open);
   };
 
+  // Check if a superuser exists on first load.
+  useEffect(() => {
+    async function checkSuperuser() {
+      try {
+        const res = await axios.get('/api/accounts/initialize-superuser/');
+        if (!res.data.superuser_exists) {
+          setNeedsSuperuser(true);
+        }
+      } catch (error) {
+        console.error('Error checking superuser status:', error);
+      }
+    }
+    checkSuperuser();
+  }, []);
+
+  // Authentication check.
   useEffect(() => {
     const checkAuth = async () => {
       const loggedIn = await initializeAuth();
@@ -64,6 +80,11 @@ const App = () => {
     };
     checkAuth();
   }, [initializeAuth, initData, setIsAuthenticated, logout]);
+
+  // If no superuser exists, show the initialization form.
+  if (needsSuperuser) {
+    return <SuperuserForm onSuccess={() => setNeedsSuperuser(false)} />;
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -99,12 +120,9 @@ const App = () => {
               </ListItemButton>
             </ListItem>
           </List>
-
           <Divider />
-
           <Sidebar open />
         </Drawer>
-
         <Box
           sx={{
             display: 'flex',
@@ -149,11 +167,7 @@ const App = () => {
           </Box>
         </Box>
       </Router>
-
-      {/* Global Snackbar for system-wide messages */}
       <Alert />
-
-      {/* Always-available floating video; remains visible across page changes */}
       <FloatingVideo />
     </ThemeProvider>
   );

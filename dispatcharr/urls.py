@@ -15,7 +15,7 @@ schema_view = get_schema_view(
         description="API documentation for Dispatcharr",
         terms_of_service="https://www.google.com/policies/terms/",
         contact=openapi.Contact(email="contact@dispatcharr.local"),
-        license=openapi.License(name="Unlicense"),
+        license=openapi.License(name="Creative Commons by-nc-sa"),
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),
