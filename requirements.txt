@@ -16,5 +16,4 @@ django-cors-headers
 djangorestframework-simplejwt
 m3u8
 rapidfuzz==3.12.1
-torch==2.6.0+cpu -f https://download.pytorch.org/whl/cpu
 sentence-transformers==3.4.1
