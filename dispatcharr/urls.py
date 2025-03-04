@@ -39,7 +39,7 @@ urlpatterns = [
     path('hdhr/', include(('apps.hdhr.urls', 'hdhr'), namespace='hdhr')),
 
     # Add proxy apps - Move these before the catch-all
-    path('proxy/', include('apps.proxy.urls')),
+    path('proxy/', include(('apps.proxy.urls', 'proxy'), namespace='proxy')),
     path('proxy', RedirectView.as_view(url='/proxy/', permanent=True)),
 
     # Swagger UI

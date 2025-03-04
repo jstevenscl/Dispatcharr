@@ -34,3 +34,22 @@ def change_stream(request, channel_id):
         return JsonResponse(response[0], status=response[1])
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def initialize_stream(request, channel_id):
+    """Initialize a new HLS stream channel"""
+    try:
+        data = json.loads(request.body)
+        url = data.get('url')
+        if not url:
+            return JsonResponse({'error': 'No URL provided'}, status=400)
+            
+        proxy_server.initialize_channel(url, channel_id)
+        return JsonResponse({
+            'message': 'Stream initialized',
+            'channel': channel_id,
+            'url': url
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
