@@ -3,7 +3,7 @@ import ProxyManager from './components/ProxyManager';
 // ...existing code...
 
 const routes = [
-  ...existing routes...,
+  ...existingRoutes,
   {
     path: '/proxy',
     element: <ProxyManager />,

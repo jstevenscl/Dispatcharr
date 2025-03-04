@@ -1,7 +1,7 @@
 // ...existing imports...
 
 const menuItems = [
-  ...existing items...,
+  // existing items go here,
   {
     key: 'proxy',
     label: 'Proxy Manager',
