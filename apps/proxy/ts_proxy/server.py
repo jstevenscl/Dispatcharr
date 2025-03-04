@@ -74,9 +74,13 @@ class ClientManager:
         self.lock: threading.Lock = threading.Lock()
         self.last_client_time: float = time.time()
         self.cleanup_timer: Optional[threading.Timer] = None
+        self._proxy_server = None
+        self._channel_id = None
         
     def start_cleanup_timer(self, proxy_server, channel_id):
         """Start timer to cleanup idle channels"""
+        self._proxy_server = proxy_server
+        self._channel_id = channel_id
         if self.cleanup_timer:
             self.cleanup_timer.cancel()
         self.cleanup_timer = threading.Timer(
@@ -98,6 +102,10 @@ class ClientManager:
         """Add new client connection"""
         with self.lock:
             self.active_clients.add(client_id)
+            self.last_client_time = time.time()  # Reset the timer
+            if self.cleanup_timer:
+                self.cleanup_timer.cancel()  # Cancel existing timer
+                self.start_cleanup_timer(self._proxy_server, self._channel_id)  # Restart timer
             logging.info(f"New client connected: {client_id} (total: {len(self.active_clients)})")
 
     def remove_client(self, client_id: int) -> int:
@@ -212,6 +220,9 @@ class ProxyServer:
         )
         self.stream_buffers[channel_id] = StreamBuffer()
         self.client_managers[channel_id] = ClientManager()
+        
+        # Start cleanup timer immediately after initialization
+        self.client_managers[channel_id].start_cleanup_timer(self, channel_id)
         
         fetcher = StreamFetcher(
             self.stream_managers[channel_id], 
