@@ -25,8 +25,6 @@ RUN apt-get update && \
     pip install --no-cache-dir -r requirements-pytorch.txt && \
     pip install --no-cache-dir -r requirements-sentence-transformers.txt && \
     python manage.py collectstatic --noinput && \
-    echo "installing sentence-transformers" && \
-    pip install sentence-transformers==3.4.1 && \
     cd /app/frontend && \
     npm install && \
     npm run build && \
