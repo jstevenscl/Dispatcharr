@@ -10,6 +10,28 @@ logger = logging.getLogger(__name__)
 proxy_server = ProxyServer()
 
 @csrf_exempt
+@require_http_methods(["POST"])
+def initialize_stream(request, channel_id):
+    """Initialize a new stream channel"""
+    try:
+        data = json.loads(request.body)
+        url = data.get('url')
+        if not url:
+            return JsonResponse({'error': 'No URL provided'}, status=400)
+            
+        proxy_server.initialize_channel(url, channel_id)
+        return JsonResponse({
+            'message': 'Stream initialized',
+            'channel': channel_id,
+            'url': url
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Failed to initialize stream: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
 @require_http_methods(["GET"])
 def stream_ts(request, channel_id):
     """Handle TS stream requests"""
@@ -39,7 +61,7 @@ def stream_ts(request, channel_id):
                 
         except Exception as e:
             logger.error(f"Streaming error for channel {channel_id}: {e}")
-        finally:  # Add finally block to ensure cleanup
+        finally:
             try:
                 if channel_id in proxy_server.client_managers:
                     remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
@@ -53,28 +75,6 @@ def stream_ts(request, channel_id):
         generate(),
         content_type='video/MP2T'
     )
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def initialize_stream(request, channel_id):
-    """Initialize a new stream channel"""
-    try:
-        data = json.loads(request.body)
-        url = data.get('url')
-        if not url:
-            return JsonResponse({'error': 'No URL provided'}, status=400)
-            
-        proxy_server.initialize_channel(url, channel_id)
-        return JsonResponse({
-            'message': 'Stream initialized',
-            'channel': channel_id,
-            'url': url
-        })
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        logger.error(f"Failed to initialize stream: {e}")
-        return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
