@@ -198,6 +198,7 @@ fi
 cd /app
 echo_with_timestamp "Running Django commands..."
 python manage.py migrate --noinput || true
+python manage.py collectstatic --noinput || true
 
 # Always start Gunicorn
 echo "🚀 Starting Gunicorn..."
