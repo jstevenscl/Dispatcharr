@@ -1,15 +1,14 @@
 services:
   dispatcharr:
     # build:
-    #   context: ..
-    #   dockerfile: docker/Dockerfile.alpine
-    image: dispatcharr/dispatcharr
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: dekzter/dispactharr
     container_name: dispatcharr
     ports:
       - 9191:9191
     volumes:
-      - /home/ghost/code/Dispatcharr/docker/entrypoint.sh:/app/docker/entrypoint.sh
-    #   - dispatcharr_db:/app/data/db
+      - dispatcharr_db:/app/data/db
     environment:
       - DISPATCHARR_ENV=aio
       - REDIS_HOST=localhost

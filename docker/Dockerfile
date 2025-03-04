@@ -24,20 +24,13 @@ RUN apt-get update && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r requirements-pytorch.txt && \
     pip install --no-cache-dir -r requirements-sentence-transformers.txt && \
+    python manage.py collectstatic --noinput && \
     echo "installing sentence-transformers" && \
     pip install sentence-transformers==3.4.1 && \
-    python manage.py collectstatic --noinput || true && \
     cd /app/frontend && \
     npm install && \
     npm run build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \; && \
-    echo "Aggressively remove build-only packages and caches" && \
-    apt-get purge -y \
-        curl \
-        gcc \
-        git \
-        nodejs \
-        wget
+    find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \;
 
 FROM python:3.13-slim
 
@@ -51,51 +44,35 @@ COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
 
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         curl \
         ffmpeg \
-        gcc \
-        git \
+        gnupg2 \
         gpg \
         libpq-dev \
         lsb-release \
-        python3-virtualenv \
-        streamlink
-
-RUN \
-    curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh && \
-    bash /tmp/nodesource_setup.sh && \
+        nginx \
+        procps \
+        streamlink \
+        wget && \
+    cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
+    echo "=== setting up postgres ====" && \
+    echo "deb http://apt.postgresql.org/pub/repos/apt/ bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - && \
+    echo "=== setting up redis ===" && \
     curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
     chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list && \
-    cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
     apt-get update && \
-    apt-get install -y redis
-
-RUN apt-get update && \
     apt-get install -y \
-        nodejs \
-        redis
-
-RUN \
+        postgresql-14 \
+        postgresql-contrib-14 \
+        redis-server && \
     mkdir /data && \
-    virtualenv /dispatcharrpy && \
-    git clone https://github.com/Dispatcharr/Dispatcharr /app && \
-    cd /app && \
-    pip install --no-cache-dir -r requirements.txt && \
-    cd /app/frontend && \
-    npm install && \
-    npm run build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \; && \
-    cd /app && \
-    python manage.py collectstatic --noinput || true && \
     apt-get remove -y \
-        gcc \
-        git \
+        gnupg2 \
         gpg \
-        libpq-dev \
-        lsb-release \
-        nodejs && \
+        lsb-release && \
     apt-get clean && \
     apt-get autoremove -y && \
     rm -rf \
@@ -105,4 +82,4 @@ RUN \
 
 WORKDIR /app
 
-CMD ["/app/docker/entrypoint.aio.sh"]
+CMD ["/app/docker/entrypoint.sh"]

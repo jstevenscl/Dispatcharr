@@ -198,13 +198,7 @@ fi
 cd /app
 echo_with_timestamp "Running Django commands..."
 python manage.py migrate --noinput || true
-echo_with_timestamp "Checking if Django superuser exists..."
-if ! python manage.py shell -c "from django.contrib.auth import get_user_model; exit(0) if get_user_model().objects.filter(username='${DJANGO_SUPERUSER_USERNAME}').exists() else exit(1)"; then
-    echo_with_timestamp "Superuser does not exist. Creating..."
-    python manage.py createsuperuser --noinput || true
-else
-    echo_with_timestamp "Superuser already exists. Skipping creation."
-fi
+python manage.py collectstatic --noinput || true
 
 # Always start Gunicorn
 echo "🚀 Starting Gunicorn..."
