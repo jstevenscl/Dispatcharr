@@ -52,6 +52,7 @@ urlpatterns = [
 
     # Add proxy apps
     path('proxy/', include('apps.proxy.urls')),
+    path('proxy', RedirectView.as_view(url='/proxy/', permanent=True)),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
