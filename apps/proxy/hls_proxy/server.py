@@ -7,7 +7,6 @@ This proxy handles HLS live streams with support for:
 - Connection pooling and reuse
 """
 
-from flask import Flask, Response, request, jsonify
 import requests
 import threading
 import logging
@@ -18,32 +17,12 @@ import argparse
 from typing import Optional, Dict, List, Set, Deque
 import sys
 import os
-
-# Initialize Flask app
-app = Flask(__name__)
+from apps.proxy.config import HLSConfig as Config
 
 # Global state management
 manifest_buffer = None  # Stores current manifest content
 segment_buffers = {}   # Maps sequence numbers to segment data
 buffer_lock = threading.Lock()  # Synchronizes access to buffers
-
-class Config:
-    """Configuration settings for stream handling and buffering"""
-    # Buffer size settings
-    MIN_SEGMENTS = 12          # Minimum segments to maintain
-    MAX_SEGMENTS = 16          # Maximum segments to store
-    WINDOW_SIZE = 12          # Number of segments in manifest window
-    INITIAL_SEGMENTS = 3       # Initial segments to buffer before playback
-    DEFAULT_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20'
-    INITIAL_CONNECTION_WINDOW = 10  # Seconds to wait for first client
-    CLIENT_TIMEOUT_FACTOR = 1.5    # Multiplier for target duration to determine client timeout
-    CLIENT_CLEANUP_INTERVAL = 10   # Seconds between client cleanup checks
-    FIRST_SEGMENT_TIMEOUT = 5.0  # Seconds to wait for first segment
-    
-    # Initial buffering settings
-    INITIAL_BUFFER_SECONDS = 25.0  # Initial buffer in seconds before allowing clients
-    MAX_INITIAL_SEGMENTS = 10      # Maximum segments to fetch during initialization
-    BUFFER_READY_TIMEOUT = 30.0    # Maximum time to wait for initial buffer (seconds)
 
 class StreamBuffer:
     """
@@ -564,7 +543,7 @@ class StreamFetcher:
 
                 # Normal operation - get latest segment if we haven't already
                 latest_segment = manifest.segments[-1]
-                if latest_segment.uri in downloaded_segments:
+                if (latest_segment.uri in downloaded_segments):
                     # Wait for next manifest update
                     time.sleep(self.manager.target_duration * 0.5)
                     continue
@@ -817,176 +796,33 @@ def fetch_stream(fetcher: StreamFetcher, stop_event: threading.Event, start_sequ
             retry_delay = min(retry_delay * 2, max_retry_delay)
             manifest_update_needed = True
 
-
-
-@app.before_request
-def log_request_info():
-    """
-    Log client connections and important requests.
-    
-    Logs:
-        INFO: 
-            - First manifest request from new client
-            - Stream switch requests
-        DEBUG:
-            - All other requests
-            
-    Format:
-        {client_ip} - {method} {path}
-    """
-    if request.path == '/stream.m3u8' and not segment_buffers:
-        # First manifest request from a client
-        logging.info(f"New client connected from {request.remote_addr}")
-    elif request.path.startswith('/change_stream'):
-        # Keep stream switch requests as INFO
-        logging.info(f"Stream switch requested from {request.remote_addr}")
-    else:
-        # Move routine requests to DEBUG
-        logging.debug(f"{request.remote_addr} - {request.method} {request.path}")
-
-# Configure Werkzeug logger to DEBUG
-logging.getLogger('werkzeug').setLevel(logging.DEBUG)
-
 class ProxyServer:
-    """Manages HLS proxy server instance"""
-    
     def __init__(self, user_agent: Optional[str] = None):
-        self.app = Flask(__name__)
         self.stream_managers: Dict[str, StreamManager] = {}
         self.stream_buffers: Dict[str, StreamBuffer] = {}
         self.client_managers: Dict[str, ClientManager] = {}
         self.fetch_threads: Dict[str, threading.Thread] = {}
         self.user_agent: str = user_agent or Config.DEFAULT_USER_AGENT
-        self._setup_routes()
 
+    # Remove Flask-specific routing
     def _setup_routes(self) -> None:
-        """Configure Flask routes"""
-        self.app.add_url_rule(
-            '/stream/<channel_id>',  # Changed from /<channel_id>/stream.m3u8
-            view_func=self.stream_endpoint
-        )
-        self.app.add_url_rule(
-            '/stream/<channel_id>/segments/<path:segment_name>',  # Updated to match new pattern
-            view_func=self.get_segment
-        )
-        self.app.add_url_rule(
-            '/change_stream/<channel_id>',  # Changed from /<channel_id>/change_stream
-            view_func=self.change_stream,
-            methods=['POST']
-        )
-        
-    def initialize_channel(self, url: str, channel_id: str) -> None:
-        """Initialize a new channel stream"""
-        if channel_id in self.stream_managers:
-            self.stop_channel(channel_id)
-            
-        manager = StreamManager(
-            url, 
-            channel_id,
-            user_agent=self.user_agent
-        )
-        buffer = StreamBuffer()
-        client_manager = ClientManager()
-        
-        # Set up references
-        manager.client_manager = client_manager
-        manager.proxy_server = self
-        
-        # Store resources
-        self.stream_managers[channel_id] = manager
-        self.stream_buffers[channel_id] = buffer
-        self.client_managers[channel_id] = client_manager
-        
-        # Create and store fetcher
-        fetcher = StreamFetcher(manager, buffer)
-        manager.fetcher = fetcher
-        
-        # Start fetch thread
-        self.fetch_threads[channel_id] = threading.Thread(
-            target=fetcher.fetch_loop,
-            name=f"StreamFetcher-{channel_id}",
-            daemon=True
-        )
-        self.fetch_threads[channel_id].start()
-        
-        # Start cleanup monitoring immediately
-        manager.start_cleanup_thread()
-        
-        logging.info(f"Initialized channel {channel_id} with URL {url}")
-        
-    def stop_channel(self, channel_id: str) -> None:
-        """Stop and cleanup a channel"""
-        if channel_id in self.stream_managers:
-            self.stream_managers[channel_id].stop()
-            if channel_id in self.fetch_threads:
-                self.fetch_threads[channel_id].join(timeout=5)
-            self._cleanup_channel(channel_id)
-            
-    def _cleanup_channel(self, channel_id: str) -> None:
-        """
-        Remove all resources associated with a channel.
-        
-        Args:
-            channel_id: Channel to cleanup
-            
-        Removes:
-            - Stream manager instance
-            - Segment buffer
-            - Client manager
-            - Fetch thread reference
-            
-        Thread safety:
-            Should only be called after stream manager is stopped
-            and fetch thread has completed
-        """
+        pass
 
-        for collection in [self.stream_managers, self.stream_buffers, 
-                         self.client_managers, self.fetch_threads]:
-            collection.pop(channel_id, None)
-
-    def run(self, host: str = '0.0.0.0', port: int = 5000) -> None:
-        """Start the proxy server"""
-        try:
-            self.app.run(host=host, port=port, threaded=True)
-        except KeyboardInterrupt:
-            logging.info("Shutting down gracefully...")
-            self.shutdown()
-        except Exception as e:
-            logging.error(f"Server error: {e}")
-            self.shutdown()
-            raise
-        
-    def shutdown(self) -> None:
-        """
-        Stop all channels and cleanup resources.
-        
-        Steps:
-            1. Stop all active stream managers
-            2. Join fetch threads
-            3. Clean up channel resources
-            4. Release system resources
-            
-        Thread Safety:
-            Safe to call from signal handlers or during shutdown
-        """
-        for channel_id in list(self.stream_managers.keys()):
-            self.stop_channel(channel_id)
-
+    # Update methods to return data instead of Flask Response objects
     def stream_endpoint(self, channel_id: str):
-        """Flask route handler for serving HLS manifests."""
         if channel_id not in self.stream_managers:
-            return Response('Channel not found', status=404)
+            return 'Channel not found', 404
             
         manager = self.stream_managers[channel_id]
         
         # Wait for initial buffer
         if not manager.buffer_ready.wait(Config.BUFFER_READY_TIMEOUT):
             logging.error(f"Timeout waiting for initial buffer for channel {channel_id}")
-            return Response('Initial buffer not ready', status=503)
+            return 'Initial buffer not ready', 503
         
         try:
             if (channel_id not in self.stream_managers) or (not self.stream_managers[channel_id].running):
-                return Response('Channel not found', status=404)
+                return 'Channel not found', 404
             
             manager = self.stream_managers[channel_id]
             buffer = self.stream_buffers[channel_id]
@@ -1006,7 +842,7 @@ class ProxyServer:
                     
                 if time.time() - start_time > Config.FIRST_SEGMENT_TIMEOUT:
                     logging.warning(f"Timeout waiting for first segment for channel {channel_id}")
-                    return Response('No segments available', status=503)
+                    return 'No segments available', 503
                     
                 time.sleep(0.1)  # Short sleep to prevent CPU spinning
             
@@ -1050,7 +886,7 @@ class ProxyServer:
                 
                 manifest_content = '\n'.join(new_manifest)
                 logging.debug(f"Serving manifest with segments {min_seq}-{max_seq} (window: {len(window_segments)})")
-                return Response(manifest_content, content_type='application/vnd.apple.mpegurl')
+                return manifest_content, 200  # Return content and status code
         except ConnectionAbortedError:
             logging.debug("Client disconnected")
             return '', 499
@@ -1077,7 +913,7 @@ class ProxyServer:
             - Returns 404 on any error
         """
         if channel_id not in self.stream_managers:
-            return Response('Channel not found', status=404)
+            return 'Channel not found', 404
             
         try:
             # Record client activity
@@ -1089,7 +925,7 @@ class ProxyServer:
             
             with buffer_lock:
                 if segment_id in buffer:
-                    return Response(buffer[segment_id], content_type='video/MP2T')
+                    return buffer[segment_id], 200  # Return content and status code
                     
             logging.warning(f"Segment {segment_id} not found for channel {channel_id}")
         except Exception as e:
@@ -1122,45 +958,24 @@ class ProxyServer:
             - Maintains segment numbering
         """
         if channel_id not in self.stream_managers:
-            return jsonify({'error': 'Channel not found'}), 404
+            return {'error': 'Channel not found'}, 404
             
         new_url = request.json.get('url')
         if not new_url:
-            return jsonify({'error': 'No URL provided'}), 400
+            return {'error': 'No URL provided'}, 400
             
         manager = self.stream_managers[channel_id]
         if manager.update_url(new_url):
-            return jsonify({
+            return {
                 'message': 'Stream URL updated',
                 'channel': channel_id,
                 'url': new_url
-            })
-        return jsonify({
+            }, 200
+        return {
             'message': 'URL unchanged',
             'channel': channel_id,
             'url': new_url
-        })
-
-    @app.before_request
-    def log_request_info():
-        """
-        Log client connections and important requests.
-        
-        Log Levels:
-            INFO:
-                - First manifest request from new client
-                - Stream switch requests
-            DEBUG:
-                - Segment requests
-                - Routine manifest updates
-                
-        Format:
-            "{client_ip} - {method} {path}"
-            
-        Side Effects:
-            - Updates logging configuration based on request type
-            - Tracks client connections
-        """
+        }, 200
 
 # Main Application Setup
 if __name__ == '__main__':

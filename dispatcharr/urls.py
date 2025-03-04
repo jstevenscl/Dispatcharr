@@ -50,6 +50,9 @@ urlpatterns = [
     # Catch-all route to serve React's index.html for non-API, non-admin paths
     path('', TemplateView.as_view(template_name='index.html')),  # React entry point
 
+    # Add proxy apps
+    path('proxy/', include('apps.proxy.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Serve static files for development (React's JS, CSS, etc.)
