@@ -24,14 +24,14 @@ schema_view = get_schema_view(
 urlpatterns = [
     # API Routes
     path('api/', include(('apps.api.urls', 'api'), namespace='api')),
-    path('output/', include('apps.output.urls', namespace='output')),
+    path('api', RedirectView.as_view(url='/api/', permanent=True)), 
 
     # Admin
     path('admin', RedirectView.as_view(url='/admin/', permanent=True)),  # This fixes the issue
     path('admin/', admin.site.urls),
 
     # Outputs
-    path('output', RedirectView.as_view(url='/output/', permanent=True)),  # This fixes the issue
+    path('output', RedirectView.as_view(url='/output/', permanent=True)),
     path('output/', include(('apps.output.urls', 'output'), namespace='output')),
 
     # HDHR
