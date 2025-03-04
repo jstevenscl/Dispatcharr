@@ -39,11 +39,15 @@ def stream_ts(request, channel_id):
                 
         except Exception as e:
             logger.error(f"Streaming error for channel {channel_id}: {e}")
-            if channel_id in proxy_server.client_managers:
-                remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
-                if remaining == 0:
-                    proxy_server.stop_channel(channel_id)
-            raise
+        finally:  # Add finally block to ensure cleanup
+            try:
+                if channel_id in proxy_server.client_managers:
+                    remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
+                    if remaining == 0:
+                        logger.info(f"No clients remaining, stopping channel {channel_id}")
+                        proxy_server.stop_channel(channel_id)
+            except Exception as e:
+                logger.error(f"Error during client cleanup: {e}")
 
     return StreamingHttpResponse(
         generate(),

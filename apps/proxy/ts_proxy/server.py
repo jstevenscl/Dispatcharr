@@ -208,10 +208,17 @@ class ProxyServer:
     def stop_channel(self, channel_id: str) -> None:
         """Stop and cleanup a channel"""
         if channel_id in self.stream_managers:
-            self.stream_managers[channel_id].stop()
-            if channel_id in self.fetch_threads:
-                self.fetch_threads[channel_id].join(timeout=5)
-            self._cleanup_channel(channel_id)
+            logging.info(f"Stopping channel {channel_id}")
+            try:
+                self.stream_managers[channel_id].stop()
+                if channel_id in self.fetch_threads:
+                    self.fetch_threads[channel_id].join(timeout=5)
+                    if self.fetch_threads[channel_id].is_alive():
+                        logging.warning(f"Fetch thread for channel {channel_id} did not stop cleanly")
+            except Exception as e:
+                logging.error(f"Error stopping channel {channel_id}: {e}")
+            finally:
+                self._cleanup_channel(channel_id)
             
     def _cleanup_channel(self, channel_id: str) -> None:
         """Remove channel resources"""
