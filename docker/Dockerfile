@@ -22,8 +22,6 @@ RUN apt-get update && \
     git clone https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-pytorch.txt && \
-    pip install --no-cache-dir -r requirements-sentence-transformers.txt && \
     python manage.py collectstatic --noinput && \
     cd /app/frontend && \
     npm install && \
