@@ -104,7 +104,7 @@ const ChannelsTable = () => {
   };
 
   function handleWatchStream(channelNumber) {
-    showVideo(`http://192.168.1.151:5656/output/stream/${channelNumber}/`);
+    showVideo(`/output/stream/${channelNumber}/`);
   }
 
   // (Optional) bulk delete, but your endpoint is @TODO
