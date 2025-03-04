@@ -1,9 +1,11 @@
 import json
 import threading
 import logging
+import time
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from apps.proxy.config import TSConfig as Config  # Change this line
 from .server import ProxyServer
 
 logger = logging.getLogger(__name__)
@@ -18,10 +20,28 @@ def initialize_stream(request, channel_id):
         url = data.get('url')
         if not url:
             return JsonResponse({'error': 'No URL provided'}, status=400)
-            
+        
+        # Start the channel
         proxy_server.initialize_channel(url, channel_id)
+        
+        # Wait for connection to be established
+        manager = proxy_server.stream_managers[channel_id]
+        wait_start = time.time()
+        while not manager.connected:
+            if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
+                proxy_server.stop_channel(channel_id)
+                return JsonResponse({
+                    'error': 'Connection timeout'
+                }, status=504)
+            if not manager.should_retry():
+                proxy_server.stop_channel(channel_id)
+                return JsonResponse({
+                    'error': 'Failed to connect'
+                }, status=502)
+            time.sleep(0.1)
+            
         return JsonResponse({
-            'message': 'Stream initialized',
+            'message': 'Stream initialized and connected',
             'channel': channel_id,
             'url': url
         })

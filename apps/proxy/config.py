@@ -22,3 +22,5 @@ class HLSConfig(BaseConfig):
 class TSConfig(BaseConfig):
     BUFFER_SIZE = 1000
     RECONNECT_DELAY = 5
+    CLIENT_TIMEOUT = 15  # Seconds before stopping idle channel
+    CONNECTION_TIMEOUT = 10  # Seconds to wait for initial connection

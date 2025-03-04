@@ -72,6 +72,27 @@ class ClientManager:
     def __init__(self):
         self.active_clients: Set[int] = set()
         self.lock: threading.Lock = threading.Lock()
+        self.last_client_time: float = time.time()
+        self.cleanup_timer: Optional[threading.Timer] = None
+        
+    def start_cleanup_timer(self, proxy_server, channel_id):
+        """Start timer to cleanup idle channels"""
+        if self.cleanup_timer:
+            self.cleanup_timer.cancel()
+        self.cleanup_timer = threading.Timer(
+            Config.CLIENT_TIMEOUT, 
+            self._cleanup_idle_channel,
+            args=[proxy_server, channel_id]
+        )
+        self.cleanup_timer.daemon = True
+        self.cleanup_timer.start()
+        
+    def _cleanup_idle_channel(self, proxy_server, channel_id):
+        """Stop channel if no clients connected"""
+        with self.lock:
+            if not self.active_clients:
+                logging.info(f"No clients connected for {Config.CLIENT_TIMEOUT}s, stopping channel {channel_id}")
+                proxy_server.stop_channel(channel_id)
 
     def add_client(self, client_id: int) -> None:
         """Add new client connection"""
