@@ -80,8 +80,8 @@ else
 fi
 
 cd /app
-python manage.py migrate
-python manage.py collectstatic
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
 
 echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini /app/docker/uwsgi.ini &"
