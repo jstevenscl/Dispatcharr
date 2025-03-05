@@ -12,23 +12,13 @@ import Login from './pages/Login';
 import Channels from './pages/Channels';
 import M3U from './pages/M3U';
 import { ThemeProvider } from '@mui/material/styles';
-import {
-  Box,
-  CssBaseline,
-  Drawer,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  Divider,
-} from '@mui/material';
+import { Box, CssBaseline } from '@mui/material';
 import theme from './theme';
 import EPG from './pages/EPG';
 import Guide from './pages/Guide';
 import Settings from './pages/Settings';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
-import logo from './images/logo.png';
 import Alert from './components/Alert';
 import FloatingVideo from './components/FloatingVideo';
 import SuperuserForm from './components/forms/SuperuserForm';
@@ -90,39 +80,13 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Drawer
-          variant="permanent"
+        <Sidebar
           open={open}
-          sx={{
-            width: open ? drawerWidth : miniDrawerWidth,
-            flexShrink: 0,
-            '& .MuiDrawer-paper': {
-              width: open ? drawerWidth : miniDrawerWidth,
-              transition: 'width 0.3s',
-              overflowX: 'hidden',
-            },
-          }}
-        >
-          <List sx={{ backgroundColor: '#495057', color: 'white' }}>
-            <ListItem disablePadding>
-              <ListItemButton
-                onClick={toggleDrawer}
-                size="small"
-                sx={{
-                  pt: 0,
-                  pb: 0,
-                }}
-              >
-                <img src={logo} width="33x" alt="logo" />
-                {open && (
-                  <ListItemText primary="Dispatcharr" sx={{ paddingLeft: 3 }} />
-                )}
-              </ListItemButton>
-            </ListItem>
-          </List>
-          <Divider />
-          <Sidebar open />
-        </Drawer>
+          miniDrawerWidth={miniDrawerWidth}
+          drawerWidth={drawerWidth}
+          toggleDrawer={toggleDrawer}
+        />
+
         <Box
           sx={{
             display: 'flex',
