@@ -12,7 +12,6 @@ const useSettingsStore = create((set) => ({
     try {
       const settings = await api.getSettings();
       const env = await api.getEnvironmentSettings();
-      console.log(env);
       set({
         settings: settings.reduce((acc, setting) => {
           acc[setting.key] = setting;
@@ -22,7 +21,6 @@ const useSettingsStore = create((set) => ({
         environment: env,
       });
     } catch (error) {
-      console.error('Failed to fetch settings:', error);
       set({ error: 'Failed to load settings.', isLoading: false });
     }
   },

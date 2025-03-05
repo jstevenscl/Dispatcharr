@@ -100,7 +100,7 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
       </Box>
 
       {isAuthenticated && (
-        <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
+        <Box sx={{ flexGrow: 1, borderTop: '1px solid #ccc' }}>
           <List>
             <ListItem disablePadding>
               <ListItemButton>

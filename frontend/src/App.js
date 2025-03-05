@@ -22,6 +22,7 @@ import useAuthStore from './store/auth';
 import Alert from './components/Alert';
 import FloatingVideo from './components/FloatingVideo';
 import SuperuserForm from './components/forms/SuperuserForm';
+import { WebsocketProvider } from './WebSocket';
 
 const drawerWidth = 240;
 const miniDrawerWidth = 60;
@@ -79,60 +80,65 @@ const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <Sidebar
-          open={open}
-          miniDrawerWidth={miniDrawerWidth}
-          drawerWidth={drawerWidth}
-          toggleDrawer={toggleDrawer}
-        />
+      <WebsocketProvider>
+        <Router>
+          <Sidebar
+            open={open}
+            miniDrawerWidth={miniDrawerWidth}
+            drawerWidth={drawerWidth}
+            toggleDrawer={toggleDrawer}
+          />
 
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            ml: `${open ? drawerWidth : miniDrawerWidth}px`,
-            transition: 'width 0.3s, margin-left 0.3s',
-            backgroundColor: '#495057',
-            height: '100%',
-          }}
-        >
           <Box
             sx={{
-              flex: 1,
-              overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
+              ml: `${open ? drawerWidth : miniDrawerWidth}px`,
+              transition: 'width 0.3s, margin-left 0.3s',
+              backgroundColor: '#495057',
+              height: '100%',
             }}
           >
-            <Routes>
-              {isAuthenticated ? (
-                <>
-                  <Route path="/channels" element={<Channels />} />
-                  <Route path="/m3u" element={<M3U />} />
-                  <Route path="/epg" element={<EPG />} />
-                  <Route path="/stream-profiles" element={<StreamProfiles />} />
-                  <Route path="/guide" element={<Guide />} />
-                  <Route path="/settings" element={<Settings />} />
-                </>
-              ) : (
-                <Route path="/login" element={<Login />} />
-              )}
-              <Route
-                path="*"
-                element={
-                  <Navigate
-                    to={isAuthenticated ? defaultRoute : '/login'}
-                    replace
-                  />
-                }
-              />
-            </Routes>
+            <Box
+              sx={{
+                flex: 1,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <Routes>
+                {isAuthenticated ? (
+                  <>
+                    <Route path="/channels" element={<Channels />} />
+                    <Route path="/m3u" element={<M3U />} />
+                    <Route path="/epg" element={<EPG />} />
+                    <Route
+                      path="/stream-profiles"
+                      element={<StreamProfiles />}
+                    />
+                    <Route path="/guide" element={<Guide />} />
+                    <Route path="/settings" element={<Settings />} />
+                  </>
+                ) : (
+                  <Route path="/login" element={<Login />} />
+                )}
+                <Route
+                  path="*"
+                  element={
+                    <Navigate
+                      to={isAuthenticated ? defaultRoute : '/login'}
+                      replace
+                    />
+                  }
+                />
+              </Routes>
+            </Box>
           </Box>
-        </Box>
-      </Router>
-      <Alert />
-      <FloatingVideo />
+        </Router>
+        <Alert />
+        <FloatingVideo />
+      </WebsocketProvider>
     </ThemeProvider>
   );
 };

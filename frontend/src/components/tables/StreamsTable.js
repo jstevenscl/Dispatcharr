@@ -141,7 +141,7 @@ const StreamsTable = () => {
           size="small"
           color="warning"
           onClick={() => editStream(row.original)}
-          disabled={row.original.m3u_account}
+          disabled={row.original.m3u_account ? true : false}
           sx={{ p: 0 }}
         >
           <EditIcon fontSize="small" />
