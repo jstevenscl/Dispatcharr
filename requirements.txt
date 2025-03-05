@@ -1,5 +1,4 @@
 Django==5.1.6
-gunicorn==23.0.0
 psycopg2-binary==2.9.10
 redis==4.5.5
 celery
@@ -23,3 +22,6 @@ torch==2.6.0+cpu
 # ML/NLP dependencies
 sentence-transformers==3.4.1
 uwsgi
+channels
+channels-redis
+daphne
