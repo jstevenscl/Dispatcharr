@@ -6,7 +6,7 @@ export PGID=${PGID:-1000}
 
 # Create group if it doesn't exist
 if ! getent group "$PGID" >/dev/null 2>&1; then
-    groupadd -g "$PGID" mygroup
+    groupadd -g "$PGID" dispatch
 fi
 # Create user if it doesn't exist
 if ! getent passwd $PUID > /dev/null 2>&1; then
@@ -17,3 +17,5 @@ else
         usermod -l $POSTGRES_USER -g $PGID "$existing_user"
     fi
 fi
+
+usermod -aG www-data $POSTGRES_USER
