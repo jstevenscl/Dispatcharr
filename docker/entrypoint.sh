@@ -50,8 +50,10 @@ fi
 chmod +x /etc/profile.d/dispatcharr.sh
 
 # Run init scripts
-bash /app/docker/init/01-user-setup.sh
-bash /app/docker/init/02-postgres.sh
+echo "Starting init process..."
+. /app/docker/init/01-user-setup.sh
+. /app/docker/init/02-postgres.sh
+. /app/docker/init/03-init-dispatcharr.sh
 
 # Start PostgreSQL
 echo "Starting Postgres..."
@@ -65,11 +67,15 @@ postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data stat
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 
-echo "🚀 Starting nginx..."
-nginx
-nginx_pid=$(pgrep nginx | sort  | head -n1)
-echo "✅ nginx started with PID $nginx_pid"
-pids+=("$nginx_pid")
+if [ "$DISPATCHARR_ENV" = "dev" ]; then
+    . /app/docker/init/99-init-dev.sh
+else
+    echo "🚀 Starting nginx..."
+    nginx
+    nginx_pid=$(pgrep nginx | sort  | head -n1)
+    echo "✅ nginx started with PID $nginx_pid"
+    pids+=("$nginx_pid")
+fi
 
 echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini /app/docker/uwsgi.ini &"

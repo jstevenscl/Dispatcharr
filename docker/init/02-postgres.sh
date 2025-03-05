@@ -49,4 +49,7 @@ EOF
     fi
 
     kill $postgres_pid
+    while kill -0 $postgres_pid; do
+        sleep 1
+    done
 fi
