@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   List,
   ListItem,
@@ -39,10 +39,16 @@ const items = [
 
 const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
   const location = useLocation();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, logout } = useAuthStore();
   const {
     environment: { public_ip },
   } = useSettingsStore();
+  const navigate = useNavigate();
+
+  const onLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <Drawer
@@ -103,7 +109,7 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
         <Box sx={{ borderTop: '1px solid #ccc' }}>
           <List>
             <ListItem disablePadding>
-              <ListItemButton>
+              <ListItemButton onClick={onLogout}>
                 <ListItemIcon>
                   <LogoutIcon />
                 </ListItemIcon>
