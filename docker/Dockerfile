@@ -25,7 +25,7 @@ RUN apt-get update && \
     virtualenv /dispatcharrpy && \
     git clone https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
-    git checkout --track origin/uwsgi && \
+    rm -rf .git && \
     cd /app && \
     pip install --no-cache-dir -r requirements.txt && \
     python manage.py collectstatic --noinput && \
