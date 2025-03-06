@@ -100,7 +100,7 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
       </Box>
 
       {isAuthenticated && (
-        <Box sx={{ flexGrow: 1, borderTop: '1px solid #ccc' }}>
+        <Box sx={{ borderTop: '1px solid #ccc' }}>
           <List>
             <ListItem disablePadding>
               <ListItemButton>
@@ -117,6 +117,7 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
             label="Public IP"
             value={public_ip || ''}
             disabled
+            sx={{ p: 1 }}
           />
         </Box>
       )}
