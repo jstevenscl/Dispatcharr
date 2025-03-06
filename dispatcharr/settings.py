@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'REPLACE_ME_WITH_A_REAL_SECRET'
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_DB = os.environ.get("REDIS_DB", "localhost")
+REDIS_DB = os.environ.get("REDIS_DB", "0")
 
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
