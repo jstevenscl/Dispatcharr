@@ -19,9 +19,15 @@ export const WebsocketProvider = ({ children }) => {
   const ws = useRef(null);
 
   useEffect(() => {
-    let wsUrl = `ws://${window.location.host}/ws/`;
+    let wsUrl = `${window.location.host}/ws/`;
     if (process.env.REACT_APP_ENV_MODE == 'dev') {
-      wsUrl = `ws://${window.location.hostname}:8001/ws/`;
+      wsUrl = `${window.location.hostname}:8001/ws/`;
+    }
+
+    if (window.location.protocol.match(/https/)) {
+      wsUrl = `wss://${wsUrl}`;
+    } else {
+      wsUrl = `ws://${wsUrl}`;
     }
 
     const socket = new WebSocket(wsUrl);
