@@ -16,9 +16,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
 
   celery:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: dispatcharr/dispatcharr:alpha-v1
     container_name: dispatcharr_celery
     depends_on:
       - db
