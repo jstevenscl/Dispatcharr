@@ -40,13 +40,14 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
     initialValues: {
       name: '',
       server_url: '',
-      max_streams: 0,
       user_agent: '',
       is_active: true,
     },
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
+      server_url: Yup.string().required('Server URL is required'),
       user_agent: Yup.string().required('User-Agent is required'),
+      max_streams: Yup.string().required('Max streams is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (playlist?.id) {
