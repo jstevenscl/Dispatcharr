@@ -31,10 +31,126 @@ import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import logo from '../../images/logo.png';
-import useVideoStore from '../../store/useVideoStore';
+import useVideoStore from '../../store/video';
 import useSettingsStore from '../../store/settings';
+import useStreamsStore from '../../store/streams';
+import usePlaylistsStore from '../../store/playlists';
 
-const ChannelsTable = () => {
+const ChannelStreams = ({ channel, isExpanded }) => {
+  const [channelStreams, setChannelStreams] = useState([]);
+  const channelStreamIds = useChannelsStore(
+    (state) => state.channels[channel.id]?.stream_ids
+  );
+  const { playlists } = usePlaylistsStore();
+  const { streams } = useStreamsStore();
+
+  useEffect(
+    () =>
+      setChannelStreams(
+        streams
+          .filter((stream) => channelStreamIds.includes(stream.id))
+          .sort(
+            (a, b) =>
+              channelStreamIds.indexOf(a.id) - channelStreamIds.indexOf(b.id)
+          )
+      ),
+    [streams, channelStreamIds]
+  );
+
+  const removeStream = async (stream) => {
+    let streamSet = new Set(channelStreams);
+    streamSet.delete(stream);
+    streamSet = Array.from(streamSet);
+    await API.updateChannel({
+      ...channel,
+      streams: streamSet.map((stream) => stream.id),
+    });
+  };
+
+  const channelStreamsTable = useMaterialReactTable({
+    ...TableHelper.defaultProperties,
+    data: channelStreams,
+    columns: useMemo(
+      () => [
+        {
+          header: 'Name',
+          accessorKey: 'name',
+        },
+        {
+          header: 'M3U',
+          accessorFn: (row) =>
+            playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
+        },
+      ],
+      [playlists]
+    ),
+    enableKeyboardShortcuts: false,
+    enableColumnActions: false,
+    enableColumnFilters: false,
+    enableSorting: false,
+    enableBottomToolbar: false,
+    enableTopToolbar: false,
+    columnFilterDisplayMode: 'popover',
+    enablePagination: false,
+    enableRowVirtualization: true,
+    enableColumnHeaders: false,
+    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
+    initialState: {
+      density: 'compact',
+    },
+    enableRowActions: true,
+    enableRowOrdering: true,
+    muiRowDragHandleProps: ({ table }) => ({
+      onDragEnd: async () => {
+        const { draggingRow, hoveredRow } = table.getState();
+
+        if (hoveredRow && draggingRow) {
+          channelStreams.splice(
+            hoveredRow.index,
+            0,
+            channelStreams.splice(draggingRow.index, 1)[0]
+          );
+
+          // setChannelStreams([...channelStreams]);
+          API.updateChannel({
+            ...channel,
+            streams: channelStreams.map((stream) => stream.id),
+          });
+        }
+      },
+    }),
+    renderRowActions: ({ row }) => (
+      <>
+        <IconButton
+          size="small" // Makes the button smaller
+          color="error" // Red color for delete actions
+          onClick={() => removeStream(row.original)}
+        >
+          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+        </IconButton>
+      </>
+    ),
+  });
+
+  if (!isExpanded) {
+    return <></>;
+  }
+
+  return (
+    <Box
+      sx={{
+        backgroundColor: 'primary.main',
+        pt: 1,
+        pb: 1,
+        width: '100%',
+      }}
+    >
+      <MaterialReactTable table={channelStreamsTable} />
+    </Box>
+  );
+};
+
+const ChannelsTable = ({ setSelectedChannels }) => {
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
@@ -43,9 +159,16 @@ const ChannelsTable = () => {
   const [textToCopy, setTextToCopy] = useState('');
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
 
-  const { channels, isLoading: channelsLoading } = useChannelsStore();
+  const { showVideo } = useVideoStore(); // or useVideoStore()
+  const {
+    channels,
+    isLoading: channelsLoading,
+    fetchChannels,
+  } = useChannelsStore();
+
+  const outputUrlRef = useRef(null);
+
   const {
     environment: { env_mode },
   } = useSettingsStore();
@@ -104,9 +227,7 @@ const ChannelsTable = () => {
   };
 
   const deleteChannel = async (id) => {
-    setIsLoading(true);
     await API.deleteChannel(id);
-    setIsLoading(false);
   };
 
   function handleWatchStream(channelNumber) {
@@ -150,7 +271,7 @@ const ChannelsTable = () => {
       setSnackbarOpen(true);
 
       // Refresh the channel list
-      await useChannelsStore.getState().fetchChannels();
+      await fetchChannels();
     } catch (err) {
       console.error(err);
       setSnackbarMessage('Failed to assign channels');
@@ -215,7 +336,16 @@ const ChannelsTable = () => {
       await navigator.clipboard.writeText(textToCopy);
       setSnackbarMessage('Copied!');
     } catch (err) {
-      setSnackbarMessage('Failed to copy');
+      const inputElement = outputUrlRef.current.querySelector('input'); // Get the actual input
+
+      if (inputElement) {
+        inputElement.focus();
+        inputElement.select();
+
+        // For older browsers
+        document.execCommand('copy');
+        setSnackbarMessage('Copied!');
+      }
     }
     setSnackbarOpen(true);
   };
@@ -240,11 +370,18 @@ const ChannelsTable = () => {
     );
   };
 
+  useEffect(() => {
+    const selectedRows = table
+      .getSelectedRowModel()
+      .rows.map((row) => row.original);
+    setSelectedChannels(selectedRows);
+  }, [rowSelection]);
+
   // Configure the MaterialReactTable
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: channels,
+    data: Object.values(channels),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: true,
@@ -261,6 +398,34 @@ const ChannelsTable = () => {
       density: 'compact',
     },
     enableRowActions: true,
+    enableExpandAll: false,
+    displayColumnDefOptions: {
+      'mrt-row-expand': {
+        size: 10, // Set custom width (default is ~40px)
+        header: '',
+        muiTableHeadCellProps: {
+          sx: { width: 30, minWidth: 30, maxWidth: 30 },
+        },
+        muiTableBodyCellProps: {
+          sx: { width: 30, minWidth: 30, maxWidth: 30 },
+        },
+      },
+      'mrt-row-actions': {
+        size: 50, // Set custom width (default is ~40px)
+      },
+    },
+    muiExpandButtonProps: ({ row, table }) => ({
+      onClick: () => {
+        table.setExpanded({ [row.id]: !row.getIsExpanded() }); //only 1 detail panel open at a time
+      },
+      sx: {
+        transform: row.getIsExpanded() ? 'rotate(180deg)' : 'rotate(-90deg)',
+        transition: 'transform 0.2s',
+      },
+    }),
+    renderDetailPanel: ({ row }) => (
+      <ChannelStreams channel={row.original} isExpanded={row.getIsExpanded()} />
+    ),
     renderRowActions: ({ row }) => (
       <Box sx={{ justifyContent: 'right' }}>
         <IconButton
@@ -300,65 +465,71 @@ const ChannelsTable = () => {
     muiSearchTextFieldProps: {
       variant: 'standard',
     },
-    renderTopToolbarCustomActions: ({ table }) => (
-      <Stack direction="row" sx={{ alignItems: 'center' }}>
-        <Typography>Channels</Typography>
-        <Tooltip title="Add New Channel">
-          <IconButton
-            size="small"
-            color="success"
-            variant="contained"
-            onClick={() => editChannel()}
-          >
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete Channels">
-          <IconButton
-            size="small"
-            color="error"
-            variant="contained"
-            onClick={deleteChannels}
-          >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Assign Channels">
-          <IconButton
-            size="small"
-            color="warning"
-            variant="contained"
-            onClick={assignChannels}
-          >
-            <SwapVertIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+    renderTopToolbarCustomActions: ({ table }) => {
+      const selectedRowCount = table.getSelectedRowModel().rows.length;
 
-        {/* Our brand-new button for EPG matching */}
-        <Tooltip title="Auto-match EPG with fuzzy logic">
-          <IconButton
-            size="small"
-            color="success"
-            variant="contained"
-            onClick={matchEpg}
-          >
-            <TvIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+      return (
+        <Stack direction="row" sx={{ alignItems: 'center' }}>
+          <Typography>Channels</Typography>
+          <Tooltip title="Add New Channel">
+            <IconButton
+              size="small"
+              color="success"
+              variant="contained"
+              onClick={() => editChannel()}
+            >
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete Channels">
+            <IconButton
+              size="small"
+              color="error"
+              variant="contained"
+              onClick={deleteChannels}
+              disabled={selectedRowCount == 0}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Assign Channels">
+            <IconButton
+              size="small"
+              color="warning"
+              variant="contained"
+              onClick={assignChannels}
+              disabled={selectedRowCount == 0}
+            >
+              <SwapVertIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
 
-        <ButtonGroup sx={{ marginLeft: 1 }}>
-          <Button variant="contained" size="small" onClick={copyHDHRUrl}>
-            HDHR URL
-          </Button>
-          <Button variant="contained" size="small" onClick={copyM3UUrl}>
-            M3U URL
-          </Button>
-          <Button variant="contained" size="small" onClick={copyEPGUrl}>
-            EPG
-          </Button>
-        </ButtonGroup>
-      </Stack>
-    ),
+          {/* Our brand-new button for EPG matching */}
+          <Tooltip title="Auto-match EPG with fuzzy logic">
+            <IconButton
+              size="small"
+              color="success"
+              variant="contained"
+              onClick={matchEpg}
+            >
+              <TvIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <ButtonGroup sx={{ marginLeft: 1 }}>
+            <Button variant="contained" size="small" onClick={copyHDHRUrl}>
+              HDHR URL
+            </Button>
+            <Button variant="contained" size="small" onClick={copyM3UUrl}>
+              M3U URL
+            </Button>
+            <Button variant="contained" size="small" onClick={copyEPGUrl}>
+              EPG
+            </Button>
+          </ButtonGroup>
+        </Stack>
+      );
+    },
   });
 
   return (
@@ -384,11 +555,13 @@ const ChannelsTable = () => {
       >
         <div style={{ padding: 16, display: 'flex', alignItems: 'center' }}>
           <TextField
+            id="output-url"
             value={textToCopy}
             variant="standard"
-            disabled
+            // disabled
             size="small"
             sx={{ marginRight: 1 }}
+            ref={outputUrlRef}
           />
           <IconButton onClick={handleCopy} color="primary">
             <ContentCopy />

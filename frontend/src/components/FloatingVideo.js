@@ -1,7 +1,7 @@
 // frontend/src/components/FloatingVideo.js
 import React, { useEffect, useRef } from 'react';
 import Draggable from 'react-draggable';
-import useVideoStore from '../store/useVideoStore';
+import useVideoStore from '../store/video';
 import mpegts from 'mpegts.js';
 
 export default function FloatingVideo() {
@@ -63,7 +63,13 @@ export default function FloatingVideo() {
         }}
       >
         {/* Simple header row with a close button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: '4px',
+          }}
+        >
           <button
             onClick={hideVideo}
             style={{

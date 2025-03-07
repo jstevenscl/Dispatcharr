@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ChannelsTable from '../components/tables/ChannelsTable';
 import StreamsTable from '../components/tables/StreamsTable';
 import { Grid2, Box } from '@mui/material';
 
 const ChannelsPage = () => {
+  const [selectedChannels, setSelectedChannels] = useState([]);
+
   return (
     <Grid2 container>
       <Grid2 size={6}>
@@ -18,7 +20,7 @@ const ChannelsPage = () => {
             overflow: 'hidden', // Prevent parent scrolling
           }}
         >
-          <ChannelsTable />
+          <ChannelsTable setSelectedChannels={setSelectedChannels} />
         </Box>
       </Grid2>
       <Grid2 size={6}>
@@ -33,7 +35,7 @@ const ChannelsPage = () => {
             overflow: 'hidden', // Prevent parent scrolling
           }}
         >
-          <StreamsTable />
+          <StreamsTable selectedChannels={selectedChannels} />
         </Box>
       </Grid2>
     </Grid2>

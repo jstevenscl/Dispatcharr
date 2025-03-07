@@ -18,7 +18,7 @@ import dayjs from 'dayjs';
 import API from '../api';
 import useChannelsStore from '../store/channels';
 import logo from '../images/logo.png';
-import useVideoStore from '../store/useVideoStore'; // NEW import
+import useVideoStore from '../store/video'; // NEW import
 import useAlertStore from '../store/alerts';
 import useSettingsStore from '../store/settings';
 
@@ -168,7 +168,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   }
 
   // The “Watch Now” click => show floating video
-  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
+  const { showVideo } = useVideoStore(); // or useVideoStore()
   function handleWatchStream(program) {
     const matched = findChannelByTvgId(program.tvg_id);
     if (!matched) {

@@ -15,6 +15,7 @@ export const WebsocketProvider = ({ children }) => {
   const [val, setVal] = useState(null);
 
   const { showAlert } = useAlertStore();
+  const { fetchStreams } = useStreamsStore();
 
   const ws = useRef(null);
 
@@ -51,7 +52,7 @@ export const WebsocketProvider = ({ children }) => {
       switch (event.type) {
         case 'm3u_refresh':
           if (event.message?.success) {
-            useStreamsStore.getState().fetchStreams();
+            fetchStreams();
             showAlert(event.message.message, 'success');
           }
           break;

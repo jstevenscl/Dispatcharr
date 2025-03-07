@@ -118,7 +118,9 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
             </ListItem>
           </List>
           {open && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+            <Box
+              sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}
+            >
               {/* Public IP + optional flag */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TextField

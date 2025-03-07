@@ -13,12 +13,14 @@ export default {
     },
     muiTableBodyCellProps: {
       sx: {
-        padding: 0,
+        pt: 0,
+        pb: 0,
       },
     },
     muiTableHeadCellProps: {
       sx: {
-        padding: 0,
+        pt: 0,
+        pb: 0,
       },
     },
     muiTableBodyProps: {

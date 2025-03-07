@@ -12,11 +12,7 @@ import {
   Button,
 } from '@mui/material';
 import useStreamsStore from '../../store/streams';
-import useChannelsStore from '../../store/channels'; // NEW: Import channels store
 import API from '../../api';
-// Make sure your api.js exports getAuthToken as a named export:
-// e.g. export const getAuthToken = async () => { ... }
-import { getAuthToken } from '../../api';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -26,7 +22,7 @@ import { TableHelper } from '../../helpers';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 
-const StreamsTable = () => {
+const StreamsTable = ({ selectedChannels }) => {
   const [rowSelection, setRowSelection] = useState([]);
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,13 +49,11 @@ const StreamsTable = () => {
 
   // Fallback: Individual creation (optional)
   const createChannelFromStream = async (stream) => {
-    setIsLoading(true);
     await API.createChannelFromStream({
       channel_name: stream.name,
       channel_number: null,
       stream_id: stream.id,
     });
-    setIsLoading(false);
   };
 
   // Bulk creation: create channels from selected streams in one API call
@@ -85,9 +79,7 @@ const StreamsTable = () => {
   };
 
   const deleteStream = async (id) => {
-    setIsLoading(true);
     await API.deleteStream(id);
-    setIsLoading(false);
   };
 
   const deleteStreams = async () => {
@@ -117,6 +109,19 @@ const StreamsTable = () => {
       console.error(error);
     }
   }, [sorting]);
+
+  const addStreamsToChannel = async (stream) => {
+    const channel = selectedChannels[0];
+    const selectedRows = table.getSelectedRowModel().rows;
+    await API.updateChannel({
+      ...channel,
+      streams: [
+        ...new Set(
+          channel.stream_ids.concat(selectedRows.map((row) => row.original.id))
+        ),
+      ],
+    });
+  };
 
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
@@ -170,39 +175,54 @@ const StreamsTable = () => {
         overflowY: 'auto',
       },
     },
-    renderTopToolbarCustomActions: ({ table }) => (
-      <Stack direction="row" sx={{ alignItems: 'center' }}>
-        <Typography>Streams</Typography>
-        <Tooltip title="Add New Stream">
-          <IconButton
-            size="small"
-            color="success"
+    renderTopToolbarCustomActions: ({ table }) => {
+      const selectedRowCount = table.getSelectedRowModel().rows.length;
+
+      return (
+        <Stack direction="row" sx={{ alignItems: 'center' }}>
+          <Typography>Streams</Typography>
+          <Tooltip title="Add New Stream">
+            <IconButton
+              size="small"
+              color="success"
+              variant="contained"
+              onClick={() => editStream()}
+            >
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete Streams">
+            <IconButton
+              size="small"
+              color="error"
+              variant="contained"
+              onClick={deleteStreams}
+              disabled={selectedRowCount == 0}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Button
             variant="contained"
-            onClick={() => editStream()}
-          >
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete Streams">
-          <IconButton
+            onClick={createChannelsFromStreams}
             size="small"
-            color="error"
-            variant="contained"
-            onClick={deleteStreams}
+            sx={{ marginLeft: 1 }}
+            disabled={selectedRowCount == 0}
           >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Button
-          variant="contained"
-          onClick={createChannelsFromStreams}
-          size="small"
-          sx={{ marginLeft: 1 }}
-        >
-          Create Channels
-        </Button>
-      </Stack>
-    ),
+            Create Channels
+          </Button>
+          <Button
+            variant="contained"
+            onClick={addStreamsToChannel}
+            size="small"
+            sx={{ marginLeft: 1 }}
+            disabled={selectedChannels.length != 1 || selectedRowCount == 0}
+          >
+            Add to Channel
+          </Button>
+        </Stack>
+      );
+    },
   });
 
   return (
