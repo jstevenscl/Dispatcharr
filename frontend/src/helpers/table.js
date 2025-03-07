@@ -1,3 +1,5 @@
+// frontend/src/helpers/table.js
+
 export default {
   defaultProperties: {
     enableGlobalFilter: false,
@@ -13,19 +15,34 @@ export default {
     },
     muiTableBodyCellProps: {
       sx: {
-        padding: 0,
+        padding: '6px',
+        borderColor: '#444',
+        color: '#E0E0E0',
+        fontSize: '0.85rem',
       },
     },
     muiTableHeadCellProps: {
       sx: {
-        padding: 0,
+        padding: '6px',
+        color: '#CFCFCF',
+        backgroundColor: '#383A3F',
+        borderColor: '#444',
+        fontWeight: 600,
+        fontSize: '0.8rem',
       },
     },
     muiTableBodyProps: {
       sx: {
-        //stripe the rows, make odd rows a darker color
-        '& tr:nth-of-type(odd) > td': {
-          // backgroundColor: '#f5f5f5',
+        // Subtle row striping
+        '& tr:nth-of-type(odd)': {
+          backgroundColor: '#2F3034',
+        },
+        '& tr:nth-of-type(even)': {
+          backgroundColor: '#333539',
+        },
+        // Row hover effect
+        '& tr:hover td': {
+          backgroundColor: '#3B3D41',
         },
       },
     },

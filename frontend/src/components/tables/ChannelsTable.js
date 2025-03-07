@@ -1,36 +1,33 @@
+// frontend/src/components/tables/ChannelsTable.js
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  MaterialReactTable,
-  useMaterialReactTable,
-} from 'material-react-table';
+import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
 import {
   Box,
-  Grid2,
   Stack,
   Typography,
   Tooltip,
   IconButton,
-  Button,
   ButtonGroup,
+  Button,
   Snackbar,
   Popover,
   TextField,
 } from '@mui/material';
-import useChannelsStore from '../../store/channels';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
   SwapVert as SwapVertIcon,
   LiveTv as LiveTvIcon,
+  Tv as TvIcon,
   ContentCopy,
-  Tv as TvIcon, // <-- ADD THIS IMPORT
 } from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import logo from '../../images/logo.png';
+import useChannelsStore from '../../store/channels';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
 
@@ -43,16 +40,20 @@ const ChannelsTable = () => {
   const [textToCopy, setTextToCopy] = useState('');
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
 
   const { channels, isLoading: channelsLoading } = useChannelsStore();
   const {
     environment: { env_mode },
   } = useSettingsStore();
+  const { showVideo } = useVideoStore.getState();
 
-  // Configure columns
-  const columns = useMemo(
-    () => [
+  const rowVirtualizerInstanceRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sorting, setSorting] = useState([]);
+
+  // Columns
+  const columns = useMemo(() => {
+    return [
       {
         header: '#',
         size: 50,
@@ -69,178 +70,21 @@ const ChannelsTable = () => {
       {
         header: 'Logo',
         accessorKey: 'logo_url',
-        size: 55,
+        size: 60,
         Cell: ({ cell }) => (
-          <Grid2
-            container
-            direction="row"
-            sx={{
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <img src={cell.getValue() || logo} width="20" alt="channel logo" />
-          </Grid2>
+          <Box sx={{ textAlign: 'center' }}>
+            <img
+              src={cell.getValue() || logo}
+              alt="channel logo"
+              style={{ width: 24, height: 'auto' }}
+            />
+          </Box>
         ),
-        meta: {
-          filterVariant: null,
-        },
       },
-    ],
-    []
-  );
-
-  // Access the row virtualizer instance (optional)
-  const rowVirtualizerInstanceRef = useRef(null);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([]);
-
-  const closeSnackbar = () => setSnackbarOpen(false);
-
-  const editChannel = async (ch = null) => {
-    setChannel(ch);
-    setChannelModalOpen(true);
-  };
-
-  const deleteChannel = async (id) => {
-    setIsLoading(true);
-    await API.deleteChannel(id);
-    setIsLoading(false);
-  };
-
-  function handleWatchStream(channelNumber) {
-    let vidUrl = `/output/stream/${channelNumber}/`;
-    if (env_mode == 'dev') {
-      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
-    }
-    showVideo(vidUrl);
-  }
-
-  // (Optional) bulk delete, but your endpoint is @TODO
-  const deleteChannels = async () => {
-    setIsLoading(true);
-    const selected = table
-      .getRowModel()
-      .rows.filter((row) => row.getIsSelected());
-    await utils.Limiter(
-      4,
-      selected.map((chan) => () => deleteChannel(chan.original.id))
-    );
-    // If you have a real bulk-delete endpoint, call it here:
-    // await API.deleteChannels(selected.map((sel) => sel.id));
-    setIsLoading(false);
-  };
-
-  // ─────────────────────────────────────────────────────────
-  // The "Assign Channels" button logic
-  // ─────────────────────────────────────────────────────────
-  const assignChannels = async () => {
-    try {
-      // Get row order from the table
-      const rowOrder = table.getRowModel().rows.map((row) => row.original.id);
-
-      // Call our custom API endpoint
-      setIsLoading(true);
-      const result = await API.assignChannelNumbers(rowOrder);
-      setIsLoading(false);
-
-      // We might get { message: "Channels have been auto-assigned!" }
-      setSnackbarMessage(result.message || 'Channels assigned');
-      setSnackbarOpen(true);
-
-      // Refresh the channel list
-      await useChannelsStore.getState().fetchChannels();
-    } catch (err) {
-      console.error(err);
-      setSnackbarMessage('Failed to assign channels');
-      setSnackbarOpen(true);
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────
-  // The new "Match EPG" button logic
-  // ─────────────────────────────────────────────────────────
-  const matchEpg = async () => {
-    try {
-      // Hit our new endpoint that triggers the fuzzy matching Celery task
-      const resp = await fetch('/api/channels/channels/match-epg/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-        },
-      });
-
-      if (resp.ok) {
-        setSnackbarMessage('EPG matching task started!');
-      } else {
-        const text = await resp.text();
-        setSnackbarMessage(`Failed to start EPG matching: ${text}`);
-      }
-    } catch (err) {
-      setSnackbarMessage(`Error: ${err.message}`);
-    }
-    setSnackbarOpen(true);
-  };
-
-  const closeChannelForm = () => {
-    setChannel(null);
-    setChannelModalOpen(false);
-  };
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsLoading(false);
-    }
+    ];
   }, []);
 
-  useEffect(() => {
-    // Scroll to the top of the table when sorting changes
-    try {
-      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
-    } catch (error) {
-      console.error(error);
-    }
-  }, [sorting]);
-
-  const closePopover = () => {
-    setAnchorEl(null);
-    setSnackbarMessage('');
-  };
-  const openPopover = Boolean(anchorEl);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      setSnackbarMessage('Copied!');
-    } catch (err) {
-      setSnackbarMessage('Failed to copy');
-    }
-    setSnackbarOpen(true);
-  };
-
-  // Example copy URLs
-  const copyM3UUrl = (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy(
-      `${window.location.protocol}//${window.location.host}/output/m3u`
-    );
-  };
-  const copyEPGUrl = (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy(
-      `${window.location.protocol}//${window.location.host}/output/epg`
-    );
-  };
-  const copyHDHRUrl = (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy(
-      `${window.location.protocol}//${window.location.host}/output/hdhr`
-    );
-  };
-
-  // Configure the MaterialReactTable
+  // Common table logic
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -255,114 +99,204 @@ const ChannelsTable = () => {
       sorting,
       rowSelection,
     },
-    rowVirtualizerInstanceRef, // optional
+    rowVirtualizerInstanceRef,
     rowVirtualizerOptions: { overscan: 5 },
-    initialState: {
-      density: 'compact',
-    },
     enableRowActions: true,
     renderRowActions: ({ row }) => (
-      <Box sx={{ justifyContent: 'right' }}>
+      <Stack direction="row" spacing={1}>
+        {/* Edit channel */}
         <IconButton
           size="small"
           color="warning"
-          onClick={() => {
-            editChannel(row.original);
-          }}
-          sx={{ p: 0 }}
+          onClick={() => editChannel(row.original)}
         >
           <EditIcon fontSize="small" />
         </IconButton>
+        {/* Delete channel */}
         <IconButton
           size="small"
           color="error"
           onClick={() => deleteChannel(row.original.id)}
-          sx={{ p: 0 }}
         >
           <DeleteIcon fontSize="small" />
         </IconButton>
+        {/* Watch now */}
         <IconButton
           size="small"
           color="info"
           onClick={() => handleWatchStream(row.original.channel_number)}
-          sx={{ p: 0 }}
         >
           <LiveTvIcon fontSize="small" />
         </IconButton>
-      </Box>
+      </Stack>
     ),
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 75px)',
+        height: 'calc(100% - 40px)', // fill parent minus a bit for your top row
         overflowY: 'auto',
       },
     },
-    muiSearchTextFieldProps: {
-      variant: 'standard',
-    },
-    renderTopToolbarCustomActions: ({ table }) => (
-      <Stack direction="row" sx={{ alignItems: 'center' }}>
-        <Typography>Channels</Typography>
-        <Tooltip title="Add New Channel">
-          <IconButton
-            size="small"
-            color="success"
-            variant="contained"
-            onClick={() => editChannel()}
-          >
-            <AddIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete Channels">
-          <IconButton
-            size="small"
-            color="error"
-            variant="contained"
-            onClick={deleteChannels}
-          >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Assign Channels">
-          <IconButton
-            size="small"
-            color="warning"
-            variant="contained"
-            onClick={assignChannels}
-          >
-            <SwapVertIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-
-        {/* Our brand-new button for EPG matching */}
-        <Tooltip title="Auto-match EPG with fuzzy logic">
-          <IconButton
-            size="small"
-            color="success"
-            variant="contained"
-            onClick={matchEpg}
-          >
-            <TvIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-
-        <ButtonGroup sx={{ marginLeft: 1 }}>
-          <Button variant="contained" size="small" onClick={copyHDHRUrl}>
-            HDHR URL
-          </Button>
-          <Button variant="contained" size="small" onClick={copyM3UUrl}>
-            M3U URL
-          </Button>
-          <Button variant="contained" size="small" onClick={copyEPGUrl}>
-            EPG
-          </Button>
+    renderTopToolbarCustomActions: () => (
+      <Stack direction="row" spacing={1} alignItems="center">
+        {/* “HDHR URL”, “M3U URL”, “EPG” ButtonGroup like your screenshot */}
+        <ButtonGroup variant="outlined" size="small">
+          <Button onClick={copyHDHRUrl}>HDHR URL</Button>
+          <Button onClick={copyM3UUrl}>M3U URL</Button>
+          <Button onClick={copyEPGUrl}>EPG</Button>
         </ButtonGroup>
+
+        {/* Additional actions: auto-assign, auto-match, add, remove, etc. */}
+        <Tooltip title="Assign Channels">
+          <IconButton color="warning" size="small" onClick={assignChannels}>
+            <SwapVertIcon />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Auto-match EPG">
+          <IconButton color="success" size="small" onClick={matchEpg}>
+            <TvIcon />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Add Channel">
+          <IconButton color="success" size="small" onClick={() => editChannel()}>
+            <AddIcon />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Delete Channels">
+          <IconButton color="error" size="small" onClick={deleteChannels}>
+            <DeleteIcon />
+          </IconButton>
+        </Tooltip>
       </Stack>
     ),
   });
 
+  // Lifecycle
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [sorting]);
+
+  // Channel actions
+  function editChannel(channel = null) {
+    setChannel(channel);
+    setChannelModalOpen(true);
+  }
+
+  async function deleteChannel(id) {
+    setIsLoading(true);
+    await API.deleteChannel(id);
+    setIsLoading(false);
+  }
+
+  function handleWatchStream(channelNumber) {
+    let vidUrl = `/output/stream/${channelNumber}/`;
+    if (env_mode === 'dev') {
+      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+    }
+    showVideo(vidUrl);
+  }
+
+  async function deleteChannels() {
+    setIsLoading(true);
+    const selected = table
+      .getRowModel()
+      .rows.filter((row) => row.getIsSelected());
+    await utils.Limiter(
+      4,
+      selected.map((chan) => () => deleteChannel(chan.original.id))
+    );
+    setIsLoading(false);
+  }
+
+  async function assignChannels() {
+    try {
+      const rowOrder = table.getRowModel().rows.map((row) => row.original.id);
+      setIsLoading(true);
+      const result = await API.assignChannelNumbers(rowOrder);
+      setIsLoading(false);
+      setSnackbarMessage(result.message || 'Channels assigned');
+      setSnackbarOpen(true);
+      await useChannelsStore.getState().fetchChannels();
+    } catch (err) {
+      console.error(err);
+      setSnackbarMessage('Failed to assign channels');
+      setSnackbarOpen(true);
+    }
+  }
+
+  async function matchEpg() {
+    try {
+      const resp = await fetch('/api/channels/channels/match-epg/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+      });
+      if (resp.ok) {
+        setSnackbarMessage('EPG matching task started!');
+      } else {
+        const text = await resp.text();
+        setSnackbarMessage(`Failed to start EPG matching: ${text}`);
+      }
+    } catch (err) {
+      setSnackbarMessage(`Error: ${err.message}`);
+    }
+    setSnackbarOpen(true);
+  }
+
+  // Copy popover
+  const openPopover = Boolean(anchorEl);
+  function closePopover() {
+    setAnchorEl(null);
+  }
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setSnackbarMessage('Copied!');
+    } catch (err) {
+      setSnackbarMessage('Failed to copy');
+    }
+    setSnackbarOpen(true);
+  }
+  function copyHDHRUrl(event) {
+    setAnchorEl(event.currentTarget);
+    setTextToCopy(`${window.location.protocol}//${window.location.host}/output/hdhr`);
+  }
+  function copyM3UUrl(event) {
+    setAnchorEl(event.currentTarget);
+    setTextToCopy(`${window.location.protocol}//${window.location.host}/output/m3u`);
+  }
+  function copyEPGUrl(event) {
+    setAnchorEl(event.currentTarget);
+    setTextToCopy(`${window.location.protocol}//${window.location.host}/output/epg`);
+  }
+
+  // Channel form close
+  function closeChannelForm() {
+    setChannel(null);
+    setChannelModalOpen(false);
+  }
+
+  // Snackbar
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
+
   return (
-    <Box>
+    <Box sx={{ height: '100%' }}>
       <MaterialReactTable table={table} />
 
       {/* Channel Form Modal */}
@@ -372,36 +306,33 @@ const ChannelsTable = () => {
         onClose={closeChannelForm}
       />
 
-      {/* Popover for the "copy" URLs */}
+      {/* Popover for "copy" URLs */}
       <Popover
         open={openPopover}
         anchorEl={anchorEl}
         onClose={closePopover}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'left',
-        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
-        <div style={{ padding: 16, display: 'flex', alignItems: 'center' }}>
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'center' }}>
           <TextField
             value={textToCopy}
             variant="standard"
             disabled
             size="small"
-            sx={{ marginRight: 1 }}
+            sx={{ mr: 1 }}
           />
           <IconButton onClick={handleCopy} color="primary">
             <ContentCopy />
           </IconButton>
-        </div>
+        </Box>
       </Popover>
 
-      {/* Snackbar for feedback */}
+      {/* Snackbar messages */}
       <Snackbar
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         open={snackbarOpen}
-        autoHideDuration={5000}
-        onClose={closeSnackbar}
+        autoHideDuration={4000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         message={snackbarMessage}
       />
     </Box>
