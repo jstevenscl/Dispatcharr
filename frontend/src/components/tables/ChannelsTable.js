@@ -416,6 +416,7 @@ const ChannelsTable = ({ setSelectedChannels }) => {
     },
     muiExpandButtonProps: ({ row, table }) => ({
       onClick: () => {
+        setRowSelection({ [row.index]: true });
         table.setExpanded({ [row.id]: !row.getIsExpanded() }); //only 1 detail panel open at a time
       },
       sx: {
