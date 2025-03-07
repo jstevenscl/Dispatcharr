@@ -41,7 +41,7 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
   const location = useLocation();
   const { isAuthenticated, logout } = useAuthStore();
   const {
-    environment: { public_ip },
+    environment: { public_ip, country_code, country_name },
   } = useSettingsStore();
   const navigate = useNavigate();
 
@@ -117,14 +117,30 @@ const Sidebar = ({ open, miniDrawerWidth, drawerWidth, toggleDrawer }) => {
               </ListItemButton>
             </ListItem>
           </List>
-          <TextField
-            size="small"
-            fullWidth
-            label="Public IP"
-            value={public_ip || ''}
-            disabled
-            sx={{ p: 1 }}
-          />
+          {open && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+              {/* Public IP + optional flag */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  size="small"
+                  label="Public IP"
+                  value={public_ip || ''}
+                  disabled
+                  variant="outlined"
+                  sx={{ flex: 1 }}
+                />
+                {/* If we have a country code, show a small flag */}
+                {country_code && (
+                  <img
+                    src={`https://flagcdn.com/16x12/${country_code.toLowerCase()}.png`}
+                    alt={country_name || country_code}
+                    title={country_name || country_code}
+                    style={{ border: '1px solid #ccc', borderRadius: 2 }}
+                  />
+                )}
+              </Box>
+            </Box>
+          )}
         </Box>
       )}
     </Drawer>
