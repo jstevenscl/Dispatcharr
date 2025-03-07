@@ -4,6 +4,7 @@ import api from '../api';
 const useChannelsStore = create((set) => ({
   channels: [],
   channelGroups: [],
+  channelsPageSelection: [],
   isLoading: false,
   error: null,
 
@@ -80,6 +81,9 @@ const useChannelsStore = create((set) => ({
         group.id === channelGroup.id ? channelGroup : group
       ),
     })),
+
+  setChannelsPageSelection: (channelsPageSelection) =>
+    set((state) => ({ channelsPageSelection })),
 }));
 
 export default useChannelsStore;

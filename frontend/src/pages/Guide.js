@@ -18,7 +18,7 @@ import dayjs from 'dayjs';
 import API from '../api';
 import useChannelsStore from '../store/channels';
 import logo from '../images/logo.png';
-import useVideoStore from '../store/video'; // NEW import
+import useVideoStore from '../store/useVideoStore'; // NEW import
 import useAlertStore from '../store/alerts';
 import useSettingsStore from '../store/settings';
 

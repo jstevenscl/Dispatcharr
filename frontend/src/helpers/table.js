@@ -5,9 +5,12 @@ export default {
     enableDensityToggle: false,
     enableFullScreenToggle: false,
     positionToolbarAlertBanner: 'none',
-    columnFilterDisplayMode: 'popover',
+    // columnFilterDisplayMode: 'popover',
     enableRowNumbers: false,
     positionActionsColumn: 'last',
+    enableColumnActions: false,
+    enableColumnFilters: false,
+    enableGlobalFilter: false,
     initialState: {
       density: 'compact',
     },

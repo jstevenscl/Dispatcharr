@@ -1,7 +1,7 @@
 // frontend/src/components/FloatingVideo.js
 import React, { useEffect, useRef } from 'react';
 import Draggable from 'react-draggable';
-import useVideoStore from '../store/video';
+import useVideoStore from '../store/useVideoStore';
 import mpegts from 'mpegts.js';
 
 export default function FloatingVideo() {

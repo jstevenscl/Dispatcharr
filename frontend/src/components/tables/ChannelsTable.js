@@ -15,6 +15,8 @@ import {
   Snackbar,
   Popover,
   TextField,
+  Autocomplete,
+  InputAdornment,
 } from '@mui/material';
 import useChannelsStore from '../../store/channels';
 import {
@@ -24,14 +26,15 @@ import {
   SwapVert as SwapVertIcon,
   LiveTv as LiveTvIcon,
   ContentCopy,
-  Tv as TvIcon, // <-- ADD THIS IMPORT
+  Tv as TvIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import logo from '../../images/logo.png';
-import useVideoStore from '../../store/video';
+import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
 import useStreamsStore from '../../store/streams';
 import usePlaylistsStore from '../../store/playlists';
@@ -85,7 +88,6 @@ const ChannelStreams = ({ channel, isExpanded }) => {
       [playlists]
     ),
     enableKeyboardShortcuts: false,
-    enableColumnActions: false,
     enableColumnFilters: false,
     enableSorting: false,
     enableBottomToolbar: false,
@@ -150,22 +152,43 @@ const ChannelStreams = ({ channel, isExpanded }) => {
   );
 };
 
-const ChannelsTable = ({ setSelectedChannels }) => {
+const ChannelsTable = ({}) => {
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
+  const [channelGroupOptions, setChannelGroupOptions] = useState([]);
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [textToCopy, setTextToCopy] = useState('');
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-  const { showVideo } = useVideoStore(); // or useVideoStore()
+  const [filterValues, setFilterValues] = useState({});
+
+  const { showVideo } = useVideoStore();
   const {
     channels,
     isLoading: channelsLoading,
     fetchChannels,
+    setChannelsPageSelection,
   } = useChannelsStore();
+
+  useEffect(() => {
+    setChannelGroupOptions([
+      ...new Set(
+        Object.values(channels).map((channel) => channel.channel_group?.name)
+      ),
+    ]);
+  }, [channels]);
+
+  const handleFilterChange = (columnId, value) => {
+    console.log(columnId);
+    console.log(value);
+    setFilterValues((prev) => ({
+      ...prev,
+      [columnId]: value ? value.toLowerCase() : '',
+    }));
+  };
 
   const outputUrlRef = useRef(null);
 
@@ -184,14 +207,81 @@ const ChannelsTable = ({ setSelectedChannels }) => {
       {
         header: 'Name',
         accessorKey: 'channel_name',
+        muiTableHeadCellProps: {
+          sx: { textAlign: 'center' }, // Center-align the header
+        },
+        Header: ({ column }) => (
+          <TextField
+            variant="standard"
+            label="Name"
+            value={filterValues[column.id]}
+            onChange={(e) => handleFilterChange(column.id, e.target.value)}
+            size="small"
+            margin="none"
+            fullWidth
+            sx={
+              {
+                // '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
+                // '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
+                // width: '200px', // Optional: Adjust width
+              }
+            }
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={() => handleFilterChange(column.id, '')} // Clear text on click
+                      edge="end"
+                      size="small"
+                    >
+                      <ClearIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        ),
+        meta: {
+          filterVariant: null,
+        },
       },
       {
         header: 'Group',
         accessorFn: (row) => row.channel_group?.name || '',
+        Header: ({ column }) => (
+          <Autocomplete
+            disablePortal
+            options={channelGroupOptions}
+            size="small"
+            sx={{ width: 300 }}
+            clearOnEscape
+            onChange={(event, newValue) =>
+              handleFilterChange(column.id, newValue)
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Group"
+                size="small"
+                variant="standard"
+                onClick={(e) => e.stopPropagation()}
+                sx={{
+                  pb: 0.8,
+                  //   '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
+                  //   '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
+                  //   width: '200px', // Optional: Adjust width
+                }}
+              />
+            )}
+          />
+        ),
       },
       {
         header: 'Logo',
         accessorKey: 'logo_url',
+        enableSorting: false,
         size: 55,
         Cell: ({ cell }) => (
           <Grid2
@@ -210,7 +300,7 @@ const ChannelsTable = ({ setSelectedChannels }) => {
         },
       },
     ],
-    []
+    [channelGroupOptions]
   );
 
   // Access the row virtualizer instance (optional)
@@ -370,22 +460,36 @@ const ChannelsTable = ({ setSelectedChannels }) => {
     );
   };
 
+  const onRowSelectionChange = (e, test) => {
+    console.log(e());
+    console.log(test);
+    setRowSelection(e);
+  };
+
   useEffect(() => {
     const selectedRows = table
       .getSelectedRowModel()
       .rows.map((row) => row.original);
-    setSelectedChannels(selectedRows);
+    setChannelsPageSelection(selectedRows);
   }, [rowSelection]);
 
-  // Configure the MaterialReactTable
+  const filteredData = Object.values(channels).filter((row) =>
+    columns.every(({ accessorKey }) =>
+      filterValues[accessorKey]
+        ? row[accessorKey]?.toLowerCase().includes(filterValues[accessorKey])
+        : true
+    )
+  );
+
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: Object.values(channels),
+    data: filteredData,
     enablePagination: false,
+    enableColumnActions: false,
     enableRowVirtualization: true,
     enableRowSelection: true,
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange: onRowSelectionChange,
     onSortingChange: setSorting,
     state: {
       isLoading: isLoading || channelsLoading,
@@ -400,18 +504,21 @@ const ChannelsTable = ({ setSelectedChannels }) => {
     enableRowActions: true,
     enableExpandAll: false,
     displayColumnDefOptions: {
+      'mrt-row-select': {
+        size: 50, // Set custom width (default is ~40px)
+      },
       'mrt-row-expand': {
         size: 10, // Set custom width (default is ~40px)
         header: '',
         muiTableHeadCellProps: {
-          sx: { width: 30, minWidth: 30, maxWidth: 30 },
+          sx: { width: 38, minWidth: 38, maxWidth: 38, height: '100%' },
         },
         muiTableBodyCellProps: {
-          sx: { width: 30, minWidth: 30, maxWidth: 30 },
+          sx: { width: 38, minWidth: 38, maxWidth: 38 },
         },
       },
       'mrt-row-actions': {
-        size: 50, // Set custom width (default is ~40px)
+        size: 68, // Set custom width (default is ~40px)
       },
     },
     muiExpandButtonProps: ({ row, table }) => ({
@@ -429,32 +536,40 @@ const ChannelsTable = ({ setSelectedChannels }) => {
     ),
     renderRowActions: ({ row }) => (
       <Box sx={{ justifyContent: 'right' }}>
-        <IconButton
-          size="small"
-          color="warning"
-          onClick={() => {
-            editChannel(row.original);
-          }}
-          sx={{ p: 0 }}
-        >
-          <EditIcon fontSize="small" />
-        </IconButton>
-        <IconButton
-          size="small"
-          color="error"
-          onClick={() => deleteChannel(row.original.id)}
-          sx={{ p: 0 }}
-        >
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-        <IconButton
-          size="small"
-          color="info"
-          onClick={() => handleWatchStream(row.original.channel_number)}
-          sx={{ p: 0 }}
-        >
-          <LiveTvIcon fontSize="small" />
-        </IconButton>
+        <Tooltip title="Edit Channel">
+          <IconButton
+            size="small"
+            color="warning"
+            onClick={() => {
+              editChannel(row.original);
+            }}
+            sx={{ py: 0, px: 0.5 }}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Delete Channel">
+          <IconButton
+            size="small"
+            color="error"
+            onClick={() => deleteChannel(row.original.id)}
+            sx={{ py: 0, px: 0.5 }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Preview Channel">
+          <IconButton
+            size="small"
+            color="info"
+            onClick={() => handleWatchStream(row.original.channel_number)}
+            sx={{ py: 0, px: 0.5 }}
+          >
+            <LiveTvIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
     ),
     muiTableContainerProps: {

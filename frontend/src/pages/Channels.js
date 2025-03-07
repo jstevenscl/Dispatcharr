@@ -4,8 +4,6 @@ import StreamsTable from '../components/tables/StreamsTable';
 import { Grid2, Box } from '@mui/material';
 
 const ChannelsPage = () => {
-  const [selectedChannels, setSelectedChannels] = useState([]);
-
   return (
     <Grid2 container>
       <Grid2 size={6}>
@@ -20,7 +18,7 @@ const ChannelsPage = () => {
             overflow: 'hidden', // Prevent parent scrolling
           }}
         >
-          <ChannelsTable setSelectedChannels={setSelectedChannels} />
+          <ChannelsTable />
         </Box>
       </Grid2>
       <Grid2 size={6}>
@@ -35,7 +33,7 @@ const ChannelsPage = () => {
             overflow: 'hidden', // Prevent parent scrolling
           }}
         >
-          <StreamsTable selectedChannels={selectedChannels} />
+          <StreamsTable />
         </Box>
       </Grid2>
     </Grid2>

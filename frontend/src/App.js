@@ -12,7 +12,7 @@ import Login from './pages/Login';
 import Channels from './pages/Channels';
 import M3U from './pages/M3U';
 import { ThemeProvider } from '@mui/material/styles';
-import { Box, CssBaseline } from '@mui/material';
+import { Box, CssBaseline, GlobalStyles } from '@mui/material';
 import theme from './theme';
 import EPG from './pages/EPG';
 import Guide from './pages/Guide';
@@ -80,6 +80,14 @@ const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <GlobalStyles
+        styles={{
+          '.Mui-TableHeadCell-Content': {
+            height: '100%',
+            alignItems: 'flex-end !important',
+          },
+        }}
+      />
       <WebsocketProvider>
         <Router>
           <Sidebar
