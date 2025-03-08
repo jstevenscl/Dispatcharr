@@ -58,7 +58,7 @@ const App = () => {
     checkSuperuser();
   }, []);
 
-  // Authentication check.
+  // Authentication check
   useEffect(() => {
     const checkAuth = async () => {
       const loggedIn = await initializeAuth();
@@ -72,7 +72,7 @@ const App = () => {
     checkAuth();
   }, [initializeAuth, initData, setIsAuthenticated, logout]);
 
-  // If no superuser exists, show the initialization form.
+  // If no superuser exists, show the initialization form
   if (needsSuperuser) {
     return <SuperuserForm onSuccess={() => setNeedsSuperuser(false)} />;
   }
@@ -90,6 +90,7 @@ const App = () => {
       />
       <WebsocketProvider>
         <Router>
+          {/* Sidebar on the left */}
           <Sidebar
             open={open}
             miniDrawerWidth={miniDrawerWidth}
@@ -97,24 +98,19 @@ const App = () => {
             toggleDrawer={toggleDrawer}
           />
 
+          {/* Main content area, no AppBar, so no marginTop */}
           <Box
             sx={{
               display: 'flex',
               flexDirection: 'column',
               ml: `${open ? drawerWidth : miniDrawerWidth}px`,
-              transition: 'width 0.3s, margin-left 0.3s',
-              backgroundColor: '#495057',
-              height: '100%',
+              transition: 'margin-left 0.3s',
+              backgroundColor: '#18181b',
+              minHeight: '100vh',
+              color: 'text.primary',
             }}
           >
-            <Box
-              sx={{
-                flex: 1,
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
+            <Box sx={{ p: 2, flex: 1, overflow: 'auto' }}>
               <Routes>
                 {isAuthenticated ? (
                   <>
@@ -144,6 +140,7 @@ const App = () => {
             </Box>
           </Box>
         </Router>
+
         <Alert />
         <FloatingVideo />
       </WebsocketProvider>
