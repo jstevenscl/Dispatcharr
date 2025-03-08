@@ -10,10 +10,10 @@ const ChannelsPage = () => {
         <Box
           sx={{
             height: '100vh', // Full viewport height
-            paddingTop: 1, // Top padding
+            paddingTop: 0, // Top padding
             paddingBottom: 1, // Bottom padding
             paddingRight: 0.5,
-            paddingLeft: 1,
+            paddingLeft: 0,
             boxSizing: 'border-box', // Include padding in height calculation
             overflow: 'hidden', // Prevent parent scrolling
           }}
@@ -25,9 +25,9 @@ const ChannelsPage = () => {
         <Box
           sx={{
             height: '100vh', // Full viewport height
-            paddingTop: 1, // Top padding
+            paddingTop: 0, // Top padding
             paddingBottom: 1, // Bottom padding
-            paddingRight: 1,
+            paddingRight: 0,
             paddingLeft: 0.5,
             boxSizing: 'border-box', // Include padding in height calculation
             overflow: 'hidden', // Prevent parent scrolling

@@ -17,6 +17,7 @@ import {
   TextField,
   Autocomplete,
   InputAdornment,
+  Paper,
 } from '@mui/material';
 import useChannelsStore from '../../store/channels';
 import {
@@ -28,6 +29,11 @@ import {
   ContentCopy,
   Tv as TvIcon,
   Clear as ClearIcon,
+  IndeterminateCheckBox,
+  CompareArrows,
+  Code,
+  AddBox,
+  Hd as HdIcon,
 } from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
@@ -37,6 +43,9 @@ import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
 import usePlaylistsStore from '../../store/playlists';
+import { Tv2, ScreenShare, Scroll } from 'lucide-react';
+import { styled, useTheme } from '@mui/material/styles';
+import ghostImage from '../../images/ghost.svg';
 
 const ChannelStreams = ({ channel, isExpanded }) => {
   const channelStreams = useChannelsStore(
@@ -45,12 +54,10 @@ const ChannelStreams = ({ channel, isExpanded }) => {
   const { playlists } = usePlaylistsStore();
 
   const removeStream = async (stream) => {
-    let streamSet = new Set(channelStreams);
-    streamSet.delete(stream);
-    streamSet = Array.from(streamSet);
+    const newStreamList = channelStreams.filter((s) => s.id !== stream.id);
     await API.updateChannel({
       ...channel,
-      stream_ids: streamSet.map((stream) => stream.id),
+      stream_ids: newStreamList.map((s) => s.id),
     });
   };
 
@@ -109,11 +116,11 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     renderRowActions: ({ row }) => (
       <>
         <IconButton
-          size="small" // Makes the button smaller
-          color="error" // Red color for delete actions
+          size="small"
+          color="error"
           onClick={() => removeStream(row.original)}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <DeleteIcon fontSize="small" />
         </IconButton>
       </>
     ),
@@ -137,6 +144,63 @@ const ChannelStreams = ({ channel, isExpanded }) => {
   );
 };
 
+/* -----------------------------------------------------------
+   2) Custom-styled "chip" buttons for HDHR, M3U, EPG
+------------------------------------------------------------ */
+const HDHRButton = styled(Button)(() => ({
+  border: '1px solid #a3d977',
+  color: '#a3d977',
+  backgroundColor: 'transparent',
+  textTransform: 'none',
+  fontSize: '0.85rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '2px 8px',
+  minWidth: 'auto',
+  '&:hover': {
+    borderColor: '#c2e583',
+    color: '#c2e583',
+    backgroundColor: 'rgba(163,217,119,0.1)',
+  },
+}));
+
+const M3UButton = styled(Button)(() => ({
+  border: '1px solid #5f6dc6',
+  color: '#5f6dc6',
+  backgroundColor: 'transparent',
+  textTransform: 'none',
+  fontSize: '0.85rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '2px 8px',
+  minWidth: 'auto',
+  '&:hover': {
+    borderColor: '#7f8de6',
+    color: '#7f8de6',
+    backgroundColor: 'rgba(95,109,198,0.1)',
+  },
+}));
+
+const EPGButton = styled(Button)(() => ({
+  border: '1px solid #707070',
+  color: '#a0a0a0',
+  backgroundColor: 'transparent',
+  textTransform: 'none',
+  fontSize: '0.85rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '2px 8px',
+  minWidth: 'auto',
+  '&:hover': {
+    borderColor: '#a0a0a0',
+    color: '#c0c0c0',
+    backgroundColor: 'rgba(112,112,112,0.1)',
+  },
+}));
+
 const ChannelsTable = ({}) => {
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
@@ -149,6 +213,8 @@ const ChannelsTable = ({}) => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   const [filterValues, setFilterValues] = useState({});
+
+  const theme = useTheme();
 
   const { showVideo } = useVideoStore();
   const {
@@ -193,7 +259,7 @@ const ChannelsTable = ({}) => {
         header: 'Name',
         accessorKey: 'channel_name',
         muiTableHeadCellProps: {
-          sx: { textAlign: 'center' }, // Center-align the header
+          sx: { textAlign: 'center' },
         },
         Header: ({ column }) => (
           <TextField
@@ -206,8 +272,8 @@ const ChannelsTable = ({}) => {
             fullWidth
             sx={
               {
-                // '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
-                // '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
+                // '& .MuiInputBase-root': { fontSize: '0.875rem' },
+                // '& .MuiInputLabel-root': { fontSize: '0.75rem' },
                 // width: '200px', // Optional: Adjust width
               }
             }
@@ -216,7 +282,7 @@ const ChannelsTable = ({}) => {
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
-                      onClick={() => handleFilterChange(column.id, '')} // Clear text on click
+                      onClick={() => handleFilterChange(column.id, '')}
                       edge="end"
                       size="small"
                     >
@@ -254,8 +320,8 @@ const ChannelsTable = ({}) => {
                 onClick={(e) => e.stopPropagation()}
                 sx={{
                   pb: 0.8,
-                  //   '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
-                  //   '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
+                  //   '& .MuiInputBase-root': { fontSize: '0.875rem' },
+                  //   '& .MuiInputLabel-root': { fontSize: '0.75rem' },
                   //   width: '200px', // Optional: Adjust width
                 }}
               />
@@ -475,7 +541,7 @@ const ChannelsTable = ({}) => {
       sorting,
       rowSelection,
     },
-    rowVirtualizerInstanceRef, // optional
+    rowVirtualizerInstanceRef,
     rowVirtualizerOptions: { overscan: 5 },
     initialState: {
       density: 'compact',
@@ -484,10 +550,10 @@ const ChannelsTable = ({}) => {
     enableExpandAll: false,
     displayColumnDefOptions: {
       'mrt-row-select': {
-        size: 50, // Set custom width (default is ~40px)
+        size: 50,
       },
       'mrt-row-expand': {
-        size: 10, // Set custom width (default is ~40px)
+        size: 10,
         header: '',
         muiTableHeadCellProps: {
           sx: { width: 38, minWidth: 38, maxWidth: 38, height: '100%' },
@@ -497,13 +563,13 @@ const ChannelsTable = ({}) => {
         },
       },
       'mrt-row-actions': {
-        size: 68, // Set custom width (default is ~40px)
+        size: 68,
       },
     },
     muiExpandButtonProps: ({ row, table }) => ({
       onClick: () => {
         setRowSelection({ [row.index]: true });
-        table.setExpanded({ [row.id]: !row.getIsExpanded() }); //only 1 detail panel open at a time
+        table.setExpanded({ [row.id]: !row.getIsExpanded() });
       },
       sx: {
         transform: row.getIsExpanded() ? 'rotate(180deg)' : 'rotate(-90deg)',
@@ -629,42 +695,445 @@ const ChannelsTable = ({}) => {
 
   return (
     <Box>
-      <MaterialReactTable table={table} />
+      {/* Header Row: outside the Paper */}
+      <Box sx={{ display: 'flex', alignItems: 'center', pb: 1 }}>
+        <Typography
+          sx={{
+            width: 88,
+            height: 24,
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 500,
+            fontSize: '20px',
+            lineHeight: 1,
+            letterSpacing: '-0.3px',
+            color: theme.palette.text.secondary,
+            mb: 0,
+          }}
+        >
+          Channels
+        </Typography>
+        <Box
+          sx={{
+            width: 43,
+            height: 25,
+            display: 'flex',
+            alignItems: 'center',
+            ml: 3,
+          }}
+        >
+          <Typography
+            sx={{
+              width: 37,
+              height: 17,
+              fontFamily: 'Inter, sans-serif',
+              fontWeight: 400,
+              fontSize: '14px',
+              lineHeight: 1,
+              letterSpacing: '-0.3px',
+              color: theme.palette.text.secondary,
+            }}
+          >
+            Links:
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: '6px', ml: 0.75 }}>
+          {/* HDHR Button */}
+          <Button
+            onClick={copyHDHRUrl}
+            sx={{
+              width: '71px',
+              height: '25px',
+              borderRadius: '4px',
+              border: `1px solid ${theme.palette.custom.greenMain}`,
+              backgroundColor: 'transparent',
+              color: theme.palette.custom.greenMain,
+              fontSize: '14px',
+              lineHeight: 1,
+              letterSpacing: '-0.3px',
+              textTransform: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: 0,
+              minWidth: 0,
+              '&:hover': {
+                backgroundColor: theme.palette.custom.greenHoverBg,
+              },
+            }}
+          >
+            <Box
+              sx={{
+                width: 14,
+                height: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Tv2 size={14} color={theme.palette.custom.greenMain} />
+            </Box>
+            HDHR
+          </Button>
 
-      {/* Channel Form Modal */}
+          {/* M3U Button */}
+          <Button
+            onClick={copyM3UUrl}
+            sx={{
+              width: '64px',
+              height: '25px',
+              borderRadius: '4px',
+              border: `1px solid ${theme.palette.custom.indigoMain}`,
+              backgroundColor: 'transparent',
+              color: theme.palette.custom.indigoMain,
+              fontSize: '14px',
+              lineHeight: 1,
+              letterSpacing: '-0.3px',
+              textTransform: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: 0,
+              minWidth: 0,
+              '&:hover': {
+                backgroundColor: theme.palette.custom.indigoHoverBg,
+              },
+            }}
+          >
+            <Box
+              sx={{
+                width: 14,
+                height: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ScreenShare size={14} color={theme.palette.custom.indigoMain} />
+            </Box>
+            M3U
+          </Button>
+
+          {/* EPG Button */}
+          <Button
+            onClick={copyEPGUrl}
+            sx={{
+              width: '60px',
+              height: '25px',
+              borderRadius: '4px',
+              border: `1px solid ${theme.palette.custom.greyBorder}`,
+              backgroundColor: 'transparent',
+              color: theme.palette.custom.greyText,
+              fontSize: '14px',
+              lineHeight: 1,
+              letterSpacing: '-0.3px',
+              textTransform: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: 0,
+              minWidth: 0,
+              '&:hover': {
+                backgroundColor: theme.palette.custom.greyHoverBg,
+              },
+            }}
+          >
+            <Box
+              sx={{
+                width: 14,
+                height: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Scroll size={14} color={theme.palette.custom.greyText} />
+            </Box>
+            EPG
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Paper container: contains top toolbar and table (or ghost state) */}
+      <Paper
+        sx={{
+          bgcolor: theme.palette.background.paper,
+          borderRadius: 2,
+          overflow: 'hidden',
+          height: 'calc(100vh - 75px)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: theme.palette.background.paper,
+            justifyContent: 'flex-end',
+            p: 1,
+            gap: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="Remove">
+              <Button
+                onClick={deleteChannels}
+                variant="outlined"
+                size="small"
+                startIcon={
+                  <IndeterminateCheckBox
+                    sx={{ fontSize: 16, color: theme.palette.text.secondary }}
+                  />
+                }
+                sx={{
+                  borderColor: theme.palette.custom.borderDefault,
+                  borderRadius: '4px',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  height: '25px',
+                  opacity: 0.4,
+                  color: theme.palette.text.secondary,
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    borderColor: theme.palette.custom.borderHover,
+                  },
+                }}
+              >
+                Remove
+              </Button>
+            </Tooltip>
+            <Tooltip title="Assign">
+              <Button
+                onClick={assignChannels}
+                variant="outlined"
+                size="small"
+                startIcon={
+                  <CompareArrows
+                    sx={{ fontSize: 16, color: theme.palette.text.secondary }}
+                  />
+                }
+                sx={{
+                  borderColor: theme.palette.custom.borderDefault,
+                  borderRadius: '4px',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  height: '25px',
+                  opacity: 0.4,
+                  color: theme.palette.text.secondary,
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    borderColor: theme.palette.custom.borderHover,
+                  },
+                }}
+              >
+                Assign
+              </Button>
+            </Tooltip>
+            <Tooltip title="Auto-match">
+              <Button
+                onClick={matchEpg}
+                variant="outlined"
+                size="small"
+                startIcon={
+                  <Code
+                    sx={{ fontSize: 16, color: theme.palette.text.secondary }}
+                  />
+                }
+                sx={{
+                  minWidth: '106px',
+                  borderColor: theme.palette.custom.borderDefault,
+                  borderRadius: '4px',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  height: '25px',
+                  opacity: 0.4,
+                  color: theme.palette.text.secondary,
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    borderColor: theme.palette.custom.borderHover,
+                  },
+                }}
+              >
+                Auto-match
+              </Button>
+            </Tooltip>
+            <Tooltip title="Add Channel">
+              <Button
+                onClick={() => editChannel()}
+                variant="contained"
+                size="small"
+                startIcon={
+                  <AddBox
+                    sx={{
+                      fontSize: 16,
+                      color: theme.palette.custom.successIcon,
+                    }}
+                  />
+                }
+                sx={{
+                  minWidth: '57px',
+                  height: '25px',
+                  borderRadius: '4px',
+                  borderColor: theme.palette.custom.successBorder,
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  backgroundColor: theme.palette.custom.successBg,
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    backgroundColor: theme.palette.custom.successBgHover,
+                  },
+                }}
+              >
+                Add
+              </Button>
+            </Tooltip>
+          </Box>
+        </Box>
+
+        {/* Table or ghost empty state inside Paper */}
+        <Box sx={{ flex: 1, position: 'relative' }}>
+          {filteredData.length === 0 ? (
+            <Box
+              sx={{
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                bgcolor: theme.palette.background.paper,
+              }}
+            >
+              <Box
+                component="img"
+                src={ghostImage}
+                alt="Ghost"
+                sx={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '120px',
+                  height: 'auto',
+                  transform: 'translate(-50%, -50%)',
+                  opacity: 0.2,
+                  pointerEvents: 'none',
+                }}
+              />
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '25%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  textAlign: 'center',
+                  zIndex: 2,
+                  width: 467,
+                  px: 2,
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 400,
+                    fontSize: '20px',
+                    lineHeight: '28px',
+                    letterSpacing: '-0.3px',
+                    color: theme.palette.text.secondary,
+                    mb: 1,
+                  }}
+                >
+                  It’s recommended to create channels after adding your M3U or
+                  streams.
+                </Typography>
+                <Typography
+                  sx={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 400,
+                    fontSize: '16px',
+                    lineHeight: '24px',
+                    letterSpacing: '-0.2px',
+                    color: theme.palette.text.secondary,
+                    mb: 2,
+                  }}
+                >
+                  You can still create channels without streams if you’d like,
+                  and map them later.
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => editChannel()}
+                  startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+                  sx={{
+                    minWidth: '127px',
+                    height: '25px',
+                    borderRadius: '4px',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    color: theme.palette.text.secondary,
+                    borderColor: theme.palette.custom.borderHover,
+                    backgroundColor: '#1f1f23',
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 400,
+                    fontSize: '0.85rem',
+                    letterSpacing: '-0.2px',
+                    textTransform: 'none',
+                    px: 1,
+                    py: 0.5,
+                    '&:hover': {
+                      borderColor: theme.palette.custom.borderDefault,
+                      backgroundColor: '#17171B',
+                    },
+                  }}
+                >
+                  Create channel
+                </Button>
+              </Box>
+            </Box>
+          ) : (
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <MaterialReactTable table={table} />
+            </Box>
+          )}
+        </Box>
+      </Paper>
+
       <ChannelForm
         channel={channel}
         isOpen={channelModalOpen}
         onClose={closeChannelForm}
       />
 
-      {/* Popover for the "copy" URLs */}
       <Popover
         open={openPopover}
         anchorEl={anchorEl}
         onClose={closePopover}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'left',
-        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
-        <div style={{ padding: 16, display: 'flex', alignItems: 'center' }}>
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'center' }}>
           <TextField
             id="output-url"
             value={textToCopy}
             variant="standard"
-            // disabled
             size="small"
-            sx={{ marginRight: 1 }}
-            ref={outputUrlRef}
+            sx={{ mr: 1 }}
+            inputRef={outputUrlRef}
           />
           <IconButton onClick={handleCopy} color="primary">
             <ContentCopy />
           </IconButton>
-        </div>
+        </Box>
       </Popover>
 
-      {/* Snackbar for feedback */}
       <Snackbar
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         open={snackbarOpen}
