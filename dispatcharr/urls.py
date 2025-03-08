@@ -6,6 +6,9 @@ from django.views.generic import TemplateView, RedirectView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from .routing import websocket_urlpatterns
+from apps.hdhr.api_views import HDHRDeviceViewSet, DiscoverAPIView, LineupAPIView, LineupStatusAPIView, HDHRDeviceXMLAPIView, hdhr_dashboard_view
+
 
 # Define schema_view for Swagger
 schema_view = get_schema_view(
@@ -24,19 +27,25 @@ schema_view = get_schema_view(
 urlpatterns = [
     # API Routes
     path('api/', include(('apps.api.urls', 'api'), namespace='api')),
-    path('output/', include('apps.output.urls', namespace='output')),
+    path('api', RedirectView.as_view(url='/api/', permanent=True)),
 
     # Admin
     path('admin', RedirectView.as_view(url='/admin/', permanent=True)),  # This fixes the issue
     path('admin/', admin.site.urls),
 
     # Outputs
-    path('output', RedirectView.as_view(url='/output/', permanent=True)),  # This fixes the issue
+    path('output', RedirectView.as_view(url='/output/', permanent=True)),
     path('output/', include(('apps.output.urls', 'output'), namespace='output')),
 
     # HDHR
     path('hdhr', RedirectView.as_view(url='/hdhr/', permanent=True)),  # This fixes the issue
     path('hdhr/', include(('apps.hdhr.urls', 'hdhr'), namespace='hdhr')),
+
+    path('discover.json', DiscoverAPIView.as_view(), name='discover'),
+    path('lineup.json', LineupAPIView.as_view(), name='lineup'),
+    path('lineup_status.json', LineupStatusAPIView.as_view(), name='lineup_status'),
+    path('device.xml', HDHRDeviceXMLAPIView.as_view(), name='device_xml'),
+
 
     # Swagger UI
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
@@ -54,6 +63,8 @@ urlpatterns = [
     path('proxy/', include('apps.proxy.urls')),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+urlpatterns += websocket_urlpatterns
 
 # Serve static files for development (React's JS, CSS, etc.)
 if settings.DEBUG:
