@@ -1,5 +1,4 @@
 // src/components/tables/ChannelsTable.js
-
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
@@ -13,27 +12,26 @@ import {
   Autocomplete,
   InputAdornment,
   Paper,
-  Grid as Grid2,
 } from '@mui/material';
+import Grid2 from '@mui/material/Grid';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
-  SwapVert as SwapVertIcon,
-  Tv as TvIcon,
   LiveTv as LiveTvIcon,
   Edit as EditIcon,
   Clear as ClearIcon,
   ContentCopy,
-  Computer as ComputerIcon,
-  Description as DescriptionIcon,
-  Hd as HdIcon,
   IndeterminateCheckBox,
   CompareArrows,
   Code,
   AddBox,
+  Hd as HdIcon,
 } from '@mui/icons-material';
 import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
-import { styled } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
+
+// Lucide icons
+import { Tv2, ScreenShare, Scroll } from 'lucide-react';
 
 import ChannelForm from '../forms/Channel';
 import useChannelsStore from '../../store/channels';
@@ -132,69 +130,11 @@ const ChannelStreams = ({ channel, isExpanded }) => {
 };
 
 /* -----------------------------------------------------------
-   2) Custom-styled "chip" buttons for HDHR, M3U, EPG
------------------------------------------------------------- */
-const HDHRButton = styled(Button)(() => ({
-  border: '1px solid #a3d977',
-  color: '#a3d977',
-  backgroundColor: 'transparent',
-  textTransform: 'none',
-  fontSize: '0.85rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px',
-  padding: '2px 8px',
-  minWidth: 'auto',
-  '&:hover': {
-    borderColor: '#c2e583',
-    color: '#c2e583',
-    backgroundColor: 'rgba(163,217,119,0.1)',
-  },
-}));
-
-const M3UButton = styled(Button)(() => ({
-  border: '1px solid #5f6dc6',
-  color: '#5f6dc6',
-  backgroundColor: 'transparent',
-  textTransform: 'none',
-  fontSize: '0.85rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px',
-  padding: '2px 8px',
-  minWidth: 'auto',
-  '&:hover': {
-    borderColor: '#7f8de6',
-    color: '#7f8de6',
-    backgroundColor: 'rgba(95,109,198,0.1)',
-  },
-}));
-
-const EPGButton = styled(Button)(() => ({
-  border: '1px solid #707070',
-  color: '#a0a0a0',
-  backgroundColor: 'transparent',
-  textTransform: 'none',
-  fontSize: '0.85rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px',
-  padding: '2px 8px',
-  minWidth: 'auto',
-  '&:hover': {
-    borderColor: '#a0a0a0',
-    color: '#c0c0c0',
-    backgroundColor: 'rgba(112,112,112,0.1)',
-  },
-}));
-
-/* -----------------------------------------------------------
-   3) Main ChannelsTable component
+   2) Main ChannelsTable component
 ------------------------------------------------------------ */
 const ChannelsTable = () => {
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
-
   const [rowSelection, setRowSelection] = useState([]);
   const [channelGroupOptions, setChannelGroupOptions] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -207,6 +147,8 @@ const ChannelsTable = () => {
 
   const rowVirtualizerInstanceRef = useRef(null);
   const outputUrlRef = useRef(null);
+
+  const theme = useTheme(); // Use the theme for colors and fonts
 
   const { showVideo } = useVideoStore();
   const {
@@ -438,7 +380,6 @@ const ChannelsTable = () => {
     [channelGroupOptions, filterValues]
   );
 
-  // Filter data
   const filteredData = Object.values(channels).filter((row) =>
     columns.every(({ accessorKey }) =>
       filterValues[accessorKey]
@@ -526,265 +467,299 @@ const ChannelsTable = () => {
         </Tooltip>
       </Box>
     ),
-    // No default MRT top toolbar
     renderTopToolbar: () => null,
     enableTopToolbar: false,
   });
 
   const hasNoData = filteredData.length === 0;
 
-  /* ------------------------------------------------------------------
-     4) Return the layout with a Paper "box" around the table
-        (like your old snippet). We'll also show a "Channels" heading.
-  ------------------------------------------------------------------- */
   return (
     <Grid2 container spacing={2} sx={{ height: '100%', overflow: 'hidden' }}>
-      {/* We only need 1 column, so use Grid2 item xs={12} */}
       <Grid2 item xs={12} sx={{ height: '100%' }}>
-        {/* Title above the Paper box */}
-        {/* Row with "Channels" text, "Links:" label, and HDHR/M3U/EPG chip buttons */}
-        <Box sx={{ display: 'flex', alignItems: 'center', paddingBottom: 1 }}>
-          {/* "Channels" */}
+        {/* Header Row */}
+        <Box sx={{ display: 'flex', alignItems: 'center', pb: 1 }}>
           <Typography
-            variant="h6"
-            sx={{ color: 'text.secondary', fontWeight: 500, mb: 0 }}
+            sx={{
+              width: 88,
+              height: 24,
+              fontFamily: 'Inter, sans-serif',
+              fontWeight: 500,
+              fontSize: '20px',
+              lineHeight: 1,
+              letterSpacing: '-0.3px',
+              color: theme.palette.text.secondary,
+              mb: 0,
+            }}
           >
             Channels
           </Typography>
 
-          {/* "Links:" */}
-          <Typography
-            variant="body2"
-            sx={{ color: 'text.secondary', paddingLeft: 3, mb: 0 }}
+          <Box
+            sx={{
+              width: 43,
+              height: 25,
+              display: 'flex',
+              alignItems: 'center',
+              ml: 3,
+            }}
           >
-            Links:
-          </Typography>
+            <Typography
+              sx={{
+                width: 37,
+                height: 17,
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: 400,
+                fontSize: '14px',
+                lineHeight: 1,
+                letterSpacing: '-0.3px',
+                color: theme.palette.text.secondary,
+              }}
+            >
+              Links:
+            </Typography>
+          </Box>
 
-          <Box sx={{ display: 'flex', gap: 0.5, ml: 0.75 }}>
-            {/* HDHR chip */}
+          <Box sx={{ display: 'flex', gap: '6px', ml: 0.75 }}>
+            {/* HDHR Button */}
             <Button
               onClick={copyHDHRUrl}
-              variant="outlined"
-              size="small"
-              startIcon={<HdIcon sx={{ fontSize: 16, color: '#a3d977' }} />}
               sx={{
-                minWidth: '64px',
+                width: '71px',
                 height: '25px',
                 borderRadius: '4px',
-                borderColor: '#a3d977',
-                borderWidth: '1px',
-                borderStyle: 'solid',
+                border: `1px solid ${theme.palette.custom.greenMain}`,
                 backgroundColor: 'transparent',
-                color: '#a3d977',
+                color: theme.palette.custom.greenMain,
+                fontSize: '14px',
+                lineHeight: 1,
+                letterSpacing: '-0.3px',
                 textTransform: 'none',
-                fontSize: '0.85rem',
-                px: '6px',
-                py: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: 0,
+                minWidth: 0,
                 '&:hover': {
-                  borderColor: '#c2e583',
-                  color: '#c2e583',
-                  backgroundColor: 'rgba(163,217,119,0.1)',
+                  backgroundColor: theme.palette.custom.greenHoverBg,
                 },
               }}
             >
+              <Box
+                sx={{
+                  width: 14,
+                  height: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Tv2 size={14} color={theme.palette.custom.greenMain} />
+              </Box>
               HDHR
             </Button>
 
-            {/* M3U chip */}
+            {/* M3U Button */}
             <Button
               onClick={copyM3UUrl}
-              variant="outlined"
-              size="small"
-              startIcon={<ComputerIcon sx={{ fontSize: 16, color: '#5f6dc6' }} />}
               sx={{
-                minWidth: '71px',
+                width: '64px',
                 height: '25px',
                 borderRadius: '4px',
-                borderColor: '#5f6dc6',
-                borderWidth: '1px',
-                borderStyle: 'solid',
+                border: `1px solid ${theme.palette.custom.indigoMain}`,
                 backgroundColor: 'transparent',
-                color: '#5f6dc6',
+                color: theme.palette.custom.indigoMain,
+                fontSize: '14px',
+                lineHeight: 1,
+                letterSpacing: '-0.3px',
                 textTransform: 'none',
-                fontSize: '0.85rem',
-                px: '6px',
-                py: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: 0,
+                minWidth: 0,
                 '&:hover': {
-                  borderColor: '#7f8de6',
-                  color: '#7f8de6',
-                  backgroundColor: 'rgba(95,109,198,0.1)',
+                  backgroundColor: theme.palette.custom.indigoHoverBg,
                 },
               }}
             >
+              <Box
+                sx={{
+                  width: 14,
+                  height: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ScreenShare size={14} color={theme.palette.custom.indigoMain} />
+              </Box>
               M3U
             </Button>
 
-            {/* EPG chip */}
+            {/* EPG Button */}
             <Button
               onClick={copyEPGUrl}
-              variant="outlined"
-              size="small"
-              startIcon={<DescriptionIcon sx={{ fontSize: 16, color: '#a0a0a0' }} />}
               sx={{
-                minWidth: '60px',
+                width: '60px',
                 height: '25px',
                 borderRadius: '4px',
-                borderColor: '#707070',
-                borderWidth: '1px',
-                borderStyle: 'solid',
+                border: `1px solid ${theme.palette.custom.greyBorder}`,
                 backgroundColor: 'transparent',
-                color: '#a0a0a0',
+                color: theme.palette.custom.greyText,
+                fontSize: '14px',
+                lineHeight: 1,
+                letterSpacing: '-0.3px',
                 textTransform: 'none',
-                fontSize: '0.85rem',
-                px: '6px',
-                py: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: 0,
+                minWidth: 0,
                 '&:hover': {
-                  borderColor: '#a0a0a0',
-                  color: '#c0c0c0',
-                  backgroundColor: 'rgba(112,112,112,0.1)',
+                  backgroundColor: theme.palette.custom.greyHoverBg,
                 },
               }}
             >
+              <Box
+                sx={{
+                  width: 14,
+                  height: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Scroll size={14} color={theme.palette.custom.greyText} />
+              </Box>
               EPG
             </Button>
           </Box>
         </Box>
 
-        {/* The Paper box with dark background, rounding, etc. */}
         <Paper
           sx={{
-            bgcolor: '#27272a', // Dark background
-            borderRadius: 2, // Rounded corners
+            bgcolor: theme.palette.background.paper,
+            borderRadius: 2,
             overflow: 'hidden',
-            height: 'calc(100% - 40px)', // Adjust if needed
+            height: 'calc(100% - 40px)',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
-          {/* Toolbar row with "Remove/Assign/Auto-match/Add" */}
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
-              backgroundColor: '#27272a',
+              backgroundColor: theme.palette.background.paper,
               justifyContent: 'flex-end',
-              p: '8px',
-              gap: '8px',
+              p: 1,
+              gap: 1,
             }}
           >
-            {/* Right side: "Remove / Assign / Auto-match / Add" */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {/* Remove */}
               <Tooltip title="Remove">
                 <Button
                   onClick={deleteChannels}
                   variant="outlined"
                   size="small"
                   startIcon={
-                    <IndeterminateCheckBox sx={{ fontSize: 16, color: '#d4d4d8' }} />
+                    <IndeterminateCheckBox sx={{ fontSize: 16, color: theme.palette.text.secondary }} />
                   }
                   sx={{
-                    borderColor: '#3f3f46',
+                    borderColor: theme.palette.custom.borderDefault,
                     borderRadius: '4px',
                     borderWidth: '1px',
                     borderStyle: 'solid',
                     height: '25px',
                     opacity: 0.4,
-                    color: '#d4d4d8',
-                    textTransform: 'none',
+                    color: theme.palette.text.secondary,
                     fontSize: '0.85rem',
-                    px: '6px',
-                    py: '4px',
+                    px: 1,
+                    py: 0.5,
                     '&:hover': {
-                      borderColor: '#5f5f66',
+                      borderColor: theme.palette.custom.borderHover,
                     },
                   }}
                 >
                   Remove
                 </Button>
               </Tooltip>
-
-              {/* Assign */}
               <Tooltip title="Assign">
                 <Button
                   onClick={assignChannels}
                   variant="outlined"
                   size="small"
                   startIcon={
-                    <CompareArrows sx={{ fontSize: 16, color: '#d4d4d8' }} />
+                    <CompareArrows sx={{ fontSize: 16, color: theme.palette.text.secondary }} />
                   }
                   sx={{
-                    borderColor: '#3f3f46',
+                    borderColor: theme.palette.custom.borderDefault,
                     borderRadius: '4px',
                     borderWidth: '1px',
                     borderStyle: 'solid',
                     height: '25px',
                     opacity: 0.4,
-                    color: '#d4d4d8',
-                    textTransform: 'none',
+                    color: theme.palette.text.secondary,
                     fontSize: '0.85rem',
-                    px: '6px',
-                    py: '4px',
+                    px: 1,
+                    py: 0.5,
                     '&:hover': {
-                      borderColor: '#5f5f66',
+                      borderColor: theme.palette.custom.borderHover,
                     },
                   }}
                 >
                   Assign
                 </Button>
               </Tooltip>
-
-              {/* Auto-match */}
               <Tooltip title="Auto-match">
                 <Button
                   onClick={matchEpg}
                   variant="outlined"
                   size="small"
-                  startIcon={<Code sx={{ fontSize: 16, color: '#d4d4d8' }} />}
+                  startIcon={<Code sx={{ fontSize: 16, color: theme.palette.text.secondary }} />}
                   sx={{
                     minWidth: '106px',
-                    borderColor: '#3f3f46',
+                    borderColor: theme.palette.custom.borderDefault,
                     borderRadius: '4px',
                     borderWidth: '1px',
                     borderStyle: 'solid',
                     height: '25px',
                     opacity: 0.4,
-                    color: '#d4d4d8',
-                    textTransform: 'none',
+                    color: theme.palette.text.secondary,
                     fontSize: '0.85rem',
-                    px: '6px',
-                    py: '4px',
+                    px: 1,
+                    py: 0.5,
                     '&:hover': {
-                      borderColor: '#5f5f66',
+                      borderColor: theme.palette.custom.borderHover,
                     },
                   }}
                 >
                   Auto-match
                 </Button>
               </Tooltip>
-
-              {/* Add */}
               <Tooltip title="Add Channel">
                 <Button
                   onClick={() => editChannel()}
                   variant="contained"
                   size="small"
-                  startIcon={<AddBox sx={{ fontSize: 16, color: '#05DF72' }} />}
+                  startIcon={<AddBox sx={{ fontSize: 16, color: theme.palette.custom.successIcon }} />}
                   sx={{
                     minWidth: '57px',
                     height: '25px',
                     borderRadius: '4px',
-                    borderColor: '#00a63e',
+                    borderColor: theme.palette.custom.successBorder,
                     borderWidth: '1px',
                     borderStyle: 'solid',
-                    backgroundColor: '#0d542b',
+                    backgroundColor: theme.palette.custom.successBg,
                     color: '#fff',
-                    textTransform: 'none',
                     fontSize: '0.85rem',
-                    px: '6px',
-                    py: '4px',
+                    px: 1,
+                    py: 0.5,
                     '&:hover': {
-                      backgroundColor: '#0a4020',
+                      backgroundColor: theme.palette.custom.successBgHover,
                     },
                   }}
                 >
@@ -794,19 +769,16 @@ const ChannelsTable = () => {
             </Box>
           </Box>
 
-          {/* Table or ghost empty state */}
           <Box sx={{ flex: 1, position: 'relative' }}>
             {hasNoData ? (
-              // Ghost empty state
               <Box
                 sx={{
                   position: 'relative',
                   width: '100%',
                   height: '100%',
-                  bgcolor: '#27272a',
+                  bgcolor: theme.palette.background.paper,
                 }}
               >
-                {/* Ghost in the center (behind content) */}
                 <Box
                   component="img"
                   src={ghostImage}
@@ -823,16 +795,15 @@ const ChannelsTable = () => {
                   }}
                 />
 
-                {/* Instructions text & button in front */}
                 <Box
                   sx={{
                     position: 'absolute',
-                    top: '25%', // adjust as needed to center text above/below ghost
+                    top: '25%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
                     textAlign: 'center',
                     zIndex: 2,
-                    width: 467, // matches your screenshot's bounding box
+                    width: 467,
                     px: 2,
                   }}
                 >
@@ -843,7 +814,7 @@ const ChannelsTable = () => {
                       fontSize: '20px',
                       lineHeight: '28px',
                       letterSpacing: '-0.3px',
-                      color: 'text.secondary',
+                      color: theme.palette.text.secondary,
                       mb: 1,
                     }}
                   >
@@ -856,33 +827,35 @@ const ChannelsTable = () => {
                       fontSize: '16px',
                       lineHeight: '24px',
                       letterSpacing: '-0.2px',
-                      color: 'text.secondary',
+                      color: theme.palette.text.secondary,
                       mb: 2,
                     }}
                   >
                     You can still create channels without streams if you’d like, and map them later.
                   </Typography>
-
                   <Button
                     variant="contained"
                     onClick={() => editChannel()}
+                    startIcon={<AddIcon sx={{ fontSize: 16 }} />}
                     sx={{
-                      borderColor: '#3f3f46',
+                      minWidth: '127px',
+                      height: '25px',
                       borderRadius: '4px',
                       borderWidth: '1px',
                       borderStyle: 'solid',
-                      height: '25px',
-                      px: '6px',
-                      py: '4px',
+                      color: theme.palette.text.secondary,
+                      borderColor: theme.palette.custom.borderHover,
+                      backgroundColor: '#1f1f23',
                       fontFamily: 'Inter, sans-serif',
                       fontWeight: 400,
                       fontSize: '0.85rem',
                       letterSpacing: '-0.2px',
-                      color: '#d4d4d8',
                       textTransform: 'none',
-                      opacity: 0.4,
+                      px: 1,
+                      py: 0.5,
                       '&:hover': {
-                        borderColor: '#5f5f66',
+                        borderColor: theme.palette.custom.borderDefault,
+                        backgroundColor: '#17171B',
                       },
                     }}
                   >
@@ -891,7 +864,6 @@ const ChannelsTable = () => {
                 </Box>
               </Box>
             ) : (
-              // Render the MRT table if data is present
               <Box sx={{ flex: 1, overflow: 'auto' }}>
                 <MaterialReactTable table={table} />
               </Box>
@@ -900,14 +872,12 @@ const ChannelsTable = () => {
         </Paper>
       </Grid2>
 
-      {/* Channel Form Modal */}
       <ChannelForm
         channel={channel}
         isOpen={channelModalOpen}
         onClose={closeChannelForm}
       />
 
-      {/* Popover for copy URLs */}
       <Popover
         open={openPopover}
         anchorEl={anchorEl}
@@ -920,7 +890,7 @@ const ChannelsTable = () => {
             value={textToCopy}
             variant="standard"
             size="small"
-            sx={{ marginRight: 1 }}
+            sx={{ mr: 1 }}
             inputRef={outputUrlRef}
           />
           <IconButton onClick={handleCopy} color="primary">
@@ -929,7 +899,6 @@ const ChannelsTable = () => {
         </Box>
       </Popover>
 
-      {/* Snackbar for feedback */}
       <Snackbar
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         open={snackbarOpen}
