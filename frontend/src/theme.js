@@ -1,38 +1,44 @@
-// frontend/src/theme.js
+// src/theme.js
 import { createTheme } from '@mui/material/styles';
+
+const sharedColors = {
+  primary: '#4A90E2',
+  secondary: '#F5A623',
+  background: '#18181b', // Global background color on every page
+  paper: '#333539',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#C3C3C3',
+};
+
+const sharedTypography = {
+  fontFamily: ['Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
+  h1: { fontSize: '2.5rem', fontWeight: 700 },
+  h2: { fontSize: '2rem', fontWeight: 700 },
+  body1: { fontSize: '1rem' },
+};
 
 const theme = createTheme({
   palette: {
     mode: 'dark',
     background: {
-      default: '#2B2C30', // Dark background
-      paper: '#333539',   // Slightly lighter panel background
+      default: sharedColors.background, // This is now #18181b
+      paper: sharedColors.paper,
     },
     primary: {
-      // Adjust accent color if your Figma calls for a different highlight
-      main: '#4A90E2',
-      contrastText: '#FFFFFF',
+      main: sharedColors.primary,
+      contrastText: sharedColors.textPrimary,
     },
     secondary: {
-      main: '#F5A623',
-      contrastText: '#FFFFFF',
+      main: sharedColors.secondary,
+      contrastText: sharedColors.textPrimary,
     },
     text: {
-      primary: '#FFFFFF',
-      secondary: '#C3C3C3',
+      primary: sharedColors.textPrimary,
+      secondary: sharedColors.textSecondary,
     },
   },
-  typography: {
-    fontFamily: ['Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
-    // Example typography tweaks
-    h6: {
-      fontWeight: 500,
-      fontSize: '0.95rem',
-    },
-    body1: {
-      fontSize: '0.875rem',
-    },
-  },
+  typography: sharedTypography,
+  spacing: 8,
   components: {
     MuiButton: {
       styleOverrides: {
@@ -46,20 +52,27 @@ const theme = createTheme({
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: '#333539',
-          color: '#FFFFFF',
+          backgroundColor: sharedColors.paper,
+          color: sharedColors.textPrimary,
         },
       },
     },
-    // We remove the AppBar override since we won't be using it in App.js anymore
     MuiAppBar: {
       styleOverrides: {
         root: {
-          backgroundColor: '#2B2C30',
+          backgroundColor: sharedColors.background,
         },
       },
     },
-    // Feel free to override more MUI components as needed...
+  },
+  custom: {
+    sidebar: {
+      activeBackground: 'rgba(21, 69, 62, 0.67)',
+      activeBorder: '#14917e',
+      hoverBackground: '#27272a',
+      hoverBorder: '#3f3f46',
+      fontFamily: 'Inter, sans-serif',
+    },
   },
 });
 

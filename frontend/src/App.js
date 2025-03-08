@@ -98,14 +98,14 @@ const App = () => {
             toggleDrawer={toggleDrawer}
           />
 
-          {/* Main content area, no AppBar, so no marginTop */}
+          {/* Main content area */}
           <Box
             sx={{
               display: 'flex',
               flexDirection: 'column',
               ml: `${open ? drawerWidth : miniDrawerWidth}px`,
               transition: 'margin-left 0.3s',
-              backgroundColor: '#18181b',
+              backgroundColor: 'background.default',
               minHeight: '100vh',
               color: 'text.primary',
             }}

@@ -11,6 +11,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   ListOrdered,
   Play,
@@ -25,17 +26,14 @@ const navItems = [
   { label: 'Channels', icon: <ListOrdered size={20} />, path: '/channels' },
   { label: 'M3U', icon: <Play size={20} />, path: '/m3u' },
   { label: 'EPG', icon: <Database size={20} />, path: '/epg' },
-  {
-    label: 'Stream Profiles',
-    icon: <SlidersHorizontal size={20} />,
-    path: '/stream-profiles',
-  },
+  { label: 'Stream Profiles', icon: <SlidersHorizontal size={20} />, path: '/stream-profiles' },
   { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
   { label: 'Settings', icon: <LucideSettings size={20} />, path: '/settings' },
 ];
 
 const Sidebar = ({ open, drawerWidth, miniDrawerWidth, toggleDrawer }) => {
   const location = useLocation();
+  const theme = useTheme();
 
   return (
     <Drawer
@@ -45,7 +43,7 @@ const Sidebar = ({ open, drawerWidth, miniDrawerWidth, toggleDrawer }) => {
           width: open ? drawerWidth : miniDrawerWidth,
           overflowX: 'hidden',
           transition: 'width 0.3s',
-          backgroundColor: '#18181b',
+          backgroundColor: theme.palette.background.default,
           color: 'text.primary',
           display: 'flex',
           flexDirection: 'column',
@@ -118,16 +116,18 @@ const Sidebar = ({ open, drawerWidth, miniDrawerWidth, toggleDrawer }) => {
                   borderRadius: 1,
                   width: open ? '208px' : 'auto',
                   transition: 'all 0.2s ease',
-                  bgcolor: isActive ? 'rgba(21, 69, 62, 0.67)' : 'transparent',
+                  bgcolor: isActive
+                    ? theme.custom.sidebar.activeBackground
+                    : 'transparent',
                   border: isActive
-                    ? '1px solid #14917e'
+                    ? `1px solid ${theme.custom.sidebar.activeBorder}`
                     : '1px solid transparent',
                   color: 'text.primary',
                   px: 1,
                   py: 0.25,
                   '&:hover': {
-                    bgcolor: '#27272a',
-                    border: '1px solid #3f3f46',
+                    bgcolor: theme.custom.sidebar.hoverBackground,
+                    border: `1px solid ${theme.custom.sidebar.hoverBorder}`,
                   },
                 }}
               >
@@ -148,9 +148,10 @@ const Sidebar = ({ open, drawerWidth, miniDrawerWidth, toggleDrawer }) => {
                       sx: {
                         fontSize: '14px',
                         fontWeight: 400,
-                        color: isActive ? '##d4d4d8' : '##d4d4d8',
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: theme.custom.sidebar.fontFamily,
                         letterSpacing: '-0.3px',
+                        // Keeping the text color as it is in your original
+                        color: isActive ? '#d4d4d8' : '#d4d4d8',
                       },
                     }}
                   />
