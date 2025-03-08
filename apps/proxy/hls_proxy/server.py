@@ -797,12 +797,76 @@ def fetch_stream(fetcher: StreamFetcher, stop_event: threading.Event, start_sequ
             manifest_update_needed = True
 
 class ProxyServer:
+    """Manages HLS proxy server instance"""
+    
     def __init__(self, user_agent: Optional[str] = None):
         self.stream_managers: Dict[str, StreamManager] = {}
         self.stream_buffers: Dict[str, StreamBuffer] = {}
         self.client_managers: Dict[str, ClientManager] = {}
         self.fetch_threads: Dict[str, threading.Thread] = {}
         self.user_agent: str = user_agent or Config.DEFAULT_USER_AGENT
+
+    def initialize_channel(self, url: str, channel_id: str) -> None:
+        """Initialize a new channel stream"""
+        if channel_id in self.stream_managers:
+            self.stop_channel(channel_id)
+            
+        self.stream_managers[channel_id] = StreamManager(
+            url, 
+            channel_id,
+            user_agent=self.user_agent
+        )
+        self.stream_buffers[channel_id] = StreamBuffer()
+        self.client_managers[channel_id] = ClientManager()
+        
+        # Set up cleanup references
+        self.stream_managers[channel_id].client_manager = self.client_managers[channel_id]
+        self.stream_managers[channel_id].proxy_server = self
+        
+        fetcher = StreamFetcher(
+            self.stream_managers[channel_id], 
+            self.stream_buffers[channel_id]
+        )
+        
+        self.fetch_threads[channel_id] = threading.Thread(
+            target=fetcher.fetch_loop,
+            name=f"StreamFetcher-{channel_id}",
+            daemon=True
+        )
+        self.fetch_threads[channel_id].start()
+        
+        # Start cleanup monitoring
+        self.stream_managers[channel_id].start_cleanup_thread()
+        logging.info(f"Initialized channel {channel_id} with URL {url}")
+
+    def stop_channel(self, channel_id: str) -> None:
+        """Stop and cleanup a channel"""
+        if channel_id in self.stream_managers:
+            logging.info(f"Stopping channel {channel_id}")
+            try:
+                # Stop the stream manager
+                self.stream_managers[channel_id].stop()
+                
+                # Wait for fetch thread to finish
+                if channel_id in self.fetch_threads:
+                    self.fetch_threads[channel_id].join(timeout=5)
+                    if self.fetch_threads[channel_id].is_alive():
+                        logging.warning(f"Fetch thread for channel {channel_id} did not stop cleanly")
+            except Exception as e:
+                logging.error(f"Error stopping channel {channel_id}: {e}")
+            finally:
+                self._cleanup_channel(channel_id)
+
+    def _cleanup_channel(self, channel_id: str) -> None:
+        """Remove channel resources"""
+        for collection in [self.stream_managers, self.stream_buffers, 
+                         self.client_managers, self.fetch_threads]:
+            collection.pop(channel_id, None)
+
+    def shutdown(self) -> None:
+        """Stop all channels and cleanup"""
+        for channel_id in list(self.stream_managers.keys()):
+            self.stop_channel(channel_id)
 
     # Remove Flask-specific routing
     def _setup_routes(self) -> None:

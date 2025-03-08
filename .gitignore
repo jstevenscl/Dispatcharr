@@ -9,3 +9,5 @@ staticfiles/
 docker/DockerfileAIO
 docker/Dockerfile DEV
 static/
+docker/DockerfileAIO
+docker/Dockerfile DEV
