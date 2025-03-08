@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import API from '../api';
 import useChannelsStore from './channels';
-import useStreamsStore from './streams';
 import useUserAgentsStore from './userAgents';
 import usePlaylistsStore from './playlists';
 import useEPGsStore from './epgs';
@@ -32,7 +31,6 @@ const useAuthStore = create((set, get) => ({
     await Promise.all([
       useChannelsStore.getState().fetchChannels(),
       useChannelsStore.getState().fetchChannelGroups(),
-      useStreamsStore.getState().fetchStreams(),
       useUserAgentsStore.getState().fetchUserAgents(),
       usePlaylistsStore.getState().fetchPlaylists(),
       useEPGsStore.getState().fetchEPGs(),

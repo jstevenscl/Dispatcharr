@@ -25,7 +25,6 @@ import {
 import usePlaylistsStore from '../../store/playlists';
 import M3UForm from '../forms/M3U';
 import { TableHelper } from '../../helpers';
-import useStreamsStore from '../../store/streams';
 
 const Example = () => {
   const [playlist, setPlaylist] = useState(null);
@@ -34,7 +33,6 @@ const Example = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const playlists = usePlaylistsStore((state) => state.playlists);
-  const { fetchStreams } = useStreamsStore();
 
   const columns = useMemo(
     //column definitions...
@@ -116,7 +114,6 @@ const Example = () => {
 
   const deletePlaylist = async (id) => {
     await API.deletePlaylist(id);
-    fetchStreams();
   };
 
   const closeModal = () => {

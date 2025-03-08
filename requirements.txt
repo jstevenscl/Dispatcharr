@@ -25,3 +25,4 @@ uwsgi
 channels
 channels-redis
 daphne
+django-filter

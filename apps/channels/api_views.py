@@ -10,7 +10,27 @@ from django.shortcuts import get_object_or_404
 from .models import Stream, Channel, ChannelGroup
 from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer
 from .tasks import match_epg_channels
+import django_filters
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 
+from rest_framework.pagination import PageNumberPagination
+
+class StreamPagination(PageNumberPagination):
+    page_size = 25  # Default page size
+    page_size_query_param = 'page_size'  # Allow clients to specify page size
+    max_page_size = 1000  # Prevent excessive page sizes
+
+class StreamFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_expr='icontains')
+    group_name = django_filters.CharFilter(lookup_expr='icontains')
+    m3u_account = django_filters.NumberFilter(field_name="m3u_account__id")
+    m3u_account_name = django_filters.CharFilter(field_name="m3u_account__name", lookup_expr="icontains")
+    m3u_account_is_active = django_filters.BooleanFilter(field_name="m3u_account__is_active")
+
+    class Meta:
+        model = Stream
+        fields = ['name', 'group_name', 'm3u_account', 'm3u_account_name', 'm3u_account_is_active']
 
 # ─────────────────────────────────────────────────────────
 # 1) Stream API (CRUD)
@@ -19,6 +39,13 @@ class StreamViewSet(viewsets.ModelViewSet):
     queryset = Stream.objects.all()
     serializer_class = StreamSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = StreamPagination
+
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = StreamFilter
+    search_fields = ['name', 'group_name']
+    ordering_fields = ['name', 'group_name']
+    ordering = ['-name']
 
     def get_queryset(self):
         qs = super().get_queryset()

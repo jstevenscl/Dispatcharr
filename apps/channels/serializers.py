@@ -74,11 +74,10 @@ class ChannelSerializer(serializers.ModelSerializer):
         required=False
     )
 
-    streams = serializers.ListField(
-        child=serializers.IntegerField(), 
-        write_only=True
+    streams = serializers.SerializerMethodField()
+    stream_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Stream.objects.all(), many=True, write_only=True, required=False
     )
-    stream_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Channel
@@ -97,9 +96,17 @@ class ChannelSerializer(serializers.ModelSerializer):
             'stream_profile_id',
         ]
 
-    def get_stream_ids(self, obj):
-        """Retrieve ordered stream IDs for GET requests."""
-        return list(obj.streams.all().order_by('channelstream__order').values_list('id', flat=True))
+    def get_streams(self, obj):
+        """Retrieve ordered stream objects for GET requests."""
+        ordered_streams = obj.streams.all().order_by('channelstream__order')
+        print(f'Retrieving streams in order')
+        for index, stream in enumerate(ordered_streams):
+            print(f'Stream {stream.id}, index {index}')
+        return StreamSerializer(ordered_streams, many=True).data
+
+    # def get_stream_ids(self, obj):
+    #     """Retrieve ordered stream IDs for GET requests."""
+    #     return list(obj.streams.all().order_by('channelstream__order').values_list('id', flat=True))
 
     def create(self, validated_data):
         stream_ids = validated_data.pop('streams', [])
@@ -113,8 +120,8 @@ class ChannelSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         print("Validated Data:", validated_data)
-        stream_ids = validated_data.pop('streams', None)
-        print(f'stream ids: {stream_ids}')
+        streams = validated_data.pop('stream_ids', None)
+        print(f'stream ids: {streams}')
 
         # Update the actual Channel fields
         instance.channel_number = validated_data.get('channel_number', instance.channel_number)
@@ -132,11 +139,12 @@ class ChannelSerializer(serializers.ModelSerializer):
         instance.save()
 
         # Handle the many-to-many 'streams'
-        if stream_ids is not None:
+        if streams is not None:
             # Clear existing relationships
             instance.channelstream_set.all().delete()
             # Add new streams in order
-            for index, stream_id in enumerate(stream_ids):
-                ChannelStream.objects.create(channel=instance, stream_id=stream_id, order=index)
+            for index, stream in enumerate(streams):
+                print(f'Setting stream {stream.id} to index {index}')
+                ChannelStream.objects.create(channel=instance, stream_id=stream.id, order=index)
 
         return instance

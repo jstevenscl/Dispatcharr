@@ -36,29 +36,13 @@ import utils from '../../utils';
 import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
-import useStreamsStore from '../../store/streams';
 import usePlaylistsStore from '../../store/playlists';
 
 const ChannelStreams = ({ channel, isExpanded }) => {
-  const [channelStreams, setChannelStreams] = useState([]);
-  const channelStreamIds = useChannelsStore(
-    (state) => state.channels[channel.id]?.stream_ids
+  const channelStreams = useChannelsStore(
+    (state) => state.channels[channel.id]?.streams
   );
   const { playlists } = usePlaylistsStore();
-  const { streams } = useStreamsStore();
-
-  useEffect(
-    () =>
-      setChannelStreams(
-        streams
-          .filter((stream) => channelStreamIds.includes(stream.id))
-          .sort(
-            (a, b) =>
-              channelStreamIds.indexOf(a.id) - channelStreamIds.indexOf(b.id)
-          )
-      ),
-    [streams, channelStreamIds]
-  );
 
   const removeStream = async (stream) => {
     let streamSet = new Set(channelStreams);
@@ -66,7 +50,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     streamSet = Array.from(streamSet);
     await API.updateChannel({
       ...channel,
-      streams: streamSet.map((stream) => stream.id),
+      stream_ids: streamSet.map((stream) => stream.id),
     });
   };
 
@@ -113,10 +97,11 @@ const ChannelStreams = ({ channel, isExpanded }) => {
             channelStreams.splice(draggingRow.index, 1)[0]
           );
 
-          // setChannelStreams([...channelStreams]);
+          const { streams: oldStreams, ...channelUpdate } = channel;
+
           API.updateChannel({
-            ...channel,
-            streams: channelStreams.map((stream) => stream.id),
+            ...channelUpdate,
+            stream_ids: channelStreams.map((stream) => stream.id),
           });
         }
       },
@@ -460,12 +445,6 @@ const ChannelsTable = ({}) => {
     );
   };
 
-  const onRowSelectionChange = (e, test) => {
-    console.log(e());
-    console.log(test);
-    setRowSelection(e);
-  };
-
   useEffect(() => {
     const selectedRows = table
       .getSelectedRowModel()
@@ -489,7 +468,7 @@ const ChannelsTable = ({}) => {
     enableColumnActions: false,
     enableRowVirtualization: true,
     enableRowSelection: true,
-    onRowSelectionChange: onRowSelectionChange,
+    onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
       isLoading: isLoading || channelsLoading,

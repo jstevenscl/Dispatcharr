@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import {
   MaterialReactTable,
   useMaterialReactTable,
@@ -16,7 +16,6 @@ import {
   Autocomplete,
   InputAdornment,
 } from '@mui/material';
-import useStreamsStore from '../../store/streams';
 import API from '../../api';
 import {
   Delete as DeleteIcon,
@@ -24,14 +23,17 @@ import {
   Add as AddIcon,
   MoreVert as MoreVertIcon,
   PlaylistAdd as PlaylistAddIcon,
-  Clear as ClearIcon,
 } from '@mui/icons-material';
 import { TableHelper } from '../../helpers';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 import useChannelsStore from '../../store/channels';
+import { useDebounce } from '../../utils';
 
 const StreamsTable = ({}) => {
+  /**
+   * useState
+   */
   const [rowSelection, setRowSelection] = useState([]);
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -41,26 +43,39 @@ const StreamsTable = ({}) => {
   const [m3uOptions, setM3uOptions] = useState([]);
   const [actionsOpenRow, setActionsOpenRow] = useState(null);
 
-  const { streams, isLoading: streamsLoading } = useStreamsStore();
+  const [data, setData] = useState([]); // Holds fetched data
+  const [rowCount, setRowCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sorting, setSorting] = useState([]);
+  const [selectedRows, setSelectedRows] = useState({});
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 25,
+  });
+  const [filters, setFilters] = useState({
+    name: '',
+    group_name: '',
+    m3u_account: '',
+  });
+  const debouncedFilters = useDebounce(filters, 500);
+
+  /**
+   * Stores
+   */
   const { playlists } = usePlaylistsStore();
   const { channelsPageSelection } = useChannelsStore();
+  const channelSelectionStreams = useChannelsStore(
+    (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
+  );
 
   const isMoreActionsOpen = Boolean(moreActionsAnchorEl);
 
-  const handleFilterChange = (columnId, value) => {
-    setFilterValues((prev) => {
-      return {
-        ...prev,
-        [columnId]: value ? value.toLowerCase() : '',
-      };
-    });
-  };
-
-  useEffect(() => {
-    setGroupOptions([...new Set(streams.map((stream) => stream.group_name))]);
-    setM3uOptions([...new Set(playlists.map((playlist) => playlist.name))]);
-  }, [streams, playlists]);
-
+  /**
+   * useMemos
+   */
+  /**
+   * useMemo
+   */
   const columns = useMemo(
     () => [
       {
@@ -72,10 +87,11 @@ const StreamsTable = ({}) => {
         Header: ({ column }) => (
           <TextField
             variant="standard"
+            name="name"
             label="Name"
-            value={filterValues[column.id]}
+            value={filters[column.id]}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => handleFilterChange(column.id, e.target.value)}
+            onChange={handleFilterChange}
             size="small"
             margin="none"
             fullWidth
@@ -86,27 +102,24 @@ const StreamsTable = ({}) => {
                 // width: '200px', // Optional: Adjust width
               }
             }
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => handleFilterChange(column.id, '')} // Clear text on click
-                      edge="end"
-                      size="small"
-                      sx={{ p: 0 }}
-                    >
-                      <ClearIcon sx={{ fontSize: '1rem' }} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
+            // slotProps={{
+            //   input: {
+            //     endAdornment: (
+            //       <InputAdornment position="end">
+            //         <IconButton
+            //           onClick={() => handleFilterChange(column.id, '')} // Clear text on click
+            //           edge="end"
+            //           size="small"
+            //           sx={{ p: 0 }}
+            //         >
+            //           <ClearIcon sx={{ fontSize: '1rem' }} />
+            //         </IconButton>
+            //       </InputAdornment>
+            //     ),
+            //   },
+            // }}
           />
         ),
-        meta: {
-          filterVariant: null,
-        },
       },
       {
         header: 'Group',
@@ -173,12 +186,49 @@ const StreamsTable = ({}) => {
         ),
       },
     ],
-    [playlists, groupOptions, m3uOptions]
+    [playlists, groupOptions, m3uOptions, filters]
   );
 
-  const rowVirtualizerInstanceRef = useRef(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([]);
+  /**
+   * Functions
+   */
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+
+    const params = new URLSearchParams();
+    params.append('page', pagination.pageIndex + 1);
+    params.append('page_size', pagination.pageSize);
+
+    // Apply sorting
+    if (sorting.length > 0) {
+      const sortField = sorting[0].id;
+      const sortDirection = sorting[0].desc ? '-' : '';
+      params.append('ordering', `${sortDirection}${sortField}`);
+    }
+
+    // Apply debounced filters
+    Object.entries(debouncedFilters).forEach(([key, value]) => {
+      if (value) params.append(key, value);
+    });
+
+    try {
+      const result = await API.queryStreams(params);
+      setData(result.results);
+      setRowCount(result.count);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+
+    setIsLoading(false);
+  }, [pagination, sorting, debouncedFilters]);
 
   // Fallback: Individual creation (optional)
   const createChannelFromStream = async (stream) => {
@@ -229,20 +279,6 @@ const StreamsTable = ({}) => {
     setModalOpen(false);
   };
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
-    } catch (error) {
-      console.error(error);
-    }
-  }, [sorting]);
-
   const addStreamsToChannel = async () => {
     const channel = channelsPageSelection[0];
     const selectedRows = table.getSelectedRowModel().rows;
@@ -250,17 +286,23 @@ const StreamsTable = ({}) => {
       ...channel,
       streams: [
         ...new Set(
-          channel.stream_ids.concat(selectedRows.map((row) => row.original.id))
+          channel.streams
+            .map((stream) => stream.id)
+            .concat(selectedRows.map((row) => row.original.id))
         ),
       ],
     });
   };
 
   const addStreamToChannel = async (streamId) => {
-    const channel = channelsPageSelection[0];
+    const { streams, ...channel } = { ...channelsPageSelection[0] };
     await API.updateChannel({
       ...channel,
-      streams: [...new Set(channel.stream_ids.concat([streamId]))],
+      stream_ids: [
+        ...new Set(
+          channelSelectionStreams.map((stream) => stream.id).concat([streamId])
+        ),
+      ],
     });
   };
 
@@ -274,30 +316,27 @@ const StreamsTable = ({}) => {
     setActionsOpenRow(null);
   };
 
-  const filteredData = streams.filter((row) =>
-    columns.every(({ accessorKey }) =>
-      filterValues[accessorKey]
-        ? row[accessorKey]?.toLowerCase().includes(filterValues[accessorKey])
-        : true
-    )
-  );
-
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: filteredData,
-    enablePagination: false,
-    enableRowVirtualization: true,
+    data,
+    enablePagination: true,
+    manualPagination: true,
+    manualSorting: true,
+    enableBottomToolbar: true,
+    enableStickyHeader: true,
+    onPaginationChange: setPagination,
+    onSortingChange: setSorting,
+    rowCount: rowCount,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
-      isLoading: isLoading || streamsLoading,
+      isLoading: isLoading,
       sorting,
+      pagination,
       rowSelection,
     },
-    rowVirtualizerInstanceRef,
-    rowVirtualizerOptions: { overscan: 5 },
     enableRowActions: true,
     positionActionsColumn: 'first',
     renderRowActions: ({ row }) => (
@@ -310,7 +349,10 @@ const StreamsTable = ({}) => {
             sx={{ py: 0, px: 0.5 }}
             disabled={
               channelsPageSelection.length != 1 ||
-              channelsPageSelection[0]?.stream_ids.includes(row.original.id)
+              (channelSelectionStreams &&
+                channelSelectionStreams
+                  .map((stream) => stream.id)
+                  .includes(row.original.id))
             }
           >
             <PlaylistAddIcon fontSize="small" />
@@ -352,9 +394,14 @@ const StreamsTable = ({}) => {
         </Menu>
       </>
     ),
+    muiPaginationProps: {
+      size: 'small',
+      rowsPerPageOptions: [25, 50, 100, 250, 500],
+      labelRowsPerPage: 'Rows per page',
+    },
     muiTableContainerProps: {
       sx: {
-        height: 'calc(100vh - 75px)',
+        height: 'calc(100vh - 145px)',
         overflowY: 'auto',
       },
     },
@@ -400,7 +447,7 @@ const StreamsTable = ({}) => {
             sx={{ marginLeft: 1 }}
             disabled={selectedRowCount == 0}
           >
-            Create Channels
+            CREATE CHANNELS
           </Button>
           <Button
             variant="contained"
@@ -411,12 +458,25 @@ const StreamsTable = ({}) => {
               channelsPageSelection.length != 1 || selectedRowCount == 0
             }
           >
-            Add to Channel
+            ADD TO CHANNEL
           </Button>
         </Stack>
       );
     },
   });
+
+  /**
+   * useEffects
+   */
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsLoading(false);
+    }
+  }, []);
 
   return (
     <Box>
