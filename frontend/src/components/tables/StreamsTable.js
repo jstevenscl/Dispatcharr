@@ -29,6 +29,7 @@ import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 import useChannelsStore from '../../store/channels';
 import { useDebounce } from '../../utils';
+import { SquarePlus, ListPlus } from 'lucide-react';
 
 const StreamsTable = ({}) => {
   /**
@@ -38,7 +39,6 @@ const StreamsTable = ({}) => {
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [moreActionsAnchorEl, setMoreActionsAnchorEl] = useState(null);
-  const [filterValues, setFilterValues] = useState({});
   const [groupOptions, setGroupOptions] = useState([]);
   const [m3uOptions, setM3uOptions] = useState([]);
   const [actionsOpenRow, setActionsOpenRow] = useState(null);
@@ -91,7 +91,7 @@ const StreamsTable = ({}) => {
             variant="standard"
             name="name"
             label="Name"
-            value={filters[column.id]}
+            value={filters.name || ''}
             onClick={(e) => e.stopPropagation()}
             onChange={handleFilterChange}
             size="small"
@@ -131,11 +131,12 @@ const StreamsTable = ({}) => {
             disablePortal
             options={groupOptions}
             size="small"
-            sx={{ width: 300 }}
+            // sx={{ width: 300 }}
             clearOnEscape
-            onChange={(event, newValue) =>
-              handleFilterChange(column.id, newValue)
-            }
+            onChange={(e, value) => {
+              e.stopPropagation();
+              handleGroupChange(value);
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -162,13 +163,17 @@ const StreamsTable = ({}) => {
         Header: ({ column }) => (
           <Autocomplete
             disablePortal
-            options={m3uOptions}
+            options={playlists.map((playlist) => ({
+              label: playlist.name,
+              value: playlist.id,
+            }))}
             size="small"
-            sx={{ width: 300 }}
+            // sx={{ width: 300 }}
             clearOnEscape
-            onChange={(event, newValue) =>
-              handleFilterChange(column.id, newValue)
-            }
+            onChange={(e, value) => {
+              e.stopPropagation();
+              handleM3UChange(value);
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -188,7 +193,7 @@ const StreamsTable = ({}) => {
         ),
       },
     ],
-    [playlists, groupOptions, m3uOptions, filters]
+    [playlists, groupOptions, filters]
   );
 
   /**
@@ -199,6 +204,22 @@ const StreamsTable = ({}) => {
     setFilters((prev) => ({
       ...prev,
       [name]: value,
+    }));
+  };
+
+  const handleGroupChange = (value) => {
+    console.log(value);
+    setFilters((prev) => ({
+      ...prev,
+      group_name: value ? value.value : '',
+    }));
+  };
+
+  const handleM3UChange = (value) => {
+    console.log(value);
+    setFilters((prev) => ({
+      ...prev,
+      m3u_account: value ? value.value : '',
     }));
   };
 
@@ -241,8 +262,15 @@ const StreamsTable = ({}) => {
       console.error('Error fetching data:', error);
     }
 
+    const groups = await API.getStreamGroups();
+    setGroupOptions(groups);
+
     setIsLoading(false);
   }, [pagination, sorting, debouncedFilters]);
+
+  useEffect(() => {
+    console.log(pagination);
+  }, [pagination]);
 
   // Fallback: Individual creation (optional)
   const createChannelFromStream = async (stream) => {
@@ -363,6 +391,16 @@ const StreamsTable = ({}) => {
     setRowSelection(newSelection);
   };
 
+  const onPaginationChange = (updater) => {
+    const newPagination = updater(pagination);
+    if (JSON.stringify(newPagination) === JSON.stringify(pagination)) {
+      // Prevent infinite re-render when there are no results
+      return;
+    }
+
+    setPagination(updater);
+  };
+
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -375,7 +413,7 @@ const StreamsTable = ({}) => {
     manualSorting: true,
     enableBottomToolbar: true,
     enableStickyHeader: true,
-    onPaginationChange: setPagination,
+    onPaginationChange: onPaginationChange,
     onSortingChange: setSorting,
     rowCount: rowCount,
     enableRowSelection: true,
@@ -386,7 +424,9 @@ const StreamsTable = ({}) => {
       onChange: onSelectAllChange,
     },
     onRowSelectionChange: onRowSelectionChange,
-    onSortingChange: setSorting,
+    initialState: {
+      density: 'compact',
+    },
     state: {
       isLoading: isLoading,
       sorting,
@@ -411,7 +451,7 @@ const StreamsTable = ({}) => {
                   .includes(row.original.id))
             }
           >
-            <PlaylistAddIcon fontSize="small" />
+            <ListPlus size="18" fontSize="small" />
           </IconButton>
         </Tooltip>
 
@@ -422,7 +462,7 @@ const StreamsTable = ({}) => {
             onClick={() => createChannelFromStream(row.original)}
             sx={{ py: 0, px: 0.5 }}
           >
-            <AddIcon fontSize="small" />
+            <SquarePlus size="18" fontSize="small" />
           </IconButton>
         </Tooltip>
 
@@ -482,7 +522,7 @@ const StreamsTable = ({}) => {
               variant="contained"
               onClick={() => editStream()}
             >
-              <AddIcon fontSize="small" />
+              <SquarePlus size="18" fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete Streams">
@@ -526,7 +566,7 @@ const StreamsTable = ({}) => {
    */
   useEffect(() => {
     fetchData();
-  }, [pagination, debouncedFilters]);
+  }, [fetchData]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

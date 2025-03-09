@@ -32,13 +32,6 @@ class StreamFilter(django_filters.FilterSet):
         model = Stream
         fields = ['name', 'group_name', 'm3u_account', 'm3u_account_name', 'm3u_account_is_active']
 
-class StreamIDsAPIView(APIView):
-    permission_classes = [IsAuthenticated]  # Enforce authentication if needed
-
-    def get(self, request, *args, **kwargs):
-        stream_ids = Stream.objects.values_list('id', flat=True)
-        return Response(list(stream_ids))
-
 # ─────────────────────────────────────────────────────────
 # 1) Stream API (CRUD)
 # ─────────────────────────────────────────────────────────
@@ -66,6 +59,26 @@ class StreamViewSet(viewsets.ModelViewSet):
             qs = qs.filter(channels__isnull=True)
         return qs
 
+    @action(detail=False, methods=['get'], url_path='ids')
+    def get_ids(self, request, *args, **kwargs):
+        # Get the filtered queryset
+        queryset = self.get_queryset()
+
+        # Apply filtering, search, and ordering
+        queryset = self.filter_queryset(queryset)
+
+        # Return only the IDs from the queryset
+        stream_ids = queryset.values_list('id', flat=True)
+
+        # Return the response with the list of IDs
+        return Response(list(stream_ids))
+
+    @action(detail=False, methods=['get'], url_path='groups')
+    def get_groups(self, request, *args, **kwargs):
+        group_names = Stream.objects.exclude(group_name__isnull=True).exclude(group_name="").order_by().values_list('group_name', flat=True).distinct()
+
+        # Return the response with the list of unique group names
+        return Response(list(group_names))
 
 # ─────────────────────────────────────────────────────────
 # 2) Channel Group Management (CRUD)

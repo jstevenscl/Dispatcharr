@@ -18,7 +18,7 @@ export default {
     },
     muiTableBodyCellProps: {
       sx: {
-        padding: '6px',
+        py: 0,
         borderColor: '#444',
         color: '#E0E0E0',
         fontSize: '0.85rem',
@@ -26,7 +26,7 @@ export default {
     },
     muiTableHeadCellProps: {
       sx: {
-        padding: '6px',
+        py: 0,
         color: '#CFCFCF',
         backgroundColor: '#383A3F',
         borderColor: '#444',

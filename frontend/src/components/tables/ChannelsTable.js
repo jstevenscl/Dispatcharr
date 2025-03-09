@@ -43,7 +43,7 @@ import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
 import usePlaylistsStore from '../../store/playlists';
-import { Tv2, ScreenShare, Scroll } from 'lucide-react';
+import { Tv2, ScreenShare, Scroll, SquareMinus, Pencil } from 'lucide-react';
 import { styled, useTheme } from '@mui/material/styles';
 import ghostImage from '../../images/ghost.svg';
 
@@ -308,9 +308,10 @@ const ChannelsTable = ({}) => {
             size="small"
             sx={{ width: 300 }}
             clearOnEscape
-            onChange={(event, newValue) =>
-              handleFilterChange(column.id, newValue)
-            }
+            onChange={(event, newValue) => {
+              event.stopPropagation();
+              handleFilterChange(column.id, newValue);
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -351,7 +352,7 @@ const ChannelsTable = ({}) => {
         },
       },
     ],
-    [channelGroupOptions]
+    [channelGroupOptions, filterValues]
   );
 
   // Access the row virtualizer instance (optional)
@@ -590,7 +591,7 @@ const ChannelsTable = ({}) => {
             }}
             sx={{ py: 0, px: 0.5 }}
           >
-            <EditIcon fontSize="small" />
+            <Pencil size="18" />
           </IconButton>
         </Tooltip>
 
@@ -601,7 +602,7 @@ const ChannelsTable = ({}) => {
             onClick={() => deleteChannel(row.original.id)}
             sx={{ py: 0, px: 0.5 }}
           >
-            <DeleteIcon fontSize="small" />
+            <SquareMinus size="18" />
           </IconButton>
         </Tooltip>
 
