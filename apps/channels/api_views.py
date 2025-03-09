@@ -32,6 +32,13 @@ class StreamFilter(django_filters.FilterSet):
         model = Stream
         fields = ['name', 'group_name', 'm3u_account', 'm3u_account_name', 'm3u_account_is_active']
 
+class StreamIDsAPIView(APIView):
+    permission_classes = [IsAuthenticated]  # Enforce authentication if needed
+
+    def get(self, request, *args, **kwargs):
+        stream_ids = Stream.objects.values_list('id', flat=True)
+        return Response(list(stream_ids))
+
 # ─────────────────────────────────────────────────────────
 # 1) Stream API (CRUD)
 # ─────────────────────────────────────────────────────────
@@ -116,7 +123,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         ),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["stream_id", "channel_name"],
+            required=["stream_id"],
             properties={
                 "stream_id": openapi.Schema(
                     type=openapi.TYPE_INTEGER, description="ID of the stream to link"
@@ -156,9 +163,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        channel_name = request.data.get('channel_name')
+        if channel_name is None:
+            channel_name = stream.name
+
         channel_data = {
             'channel_number': channel_number,
-            'channel_name': request.data.get('channel_name', f"Channel from {stream.name}"),
+            'channel_name': channel_name,
             'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
             'logo_url': stream.logo_url,
@@ -181,7 +192,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             type=openapi.TYPE_ARRAY,
             items=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
-                required=["stream_id", "channel_name"],
+                required=["stream_id"],
                 properties={
                     "stream_id": openapi.Schema(
                         type=openapi.TYPE_INTEGER, description="ID of the stream to link"
@@ -220,8 +231,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
         for item in data_list:
             stream_id = item.get('stream_id')
-            channel_name = item.get('channel_name')
-            if not all([stream_id, channel_name]):
+            if not all([stream_id]):
                 errors.append({"item": item, "error": "Missing required fields: stream_id and channel_name are required."})
                 continue
 
@@ -247,6 +257,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     errors.append({"item": item, "error": f"Channel number {channel_number} is already in use."})
                     continue
                 used_numbers.add(channel_number)
+
+            channel_name = item.get('channel_name')
+            if channel_name is None:
+                channel_name = stream.name
 
             channel_data = {
                 "channel_number": channel_number,

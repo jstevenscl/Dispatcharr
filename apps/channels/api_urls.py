@@ -5,7 +5,8 @@ from .api_views import (
     ChannelViewSet,
     ChannelGroupViewSet,
     BulkDeleteStreamsAPIView,
-    BulkDeleteChannelsAPIView
+    BulkDeleteChannelsAPIView,
+    StreamIDsAPIView,
 )
 
 app_name = 'channels'  # for DRF routing
@@ -19,6 +20,7 @@ urlpatterns = [
     # Bulk delete is a single APIView, not a ViewSet
     path('streams/bulk-delete/', BulkDeleteStreamsAPIView.as_view(), name='bulk_delete_streams'),
     path('channels/bulk-delete/', BulkDeleteChannelsAPIView.as_view(), name='bulk_delete_channels'),
+    path('streams/ids/', StreamIDsAPIView.as_view(), name='stream_ids'),
 ]
 
 urlpatterns += router.urls
