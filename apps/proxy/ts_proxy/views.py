@@ -29,7 +29,7 @@ proxy_server = ProxyServer()
 @csrf_exempt
 @require_http_methods(["POST"])
 def initialize_stream(request, channel_id):
-    """Initialize a new stream channel with optional user-agent"""
+    """Initialize a new stream channel with worker coordination"""
     try:
         data = json.loads(request.body)
         url = data.get('url')
@@ -39,29 +39,47 @@ def initialize_stream(request, channel_id):
         # Get optional user_agent from request
         user_agent = data.get('user_agent')
         
-        # Start the channel with user_agent if provided
-        proxy_server.initialize_channel(url, channel_id, user_agent)
+        # Try to initialize the channel, potentially as owner
+        success = proxy_server.initialize_channel(url, channel_id, user_agent)
+        if not success:
+            return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
         
-        # Wait for connection to be established
-        manager = proxy_server.stream_managers[channel_id]
-        wait_start = time.time()
-        while not manager.connected:
-            if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
-                proxy_server.stop_channel(channel_id)
-                return JsonResponse({
-                    'error': 'Connection timeout'
-                }, status=504)
-            if not manager.should_retry():
-                proxy_server.stop_channel(channel_id)
-                return JsonResponse({
-                    'error': 'Failed to connect'
-                }, status=502)
-            time.sleep(0.1)
+        # If we're the owner, wait for connection
+        if proxy_server.am_i_owner(channel_id):
+            # Wait for connection to be established
+            manager = proxy_server.stream_managers.get(channel_id)
+            if manager:
+                wait_start = time.time()
+                while not manager.connected:
+                    if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
+                        proxy_server.stop_channel(channel_id)
+                        return JsonResponse({
+                            'error': 'Connection timeout'
+                        }, status=504)
+                    if not manager.should_retry():
+                        proxy_server.stop_channel(channel_id)
+                        return JsonResponse({
+                            'error': 'Failed to connect'
+                        }, status=502)
+                    time.sleep(0.1)
+        else:
+            # Wait for buffer to appear in Redis
+            wait_start = time.time()
+            while True:
+                # Check if any buffer index exists in Redis
+                if proxy_server.redis_client.exists(f"ts_proxy:buffer:{channel_id}:index"):
+                    break
+                    
+                if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
+                    return JsonResponse({'error': 'Timeout waiting for stream to start'}, status=504)
+                    
+                time.sleep(0.1)
             
         return JsonResponse({
             'message': 'Stream initialized and connected',
             'channel': channel_id,
-            'url': url
+            'url': url,
+            'owner': proxy_server.am_i_owner(channel_id)
         })
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
@@ -72,10 +90,18 @@ def initialize_stream(request, channel_id):
 @csrf_exempt
 @require_http_methods(["GET"])
 def stream_ts(request, channel_id):
-    """Stream TS data to client with proper EOF handling"""
-    if channel_id not in proxy_server.stream_managers:
-        return JsonResponse({'error': 'Channel not found'}, status=404)
+    """Stream TS data to client with multi-worker support"""
+    # First check if channel exists in local memory or Redis
+    if channel_id not in proxy_server.stream_buffers:
+        # Not in local memory, check Redis
+        if not proxy_server.check_if_channel_exists(channel_id): 
+            return JsonResponse({'error': 'Channel not found'}, status=404)
+            
+        # Channel exists in Redis but not in this worker, initialize it (buffer only, no stream)
+        if not proxy_server.initialize_channel(None, channel_id):
+            return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
     
+    # Now we should have a buffer to read from
     def generate():
         client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
         
@@ -86,11 +112,12 @@ def stream_ts(request, channel_id):
             client_manager = proxy_server.client_managers[channel_id]
             client_manager.add_client(client_id)
             
-            # Get buffer and stream manager
+            # Get buffer - stream manager may not exist in this worker
             buffer = proxy_server.stream_buffers.get(channel_id)
-            stream_manager = proxy_server.stream_managers[channel_id]
-            if not buffer or not stream_manager:
-                logger.error(f"[{client_id}] No buffer/stream manager for channel {channel_id}")
+            stream_manager = proxy_server.stream_managers.get(channel_id)
+            
+            if not buffer:
+                logger.error(f"[{client_id}] No buffer found for channel {channel_id}")
                 return
             
             # Client state tracking - use config for initial position
@@ -109,6 +136,9 @@ def stream_ts(request, channel_id):
             packets_per_second = target_bitrate / (8 * ts_packet_size)
             
             logger.info(f"[{client_id}] Starting stream at index {local_index} (buffer at {buffer.index})")
+            
+            # Check if we're the owner worker
+            is_owner_worker = proxy_server.am_i_owner(channel_id) if hasattr(proxy_server, 'am_i_owner') else True
             
             # Main streaming loop
             while True:
@@ -168,8 +198,11 @@ def stream_ts(request, channel_id):
                     # Check if we're caught up to buffer head
                     at_buffer_head = local_index >= buffer.index
                     
-                    # If we're at buffer head and stream is unhealthy, send keepalive
-                    if at_buffer_head and not stream_manager.healthy and consecutive_empty >= 5:
+                    # If we're at buffer head and no data is coming, send keepalive
+                    # Only check stream manager health if it exists
+                    stream_healthy = stream_manager.healthy if stream_manager else True
+                    
+                    if at_buffer_head and not stream_healthy and consecutive_empty >= 5:
                         # Create a null TS packet as keepalive (188 bytes filled with padding)
                         # This prevents VLC from hitting EOF
                         keepalive_packet = bytearray(188)
@@ -190,12 +223,19 @@ def stream_ts(request, channel_id):
                         
                     # Log empty reads periodically
                     if empty_reads % 50 == 0:
-                        logger.debug(f"[{client_id}] Waiting for chunks beyond {local_index} (buffer at {buffer.index}, stream health: {stream_manager.healthy})")
+                        stream_status = "healthy" if (stream_manager and stream_manager.healthy) else "unknown"
+                        logger.debug(f"[{client_id}] Waiting for chunks beyond {local_index} (buffer at {buffer.index}, stream: {stream_status})")
                     
-                    # Disconnect after long inactivity, but only if stream is dead
-                    if time.time() - last_yield_time > Config.STREAM_TIMEOUT and not stream_manager.healthy:
-                        logger.warning(f"[{client_id}] No data for {Config.STREAM_TIMEOUT}s and stream unhealthy, disconnecting")
-                        break
+                    # Disconnect after long inactivity
+                    # For non-owner workers, we're more lenient with timeout
+                    if time.time() - last_yield_time > Config.STREAM_TIMEOUT:
+                        if stream_manager and not stream_manager.healthy:
+                            logger.warning(f"[{client_id}] No data for {Config.STREAM_TIMEOUT}s and stream unhealthy, disconnecting")
+                            break
+                        elif not is_owner_worker and consecutive_empty > 100:
+                            # Non-owner worker without data for too long
+                            logger.warning(f"[{client_id}] Non-owner worker with no data for {Config.STREAM_TIMEOUT}s, disconnecting")
+                            break
                     
         except Exception as e:
             logger.error(f"[{client_id}] Stream error: {e}", exc_info=True)
@@ -208,14 +248,11 @@ def stream_ts(request, channel_id):
                 remaining_clients = proxy_server.client_managers[channel_id].remove_client(client_id)
                 logger.info(f"[{client_id}] Disconnected after {elapsed:.2f}s, {bytes_sent/1024:.1f}KB in {chunks_sent} chunks ({remaining_clients} clients left)")
                 
-                # If no clients left, stop the channel after a brief delay
+                # If no clients left, schedule shutdown
                 if remaining_clients == 0:
                     logger.info(f"No clients left for channel {channel_id}, scheduling shutdown")
-                    # Use a thread to delay the shutdown by a few seconds
-                    # This gives a small window for reconnections before fully stopping
                     def delayed_shutdown():
                         time.sleep(5)  # 5-second grace period
-                        # Check again if still no clients
                         if channel_id in proxy_server.client_managers and \
                            proxy_server.client_managers[channel_id].get_client_count() == 0:
                             logger.info(f"Shutting down channel {channel_id} as no clients connected")

@@ -356,9 +356,15 @@ class StreamBuffer:
         # Expiration time for chunks
         self.chunk_ttl = getattr(Config, 'REDIS_CHUNK_TTL', 60)  # Default 60 seconds
         
-        # Local tracking for performance
-        self.local_cache = {}
-        self.local_cache_size = 50  # Keep last 50 chunks in local memory
+        # Initialize from Redis if available (important for non-owner workers)
+        if self.redis_client and channel_id:
+            try:
+                current_index = self.redis_client.get(self.buffer_index_key)
+                if current_index:
+                    self.index = int(current_index)
+                    logging.info(f"Initialized buffer from Redis with index {self.index}")
+            except Exception as e:
+                logging.error(f"Error initializing buffer from Redis: {e}")
     
     def add_chunk(self, chunk):
         """Add a chunk to the buffer"""
@@ -382,27 +388,13 @@ class StreamBuffer:
                     chunk_key = f"{self.buffer_prefix}{chunk_index}"
                     self.redis_client.setex(chunk_key, self.chunk_ttl, chunk)
                     
-                    # Update local tracking
+                    # Update local tracking of position only
                     self.index = chunk_index
-                    self.local_cache[chunk_index] = chunk
-                    
-                    # Trim local cache if needed
-                    if len(self.local_cache) > self.local_cache_size:
-                        oldest = min(self.local_cache.keys())
-                        del self.local_cache[oldest]
-                    
                     return True
                 else:
-                    # Fallback to local storage if Redis not available
-                    logging.warning("Redis not available, using local storage only")
-                    self.index += 1
-                    self.local_cache[self.index] = chunk
-                    
-                    if len(self.local_cache) > self.local_cache_size:
-                        oldest = min(self.local_cache.keys())
-                        del self.local_cache[oldest]
-                    
-                    return True
+                    # No Redis - can't function in multi-worker mode
+                    logging.error("Redis not available, cannot store chunks")
+                    return False
                     
         except Exception as e:
             logging.error(f"Error adding chunk to buffer: {e}")
@@ -415,29 +407,16 @@ class StreamBuffer:
             logging.debug(f"[{request_id}] get_chunks called with start_index={start_index}")
             
             if not self.redis_client:
-                # Local fallback (unchanged)
-                chunks = []
-                with self.lock:
-                    for idx in sorted(self.local_cache.keys()):
-                        if start_index is None or idx > start_index:
-                            chunks.append(self.local_cache[idx])
-                logging.debug(f"[{request_id}] Local fallback returned {len(chunks)} chunks")
-                return chunks
+                logging.error("Redis not available, cannot retrieve chunks")
+                return []
             
             # If no start_index provided, use most recent chunks
             if start_index is None:
                 start_index = max(0, self.index - 10)  # Start closer to current position
                 logging.debug(f"[{request_id}] No start_index provided, using {start_index}")
             
-            # Get current index from Redis (cached to reduce load)
-            if not hasattr(self, '_last_redis_check') or time.time() - self._last_redis_check > 0.5:
-                current_index = int(self.redis_client.get(self.buffer_index_key) or 0)
-                self._current_index = current_index
-                self._last_redis_check = time.time()
-                logging.debug(f"[{request_id}] Updated buffer index from Redis: {current_index}")
-            else:
-                current_index = self._current_index
-                logging.debug(f"[{request_id}] Using cached buffer index: {current_index}")
+            # Get current index from Redis
+            current_index = int(self.redis_client.get(self.buffer_index_key) or 0)
             
             # Calculate range of chunks to retrieve
             start_id = start_index + 1
@@ -466,45 +445,23 @@ class StreamBuffer:
             # Log the range we're retrieving
             logging.debug(f"[{request_id}] Retrieving chunks {start_id} to {end_id-1} (total: {end_id-start_id})")
             
-            # Try local cache first to reduce Redis load
-            chunks = []
-            missing_indices = []
-            
+            # Directly fetch from Redis using pipeline for efficiency
+            pipe = self.redis_client.pipeline()
             for idx in range(start_id, end_id):
-                if idx in self.local_cache:
-                    chunks.append(self.local_cache[idx])
-                else:
-                    missing_indices.append(idx)
+                chunk_key = f"{self.buffer_prefix}{idx}"
+                pipe.get(chunk_key)
             
-            # Log cache hit rate
-            if end_id > start_id:
-                cache_hit_rate = (len(chunks) / (end_id - start_id)) * 100
-                logging.debug(f"[{request_id}] Local cache hit rate: {cache_hit_rate:.1f}% ({len(chunks)}/{end_id-start_id})")
+            results = pipe.execute()
             
-            # Only retrieve missing chunks from Redis
-            if missing_indices:
-                logging.debug(f"[{request_id}] Fetching {len(missing_indices)} missing chunks from Redis")
-                pipe = self.redis_client.pipeline()
-                for idx in missing_indices:
-                    chunk_key = f"{self.buffer_prefix}{idx}"
-                    pipe.get(chunk_key)
-                
-                results = pipe.execute()
-                
-                # Count non-None results
-                found_chunks = sum(1 for r in results if r is not None)
-                logging.debug(f"[{request_id}] Found {found_chunks}/{len(missing_indices)} chunks in Redis")
-                
-                # Process results and update cache
-                for i, result in enumerate(results):
-                    if result:
-                        idx = missing_indices[i]
-                        chunks.append(result)
-                        # Update local cache
-                        self.local_cache[idx] = result
-                    else:
-                        # Log missing chunks
-                        logging.warning(f"[{request_id}] Chunk {missing_indices[i]} missing from Redis")
+            # Process results
+            chunks = [result for result in results if result is not None]
+            
+            # Count non-None results
+            found_chunks = len(chunks)
+            missing_chunks = len(results) - found_chunks
+            
+            if missing_chunks > 0:
+                logging.debug(f"[{request_id}] Missing {missing_chunks}/{len(results)} chunks in Redis")
             
             # Update local tracking
             if chunks:
@@ -520,18 +477,13 @@ class StreamBuffer:
         except Exception as e:
             logging.error(f"Error getting chunks from buffer: {e}", exc_info=True)
             return []
-
+    
     def get_chunks_exact(self, start_index, count):
         """Get exactly the requested number of chunks from given index"""
         try:
             if not self.redis_client:
-                # Local fallback
-                chunks = []
-                with self.lock:
-                    for idx in range(start_index + 1, start_index + count + 1):
-                        if idx in self.local_cache:
-                            chunks.append(self.local_cache[idx])
-                return chunks
+                logging.error("Redis not available, cannot retrieve chunks")
+                return []
             
             # Calculate range to retrieve
             start_id = start_index + 1
@@ -547,31 +499,20 @@ class StreamBuffer:
             # Cap end at current buffer position
             end_id = min(end_id, current_index + 1)
             
-            # Get chunks from local cache first
-            chunks = []
-            missing_indices = []
-            
+            # Directly fetch from Redis using pipeline
+            pipe = self.redis_client.pipeline()
             for idx in range(start_id, end_id):
-                if idx in self.local_cache:
-                    chunks.append(self.local_cache[idx])
-                else:
-                    missing_indices.append(idx)
+                chunk_key = f"{self.buffer_prefix}{idx}"
+                pipe.get(chunk_key)
             
-            # Get missing chunks from Redis
-            if missing_indices:
-                pipe = self.redis_client.pipeline()
-                for idx in missing_indices:
-                    chunk_key = f"{self.buffer_prefix}{idx}"
-                    pipe.get(chunk_key)
-                
-                results = pipe.execute()
-                
-                # Process results
-                for i, result in enumerate(results):
-                    if result:
-                        idx = missing_indices[i]
-                        chunks.insert(i, result)  # Insert at correct position
-                        self.local_cache[idx] = result
+            results = pipe.execute()
+            
+            # Filter out None results
+            chunks = [result for result in results if result is not None]
+            
+            # Update local index if needed
+            if chunks and start_id + len(chunks) - 1 > self.index:
+                self.index = start_id + len(chunks) - 1
             
             return chunks
             
@@ -580,16 +521,18 @@ class StreamBuffer:
             return []
 
 class ClientManager:
-    """Manages connected clients for a channel"""
+    """Manages connected clients for a channel with activity tracking"""
     
     def __init__(self):
         self.clients = set()
         self.lock = threading.Lock()
+        self.last_active_time = time.time()
     
     def add_client(self, client_id):
         """Add a client to this channel"""
         with self.lock:
             self.clients.add(client_id)
+            self.last_active_time = time.time()
             logging.info(f"New client connected: {client_id} (total: {len(self.clients)})")
         return len(self.clients)
     
@@ -598,6 +541,7 @@ class ClientManager:
         with self.lock:
             if client_id in self.clients:
                 self.clients.remove(client_id)
+            self.last_active_time = time.time()  # Update activity time on disconnect too
             logging.info(f"Client disconnected: {client_id} (remaining: {len(self.clients)})")
         return len(self.clients)
     
@@ -689,15 +633,22 @@ def wait_for_running(manager: StreamManager, delay: float) -> bool:
     return True
 
 class ProxyServer:
-    """Manages TS proxy server instance"""
+    """Manages TS proxy server instance with worker coordination"""
     
     def __init__(self):
-        """Initialize proxy server"""
+        """Initialize proxy server with worker identification"""
         self.stream_managers = {}
         self.stream_buffers = {}
         self.client_managers = {}
         
-        # Connect to Redis if configured - use Django settings
+        # Generate a unique worker ID
+        import socket
+        import os
+        pid = os.getpid()
+        hostname = socket.gethostname()
+        self.worker_id = f"{hostname}:{pid}"
+        
+        # Connect to Redis
         self.redis_client = None
         try:
             import redis
@@ -706,93 +657,189 @@ class ProxyServer:
             redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
             self.redis_client = redis.from_url(redis_url)
             logging.info(f"Connected to Redis at {redis_url}")
+            logging.info(f"Worker ID: {self.worker_id}")
         except Exception as e:
             self.redis_client = None
             logging.error(f"Failed to connect to Redis: {e}")
         
         # Start cleanup thread
-        self.cleanup_interval = getattr(Config, 'CLEANUP_INTERVAL', 60)  # Check every 60 seconds
+        self.cleanup_interval = getattr(Config, 'CLEANUP_INTERVAL', 60)
         self._start_cleanup_thread()
+    
+    def get_channel_owner(self, channel_id):
+        """Get the worker ID that owns this channel with proper error handling"""
+        if not self.redis_client:
+            return None
         
-    def _start_cleanup_thread(self):
-        """Start background thread to clean up inactive channels"""
-        def cleanup_task():
-            while True:
-                try:
-                    time.sleep(self.cleanup_interval)
-                    self.check_inactive_channels()
-                except Exception as e:
-                    logging.error(f"Error in cleanup thread: {e}")
-                    
-        thread = threading.Thread(target=cleanup_task, daemon=True)
-        thread.name = "ts-proxy-cleanup"
-        thread.start()
-        logging.info(f"Started TS proxy cleanup thread (interval: {self.cleanup_interval}s)")
-
-    def initialize_channel(self, url, channel_id, user_agent=None):
-        """Initialize a channel with enhanced logging and user-agent support"""
         try:
-            logging.info(f"Initializing channel {channel_id} with URL: {url}")
-            if user_agent:
-                logging.info(f"Using custom User-Agent: {user_agent}")
+            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            owner = self.redis_client.get(lock_key)
+            if owner:
+                return owner.decode('utf-8')
+            return None
+        except Exception as e:
+            logging.error(f"Error getting channel owner: {e}")
+            return None
+    
+    def am_i_owner(self, channel_id):
+        """Check if this worker is the owner of the channel"""
+        owner = self.get_channel_owner(channel_id)
+        return owner == self.worker_id
+    
+    def try_acquire_ownership(self, channel_id, ttl=30):
+        """Try to become the owner of this channel using proper locking"""
+        if not self.redis_client:
+            return True  # If no Redis, always become owner
             
-            # Clean up any existing Redis entries for this channel
+        try:
+            # Create a lock key with proper namespace
+            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            
+            # Use Redis SETNX for atomic locking - only succeeds if the key doesn't exist
+            acquired = self.redis_client.setnx(lock_key, self.worker_id)
+            
+            # If acquired, set expiry to prevent orphaned locks
+            if acquired:
+                self.redis_client.expire(lock_key, ttl)
+                logging.info(f"Worker {self.worker_id} acquired ownership of channel {channel_id}")
+                return True
+            
+            # If not acquired, check if we already own it (might be a retry)
+            current_owner = self.redis_client.get(lock_key)
+            if current_owner and current_owner.decode('utf-8') == self.worker_id:
+                # Refresh TTL
+                self.redis_client.expire(lock_key, ttl)
+                logging.info(f"Worker {self.worker_id} refreshed ownership of channel {channel_id}")
+                return True
+                
+            # Someone else owns it
+            return False
+            
+        except Exception as e:
+            logging.error(f"Error acquiring channel ownership: {e}")
+            return False
+    
+    def release_ownership(self, channel_id):
+        """Release ownership of this channel safely"""
+        if not self.redis_client:
+            return
+            
+        try:
+            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            
+            # Only delete if we're the current owner to prevent race conditions
+            current = self.redis_client.get(lock_key)
+            if current and current.decode('utf-8') == self.worker_id:
+                self.redis_client.delete(lock_key)
+                logging.info(f"Released ownership of channel {channel_id}")
+        except Exception as e:
+            logging.error(f"Error releasing channel ownership: {e}")
+    
+    def extend_ownership(self, channel_id, ttl=30):
+        """Extend ownership lease with grace period"""
+        if not self.redis_client:
+            return False
+            
+        try:
+            lock_key = f"ts_proxy:channel:{channel_id}:owner" 
+            current = self.redis_client.get(lock_key)
+            
+            # Only extend if we're still the owner
+            if current and current.decode('utf-8') == self.worker_id:
+                self.redis_client.expire(lock_key, ttl)
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Error extending ownership: {e}")
+            return False
+    
+    def initialize_channel(self, url, channel_id, user_agent=None):
+        """Initialize a channel with improved worker coordination"""
+        try:
+            # Get channel URL from Redis if available
+            channel_url = url
+            channel_user_agent = user_agent
+            
             if self.redis_client:
-                # Get the current state before cleanup for logging
-                index_key = f"ts_proxy:buffer:{channel_id}:index"
-                old_index = self.redis_client.get(index_key)
+                # Store stream metadata - can be done regardless of ownership
+                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                if url:  # Only update URL if one is provided
+                    self.redis_client.hset(metadata_key, "url", url)
+                if user_agent:
+                    self.redis_client.hset(metadata_key, "user_agent", user_agent)
                 
-                # Count existing chunks for logging
-                pattern = f"ts_proxy:buffer:{channel_id}:chunk:*"
-                old_chunk_count = 0
-                cursor = 0
-                while True:
-                    cursor, keys = self.redis_client.scan(cursor, pattern, 100)
-                    old_chunk_count += len(keys)
-                    if cursor == 0:
-                        break
-                
-                logging.info(f"Found existing channel data: index={old_index}, chunks={old_chunk_count}")
-                
-                # Delete index key
-                self.redis_client.delete(index_key)
-                logging.debug(f"Deleted Redis index key: {index_key}")
-                
-                # Delete all chunks for this channel
-                deleted_chunks = 0
-                cursor = 0
-                while True:
-                    cursor, keys = self.redis_client.scan(cursor, pattern, 100)
-                    if keys:
-                        self.redis_client.delete(*keys)
-                        deleted_chunks += len(keys)
-                    if cursor == 0:
-                        break
-                
-                logging.info(f"Deleted {deleted_chunks} Redis chunks for channel {channel_id}")
-                
-                # Register this channel as active
-                activity_key = f"ts_proxy:active_channel:{channel_id}"
-                self.redis_client.set(activity_key, "1", ex=60)
-                logging.debug(f"Set channel activity key: {activity_key}")
+                # If no url was passed, try to get from Redis
+                if not url:
+                    url_bytes = self.redis_client.hget(metadata_key, "url")
+                    if url_bytes:
+                        channel_url = url_bytes.decode('utf-8')
+                    
+                    ua_bytes = self.redis_client.hget(metadata_key, "user_agent")
+                    if ua_bytes:
+                        channel_user_agent = ua_bytes.decode('utf-8')
             
-            # Create buffer and stream manager
+            # Check if channel is already owned
+            current_owner = self.get_channel_owner(channel_id)
+            
+            # Exit early if another worker owns the channel
+            if current_owner and current_owner != self.worker_id:
+                logging.info(f"Channel {channel_id} already owned by worker {current_owner}")
+                logging.info(f"This worker ({self.worker_id}) will read from Redis buffer only")
+                
+                # Create buffer but not stream manager
+                buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
+                self.stream_buffers[channel_id] = buffer
+                
+                # Create client manager
+                client_manager = ClientManager()
+                self.client_managers[channel_id] = client_manager
+                
+                return True
+            
+            # Only continue with full initialization if URL is provided
+            # or we can get it from Redis
+            if not channel_url:
+                logging.error(f"No URL available for channel {channel_id}")
+                return False
+            
+            # Try to acquire ownership with Redis locking
+            if not self.try_acquire_ownership(channel_id):
+                # Another worker just acquired ownership
+                logging.info(f"Another worker just acquired ownership of channel {channel_id}")
+                
+                # Create buffer but not stream manager
+                buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
+                self.stream_buffers[channel_id] = buffer
+                
+                # Create client manager
+                client_manager = ClientManager()
+                self.client_managers[channel_id] = client_manager
+                
+                return True
+            
+            # We now own the channel - create stream manager
+            logging.info(f"Worker {self.worker_id} is now the owner of channel {channel_id}")
+            
+            # Create stream buffer
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
             logging.debug(f"Created StreamBuffer for channel {channel_id}")
-            
             self.stream_buffers[channel_id] = buffer
             
-            stream_manager = StreamManager(url, buffer, user_agent=user_agent)
+            # Create stream manager (actual connection to provider)
+            stream_manager = StreamManager(channel_url, buffer, user_agent=channel_user_agent)
             logging.debug(f"Created StreamManager for channel {channel_id}")
-            
             self.stream_managers[channel_id] = stream_manager
             
             # Create client manager
             client_manager = ClientManager()
             self.client_managers[channel_id] = client_manager
-            logging.debug(f"Created ClientManager for channel {channel_id}")
             
-            # Start stream manager
+            # Set channel activity key (separate from lock key)
+            if self.redis_client:
+                activity_key = f"ts_proxy:active_channel:{channel_id}"
+                self.redis_client.set(activity_key, "1", ex=300)
+            
+            # Start stream manager thread
             thread = threading.Thread(target=stream_manager.run, daemon=True)
             thread.name = f"stream-{channel_id}"
             thread.start()
@@ -802,65 +849,61 @@ class ProxyServer:
             
         except Exception as e:
             logging.error(f"Error initializing channel {channel_id}: {e}", exc_info=True)
+            # Release ownership on failure
+            self.release_ownership(channel_id)
             return False
-    
+
+    def check_if_channel_exists(self, channel_id):
+        """Check if a channel exists by checking metadata and locks"""
+        if not self.redis_client:
+            return channel_id in self.stream_managers
+        
+        # Check both metadata and lock keys
+        metadata_exists = self.redis_client.exists(f"ts_proxy:channel:{channel_id}:metadata")
+        owner_exists = self.redis_client.exists(f"ts_proxy:channel:{channel_id}:owner")
+        activity_exists = self.redis_client.exists(f"ts_proxy:active_channel:{channel_id}")
+        
+        return metadata_exists or owner_exists or activity_exists
+
     def stop_channel(self, channel_id):
-        """Stop a channel and clean up resources with improved shutdown sequence"""
+        """Stop a channel with proper ownership handling"""
         try:
             logging.info(f"Stopping channel {channel_id}")
             
-            # Stop the stream manager first 
-            stream_manager = None
-            if channel_id in self.stream_managers:
-                stream_manager = self.stream_managers[channel_id]
+            # Only stop the actual stream manager if we're the owner
+            if self.am_i_owner(channel_id):
+                if channel_id in self.stream_managers:
+                    stream_manager = self.stream_managers[channel_id]
+                    
+                    # Signal thread to stop and close resources
+                    if hasattr(stream_manager, 'stop'):
+                        stream_manager.stop()
+                    else:
+                        stream_manager.running = False
+                        if hasattr(stream_manager, '_close_socket'):
+                            stream_manager._close_socket()
                 
-                # Signal thread to stop and close network resources
-                if hasattr(stream_manager, 'stop'):
-                    stream_manager.stop()
-                else:
-                    stream_manager.running = False
-
-                # Close any socket connection
-                    if hasattr(stream_manager, '_close_socket'):
-                        stream_manager._close_socket()
+                # Release ownership
+                self.release_ownership(channel_id)
             
-            # Now look for the thread and wait for it to finish
-            stream_thread_name = f"stream-{channel_id}"
-            stream_thread = None
-            
-            for thread in threading.enumerate():
-                if thread.name == stream_thread_name:
-                    stream_thread = thread
-                    break
-            
-            if stream_thread and stream_thread.is_alive():
-                logging.debug(f"Waiting for stream thread to terminate gracefully")
-                try:
-                    # Very short timeout to prevent hanging the app
-                    stream_thread.join(timeout=1.0)
-                except RuntimeError:
-                    logging.debug("Could not join stream thread (may be current thread)")
-            
-            # Now it's safe to clean up the objects
+            # Always clean up local resources
             if channel_id in self.stream_managers:
                 del self.stream_managers[channel_id]
-                logging.info(f"Removed stream manager for channel {channel_id}")
             
-# Clean up buffer
             if channel_id in self.stream_buffers:
                 del self.stream_buffers[channel_id]
-                logging.info(f"Removed stream buffer for channel {channel_id}")
             
-# Clean up client manager
             if channel_id in self.client_managers:
                 del self.client_managers[channel_id]
-                logging.info(f"Removed client manager for channel {channel_id}")
             
-            # Clean up Redis
+            # Clean up shared Redis data only if no other workers are using this channel
             if self.redis_client:
-                activity_key = f"ts_proxy:active_channel:{channel_id}"
-                self.redis_client.delete(activity_key)
-                logging.debug(f"Removed activity key for channel {channel_id}")
+                # Check if any worker still owns this channel
+                if not self.redis_client.exists(f"ts_proxy:channel:{channel_id}:owner"):
+                    # No owner, safe to remove Redis data
+                    self.redis_client.delete(f"ts_proxy:channel:{channel_id}")
+                    self.redis_client.delete(f"ts_proxy:active_channel:{channel_id}")
+                    logging.info(f"Removed Redis data for channel {channel_id}")
             
             return True
         except Exception as e:
@@ -889,4 +932,45 @@ class ProxyServer:
         """Stop all channels and cleanup"""
         for channel_id in list(self.stream_managers.keys()):
             self.stop_channel(channel_id)
+
+    def _start_cleanup_thread(self):
+        """Start background thread to maintain ownership and clean up resources"""
+        def cleanup_task():
+            # Initial delay to let initialization complete
+            time.sleep(10)
+            
+            while True:
+                try:
+                    # Extend ownership for channels we own
+                    for channel_id in list(self.stream_managers.keys()):
+                        if self.am_i_owner(channel_id):
+                            self.extend_ownership(channel_id)
+                    
+                    # Check for inactive channels but ONLY those we own
+                    channels_to_stop = []
+                    for channel_id, client_manager in self.client_managers.items():
+                        # Only stop channels we own and that have no clients
+                        if self.am_i_owner(channel_id) and client_manager.get_client_count() == 0:
+                            # Make sure it's been inactive for a while
+                            if hasattr(client_manager, 'last_active_time'):
+                                inactive_seconds = time.time() - client_manager.last_active_time
+                                if inactive_seconds > 30:  # 30 seconds grace period
+                                    channels_to_stop.append(channel_id)
+                            else:
+                                channels_to_stop.append(channel_id)
+                    
+                    for channel_id in channels_to_stop:
+                        logging.info(f"Auto-stopping inactive channel {channel_id}")
+                        self.stop_channel(channel_id)
+                    
+                except Exception as e:
+                    logging.error(f"Error in cleanup thread: {e}")
+                
+                # Sleep at the end
+                time.sleep(self.cleanup_interval)
+        
+        thread = threading.Thread(target=cleanup_task, daemon=True)
+        thread.name = "ts-proxy-cleanup"
+        thread.start()
+        logging.info(f"Started TS proxy cleanup thread (interval: {self.cleanup_interval}s)")
 
