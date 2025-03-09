@@ -39,5 +39,3 @@ class TSConfig(BaseConfig):
     # Redis settings
     REDIS_CHUNK_TTL = 3600  # Chunks expire after 1 hour in Redis (renamed from REDIS_CHUNK_EXPIRY)
     
-    # User agent
-    DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
