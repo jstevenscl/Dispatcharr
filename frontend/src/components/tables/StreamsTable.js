@@ -515,7 +515,7 @@ const StreamsTable = ({}) => {
    */
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [pagination]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
