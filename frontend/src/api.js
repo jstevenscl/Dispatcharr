@@ -281,6 +281,18 @@ export default class API {
     return retval;
   }
 
+  static async getAllStreamIds() {
+    const response = await fetch(`${host}/api/channels/streams/ids/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
   static async addStream(values) {
     const response = await fetch(`${host}/api/channels/streams/`, {
       method: 'POST',

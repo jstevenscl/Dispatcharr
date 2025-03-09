@@ -47,7 +47,9 @@ const StreamsTable = ({}) => {
   const [rowCount, setRowCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [sorting, setSorting] = useState([]);
-  const [selectedRows, setSelectedRows] = useState({});
+  const [selectedStreamIds, setSelectedStreamIds] = useState([]);
+  const [unselectedStreamIds, setUnselectedStreamIds] = useState([]);
+  // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 25,
@@ -223,6 +225,18 @@ const StreamsTable = ({}) => {
       const result = await API.queryStreams(params);
       setData(result.results);
       setRowCount(result.count);
+
+      const newSelection = {};
+      result.results.forEach((item, index) => {
+        if (selectedStreamIds.includes(item.id)) {
+          newSelection[index] = true;
+        }
+      });
+
+      // ✅ Only update rowSelection if it's different
+      if (JSON.stringify(newSelection) !== JSON.stringify(rowSelection)) {
+        setRowSelection(newSelection);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -241,16 +255,10 @@ const StreamsTable = ({}) => {
 
   // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
-    // Get all selected streams from the table
-    const selected = table
-      .getRowModel()
-      .rows.filter((row) => row.getIsSelected());
-
     setIsLoading(true);
     await API.createChannelsFromStreams(
-      selected.map((sel) => ({
-        stream_id: sel.original.id,
-        channel_name: sel.original.name,
+      selectedStreamIds.map((stream_id) => ({
+        stream_id,
       }))
     );
     setIsLoading(false);
@@ -267,10 +275,7 @@ const StreamsTable = ({}) => {
 
   const deleteStreams = async () => {
     setIsLoading(true);
-    const selected = table
-      .getRowModel()
-      .rows.filter((row) => row.getIsSelected());
-    await API.deleteStreams(selected.map((stream) => stream.original.id));
+    await API.deleteStreams(selectedStreamIds);
     setIsLoading(false);
   };
 
@@ -280,15 +285,14 @@ const StreamsTable = ({}) => {
   };
 
   const addStreamsToChannel = async () => {
-    const channel = channelsPageSelection[0];
-    const selectedRows = table.getSelectedRowModel().rows;
+    const { streams, ...channel } = { ...channelsPageSelection[0] };
     await API.updateChannel({
       ...channel,
-      streams: [
+      stream_ids: [
         ...new Set(
-          channel.streams
+          channelSelectionStreams
             .map((stream) => stream.id)
-            .concat(selectedRows.map((row) => row.original.id))
+            .concat(selectedStreamIds)
         ),
       ],
     });
@@ -316,6 +320,41 @@ const StreamsTable = ({}) => {
     setActionsOpenRow(null);
   };
 
+  const onRowSelectionChange = (updater) => {
+    setRowSelection((prevRowSelection) => {
+      const newRowSelection =
+        typeof updater === 'function' ? updater(prevRowSelection) : updater;
+
+      const updatedSelected = new Set([...selectedStreamIds]);
+      table.getRowModel().rows.map((row) => {
+        if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
+          updatedSelected.delete(row.original.id);
+        } else {
+          updatedSelected.add(row.original.id);
+        }
+      });
+      setSelectedStreamIds([...updatedSelected]);
+
+      return newRowSelection;
+    });
+  };
+
+  const onSelectAllChange = async (e) => {
+    const selectAll = e.target.checked;
+    if (selectAll) {
+      const ids = await API.getAllStreamIds();
+      setSelectedStreamIds(ids);
+    } else {
+      setSelectedStreamIds([]);
+    }
+
+    const newSelection = {};
+    table.getRowModel().rows.forEach((item, index) => {
+      newSelection[index] = selectAll;
+    });
+    setRowSelection(newSelection);
+  };
+
   const table = useMaterialReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -329,7 +368,13 @@ const StreamsTable = ({}) => {
     onSortingChange: setSorting,
     rowCount: rowCount,
     enableRowSelection: true,
-    onRowSelectionChange: setRowSelection,
+    muiSelectAllCheckboxProps: {
+      checked: selectedStreamIds.length == rowCount,
+      indeterminate:
+        selectedStreamIds.length > 0 && selectedStreamIds.length != rowCount,
+      onChange: onSelectAllChange,
+    },
+    onRowSelectionChange: onRowSelectionChange,
     onSortingChange: setSorting,
     state: {
       isLoading: isLoading,
@@ -435,7 +480,7 @@ const StreamsTable = ({}) => {
               color="error"
               variant="contained"
               onClick={deleteStreams}
-              disabled={selectedRowCount == 0}
+              disabled={setSelectedStreamIds == 0 || unselectedStreamIds == 0}
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
