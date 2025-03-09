@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useState } from 'react';
+import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import {
   MaterialReactTable,
   useMaterialReactTable,
@@ -72,9 +72,9 @@ const StreamsTable = ({}) => {
 
   const isMoreActionsOpen = Boolean(moreActionsAnchorEl);
 
-  /**
-   * useMemos
-   */
+  // Access the row virtualizer instance (optional)
+  const rowVirtualizerInstanceRef = useRef(null);
+
   /**
    * useMemo
    */
@@ -361,6 +361,9 @@ const StreamsTable = ({}) => {
     data,
     enablePagination: true,
     manualPagination: true,
+    enableRowVirtualization: true,
+    rowVirtualizerInstanceRef,
+    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     manualSorting: true,
     enableBottomToolbar: true,
     enableStickyHeader: true,
@@ -441,7 +444,7 @@ const StreamsTable = ({}) => {
     ),
     muiPaginationProps: {
       size: 'small',
-      rowsPerPageOptions: [25, 50, 100, 250, 500],
+      rowsPerPageOptions: [25, 50, 100, 250, 500, 1000, 10000],
       labelRowsPerPage: 'Rows per page',
     },
     muiTableContainerProps: {
@@ -522,6 +525,15 @@ const StreamsTable = ({}) => {
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    // Scroll to the top of the table when sorting changes
+    try {
+      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [sorting]);
 
   return (
     <Box>
