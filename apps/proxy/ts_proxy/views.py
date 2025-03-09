@@ -29,15 +29,18 @@ proxy_server = ProxyServer()
 @csrf_exempt
 @require_http_methods(["POST"])
 def initialize_stream(request, channel_id):
-    """Initialize a new stream channel"""
+    """Initialize a new stream channel with optional user-agent"""
     try:
         data = json.loads(request.body)
         url = data.get('url')
         if not url:
             return JsonResponse({'error': 'No URL provided'}, status=400)
         
-        # Start the channel
-        proxy_server.initialize_channel(url, channel_id)
+        # Get optional user_agent from request
+        user_agent = data.get('user_agent')
+        
+        # Start the channel with user_agent if provided
+        proxy_server.initialize_channel(url, channel_id, user_agent)
         
         # Wait for connection to be established
         manager = proxy_server.stream_managers[channel_id]
@@ -90,8 +93,9 @@ def stream_ts(request, channel_id):
                 logger.error(f"[{client_id}] No buffer/stream manager for channel {channel_id}")
                 return
             
-            # Client state tracking
-            local_index = max(0, buffer.index - 30)  # Start 30 chunks behind
+            # Client state tracking - use config for initial position
+            local_index = max(0, buffer.index - Config.INITIAL_BEHIND_CHUNKS)
+            initial_position = local_index
             last_yield_time = time.time()
             empty_reads = 0
             bytes_sent = 0
@@ -99,9 +103,9 @@ def stream_ts(request, channel_id):
             stream_start_time = time.time()
             consecutive_empty = 0  # Track consecutive empty reads
             
-            # Timing parameters
+            # Timing parameters from config
             ts_packet_size = 188
-            target_bitrate = 8000000  # ~8 Mbps
+            target_bitrate = Config.TARGET_BITRATE 
             packets_per_second = target_bitrate / (8 * ts_packet_size)
             
             logger.info(f"[{client_id}] Starting stream at index {local_index} (buffer at {buffer.index})")
@@ -109,7 +113,7 @@ def stream_ts(request, channel_id):
             # Main streaming loop
             while True:
                 # Get chunks at client's position
-                chunks = buffer.get_chunks_exact(local_index, 5)
+                chunks = buffer.get_chunks_exact(local_index, Config.CHUNK_BATCH_SIZE)
                 
                 if chunks:
                     # Reset empty counters since we got data
@@ -124,12 +128,28 @@ def stream_ts(request, channel_id):
                     
                     logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {start_idx} to {end_idx}")
                     
+                    # Calculate total packet count for this batch to maintain timing
+                    total_packets = sum(len(chunk) // ts_packet_size for chunk in chunks)
+                    batch_start_time = time.time()
+                    packets_sent_in_batch = 0
+                    
                     # Send chunks with pacing
                     for chunk in chunks:
+                        packets_in_chunk = len(chunk) // ts_packet_size
                         bytes_sent += len(chunk)
                         chunks_sent += 1
                         yield chunk
-                        time.sleep(0.01)  # Small spacing between chunks
+                        
+                        # Pacing logic
+                        packets_sent_in_batch += packets_in_chunk
+                        elapsed = time.time() - batch_start_time
+                        target_time = packets_sent_in_batch / packets_per_second
+                        
+                        # If we're sending too fast, add a small delay
+                        if elapsed < target_time and packets_sent_in_batch < total_packets:
+                            sleep_time = min(target_time - elapsed, 0.05)
+                            if sleep_time > 0.001:
+                                time.sleep(sleep_time)
                     
                     # Log progress periodically
                     if chunks_sent % 100 == 0:
@@ -162,7 +182,7 @@ def stream_ts(request, channel_id):
                         bytes_sent += len(keepalive_packet)
                         last_yield_time = time.time()
                         consecutive_empty = 0  # Reset consecutive counter but keep total empty_reads
-                        time.sleep(0.5)  # Longer sleep after keepalive
+                        time.sleep(Config.KEEPALIVE_INTERVAL)
                     else:
                         # Standard wait
                         sleep_time = min(0.1 * consecutive_empty, 1.0)  # Progressive backoff up to 1s
@@ -173,8 +193,8 @@ def stream_ts(request, channel_id):
                         logger.debug(f"[{client_id}] Waiting for chunks beyond {local_index} (buffer at {buffer.index}, stream health: {stream_manager.healthy})")
                     
                     # Disconnect after long inactivity, but only if stream is dead
-                    if time.time() - last_yield_time > 30 and not stream_manager.healthy:
-                        logger.warning(f"[{client_id}] No data for 30s and stream unhealthy, disconnecting")
+                    if time.time() - last_yield_time > Config.STREAM_TIMEOUT and not stream_manager.healthy:
+                        logger.warning(f"[{client_id}] No data for {Config.STREAM_TIMEOUT}s and stream unhealthy, disconnecting")
                         break
                     
         except Exception as e:

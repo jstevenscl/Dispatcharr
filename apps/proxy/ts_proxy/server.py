@@ -40,10 +40,10 @@ class StreamManager:
         self.socket = None
         self.ready_event = threading.Event()
         self.retry_count = 0
-        self.max_retries = 3
+        self.max_retries = Config.MAX_RETRIES
         
         # User agent for connection
-        self.user_agent = user_agent or 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        self.user_agent = user_agent or Config.DEFAULT_USER_AGENT
         
         # TS packet handling
         self.TS_PACKET_SIZE = 188
@@ -54,7 +54,7 @@ class StreamManager:
         # Stream health monitoring
         self.last_data_time = time.time()
         self.healthy = True
-        self.health_check_interval = 5  # Check health every 5 seconds
+        self.health_check_interval = Config.HEALTH_CHECK_INTERVAL
         
         # Buffer management
         self._last_buffer_check = time.time()
@@ -722,10 +722,12 @@ class ProxyServer:
             self.redis_client = None
             logging.error(f"Failed to connect to Redis: {e}")
     
-    def initialize_channel(self, url, channel_id):
-        """Initialize a channel with enhanced logging"""
+    def initialize_channel(self, url, channel_id, user_agent=None):
+        """Initialize a channel with enhanced logging and user-agent support"""
         try:
             logging.info(f"Initializing channel {channel_id} with URL: {url}")
+            if user_agent:
+                logging.info(f"Using custom User-Agent: {user_agent}")
             
             # Clean up any existing Redis entries for this channel
             if self.redis_client:
@@ -773,7 +775,7 @@ class ProxyServer:
             
             self.stream_buffers[channel_id] = buffer
             
-            stream_manager = StreamManager(url, buffer)
+            stream_manager = StreamManager(url, buffer, user_agent=user_agent)
             logging.debug(f"Created StreamManager for channel {channel_id}")
             
             self.stream_managers[channel_id] = stream_manager
