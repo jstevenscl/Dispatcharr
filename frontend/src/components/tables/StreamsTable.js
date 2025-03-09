@@ -342,7 +342,15 @@ const StreamsTable = ({}) => {
   const onSelectAllChange = async (e) => {
     const selectAll = e.target.checked;
     if (selectAll) {
-      const ids = await API.getAllStreamIds();
+      // Get all stream IDs for current view
+      const params = new URLSearchParams();
+
+      // Apply debounced filters
+      Object.entries(debouncedFilters).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+      });
+
+      const ids = await API.getAllStreamIds(params);
       setSelectedStreamIds(ids);
     } else {
       setSelectedStreamIds([]);
@@ -518,7 +526,7 @@ const StreamsTable = ({}) => {
    */
   useEffect(() => {
     fetchData();
-  }, [pagination]);
+  }, [pagination, debouncedFilters]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
