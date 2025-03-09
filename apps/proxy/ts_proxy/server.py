@@ -570,54 +570,31 @@ class StreamBuffer:
             return []
 
 class ClientManager:
-    """Manages active client connections"""
+    """Manages connected clients for a channel"""
     
     def __init__(self):
-        self.active_clients: Set[int] = set()
-        self.lock: threading.Lock = threading.Lock()
-        self.last_client_time: float = time.time()
-        self.cleanup_timer: Optional[threading.Timer] = None
-        self._proxy_server = None
-        self._channel_id = None
-        
-    def start_cleanup_timer(self, proxy_server, channel_id):
-        """Start timer to cleanup idle channels"""
-        self._proxy_server = proxy_server
-        self._channel_id = channel_id
-        if self.cleanup_timer:
-            self.cleanup_timer.cancel()
-        self.cleanup_timer = threading.Timer(
-            Config.CLIENT_TIMEOUT, 
-            self._cleanup_idle_channel,
-            args=[proxy_server, channel_id]
-        )
-        self.cleanup_timer.daemon = True
-        self.cleanup_timer.start()
-        
-    def _cleanup_idle_channel(self, proxy_server, channel_id):
-        """Stop channel if no clients connected"""
+        self.clients = set()
+        self.lock = threading.Lock()
+    
+    def add_client(self, client_id):
+        """Add a client to this channel"""
         with self.lock:
-            if not self.active_clients:
-                logging.info(f"No clients connected for {Config.CLIENT_TIMEOUT}s, stopping channel {channel_id}")
-                proxy_server.stop_channel(channel_id)
-
-    def add_client(self, client_id: int) -> None:
-        """Add new client connection"""
+            self.clients.add(client_id)
+            logging.info(f"New client connected: {client_id} (total: {len(self.clients)})")
+        return len(self.clients)
+    
+    def remove_client(self, client_id):
+        """Remove a client from this channel and return remaining count"""
         with self.lock:
-            self.active_clients.add(client_id)
-            self.last_client_time = time.time()  # Reset the timer
-            if self.cleanup_timer:
-                self.cleanup_timer.cancel()  # Cancel existing timer
-                self.start_cleanup_timer(self._proxy_server, self._channel_id)  # Restart timer
-            logging.info(f"New client connected: {client_id} (total: {len(self.active_clients)})")
-
-    def remove_client(self, client_id: int) -> int:
-        """Remove client and return remaining count"""
+            if client_id in self.clients:
+                self.clients.remove(client_id)
+            logging.info(f"Client disconnected: {client_id} (remaining: {len(self.clients)})")
+        return len(self.clients)
+    
+    def get_client_count(self):
+        """Get current client count"""
         with self.lock:
-            self.active_clients.remove(client_id)
-            remaining = len(self.active_clients)
-            logging.info(f"Client disconnected: {client_id} (remaining: {remaining})")
-            return remaining
+            return len(self.clients)
 
 class StreamFetcher:
     """Handles stream data fetching"""
@@ -705,12 +682,13 @@ class ProxyServer:
     """Manages TS proxy server instance"""
     
     def __init__(self):
-        self.stream_managers = {}  # Maps channel_id to StreamManager
-        self.stream_buffers = {}   # Maps channel_id to StreamBuffer
-        self.client_managers = {}  # Maps channel_id to ClientManager
-        self.fetch_threads = {}    # Add this missing attribute
+        """Initialize proxy server"""
+        self.stream_managers = {}
+        self.stream_buffers = {}
+        self.client_managers = {}
         
-        # Initialize Redis connection
+        # Connect to Redis if configured - use Django settings
+        self.redis_client = None
         try:
             import redis
             from django.conf import settings
@@ -721,7 +699,26 @@ class ProxyServer:
         except Exception as e:
             self.redis_client = None
             logging.error(f"Failed to connect to Redis: {e}")
-    
+        
+        # Start cleanup thread
+        self.cleanup_interval = getattr(Config, 'CLEANUP_INTERVAL', 60)  # Check every 60 seconds
+        self._start_cleanup_thread()
+        
+    def _start_cleanup_thread(self):
+        """Start background thread to clean up inactive channels"""
+        def cleanup_task():
+            while True:
+                try:
+                    time.sleep(self.cleanup_interval)
+                    self.check_inactive_channels()
+                except Exception as e:
+                    logging.error(f"Error in cleanup thread: {e}")
+                    
+        thread = threading.Thread(target=cleanup_task, daemon=True)
+        thread.name = "ts-proxy-cleanup"
+        thread.start()
+        logging.info(f"Started TS proxy cleanup thread (interval: {self.cleanup_interval}s)")
+
     def initialize_channel(self, url, channel_id, user_agent=None):
         """Initialize a channel with enhanced logging and user-agent support"""
         try:
@@ -798,40 +795,55 @@ class ProxyServer:
             return False
     
     def stop_channel(self, channel_id):
-        """Stop channel and clean up resources"""
+        """Stop a channel and clean up resources"""
         try:
-            # Stop stream manager
-            if channel_id in self.stream_managers:
-                self.stream_managers[channel_id].stop()
-                del self.stream_managers[channel_id]
+            logging.info(f"Stopping channel {channel_id}")
             
-            # Remove buffer
+            # Stop the stream manager
+            if channel_id in self.stream_managers:
+                manager = self.stream_managers[channel_id]
+                manager.running = False
+                
+                # Close any socket connection
+                if hasattr(manager, '_close_socket'):
+                    manager._close_socket()
+                
+                # Remove from managers dict
+                del self.stream_managers[channel_id]
+                logging.info(f"Removed stream manager for channel {channel_id}")
+            
+            # Clean up buffer
             if channel_id in self.stream_buffers:
                 del self.stream_buffers[channel_id]
+                logging.info(f"Removed stream buffer for channel {channel_id}")
             
-            # Cancel cleanup timer
+            # Clean up client manager
             if channel_id in self.client_managers:
-                if self.client_managers[channel_id].cleanup_timer:
-                    self.client_managers[channel_id].cleanup_timer.cancel()
                 del self.client_managers[channel_id]
+                logging.info(f"Removed client manager for channel {channel_id}")
             
-            # Clean up fetch thread if exists
-            if channel_id in self.fetch_threads:
-                if self.fetch_threads[channel_id].is_alive():
-                    # We can't forcibly terminate threads in Python,
-                    # but we can make sure they're not referenced
-                    pass
-                del self.fetch_threads[channel_id]
-            
-            # Remove Redis active channel marker
+            # Remove Redis activity key
             if self.redis_client:
-                self.redis_client.delete(f"ts_proxy:active_channel:{channel_id}")
+                activity_key = f"ts_proxy:active_channel:{channel_id}"
+                self.redis_client.delete(activity_key)
+                logging.debug(f"Removed activity key for channel {channel_id}")
             
-            logging.info(f"Stopped channel {channel_id}")
             return True
         except Exception as e:
-            logging.error(f"Error stopping channel {channel_id}: {e}")
+            logging.error(f"Error stopping channel {channel_id}: {e}", exc_info=True)
             return False
+
+    def check_inactive_channels(self):
+        """Check for inactive channels (no clients) and stop them"""
+        channels_to_stop = []
+        
+        for channel_id, client_manager in self.client_managers.items():
+            if client_manager.get_client_count() == 0:
+                channels_to_stop.append(channel_id)
+        
+        for channel_id in channels_to_stop:
+            logging.info(f"Auto-stopping inactive channel {channel_id}")
+            self.stop_channel(channel_id)
 
     def _cleanup_channel(self, channel_id: str) -> None:
         """Remove channel resources"""

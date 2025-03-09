@@ -38,5 +38,8 @@ class TSConfig(BaseConfig):
     STREAM_TIMEOUT = 10        # Disconnect after this many seconds of no data
     HEALTH_CHECK_INTERVAL = 5  # Check stream health every N seconds
     
+    # Resource management
+    CLEANUP_INTERVAL = 60  # Check for inactive channels every 60 seconds
+    CHANNEL_GRACE_PERIOD = 0  # Wait 0 seconds after last client disconnects before stopping
 
-    
+

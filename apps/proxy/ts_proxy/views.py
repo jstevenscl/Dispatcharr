@@ -202,9 +202,28 @@ def stream_ts(request, channel_id):
         finally:
             # Clean up client
             elapsed = time.time() - stream_start_time
+            remaining_clients = 0
+            
             if channel_id in proxy_server.client_managers:
-                remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
-                logger.info(f"[{client_id}] Disconnected after {elapsed:.2f}s, {bytes_sent/1024:.1f}KB in {chunks_sent} chunks ({remaining} clients left)")
+                remaining_clients = proxy_server.client_managers[channel_id].remove_client(client_id)
+                logger.info(f"[{client_id}] Disconnected after {elapsed:.2f}s, {bytes_sent/1024:.1f}KB in {chunks_sent} chunks ({remaining_clients} clients left)")
+                
+                # If no clients left, stop the channel after a brief delay
+                if remaining_clients == 0:
+                    logger.info(f"No clients left for channel {channel_id}, scheduling shutdown")
+                    # Use a thread to delay the shutdown by a few seconds
+                    # This gives a small window for reconnections before fully stopping
+                    def delayed_shutdown():
+                        time.sleep(5)  # 5-second grace period
+                        # Check again if still no clients
+                        if channel_id in proxy_server.client_managers and \
+                           proxy_server.client_managers[channel_id].get_client_count() == 0:
+                            logger.info(f"Shutting down channel {channel_id} as no clients connected")
+                            proxy_server.stop_channel(channel_id)
+                    
+                    shutdown_thread = threading.Thread(target=delayed_shutdown)
+                    shutdown_thread.daemon = True
+                    shutdown_thread.start()
     
     # Create streaming response
     response = StreamingHttpResponse(generate(), content_type='video/MP2T')
