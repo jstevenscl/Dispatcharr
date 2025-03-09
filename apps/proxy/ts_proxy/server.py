@@ -11,10 +11,22 @@ import requests
 import threading
 import logging
 import socket 
+import random
 from collections import deque
 import time
+import sys
 from typing import Optional, Set, Deque, Dict
 from apps.proxy.config import TSConfig as Config
+
+# Configure root logger for this module
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - TS_PROXY - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+# Force immediate output
+print("TS PROXY SERVER MODULE LOADED", file=sys.stderr)
 
 class StreamManager:
     """Manages a connection to a TS stream with continuity tracking"""
@@ -72,7 +84,7 @@ class StreamManager:
             self.socket.close()
 
     def _process_complete_packets(self):
-        """Process only complete TS packets from buffer with continuity tracking"""
+        """Process TS packets with detailed logging"""
         try:
             # Find sync byte if needed
             if not self.sync_found and len(self.recv_buffer) >= 376:
@@ -102,50 +114,41 @@ class StreamManager:
             
             if packet_count == 0:
                 return False
-                
-            # Extract and process packets with continuity correction
-            processed_buffer = bytearray()
             
-            for i in range(packet_count):
-                packet_start = i * 188
-                packet = bytearray(self.recv_buffer[packet_start:packet_start + 188])
-                
-                # Check sync byte
-                if packet[0] == 0x47:
-                    # Extract PID (13 bits from bytes 1-2)
-                    pid = ((packet[1] & 0x1F) << 8) | packet[2]
-                    
-                    # Only process continuity for packets that have it
-                    # Skip adaptation-only packets and null packets
-                    if (packet[3] & 0x10) and pid != 0x1FFF:  # Has payload and not null packet
-                        # Extract continuity counter (4 bits from byte 3)
-                        cc = packet[3] & 0x0F
-                        
-                        # Correct continuity counter if we're tracking this PID
-                        if pid in self.continuity_counters:
-                            expected = (self.continuity_counters[pid] + 1) & 0x0F
-                            if cc != expected:
-                                # Rewrite continuity counter to maintain sequence
-                                packet[3] = (packet[3] & 0xF0) | expected
-                        
-                        # Update counter for next time
-                        self.continuity_counters[pid] = packet[3] & 0x0F
-                
-                # Add processed packet to buffer
-                processed_buffer.extend(packet)
+            # Log packet processing
+            logging.debug(f"Processing {packet_count} TS packets ({packet_count * 188} bytes)")
+            
+            # Extract complete packets
+            packets = self.recv_buffer[:packet_count * 188]
             
             # Keep remaining data in buffer
             self.recv_buffer = self.recv_buffer[packet_count * 188:]
             
-            # Send processed packets to buffer
-            if processed_buffer:
-                self.buffer.add_chunk(bytes(processed_buffer))
-                return True
+            # Send packets to buffer
+            if packets:
+                # Log first and last sync byte to validate alignment
+                first_sync = packets[0] if len(packets) > 0 else None
+                last_sync = packets[188 * (packet_count - 1)] if packet_count > 0 else None
+                
+                if first_sync != 0x47 or last_sync != 0x47:
+                    logging.warning(f"TS packet alignment issue: first_sync=0x{first_sync:02x}, last_sync=0x{last_sync:02x}")
+                
+                before_index = self.buffer.index
+                success = self.buffer.add_chunk(bytes(packets))
+                after_index = self.buffer.index
+                
+                # Log successful write
+                if success:
+                    logging.debug(f"Added chunk: {packet_count} packets, buffer index {before_index} → {after_index}")
+                else:
+                    logging.warning("Failed to add chunk to buffer")
+                    
+                return success
                 
             return False
             
         except Exception as e:
-            logging.error(f"Error processing TS packets: {e}")
+            logging.error(f"Error processing TS packets: {e}", exc_info=True)
             self.sync_found = False  # Reset sync state on error
             return False
 
@@ -336,48 +339,174 @@ class StreamBuffer:
             return False
     
     def get_chunks(self, start_index=None):
-        """Get chunks from the buffer starting at the given index"""
+        """Get chunks from the buffer with detailed logging"""
         try:
+            request_id = f"req_{random.randint(1000, 9999)}"
+            logging.debug(f"[{request_id}] get_chunks called with start_index={start_index}")
+            
             if not self.redis_client:
-                # Local fallback
+                # Local fallback (unchanged)
                 chunks = []
                 with self.lock:
                     for idx in sorted(self.local_cache.keys()):
                         if start_index is None or idx > start_index:
                             chunks.append(self.local_cache[idx])
+                logging.debug(f"[{request_id}] Local fallback returned {len(chunks)} chunks")
                 return chunks
-                
+            
             # If no start_index provided, use most recent chunks
             if start_index is None:
-                start_index = max(0, self.index - 50)
+                start_index = max(0, self.index - 10)  # Start closer to current position
+                logging.debug(f"[{request_id}] No start_index provided, using {start_index}")
             
-            # Get current index from Redis
-            current_index = int(self.redis_client.get(self.buffer_index_key) or 0)
+            # Get current index from Redis (cached to reduce load)
+            if not hasattr(self, '_last_redis_check') or time.time() - self._last_redis_check > 0.5:
+                current_index = int(self.redis_client.get(self.buffer_index_key) or 0)
+                self._current_index = current_index
+                self._last_redis_check = time.time()
+                logging.debug(f"[{request_id}] Updated buffer index from Redis: {current_index}")
+            else:
+                current_index = self._current_index
+                logging.debug(f"[{request_id}] Using cached buffer index: {current_index}")
             
-            # Calculate range of chunks to retrieve (up to 50 at a time)
+            # Calculate range of chunks to retrieve
             start_id = start_index + 1
-            end_id = min(current_index + 1, start_id + 50)
+            chunks_behind = current_index - start_id
+            
+            # Adaptive chunk retrieval based on how far behind
+            if chunks_behind > 100:
+                fetch_count = 15
+                logging.debug(f"[{request_id}] Client very behind ({chunks_behind} chunks), fetching {fetch_count}")
+            elif chunks_behind > 50:
+                fetch_count = 10  
+                logging.debug(f"[{request_id}] Client moderately behind ({chunks_behind} chunks), fetching {fetch_count}")
+            elif chunks_behind > 20:
+                fetch_count = 5
+                logging.debug(f"[{request_id}] Client slightly behind ({chunks_behind} chunks), fetching {fetch_count}")
+            else:
+                fetch_count = 3
+                logging.debug(f"[{request_id}] Client up-to-date (only {chunks_behind} chunks behind), fetching {fetch_count}")
+            
+            end_id = min(current_index + 1, start_id + fetch_count)
             
             if start_id >= end_id:
+                logging.debug(f"[{request_id}] No new chunks to fetch (start_id={start_id}, end_id={end_id})")
                 return []
             
-            # Retrieve chunks in a pipeline
-            pipe = self.redis_client.pipeline()
-            for idx in range(start_id, end_id):
-                chunk_key = f"{self.buffer_prefix}{idx}"
-                pipe.get(chunk_key)
+            # Log the range we're retrieving
+            logging.debug(f"[{request_id}] Retrieving chunks {start_id} to {end_id-1} (total: {end_id-start_id})")
             
-            results = pipe.execute()
-            chunks = [r for r in results if r]
+            # Try local cache first to reduce Redis load
+            chunks = []
+            missing_indices = []
+            
+            for idx in range(start_id, end_id):
+                if idx in self.local_cache:
+                    chunks.append(self.local_cache[idx])
+                else:
+                    missing_indices.append(idx)
+            
+            # Log cache hit rate
+            if end_id > start_id:
+                cache_hit_rate = (len(chunks) / (end_id - start_id)) * 100
+                logging.debug(f"[{request_id}] Local cache hit rate: {cache_hit_rate:.1f}% ({len(chunks)}/{end_id-start_id})")
+            
+            # Only retrieve missing chunks from Redis
+            if missing_indices:
+                logging.debug(f"[{request_id}] Fetching {len(missing_indices)} missing chunks from Redis")
+                pipe = self.redis_client.pipeline()
+                for idx in missing_indices:
+                    chunk_key = f"{self.buffer_prefix}{idx}"
+                    pipe.get(chunk_key)
+                
+                results = pipe.execute()
+                
+                # Count non-None results
+                found_chunks = sum(1 for r in results if r is not None)
+                logging.debug(f"[{request_id}] Found {found_chunks}/{len(missing_indices)} chunks in Redis")
+                
+                # Process results and update cache
+                for i, result in enumerate(results):
+                    if result:
+                        idx = missing_indices[i]
+                        chunks.append(result)
+                        # Update local cache
+                        self.local_cache[idx] = result
+                    else:
+                        # Log missing chunks
+                        logging.warning(f"[{request_id}] Chunk {missing_indices[i]} missing from Redis")
             
             # Update local tracking
             if chunks:
                 self.index = end_id - 1
+                
+            # Final log message
+            chunk_sizes = [len(c) for c in chunks]
+            total_bytes = sum(chunk_sizes) if chunks else 0
+            logging.debug(f"[{request_id}] Returning {len(chunks)} chunks ({total_bytes} bytes)")
             
             return chunks
             
         except Exception as e:
-            logging.error(f"Error getting chunks from buffer: {e}")
+            logging.error(f"Error getting chunks from buffer: {e}", exc_info=True)
+            return []
+
+    def get_chunks_exact(self, start_index, count):
+        """Get exactly the requested number of chunks from given index"""
+        try:
+            if not self.redis_client:
+                # Local fallback
+                chunks = []
+                with self.lock:
+                    for idx in range(start_index + 1, start_index + count + 1):
+                        if idx in self.local_cache:
+                            chunks.append(self.local_cache[idx])
+                return chunks
+            
+            # Calculate range to retrieve
+            start_id = start_index + 1
+            end_id = start_id + count
+            
+            # Get current buffer position
+            current_index = int(self.redis_client.get(self.buffer_index_key) or 0)
+            
+            # If requesting beyond current buffer, return what we have
+            if start_id > current_index:
+                return []
+                
+            # Cap end at current buffer position
+            end_id = min(end_id, current_index + 1)
+            
+            # Get chunks from local cache first
+            chunks = []
+            missing_indices = []
+            
+            for idx in range(start_id, end_id):
+                if idx in self.local_cache:
+                    chunks.append(self.local_cache[idx])
+                else:
+                    missing_indices.append(idx)
+            
+            # Get missing chunks from Redis
+            if missing_indices:
+                pipe = self.redis_client.pipeline()
+                for idx in missing_indices:
+                    chunk_key = f"{self.buffer_prefix}{idx}"
+                    pipe.get(chunk_key)
+                
+                results = pipe.execute()
+                
+                # Process results
+                for i, result in enumerate(results):
+                    if result:
+                        idx = missing_indices[i]
+                        chunks.insert(i, result)  # Insert at correct position
+                        self.local_cache[idx] = result
+            
+            return chunks
+            
+        except Exception as e:
+            logging.error(f"Error getting exact chunks: {e}", exc_info=True)
             return []
 
 class ClientManager:
@@ -534,46 +663,76 @@ class ProxyServer:
             logging.error(f"Failed to connect to Redis: {e}")
     
     def initialize_channel(self, url, channel_id):
-        """Initialize a channel"""
+        """Initialize a channel with enhanced logging"""
         try:
+            logging.info(f"Initializing channel {channel_id} with URL: {url}")
+            
             # Clean up any existing Redis entries for this channel
             if self.redis_client:
-                # Delete index key
+                # Get the current state before cleanup for logging
                 index_key = f"ts_proxy:buffer:{channel_id}:index"
+                old_index = self.redis_client.get(index_key)
+                
+                # Count existing chunks for logging
+                pattern = f"ts_proxy:buffer:{channel_id}:chunk:*"
+                old_chunk_count = 0
+                cursor = 0
+                while True:
+                    cursor, keys = self.redis_client.scan(cursor, pattern, 100)
+                    old_chunk_count += len(keys)
+                    if cursor == 0:
+                        break
+                
+                logging.info(f"Found existing channel data: index={old_index}, chunks={old_chunk_count}")
+                
+                # Delete index key
                 self.redis_client.delete(index_key)
+                logging.debug(f"Deleted Redis index key: {index_key}")
                 
                 # Delete all chunks for this channel
-                pattern = f"ts_proxy:buffer:{channel_id}:chunk:*"
+                deleted_chunks = 0
                 cursor = 0
                 while True:
                     cursor, keys = self.redis_client.scan(cursor, pattern, 100)
                     if keys:
                         self.redis_client.delete(*keys)
+                        deleted_chunks += len(keys)
                     if cursor == 0:
                         break
                 
+                logging.info(f"Deleted {deleted_chunks} Redis chunks for channel {channel_id}")
+                
                 # Register this channel as active
-                self.redis_client.set(f"ts_proxy:active_channel:{channel_id}", "1", ex=60)
+                activity_key = f"ts_proxy:active_channel:{channel_id}"
+                self.redis_client.set(activity_key, "1", ex=60)
+                logging.debug(f"Set channel activity key: {activity_key}")
             
             # Create buffer and stream manager
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
+            logging.debug(f"Created StreamBuffer for channel {channel_id}")
+            
             self.stream_buffers[channel_id] = buffer
             
             stream_manager = StreamManager(url, buffer)
+            logging.debug(f"Created StreamManager for channel {channel_id}")
+            
             self.stream_managers[channel_id] = stream_manager
             
-            # FIX: Create client manager without passing channel_id
-            client_manager = ClientManager()  # No arguments here
+            # Create client manager
+            client_manager = ClientManager()
             self.client_managers[channel_id] = client_manager
-            # Set up the cleanup timer afterwards
-            client_manager.start_cleanup_timer(self, channel_id)
+            logging.debug(f"Created ClientManager for channel {channel_id}")
             
             # Start stream manager
-            threading.Thread(target=stream_manager.run, daemon=True).start()
+            thread = threading.Thread(target=stream_manager.run, daemon=True)
+            thread.name = f"stream-{channel_id}"
+            thread.start()
+            logging.info(f"Started stream manager thread for channel {channel_id}")
+            
             return True
             
         except Exception as e:
-            logging.error(f"Error initializing channel: {e}")
+            logging.error(f"Error initializing channel {channel_id}: {e}", exc_info=True)
             return False
     
     def stop_channel(self, channel_id):
@@ -622,3 +781,4 @@ class ProxyServer:
         """Stop all channels and cleanup"""
         for channel_id in list(self.stream_managers.keys()):
             self.stop_channel(channel_id)
+
