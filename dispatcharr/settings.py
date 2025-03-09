@@ -172,6 +172,9 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,  # Optional: Whether to blacklist refresh tokens
 }
 
+# Redis settings for TS proxy
+REDIS_URL = 'redis://localhost:6379/0'
+
 # Proxy Settings
 PROXY_SETTINGS = {
     'HLS': {
@@ -191,5 +194,6 @@ PROXY_SETTINGS = {
         'BUFFER_SIZE': 1000,
         'RECONNECT_DELAY': 5,
         'USER_AGENT': 'VLC/3.0.20 LibVLC/3.0.20',
+        'REDIS_CHUNK_TTL': 60,  # How long to keep chunks in Redis (seconds)
     }
 }

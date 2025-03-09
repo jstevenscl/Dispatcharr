@@ -2,6 +2,7 @@ import json
 import threading
 import logging
 import time
+import random
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -54,77 +55,53 @@ def initialize_stream(request, channel_id):
 @csrf_exempt
 @require_http_methods(["GET"])
 def stream_ts(request, channel_id):
-    """Handle TS stream requests with improved multi-client support"""
+    """Stream TS data to client"""
     if channel_id not in proxy_server.stream_managers:
         return JsonResponse({'error': 'Channel not found'}, status=404)
-        
+    
     def generate():
-        # Use a truly unique client ID (timestamp + random component)
-        import random
         client_id = int(time.time() * 1000) + random.randint(1, 1000)
         
         try:
-            buffer = proxy_server.stream_buffers[channel_id]
+            # Add client to manager
             client_manager = proxy_server.client_managers[channel_id]
-            
-            # Record this client
             client_manager.add_client(client_id)
             
-            # Each client starts at current buffer position
-            with buffer.lock:
-                last_index = buffer.index
+            # Get buffer
+            buffer = proxy_server.stream_buffers.get(channel_id)
+            if not buffer:
+                logger.error(f"No buffer found for channel {channel_id}")
+                return
             
-            logger.info(f"New client {client_id} connected to channel {channel_id} (starting at index {last_index})")
+            # Start at current position
+            local_index = None
             
-            # Yield some initial headers or empty data to establish connection
-            yield b''
-            
-            # Stream indefinitely
+            # Main streaming loop
             while True:
-                new_chunks = False
+                chunks = buffer.get_chunks(local_index)
                 
-                # Minimize lock time - only lock briefly to check and grab data
-                with buffer.lock:
-                    if buffer.index > last_index:
-                        chunks_behind = buffer.index - last_index
-                        # Calculate start position in circular buffer
-                        start_pos = max(0, len(buffer.buffer) - chunks_behind)
-                        
-                        # Get chunks to send (make a copy to avoid long lock)
-                        chunks_to_send = [buffer.buffer[i] for i in range(start_pos, len(buffer.buffer))]
-                        last_index = buffer.index
-                        new_chunks = True
-                
-                if new_chunks:
-                    # Send all collected chunks outside the lock
-                    for chunk in chunks_to_send:
+                if chunks:
+                    # Send chunks to client
+                    for chunk in chunks:
                         yield chunk
+                    
+                    # Update local index
+                    local_index = buffer.index
                 else:
-                    # Shorter sleep to be more responsive
-                    time.sleep(0.05)
-                
+                    # No data available, wait briefly
+                    time.sleep(0.1)
+                    
         except Exception as e:
             logger.error(f"Streaming error for client {client_id}, channel {channel_id}: {e}")
         finally:
-            try:
-                if channel_id in proxy_server.client_managers:
-                    remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
-                    logger.info(f"Client {client_id} disconnected from channel {channel_id} ({remaining} clients remaining)")
-                    
-                    # Keep channel active with at least one client
-                    if remaining == 0:
-                        logger.info(f"No clients remaining, stopping channel {channel_id}")
-                        proxy_server.stop_channel(channel_id)
-            except Exception as e:
-                logger.error(f"Error during client cleanup: {e}")
+            # Clean up client
+            if channel_id in proxy_server.client_managers:
+                remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
+                logger.info(f"Client {client_id} disconnected from channel {channel_id} ({remaining} clients remaining)")
     
-    # Create response with appropriate streaming settings
-    response = StreamingHttpResponse(
-        generate(),
-        content_type='video/MP2T'
-    )
+    # Create streaming response
+    response = StreamingHttpResponse(generate(), content_type='video/MP2T')
     response['Cache-Control'] = 'no-cache, no-store'
-    response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering
     return response
 
 @csrf_exempt
