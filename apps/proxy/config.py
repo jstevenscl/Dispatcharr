@@ -5,6 +5,8 @@ class BaseConfig:
     CHUNK_SIZE = 8192
     CLIENT_POLL_INTERVAL = 0.1
     MAX_RETRIES = 3
+    # Redis settings
+    REDIS_CHUNK_TTL = 60  # Number in seconds - Chunks expire after 1 minute
 
 class HLSConfig(BaseConfig):
     MIN_SEGMENTS = 12
@@ -33,9 +35,8 @@ class TSConfig(BaseConfig):
     
     # Streaming settings
     TARGET_BITRATE = 8000000   # Target bitrate (8 Mbps)
-    STREAM_TIMEOUT = 30        # Disconnect after this many seconds of no data
+    STREAM_TIMEOUT = 10        # Disconnect after this many seconds of no data
     HEALTH_CHECK_INTERVAL = 5  # Check stream health every N seconds
     
-    # Redis settings
-    REDIS_CHUNK_TTL = 3600  # Chunks expire after 1 hour in Redis (renamed from REDIS_CHUNK_EXPIRY)
+
     
