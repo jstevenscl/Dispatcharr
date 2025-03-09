@@ -19,7 +19,7 @@ from rest_framework.pagination import PageNumberPagination
 class StreamPagination(PageNumberPagination):
     page_size = 25  # Default page size
     page_size_query_param = 'page_size'  # Allow clients to specify page size
-    max_page_size = 1000  # Prevent excessive page sizes
+    max_page_size = 10000  # Prevent excessive page sizes
 
 class StreamFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr='icontains')
