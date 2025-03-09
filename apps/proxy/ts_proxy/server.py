@@ -32,6 +32,7 @@ class StreamManager:
     """Manages a connection to a TS stream with continuity tracking"""
     
     def __init__(self, url, buffer, user_agent=None):
+        # Existing initialization code
         self.url = url
         self.buffer = buffer
         self.running = True
@@ -48,7 +49,12 @@ class StreamManager:
         self.TS_PACKET_SIZE = 188
         self.recv_buffer = bytearray()
         self.sync_found = False
-        self.continuity_counters = {}  # Track continuity counters for each PID
+        self.continuity_counters = {}
+        
+        # Stream health monitoring
+        self.last_data_time = time.time()
+        self.healthy = True
+        self.health_check_interval = 5  # Check health every 5 seconds
         
         # Buffer management
         self._last_buffer_check = time.time()
@@ -164,49 +170,103 @@ class StreamManager:
         return self._process_complete_packets()
 
     def run(self):
-        """Main execution loop for stream manager"""
+        """Main execution loop with stream health monitoring"""
         try:
+            # Start health monitor thread
+            health_thread = threading.Thread(target=self._monitor_health, daemon=True)
+            health_thread.start()
+            
             # Establish network connection
             import socket
             import requests
             
             logging.info(f"Starting stream for URL: {self.url}")
             
-            # Parse URL
-            if self.url.startswith("http"):
-                # HTTP connection
-                session = self._create_session()
-                
+            while self.running:
                 try:
-                    # Create an initial connection to get socket
-                    response = session.get(self.url, stream=True)
-                    if response.status_code == 200:
-                        self.connected = True
-                        self.socket = response.raw._fp.fp.raw
+                    # Parse URL
+                    if self.url.startswith("http"):
+                        # HTTP connection
+                        session = self._create_session()
                         
-                        # Main fetch loop
-                        while self.running:
-                            if not self.fetch_chunk():
-                                if not self.running:
-                                    break
-                                time.sleep(1)
-                                continue
+                        try:
+                            # Create an initial connection to get socket
+                            response = session.get(self.url, stream=True)
+                            if response.status_code == 200:
+                                self.connected = True
+                                self.socket = response.raw._fp.fp.raw
+                                self.healthy = True
+                                logging.info("Successfully connected to stream source")
                                 
+                                # Main fetch loop
+                                while self.running and self.connected:
+                                    if self.fetch_chunk():
+                                        self.last_data_time = time.time()  # Update last data time
+                                    else:
+                                        if not self.running:
+                                            break
+                                        # Short sleep to prevent CPU spinning
+                                        time.sleep(0.1)
+                                        
+                            else:
+                                logging.error(f"Failed to connect to stream: HTTP {response.status_code}")
+                                time.sleep(2)  # Wait before retry
+                                
+                        finally:
+                            session.close()
                     else:
-                        logging.error(f"Failed to connect to stream: HTTP {response.status_code}")
+                        # Direct socket connection (UDP/TCP)
+                        logging.error(f"Unsupported URL scheme: {self.url}")
                         
-                finally:
-                    session.close()
-            else:
-                # Direct socket connection (UDP/TCP)
-                logging.error(f"Unsupported URL scheme: {self.url}")
-                
+                    # If we're still running but not connected, retry
+                    if self.running and not self.connected:
+                        self.retry_count += 1
+                        if self.retry_count > self.max_retries:
+                            logging.error(f"Maximum retry attempts ({self.max_retries}) exceeded")
+                            break
+                        
+                        timeout = min(2 ** self.retry_count, 30)  # Exponential backoff
+                        logging.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
+                        time.sleep(timeout)
+                    
+                except Exception as e:
+                    logging.error(f"Connection error: {e}")
+                    self._close_socket()
+                    time.sleep(5)  # Wait before retry
+                    
         except Exception as e:
             logging.error(f"Stream error: {e}")
             self._close_socket()
         finally:
             self._close_socket()
             logging.info("Stream manager stopped")
+    
+    def _monitor_health(self):
+        """Monitor stream health and attempt recovery if needed"""
+        while self.running:
+            try:
+                now = time.time()
+                if now - self.last_data_time > 10 and self.connected:
+                    # No data for 10 seconds, mark as unhealthy
+                    if self.healthy:
+                        logging.warning("Stream health check: No data received for 10+ seconds")
+                        self.healthy = False
+                    
+                    # After 30 seconds with no data, force reconnection
+                    if now - self.last_data_time > 30:
+                        logging.warning("Stream appears dead, forcing reconnection")
+                        self._close_socket()
+                        self.connected = False
+                        self.last_data_time = time.time()  # Reset timer for the reconnect
+                elif self.connected and not self.healthy:
+                    # Stream is receiving data again after being unhealthy
+                    logging.info("Stream health restored, receiving data again")
+                    self.healthy = True
+                    
+            except Exception as e:
+                logging.error(f"Error in health monitor: {e}")
+                
+            time.sleep(self.health_check_interval)
     
     def _close_socket(self):
         """Close the socket connection safely"""

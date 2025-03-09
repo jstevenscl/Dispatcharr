@@ -69,7 +69,7 @@ def initialize_stream(request, channel_id):
 @csrf_exempt
 @require_http_methods(["GET"])
 def stream_ts(request, channel_id):
-    """Stream TS data to client with synchronized delivery timing"""
+    """Stream TS data to client with proper EOF handling"""
     if channel_id not in proxy_server.stream_managers:
         return JsonResponse({'error': 'Channel not found'}, status=404)
     
@@ -83,53 +83,40 @@ def stream_ts(request, channel_id):
             client_manager = proxy_server.client_managers[channel_id]
             client_manager.add_client(client_id)
             
-            # Get buffer and set initial position for this client
+            # Get buffer and stream manager
             buffer = proxy_server.stream_buffers.get(channel_id)
-            if not buffer:
-                logger.error(f"[{client_id}] No buffer found for channel {channel_id}")
+            stream_manager = proxy_server.stream_managers[channel_id]
+            if not buffer or not stream_manager:
+                logger.error(f"[{client_id}] No buffer/stream manager for channel {channel_id}")
                 return
             
-            # Start 30 chunks behind current position
-            local_index = max(0, buffer.index - 30)
-            initial_position = local_index
-            
             # Client state tracking
+            local_index = max(0, buffer.index - 30)  # Start 30 chunks behind
             last_yield_time = time.time()
             empty_reads = 0
             bytes_sent = 0
             chunks_sent = 0
             stream_start_time = time.time()
+            consecutive_empty = 0  # Track consecutive empty reads
             
-            # Critical timing parameters
+            # Timing parameters
             ts_packet_size = 188
-            target_bitrate = 8000000  # Target ~8 Mbps (typical for HD)
+            target_bitrate = 8000000  # ~8 Mbps
             packets_per_second = target_bitrate / (8 * ts_packet_size)
-            packets_per_batch = 200   # How many packets to send in one batch
-            target_batch_time = packets_per_batch / packets_per_second  # Time one batch should take
-
-            logger.info(f"[{client_id}] Starting stream at index {initial_position} (buffer at {buffer.index})")
-            logger.info(f"[{client_id}] Target bitrate: {target_bitrate/1000000:.1f} Mbps, packets/sec: {packets_per_second:.1f}")
             
-            # For rate limiting
-            batch_start_time = time.time()
+            logger.info(f"[{client_id}] Starting stream at index {local_index} (buffer at {buffer.index})")
             
             # Main streaming loop
             while True:
-                # Log buffer state periodically
-                if empty_reads % 50 == 0:
-                    current_buffer_index = buffer.index
-                    chunks_behind = current_buffer_index - local_index
-                    logger.debug(f"[{client_id}] Buffer state: Client={local_index}, Buffer={current_buffer_index}, Behind={chunks_behind}")
-                
-                # Get exactly 5 chunks (or whatever is available)
+                # Get chunks at client's position
                 chunks = buffer.get_chunks_exact(local_index, 5)
                 
                 if chunks:
-                    # Calculate total packet count for this batch to maintain timing
-                    total_packets = sum(len(chunk) // ts_packet_size for chunk in chunks)
-                    batch_start_time = time.time()
+                    # Reset empty counters since we got data
+                    empty_reads = 0
+                    consecutive_empty = 0
                     
-                    # Log chunk retrieval
+                    # Track and send chunks
                     chunk_sizes = [len(c) for c in chunks]
                     total_size = sum(chunk_sizes)
                     start_idx = local_index + 1
@@ -137,71 +124,67 @@ def stream_ts(request, channel_id):
                     
                     logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {start_idx} to {end_idx}")
                     
-                    # Track how many packets we've sent in this batch
-                    packets_sent_in_batch = 0
-                    
-                    # Send chunks with precise timing to maintain PCR synchronization
+                    # Send chunks with pacing
                     for chunk in chunks:
-                        # Count packets in this chunk
-                        packets_in_chunk = len(chunk) // ts_packet_size
-                        
-                        # Send the chunk
                         bytes_sent += len(chunk)
                         chunks_sent += 1
                         yield chunk
-                        
-                        packets_sent_in_batch += packets_in_chunk
-                        
-                        # Calculate elapsed time to maintain target bitrate
-                        elapsed = time.time() - batch_start_time
-                        target_time = packets_sent_in_batch / packets_per_second
-                        
-                        # If we're sending too fast, add a small delay
-                        if elapsed < target_time and packets_sent_in_batch < total_packets:
-                            sleep_time = target_time - elapsed
-                            # Limit max sleep to prevent long pauses
-                            sleep_time = min(sleep_time, 0.05)
-                            if sleep_time > 0.001:  # Only sleep for meaningful amounts
-                                time.sleep(sleep_time)
+                        time.sleep(0.01)  # Small spacing between chunks
                     
-                    # After sending a complete batch, ensure proper pacing
-                    batch_elapsed = time.time() - batch_start_time
-                    if batch_elapsed < target_batch_time:
-                        time.sleep(target_batch_time - batch_elapsed)
-                    
-                    # Update progress stats periodically
+                    # Log progress periodically
                     if chunks_sent % 100 == 0:
                         elapsed = time.time() - stream_start_time
                         rate = bytes_sent / elapsed / 1024 if elapsed > 0 else 0
-                        logger.info(f"[{client_id}] Streaming stats: {chunks_sent} chunks, {bytes_sent/1024:.1f} KB sent, {rate:.1f} KB/s")
+                        logger.info(f"[{client_id}] Stats: {chunks_sent} chunks, {bytes_sent/1024:.1f}KB, {rate:.1f}KB/s")
                     
-                    # Update local index to last chunk received
+                    # Update local index
                     local_index = end_idx
                     last_yield_time = time.time()
-                    empty_reads = 0
                 else:
-                    # No new data yet
+                    # No chunks available
                     empty_reads += 1
-                    sleep_time = 0.1
-                    time.sleep(sleep_time)
+                    consecutive_empty += 1
                     
-                    # Log empty reads periodically 
+                    # Check if we're caught up to buffer head
+                    at_buffer_head = local_index >= buffer.index
+                    
+                    # If we're at buffer head and stream is unhealthy, send keepalive
+                    if at_buffer_head and not stream_manager.healthy and consecutive_empty >= 5:
+                        # Create a null TS packet as keepalive (188 bytes filled with padding)
+                        # This prevents VLC from hitting EOF
+                        keepalive_packet = bytearray(188)
+                        keepalive_packet[0] = 0x47  # Sync byte
+                        keepalive_packet[1] = 0x1F  # PID high bits (null packet)
+                        keepalive_packet[2] = 0xFF  # PID low bits (null packet)
+                        
+                        logger.debug(f"[{client_id}] Sending keepalive packet while waiting at buffer head")
+                        yield bytes(keepalive_packet)
+                        bytes_sent += len(keepalive_packet)
+                        last_yield_time = time.time()
+                        consecutive_empty = 0  # Reset consecutive counter but keep total empty_reads
+                        time.sleep(0.5)  # Longer sleep after keepalive
+                    else:
+                        # Standard wait
+                        sleep_time = min(0.1 * consecutive_empty, 1.0)  # Progressive backoff up to 1s
+                        time.sleep(sleep_time)
+                        
+                    # Log empty reads periodically
                     if empty_reads % 50 == 0:
-                        logger.debug(f"[{client_id}] Waiting for new chunks beyond index {local_index} (buffer at {buffer.index})")
+                        logger.debug(f"[{client_id}] Waiting for chunks beyond {local_index} (buffer at {buffer.index}, stream health: {stream_manager.healthy})")
                     
-                    # Safety timeout
-                    if time.time() - last_yield_time > 10:
-                        logger.warning(f"[{client_id}] No data for 10 seconds, disconnecting")
+                    # Disconnect after long inactivity, but only if stream is dead
+                    if time.time() - last_yield_time > 30 and not stream_manager.healthy:
+                        logger.warning(f"[{client_id}] No data for 30s and stream unhealthy, disconnecting")
                         break
                     
         except Exception as e:
-            logger.error(f"[{client_id}] Streaming error: {e}", exc_info=True)
+            logger.error(f"[{client_id}] Stream error: {e}", exc_info=True)
         finally:
             # Clean up client
             elapsed = time.time() - stream_start_time
             if channel_id in proxy_server.client_managers:
                 remaining = proxy_server.client_managers[channel_id].remove_client(client_id)
-                logger.info(f"[{client_id}] Disconnected after {elapsed:.2f}s, sent {bytes_sent/1024:.1f} KB in {chunks_sent} chunks ({remaining} clients left)")
+                logger.info(f"[{client_id}] Disconnected after {elapsed:.2f}s, {bytes_sent/1024:.1f}KB in {chunks_sent} chunks ({remaining} clients left)")
     
     # Create streaming response
     response = StreamingHttpResponse(generate(), content_type='video/MP2T')
