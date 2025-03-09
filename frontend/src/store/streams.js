@@ -3,14 +3,19 @@ import api from '../api';
 
 const useStreamsStore = create((set) => ({
   streams: [],
+  count: 0,
   isLoading: false,
   error: null,
 
   fetchStreams: async () => {
     set({ isLoading: true, error: null });
     try {
-      const streams = await api.getStreams();
-      set({ streams: streams, isLoading: false });
+      const response = await api.getStreams();
+      set({
+        streams: response.results,
+        count: response.count,
+        isLoading: false,
+      });
     } catch (error) {
       console.error('Failed to fetch streams:', error);
       set({ error: 'Failed to load streams.', isLoading: false });
