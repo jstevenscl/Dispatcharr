@@ -29,7 +29,7 @@ class TSConfig(BaseConfig):
     MAX_RETRIES = 3         # maximum connection retry attempts
     
     # Buffer settings
-    INITIAL_BEHIND_CHUNKS = 30  # How many chunks behind to start a client
+    INITIAL_BEHIND_CHUNKS = 100  # How many chunks behind to start a client
     CHUNK_BATCH_SIZE = 5       # How many chunks to fetch in one batch
     KEEPALIVE_INTERVAL = 0.5   # Seconds between keepalive packets when at buffer head
     
@@ -46,4 +46,5 @@ class TSConfig(BaseConfig):
     CLIENT_RECORD_TTL = 5  # How long client records persist in Redis (seconds). Client will be considered MIA after this time.
     CLEANUP_CHECK_INTERVAL = 1  # How often to check for disconnected clients (seconds)
     CHANNEL_INIT_GRACE_PERIOD = 5  # How long to wait for first client after initialization (seconds)
+    CLIENT_HEARTBEAT_INTERVAL = 1  # How often to send client heartbeats (seconds)
 
