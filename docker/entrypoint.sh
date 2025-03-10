@@ -94,18 +94,6 @@ uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")
 
-# Add TS proxy uwsgi (add this section)
-echo "🚀 Starting TS proxy uwsgi (single worker)..."
-ts_proxy_uwsgi_file="/app/docker/uwsgi.ts_proxy.ini"
-su - $POSTGRES_USER -c "cd /app && uwsgi --ini $ts_proxy_uwsgi_file --pidfile /tmp/uwsgi_ts_proxy.pid &"
-ts_uwsgi_pid=$(cat /tmp/uwsgi_ts_proxy.pid 2>/dev/null || pgrep -f "uwsgi.*ts_proxy" | sort | head -n1)
-if [ -n "$ts_uwsgi_pid" ]; then
-    echo "✅ TS proxy uwsgi started with PID $ts_uwsgi_pid"
-    pids+=("$ts_uwsgi_pid")
-else
-    echo "⚠️ Warning: Could not determine TS proxy uwsgi PID"
-fi
-
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then
     echo "⏳ Waiting for processes to exit..."
