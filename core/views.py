@@ -83,7 +83,10 @@ def stream_view(request, stream_id):
 
                 logger.debug(f'Profile has a max streams of {profile.max_streams}, checking if any are available')
                 stream_index = 0
-                while stream_index < profile.max_streams:
+                max_streams = profile.max_streams
+                if max_streams == 0:
+                    max_streams = 999999 # maybe a better way than just hardcoding a high number...
+                while stream_index < max_streams:
                     stream_index += 1
 
                     lock_key = f"lock:{profile.id}:{stream_index}"

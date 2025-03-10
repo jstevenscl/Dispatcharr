@@ -4,6 +4,7 @@ import api from '../api';
 const useChannelsStore = create((set) => ({
   channels: [],
   channelGroups: [],
+  channelsPageSelection: [],
   isLoading: false,
   error: null,
 
@@ -11,7 +12,13 @@ const useChannelsStore = create((set) => ({
     set({ isLoading: true, error: null });
     try {
       const channels = await api.getChannels();
-      set({ channels: channels, isLoading: false });
+      set({
+        channels: channels.reduce((acc, channel) => {
+          acc[channel.id] = channel;
+          return acc;
+        }, {}),
+        isLoading: false,
+      });
     } catch (error) {
       console.error('Failed to fetch channels:', error);
       set({ error: 'Failed to load channels.', isLoading: false });
@@ -31,27 +38,37 @@ const useChannelsStore = create((set) => ({
 
   addChannel: (newChannel) =>
     set((state) => ({
-      channels: [...state.channels, newChannel],
+      channels: {
+        ...state.channels,
+        [newChannel.id]: newChannel,
+      },
     })),
 
   addChannels: (newChannels) =>
     set((state) => ({
-      channels: state.channels.concat(newChannels),
+      channels: {
+        ...state.channels,
+        ...newChannels,
+      },
     })),
 
-  updateChannel: (userAgent) =>
+  updateChannel: (channel) =>
     set((state) => ({
-      channels: state.channels.map((chan) =>
-        chan.id === userAgent.id ? userAgent : chan
-      ),
+      channels: {
+        ...state.channels,
+        [channel.id]: channel,
+      },
     })),
 
   removeChannels: (channelIds) =>
-    set((state) => ({
-      channels: state.channels.filter(
-        (channel) => !channelIds.includes(channel.id)
-      ),
-    })),
+    set((state) => {
+      const updatedChannels = { ...state.channels };
+      for (const id of channelIds) {
+        delete updatedChannels[id];
+      }
+
+      return { channels: updatedChannels };
+    }),
 
   addChannelGroup: (newChannelGroup) =>
     set((state) => ({
@@ -64,6 +81,9 @@ const useChannelsStore = create((set) => ({
         group.id === channelGroup.id ? channelGroup : group
       ),
     })),
+
+  setChannelsPageSelection: (channelsPageSelection) =>
+    set((state) => ({ channelsPageSelection })),
 }));
 
 export default useChannelsStore;

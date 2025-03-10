@@ -168,7 +168,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   }
 
   // The “Watch Now” click => show floating video
-  const { showVideo } = useVideoStore.getState(); // or useVideoStore()
+  const { showVideo } = useVideoStore(); // or useVideoStore()
   function handleWatchStream(program) {
     const matched = findChannelByTvgId(program.tvg_id);
     if (!matched) {

@@ -149,7 +149,7 @@ const Example = () => {
     data: playlists,
     enablePagination: false,
     enableRowVirtualization: true,
-    enableRowSelection: true,
+    // enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
@@ -197,6 +197,8 @@ const Example = () => {
     muiTableContainerProps: {
       sx: {
         height: 'calc(43vh - 0px)',
+        pr: 1,
+        pl: 1,
       },
     },
     renderTopToolbarCustomActions: ({ table }) => (

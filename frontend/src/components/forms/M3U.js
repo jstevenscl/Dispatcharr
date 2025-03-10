@@ -42,6 +42,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
       server_url: '',
       user_agent: '',
       is_active: true,
+      max_streams: 0,
     },
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
@@ -160,7 +161,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
             fullWidth
             id="max_streams"
             name="max_streams"
-            label="Max Streams"
+            label="Max Streams (0 = unlimited)"
             value={formik.values.max_streams}
             onChange={formik.handleChange}
             onBlur={formik.handleBlur}

@@ -63,7 +63,13 @@ export default function FloatingVideo() {
         }}
       >
         {/* Simple header row with a close button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: '4px',
+          }}
+        >
           <button
             onClick={hideVideo}
             style={{
