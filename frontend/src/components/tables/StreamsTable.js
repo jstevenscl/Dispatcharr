@@ -2,6 +2,7 @@ import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import {
   MaterialReactTable,
   useMaterialReactTable,
+  MRT_ShowHideColumnsButton, // <-- import this
 } from 'material-react-table';
 import {
   Box,
@@ -15,14 +16,18 @@ import {
   TextField,
   Autocomplete,
   InputAdornment,
+  Paper,
 } from '@mui/material';
 import API from '../../api';
+import { useTheme } from '@mui/material/styles';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Add as AddIcon,
   MoreVert as MoreVertIcon,
   PlaylistAdd as PlaylistAddIcon,
+  IndeterminateCheckBox,
+  AddBox,
 } from '@mui/icons-material';
 import { TableHelper } from '../../helpers';
 import StreamForm from '../forms/Stream';
@@ -32,6 +37,8 @@ import { useDebounce } from '../../utils';
 import { SquarePlus, ListPlus } from 'lucide-react';
 
 const StreamsTable = ({}) => {
+  const theme = useTheme();
+
   /**
    * useState
    */
@@ -60,6 +67,7 @@ const StreamsTable = ({}) => {
     m3u_account: '',
   });
   const debouncedFilters = useDebounce(filters, 500);
+  const hasData = data.length > 0;
 
   /**
    * Stores
@@ -74,6 +82,15 @@ const StreamsTable = ({}) => {
 
   // Access the row virtualizer instance (optional)
   const rowVirtualizerInstanceRef = useRef(null);
+
+  const eligibleSelectedStreamId = selectedStreamIds.find(
+    (id) =>
+      channelsPageSelection.length === 1 &&
+      !(
+        channelSelectionStreams &&
+        channelSelectionStreams.map((stream) => stream.id).includes(id)
+      )
+  );
 
   /**
    * useMemo
@@ -97,29 +114,6 @@ const StreamsTable = ({}) => {
             size="small"
             margin="none"
             fullWidth
-            sx={
-              {
-                // '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
-                // '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
-                // width: '200px', // Optional: Adjust width
-              }
-            }
-            // slotProps={{
-            //   input: {
-            //     endAdornment: (
-            //       <InputAdornment position="end">
-            //         <IconButton
-            //           onClick={() => handleFilterChange(column.id, '')} // Clear text on click
-            //           edge="end"
-            //           size="small"
-            //           sx={{ p: 0 }}
-            //         >
-            //           <ClearIcon sx={{ fontSize: '1rem' }} />
-            //         </IconButton>
-            //       </InputAdornment>
-            //     ),
-            //   },
-            // }}
           />
         ),
       },
@@ -131,7 +125,6 @@ const StreamsTable = ({}) => {
             disablePortal
             options={groupOptions}
             size="small"
-            // sx={{ width: 300 }}
             clearOnEscape
             onChange={(e, value) => {
               e.stopPropagation();
@@ -146,9 +139,9 @@ const StreamsTable = ({}) => {
                 onClick={(e) => e.stopPropagation()}
                 sx={{
                   pb: 0.8,
-                  '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
-                  '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
-                  width: '200px', // Optional: Adjust width
+                  '& .MuiInputBase-root': { fontSize: '0.875rem' },
+                  '& .MuiInputLabel-root': { fontSize: '0.75rem' },
+                  width: '200px',
                 }}
               />
             )}
@@ -168,7 +161,6 @@ const StreamsTable = ({}) => {
               value: playlist.id,
             }))}
             size="small"
-            // sx={{ width: 300 }}
             clearOnEscape
             onChange={(e, value) => {
               e.stopPropagation();
@@ -183,9 +175,9 @@ const StreamsTable = ({}) => {
                 onClick={(e) => e.stopPropagation()}
                 sx={{
                   pb: 0.8,
-                  '& .MuiInputBase-root': { fontSize: '0.875rem' }, // Text size
-                  '& .MuiInputLabel-root': { fontSize: '0.75rem' }, // Label size
-                  width: '200px', // Optional: Adjust width
+                  '& .MuiInputBase-root': { fontSize: '0.875rem' },
+                  '& .MuiInputLabel-root': { fontSize: '0.75rem' },
+                  width: '200px',
                 }}
               />
             )}
@@ -208,7 +200,6 @@ const StreamsTable = ({}) => {
   };
 
   const handleGroupChange = (value) => {
-    console.log(value);
     setFilters((prev) => ({
       ...prev,
       group_name: value ? value.value : '',
@@ -216,7 +207,6 @@ const StreamsTable = ({}) => {
   };
 
   const handleM3UChange = (value) => {
-    console.log(value);
     setFilters((prev) => ({
       ...prev,
       m3u_account: value ? value.value : '',
@@ -354,7 +344,7 @@ const StreamsTable = ({}) => {
         typeof updater === 'function' ? updater(prevRowSelection) : updater;
 
       const updatedSelected = new Set([...selectedStreamIds]);
-      table.getRowModel().rows.map((row) => {
+      table.getRowModel().rows.forEach((row) => {
         if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
           updatedSelected.delete(row.original.id);
         } else {
@@ -372,12 +362,9 @@ const StreamsTable = ({}) => {
     if (selectAll) {
       // Get all stream IDs for current view
       const params = new URLSearchParams();
-
-      // Apply debounced filters
       Object.entries(debouncedFilters).forEach(([key, value]) => {
         if (value) params.append(key, value);
       });
-
       const ids = await API.getAllStreamIds(params);
       setSelectedStreamIds(ids);
     } else {
@@ -407,9 +394,12 @@ const StreamsTable = ({}) => {
     data,
     enablePagination: true,
     manualPagination: true,
+    enableTopToolbar: false, // completely removes MRT's built-in top toolbar
     enableRowVirtualization: true,
+    renderTopToolbar: () => null, // Removes the entire top toolbar
+    renderToolbarInternalActions: () => null, 
     rowVirtualizerInstanceRef,
-    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
+    rowVirtualizerOptions: { overscan: 5 }, // optionally customize the row virtualizer
     manualSorting: true,
     enableBottomToolbar: true,
     enableStickyHeader: true,
@@ -418,9 +408,9 @@ const StreamsTable = ({}) => {
     rowCount: rowCount,
     enableRowSelection: true,
     muiSelectAllCheckboxProps: {
-      checked: selectedStreamIds.length == rowCount,
+      checked: selectedStreamIds.length === rowCount && rowCount > 0,
       indeterminate:
-        selectedStreamIds.length > 0 && selectedStreamIds.length != rowCount,
+        selectedStreamIds.length > 0 && selectedStreamIds.length !== rowCount,
       onChange: onSelectAllChange,
     },
     onRowSelectionChange: onRowSelectionChange,
@@ -428,13 +418,22 @@ const StreamsTable = ({}) => {
       density: 'compact',
     },
     state: {
-      isLoading: isLoading,
+      isLoading,
       sorting,
       pagination,
       rowSelection,
     },
     enableRowActions: true,
     positionActionsColumn: 'first',
+
+    enableHiding: false,
+
+    // you can still use the custom toolbar callback if you like
+    renderTopToolbarCustomActions: ({ table }) => {
+      const selectedRowCount = table.getSelectedRowModel().rows.length;
+      // optionally do something with selectedRowCount
+    },
+
     renderRowActions: ({ row }) => (
       <>
         <Tooltip title="Add to Channel">
@@ -444,7 +443,7 @@ const StreamsTable = ({}) => {
             onClick={() => addStreamToChannel(row.original.id)}
             sx={{ py: 0, px: 0.5 }}
             disabled={
-              channelsPageSelection.length != 1 ||
+              channelsPageSelection.length !== 1 ||
               (channelSelectionStreams &&
                 channelSelectionStreams
                   .map((stream) => stream.id)
@@ -475,7 +474,7 @@ const StreamsTable = ({}) => {
         </IconButton>
         <Menu
           anchorEl={moreActionsAnchorEl}
-          open={isMoreActionsOpen && actionsOpenRow == row.original.id}
+          open={isMoreActionsOpen && actionsOpenRow === row.original.id}
           onClose={handleMoreActionsClose}
         >
           <MenuItem
@@ -509,56 +508,6 @@ const StreamsTable = ({}) => {
         size: 50,
       },
     },
-    renderTopToolbarCustomActions: ({ table }) => {
-      const selectedRowCount = table.getSelectedRowModel().rows.length;
-
-      return (
-        <Stack direction="row" sx={{ alignItems: 'center' }}>
-          <Typography>Streams</Typography>
-          <Tooltip title="Add New Stream">
-            <IconButton
-              size="small"
-              color="success"
-              variant="contained"
-              onClick={() => editStream()}
-            >
-              <SquarePlus size="18" fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete Streams">
-            <IconButton
-              size="small"
-              color="error"
-              variant="contained"
-              onClick={deleteStreams}
-              disabled={setSelectedStreamIds == 0 || unselectedStreamIds == 0}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Button
-            variant="contained"
-            onClick={createChannelsFromStreams}
-            size="small"
-            sx={{ marginLeft: 1 }}
-            disabled={selectedRowCount == 0}
-          >
-            CREATE CHANNELS
-          </Button>
-          <Button
-            variant="contained"
-            onClick={addStreamsToChannel}
-            size="small"
-            sx={{ marginLeft: 1 }}
-            disabled={
-              channelsPageSelection.length != 1 || selectedRowCount == 0
-            }
-          >
-            ADD TO CHANNEL
-          </Button>
-        </Stack>
-      );
-    },
   });
 
   /**
@@ -585,12 +534,304 @@ const StreamsTable = ({}) => {
 
   return (
     <Box>
-      <MaterialReactTable table={table} />
-      <StreamForm
-        stream={stream}
-        isOpen={modalOpen}
-        onClose={closeStreamForm}
-      />
+      {/* Header Row */}
+      <Box sx={{ display: 'flex', alignItems: 'center', pb: 1 }}>
+        <Typography
+          sx={{
+            width: 88,
+            height: 24,
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 500,
+            fontSize: '20px',
+            lineHeight: 1,
+            letterSpacing: '-0.3px',
+            color: theme.palette.text.secondary,
+            mb: 0,
+          }}
+        >
+          Streams
+        </Typography>
+      </Box>
+
+      {/* Paper container with ghost state vs table */}
+      <Paper
+        sx={{
+          bgcolor: theme.palette.background.paper,
+          borderRadius: 2,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Top toolbar: always visible */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: theme.palette.background.paper,
+            justifyContent: 'flex-end',
+            p: 1,
+            gap: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="Remove">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={
+                  <IndeterminateCheckBox
+                    sx={{ fontSize: 16, color: theme.palette.text.secondary }}
+                  />
+                }
+                sx={{
+                  borderColor: theme.palette.custom.borderDefault,
+                  borderRadius: '4px',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  height: '25px',
+                  opacity: 0.4,
+                  color: theme.palette.text.secondary,
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    borderColor: theme.palette.custom.borderHover,
+                  },
+                }}
+              >
+                Remove
+              </Button>
+            </Tooltip>
+            <Tooltip title="Add to Channel">
+              <span>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={
+                    <AddBox
+                      sx={{ fontSize: 16, color: theme.palette.text.secondary }}
+                    />
+                  }
+                  disabled={
+                    channelsPageSelection.length !== 1 ||
+                    !eligibleSelectedStreamId
+                  }
+                  onClick={() => {
+                    if (eligibleSelectedStreamId) {
+                      addStreamToChannel(eligibleSelectedStreamId);
+                    }
+                  }}
+                  sx={{
+                    minWidth: '57px',
+                    height: '25px',
+                    borderRadius: '4px',
+                    borderColor: theme.palette.custom.successBorder,
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    backgroundColor: theme.palette.custom.successBg,
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    px: 1,
+                    py: 0.5,
+                    '&:hover': {
+                      backgroundColor: theme.palette.custom.successBgHover,
+                    },
+                  }}
+                >
+                  Add to Channel
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title="Create Channels">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={
+                  <AddBox
+                    sx={{ fontSize: 16, color: theme.palette.text.secondary }}
+                  />
+                }
+                disabled={selectedStreamIds.length === 0}
+                sx={{
+                  minWidth: '57px',
+                  height: '25px',
+                  borderRadius: '4px',
+                  borderColor: theme.palette.custom.successBorder,
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  backgroundColor: theme.palette.custom.successBg,
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    backgroundColor: theme.palette.custom.successBgHover,
+                  },
+                }}
+                onClick={() => createChannelsFromStreams()}
+              >
+                Create Channels
+              </Button>
+            </Tooltip>
+            <Tooltip title="Add Channel">
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => editStream()}
+                startIcon={
+                  <AddBox
+                    sx={{
+                      fontSize: 16,
+                      color: theme.palette.custom.successIcon,
+                    }}
+                  />
+                }
+                sx={{
+                  minWidth: '57px',
+                  height: '25px',
+                  borderRadius: '4px',
+                  borderColor: theme.palette.custom.successBorder,
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  backgroundColor: theme.palette.custom.successBg,
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    backgroundColor: theme.palette.custom.successBgHover,
+                  },
+                }}
+              >
+                Add
+              </Button>
+            </Tooltip>
+
+            {/* Show/Hide Columns Button added to top bar */}
+            <Tooltip title="Show/Hide Columns">
+              <MRT_ShowHideColumnsButton table={table} />
+            </Tooltip>
+          </Box>
+        </Box>
+
+        {/* Main content */}
+        <Box
+          sx={{
+            flex: 1,
+            position: 'relative',
+            bgcolor: theme.palette.background.paper,
+          }}
+        >
+          <StreamForm stream={stream} isOpen={modalOpen} onClose={closeStreamForm} />
+          {hasData ? (
+            <Box>
+              <MaterialReactTable table={table} />
+            </Box>
+          ) : (
+            // Ghost state placeholder, shown when there is no data
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '25%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '420px',
+                height: '247px',
+                border: '1px solid #52525C',
+                borderRadius: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                p: 2,
+                textAlign: 'center',
+              }}
+            >
+              <Typography
+                sx={{
+                  fontWeight: 400,
+                  fontSize: '20px',
+                  lineHeight: '28px',
+                  letterSpacing: '-0.3px',
+                  color: '#D4D4D8',
+                  mb: 1,
+                }}
+              >
+                Getting started
+              </Typography>
+              <Typography
+                sx={{
+                  fontWeight: 400,
+                  fontSize: '16px',
+                  lineHeight: '24px',
+                  letterSpacing: '-0.2px',
+                  color: '#9FA3A9',
+                  width: '372px',
+                  mb: 2,
+                }}
+              >
+                In order to get started, add your M3U or start adding custom streams.
+              </Typography>
+              <Button
+                variant="contained"
+                sx={{
+                  minWidth: '127px',
+                  height: '25px',
+                  borderRadius: '4px',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  color: theme.palette.text.secondary,
+                  borderColor: theme.palette.custom.borderHover,
+                  backgroundColor: '#1f1f23',
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 400,
+                  fontSize: '0.85rem',
+                  letterSpacing: '-0.2px',
+                  textTransform: 'none',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    borderColor: theme.palette.custom.borderDefault,
+                    backgroundColor: '#17171B',
+                  },
+                }}
+              >
+                Add M3U
+              </Button>
+              <Typography sx={{ fontSize: '14px', color: '#71717B', mb: 1 }}>
+                or
+              </Typography>
+              <Button
+                variant="contained"
+                sx={{
+                  minWidth: '127px',
+                  height: '25px',
+                  borderRadius: '4px',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  color: theme.palette.text.secondary,
+                  borderColor: theme.palette.custom.borderHover,
+                  backgroundColor: '#1f1f23',
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 400,
+                  fontSize: '0.85rem',
+                  letterSpacing: '-0.2px',
+                  textTransform: 'none',
+                  px: 1,
+                  py: 0.5,
+                  '&:hover': {
+                    borderColor: theme.palette.custom.borderDefault,
+                    backgroundColor: '#17171B',
+                  },
+                }}
+              >
+                Add Individual Stream
+              </Button>
+            </Box>
+          )}
+        </Box>
+      </Paper>
     </Box>
   );
 };
