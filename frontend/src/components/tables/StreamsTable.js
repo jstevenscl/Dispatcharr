@@ -559,6 +559,7 @@ const StreamsTable = ({}) => {
           bgcolor: theme.palette.background.paper,
           borderRadius: 2,
           overflow: 'hidden',
+          height: 'calc(100vh - 75px)',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -725,9 +726,13 @@ const StreamsTable = ({}) => {
         >
           <StreamForm stream={stream} isOpen={modalOpen} onClose={closeStreamForm} />
           {hasData ? (
-            <Box>
-              <MaterialReactTable table={table} />
+            <Box sx={{ width: "100%", height: "calc(102vh - 150px)", overflow: "auto" }}>
+              <MaterialReactTable 
+                table={table} 
+                sx={{ height: "100%" }} 
+              />
             </Box>
+
           ) : (
             // Ghost state placeholder, shown when there is no data
             <Box
