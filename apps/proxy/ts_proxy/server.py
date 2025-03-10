@@ -197,6 +197,7 @@ class StreamManager:
             health_thread.start()
             
             current_response = None  # Track the current response object
+            current_session = None   # Track the current session
             
             # Establish network connection
             import socket
@@ -210,6 +211,7 @@ class StreamManager:
                     if self.url.startswith("http"):
                         # HTTP connection
                         session = self._create_session()
+                        current_session = session
                         
                         try:
                             # Create an initial connection to get socket
@@ -242,7 +244,13 @@ class StreamManager:
                                 except Exception as e:
                                     logging.debug(f"Error closing response: {e}")
                                 current_response = None
-                            session.close()
+                            
+                            if current_session:
+                                try:
+                                    current_session.close()
+                                except Exception as e:
+                                    logging.debug(f"Error closing session: {e}")
+                                current_session = None
                     else:
                         logging.error(f"Unsupported URL scheme: {self.url}")
                     
@@ -541,34 +549,95 @@ class StreamBuffer:
             return []
 
 class ClientManager:
-    """Manages connected clients for a channel with activity tracking"""
+    """Manages connected clients for a channel with cross-worker visibility"""
     
-    def __init__(self):
-        self.clients = set()
+    def __init__(self, channel_id, redis_client=None):
+        self.channel_id = channel_id
+        self.redis_client = redis_client
+        self.clients = set()  # Local clients only
         self.lock = threading.Lock()
         self.last_active_time = time.time()
+        self.client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+        self.client_ttl = getattr(Config, 'CLIENT_RECORD_TTL', 5) 
     
     def add_client(self, client_id):
-        """Add a client to this channel"""
+        """Add a client to this channel locally and in Redis"""
         with self.lock:
             self.clients.add(client_id)
             self.last_active_time = time.time()
-            logging.info(f"New client connected: {client_id} (total: {len(self.clients)})")
+            
+            # Track in Redis if available
+            if self.redis_client:
+                # Add to channel's client set
+                self.redis_client.sadd(self.client_set_key, client_id)
+                
+                # Set TTL on the whole set
+                self.redis_client.expire(self.client_set_key, self.client_ttl)
+                
+                # Also track client individually with TTL for cleanup
+                client_key = f"ts_proxy:client:{self.channel_id}:{client_id}"
+                self.redis_client.setex(client_key, self.client_ttl, "1")
+            
+            # Get total clients across all workers
+            total_clients = self.get_total_client_count()
+            logging.info(f"New client connected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
+            
         return len(self.clients)
     
     def remove_client(self, client_id):
-        """Remove a client from this channel and return remaining count"""
+        """Remove a client from this channel and Redis"""
         with self.lock:
             if client_id in self.clients:
                 self.clients.remove(client_id)
-            self.last_active_time = time.time()  # Update activity time on disconnect too
-            logging.info(f"Client disconnected: {client_id} (remaining: {len(self.clients)})")
+            self.last_active_time = time.time()
+            
+            # Remove from Redis
+            if self.redis_client:
+                # Remove from channel's client set
+                self.redis_client.srem(self.client_set_key, client_id)
+                
+                # Delete individual client key
+                client_key = f"ts_proxy:client:{self.channel_id}:{client_id}"
+                self.redis_client.delete(client_key)
+            
+            # Get remaining clients across all workers
+            total_clients = self.get_total_client_count()
+            logging.info(f"Client disconnected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
+            
         return len(self.clients)
     
     def get_client_count(self):
-        """Get current client count"""
+        """Get local client count"""
         with self.lock:
             return len(self.clients)
+    
+    def get_total_client_count(self):
+        """Get total client count across all workers"""
+        if not self.redis_client:
+            return len(self.clients)
+            
+        try:
+            # Count members in the client set
+            return self.redis_client.scard(self.client_set_key) or 0
+        except Exception as e:
+            logging.error(f"Error getting total client count: {e}")
+            return len(self.clients)  # Fall back to local count
+            
+    def refresh_client_ttl(self):
+        """Refresh TTL for active clients to prevent expiration"""
+        if not self.redis_client:
+            return
+            
+        try:
+            # Refresh TTL for all clients belonging to this worker
+            for client_id in self.clients:
+                client_key = f"ts_proxy:client:{self.channel_id}:{client_id}"
+                self.redis_client.expire(client_key, self.client_ttl)
+                
+            # Refresh TTL on the set itself
+            self.redis_client.expire(self.client_set_key, self.client_ttl)
+        except Exception as e:
+            logging.error(f"Error refreshing client TTL: {e}")
 
 class StreamFetcher:
     """Handles stream data fetching"""
@@ -810,8 +879,8 @@ class ProxyServer:
                 buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
                 self.stream_buffers[channel_id] = buffer
                 
-                # Create client manager
-                client_manager = ClientManager()
+                # Create client manager with channel_id and redis_client
+                client_manager = ClientManager(channel_id=channel_id, redis_client=self.redis_client)
                 self.client_managers[channel_id] = client_manager
                 
                 return True
@@ -831,8 +900,8 @@ class ProxyServer:
                 buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
                 self.stream_buffers[channel_id] = buffer
                 
-                # Create client manager
-                client_manager = ClientManager()
+                # Create client manager with channel_id and redis_client
+                client_manager = ClientManager(channel_id=channel_id, redis_client=self.redis_client)
                 self.client_managers[channel_id] = client_manager
                 
                 return True
@@ -850,8 +919,8 @@ class ProxyServer:
             logging.debug(f"Created StreamManager for channel {channel_id}")
             self.stream_managers[channel_id] = stream_manager
             
-            # Create client manager
-            client_manager = ClientManager()
+            # Create client manager with channel_id and redis_client
+            client_manager = ClientManager(channel_id=channel_id, redis_client=self.redis_client)
             self.client_managers[channel_id] = client_manager
             
             # Set channel activity key (separate from lock key)
@@ -892,10 +961,11 @@ class ProxyServer:
             
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
+                logging.info(f"This worker ({self.worker_id}) is the owner - will close provider connection")
                 if channel_id in self.stream_managers:
                     stream_manager = self.stream_managers[channel_id]
                     
-                    # Signal thread to stop and close resources
+                    # Signal thread to stop and close resources using the proper stop method
                     if hasattr(stream_manager, 'stop'):
                         stream_manager.stop()
                     else:
@@ -903,27 +973,63 @@ class ProxyServer:
                         if hasattr(stream_manager, '_close_socket'):
                             stream_manager._close_socket()
                 
+                # Look for the thread and wait for it to finish
+                stream_thread_name = f"stream-{channel_id}"
+                stream_thread = None
+                
+                for thread in threading.enumerate():
+                    if thread.name == stream_thread_name:
+                        stream_thread = thread
+                        break
+                
+                if stream_thread and stream_thread.is_alive():
+                    logging.info(f"Waiting for stream thread to terminate")
+                    try:
+                        # Very short timeout to prevent hanging the app
+                        stream_thread.join(timeout=2.0)
+                        if stream_thread.is_alive():
+                            logging.warning(f"Stream thread did not terminate within timeout")
+                    except RuntimeError:
+                        logging.debug("Could not join stream thread (may be current thread)")
+                
                 # Release ownership
                 self.release_ownership(channel_id)
+                logging.info(f"Released ownership of channel {channel_id}")
+            else:
+                logging.info(f"This worker ({self.worker_id}) is not the owner - cleaning local resources only")
             
             # Always clean up local resources
             if channel_id in self.stream_managers:
                 del self.stream_managers[channel_id]
+                logging.info(f"Removed stream manager for channel {channel_id}")
             
             if channel_id in self.stream_buffers:
                 del self.stream_buffers[channel_id]
+                logging.info(f"Removed stream buffer for channel {channel_id}")
             
             if channel_id in self.client_managers:
                 del self.client_managers[channel_id]
+                logging.info(f"Removed client manager for channel {channel_id}")
             
-            # Clean up shared Redis data only if no other workers are using this channel
+            # Clean up Redis data
             if self.redis_client:
-                # Check if any worker still owns this channel
-                if not self.redis_client.exists(f"ts_proxy:channel:{channel_id}:owner"):
-                    # No owner, safe to remove Redis data
-                    self.redis_client.delete(f"ts_proxy:channel:{channel_id}")
-                    self.redis_client.delete(f"ts_proxy:active_channel:{channel_id}")
-                    logging.info(f"Removed Redis data for channel {channel_id}")
+                # Clean up Redis metadata and index keys
+                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                self.redis_client.delete(metadata_key)
+                
+                # Clean up activity key
+                activity_key = f"ts_proxy:active_channel:{channel_id}"
+                self.redis_client.delete(activity_key)
+                
+                # Clean up buffer index
+                buffer_index_key = f"ts_proxy:buffer:{channel_id}:index"
+                self.redis_client.delete(buffer_index_key)
+                
+                # Clean up last data key
+                last_data_key = f"ts_proxy:channel:{channel_id}:last_data"
+                self.redis_client.delete(last_data_key)
+                
+                logging.info(f"Removed Redis data for channel {channel_id}")
             
             return True
         except Exception as e:
@@ -956,39 +1062,38 @@ class ProxyServer:
     def _start_cleanup_thread(self):
         """Start background thread to maintain ownership and clean up resources"""
         def cleanup_task():
-            # Initial delay to let initialization complete
-            time.sleep(10)
-            
             while True:
                 try:
+                    # Sleep first
+                    time.sleep(self.cleanup_interval)
+                    
                     # Extend ownership for channels we own
                     for channel_id in list(self.stream_managers.keys()):
                         if self.am_i_owner(channel_id):
                             self.extend_ownership(channel_id)
+                            
+                            # Owner should check total clients across all workers
+                            if channel_id in self.client_managers:
+                                client_manager = self.client_managers[channel_id]
+                                total_clients = client_manager.get_total_client_count()
+                                
+                                # If no clients anywhere, stop the channel
+                                if total_clients == 0:
+                                    logging.info(f"No clients left for channel {channel_id} across all workers, stopping channel")
+                                    self.stop_channel(channel_id)
+                                else:
+                                    # Refresh client TTLs for this worker's clients
+                                    client_manager.refresh_client_ttl()
+                                    logging.debug(f"Channel {channel_id}: {total_clients} total clients across all workers")
                     
-                    # Check for inactive channels but ONLY those we own
-                    channels_to_stop = []
+                    # Non-owner workers just refresh their client TTLs
                     for channel_id, client_manager in self.client_managers.items():
-                        # Only stop channels we own and that have no clients
-                        if self.am_i_owner(channel_id) and client_manager.get_client_count() == 0:
-                            # Make sure it's been inactive for a while
-                            if hasattr(client_manager, 'last_active_time'):
-                                inactive_seconds = time.time() - client_manager.last_active_time
-                                if inactive_seconds > 30:  # 30 seconds grace period
-                                    channels_to_stop.append(channel_id)
-                            else:
-                                channels_to_stop.append(channel_id)
-                    
-                    for channel_id in channels_to_stop:
-                        logging.info(f"Auto-stopping inactive channel {channel_id}")
-                        self.stop_channel(channel_id)
+                        if not self.am_i_owner(channel_id):
+                            client_manager.refresh_client_ttl()
                     
                 except Exception as e:
                     logging.error(f"Error in cleanup thread: {e}")
-                
-                # Sleep at the end
-                time.sleep(self.cleanup_interval)
-        
+                    
         thread = threading.Thread(target=cleanup_task, daemon=True)
         thread.name = "ts-proxy-cleanup"
         thread.start()

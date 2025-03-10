@@ -41,5 +41,8 @@ class TSConfig(BaseConfig):
     # Resource management
     CLEANUP_INTERVAL = 60  # Check for inactive channels every 60 seconds
     CHANNEL_GRACE_PERIOD = 0  # Wait 0 seconds after last client disconnects before stopping
+    
+    # Client tracking settings
+    CLIENT_RECORD_TTL = 5  # How long client records persist in Redis (seconds). Client will be considered MIA after this time.
 
 
