@@ -577,6 +577,10 @@ class ClientManager:
                 # Also track client individually with TTL for cleanup
                 client_key = f"ts_proxy:client:{self.channel_id}:{client_id}"
                 self.redis_client.setex(client_key, self.client_ttl, "1")
+                
+                # Clear any initialization timer by removing the init_time key
+                init_key = f"ts_proxy:channel:{self.channel_id}:init_time"
+                self.redis_client.delete(init_key)
             
             # Get total clients across all workers
             total_clients = self.get_total_client_count()
@@ -934,6 +938,34 @@ class ProxyServer:
             thread.start()
             logging.info(f"Started stream manager thread for channel {channel_id}")
             
+            # If we're the owner, start a grace period timer for first client
+            if self.am_i_owner(channel_id):
+                # Set a timestamp to track initialization time
+                if self.redis_client:
+                    init_key = f"ts_proxy:channel:{channel_id}:init_time"
+                    self.redis_client.setex(init_key, Config.CLIENT_RECORD_TTL, str(time.time()))
+                    
+                    # Start a timer thread to check for first client
+                    def check_first_client():
+                        # Wait for the grace period
+                        time.sleep(getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 10))
+                        
+                        # After grace period, check if any clients connected
+                        if channel_id in self.client_managers:
+                            total_clients = self.client_managers[channel_id].get_total_client_count()
+                            
+                            if total_clients == 0:
+                                logging.info(f"No clients connected to channel {channel_id} within grace period, shutting down")
+                                self.stop_channel(channel_id)
+                            else:
+                                logging.info(f"Channel {channel_id} has {total_clients} clients, staying active")
+                    
+                    # Start the timer thread
+                    timer_thread = threading.Thread(target=check_first_client, daemon=True)
+                    timer_thread.name = f"init-timer-{channel_id}"
+                    timer_thread.start()
+                    logging.info(f"Started initial connection grace period ({Config.CHANNEL_INIT_GRACE_PERIOD}s) for channel {channel_id}")
+            
             return True
             
         except Exception as e:
@@ -961,11 +993,11 @@ class ProxyServer:
             
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
-                logging.info(f"This worker ({self.worker_id}) is the owner - will close provider connection")
+                logging.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")
                 if channel_id in self.stream_managers:
                     stream_manager = self.stream_managers[channel_id]
                     
-                    # Signal thread to stop and close resources using the proper stop method
+                    # Signal thread to stop and close resources
                     if hasattr(stream_manager, 'stop'):
                         stream_manager.stop()
                     else:
@@ -973,7 +1005,7 @@ class ProxyServer:
                         if hasattr(stream_manager, '_close_socket'):
                             stream_manager._close_socket()
                 
-                # Look for the thread and wait for it to finish
+                # Wait for stream thread to finish
                 stream_thread_name = f"stream-{channel_id}"
                 stream_thread = None
                 
@@ -995,8 +1027,6 @@ class ProxyServer:
                 # Release ownership
                 self.release_ownership(channel_id)
                 logging.info(f"Released ownership of channel {channel_id}")
-            else:
-                logging.info(f"This worker ({self.worker_id}) is not the owner - cleaning local resources only")
             
             # Always clean up local resources
             if channel_id in self.stream_managers:
@@ -1011,25 +1041,8 @@ class ProxyServer:
                 del self.client_managers[channel_id]
                 logging.info(f"Removed client manager for channel {channel_id}")
             
-            # Clean up Redis data
-            if self.redis_client:
-                # Clean up Redis metadata and index keys
-                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                self.redis_client.delete(metadata_key)
-                
-                # Clean up activity key
-                activity_key = f"ts_proxy:active_channel:{channel_id}"
-                self.redis_client.delete(activity_key)
-                
-                # Clean up buffer index
-                buffer_index_key = f"ts_proxy:buffer:{channel_id}:index"
-                self.redis_client.delete(buffer_index_key)
-                
-                # Clean up last data key
-                last_data_key = f"ts_proxy:channel:{channel_id}:last_data"
-                self.redis_client.delete(last_data_key)
-                
-                logging.info(f"Removed Redis data for channel {channel_id}")
+            # Clean up Redis keys
+            self._clean_redis_keys(channel_id)
             
             return True
         except Exception as e:
@@ -1062,40 +1075,149 @@ class ProxyServer:
     def _start_cleanup_thread(self):
         """Start background thread to maintain ownership and clean up resources"""
         def cleanup_task():
+            # Wait for initialization
+            time.sleep(5)
+            
             while True:
                 try:
-                    # Sleep first
-                    time.sleep(self.cleanup_interval)
-                    
-                    # Extend ownership for channels we own
+                    # For channels we own, check total clients and cleanup as needed
                     for channel_id in list(self.stream_managers.keys()):
                         if self.am_i_owner(channel_id):
+                            # Extend ownership lease
                             self.extend_ownership(channel_id)
                             
-                            # Owner should check total clients across all workers
+                            # Check if channel has any clients left
                             if channel_id in self.client_managers:
                                 client_manager = self.client_managers[channel_id]
                                 total_clients = client_manager.get_total_client_count()
                                 
-                                # If no clients anywhere, stop the channel
                                 if total_clients == 0:
-                                    logging.info(f"No clients left for channel {channel_id} across all workers, stopping channel")
-                                    self.stop_channel(channel_id)
+                                    # Either we're in initialization grace period or shutdown delay
+                                    init_key = f"ts_proxy:channel:{channel_id}:init_time"
+                                    no_clients_key = f"ts_proxy:channel:{channel_id}:no_clients_since"
+                                    
+                                    init_time = None
+                                    no_clients_since = None
+                                    
+                                    if self.redis_client:
+                                        # Get initialization time if exists
+                                        init_value = self.redis_client.get(init_key)
+                                        if init_value:
+                                            init_time = float(init_value.decode('utf-8'))
+                                        
+                                        # Get no clients timestamp if exists
+                                        no_clients_value = self.redis_client.get(no_clients_key)
+                                        if no_clients_value:
+                                            no_clients_since = float(no_clients_value.decode('utf-8'))
+                                    
+                                    current_time = time.time()
+                                    
+                                    # Handle initialization grace period expiration
+                                    if init_time and current_time - init_time > getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 10):
+                                        logging.info(f"No clients connected to channel {channel_id} within grace period, shutting down")
+                                        self.stop_channel(channel_id)
+                                        continue
+                                    
+                                    # Handle no clients since tracking
+                                    if not no_clients_since:
+                                        # First time seeing zero clients, set timestamp
+                                        if self.redis_client:
+                                            self.redis_client.setex(no_clients_key, Config.CLIENT_RECORD_TTL, str(current_time))
+                                        logging.info(f"No clients detected for channel {channel_id}, starting shutdown timer")
+                                    elif current_time - no_clients_since > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
+                                        # We've had no clients for the shutdown delay period
+                                        logging.info(f"No clients for {current_time - no_clients_since:.1f}s, stopping channel {channel_id}")
+                                        self.stop_channel(channel_id)
                                 else:
-                                    # Refresh client TTLs for this worker's clients
-                                    client_manager.refresh_client_ttl()
-                                    logging.debug(f"Channel {channel_id}: {total_clients} total clients across all workers")
+                                    # There are clients - clear any no-clients timestamp
+                                    if self.redis_client:
+                                        self.redis_client.delete(f"ts_proxy:channel:{channel_id}:no_clients_since")
                     
-                    # Non-owner workers just refresh their client TTLs
-                    for channel_id, client_manager in self.client_managers.items():
+                    # Non-owner workers just refresh client TTLs
+                    for channel_id, client_manager in list(self.client_managers.items()):
                         if not self.am_i_owner(channel_id):
                             client_manager.refresh_client_ttl()
+                            
+                    # Check for orphaned channels in Redis
+                    self._check_orphaned_channels()
                     
                 except Exception as e:
-                    logging.error(f"Error in cleanup thread: {e}")
-                    
+                    logging.error(f"Error in cleanup thread: {e}", exc_info=True)
+                
+                # Run more frequently to detect client disconnects quickly
+                time.sleep(getattr(Config, 'CLEANUP_CHECK_INTERVAL', 3))
+        
         thread = threading.Thread(target=cleanup_task, daemon=True)
         thread.name = "ts-proxy-cleanup"
         thread.start()
-        logging.info(f"Started TS proxy cleanup thread (interval: {self.cleanup_interval}s)")
+        logging.info(f"Started TS proxy cleanup thread (interval: {getattr(Config, 'CLEANUP_CHECK_INTERVAL', 3)}s)")
+
+    def _check_orphaned_channels(self):
+        """Check for orphaned channels in Redis (owner worker crashed)"""
+        if not self.redis_client:
+            return
+            
+        try:
+            # Get all active channel keys
+            channel_pattern = "ts_proxy:channel:*:metadata"
+            channel_keys = self.redis_client.keys(channel_pattern)
+            
+            for key in channel_keys:
+                try:
+                    channel_id = key.decode('utf-8').split(':')[2]
+                    
+                    # Skip channels we already have locally
+                    if channel_id in self.stream_buffers:
+                        continue
+                        
+                    # Check if this channel has an owner
+                    owner = self.get_channel_owner(channel_id)
+                    
+                    if not owner:
+                        # Check if there are any clients
+                        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+                        client_count = self.redis_client.scard(client_set_key) or 0
+                        
+                        if client_count > 0:
+                            # Orphaned channel with clients - we could take ownership
+                            logging.info(f"Found orphaned channel {channel_id} with {client_count} clients")
+                        else:
+                            # Orphaned channel with no clients - clean it up
+                            logging.info(f"Cleaning up orphaned channel {channel_id}")
+                            self._clean_redis_keys(channel_id)
+                except Exception as e:
+                    logging.error(f"Error processing channel key {key}: {e}")
+                    
+        except Exception as e:
+            logging.error(f"Error checking orphaned channels: {e}")
+
+    def _clean_redis_keys(self, channel_id):
+        """Clean up all Redis keys for a channel"""
+        if not self.redis_client:
+            return
+            
+        try:
+            # Delete metadata and related keys
+            keys_to_delete = [
+                f"ts_proxy:channel:{channel_id}:metadata",
+                f"ts_proxy:channel:{channel_id}:owner",
+                f"ts_proxy:active_channel:{channel_id}",
+                f"ts_proxy:buffer:{channel_id}:index",
+                f"ts_proxy:channel:{channel_id}:last_data",
+                f"ts_proxy:channel:{channel_id}:clients",
+                f"ts_proxy:channel:{channel_id}:no_clients_since"
+            ]
+            
+            if keys_to_delete:
+                self.redis_client.delete(*keys_to_delete)
+                
+            # Delete chunk keys with pattern matching
+            chunk_pattern = f"ts_proxy:buffer:{channel_id}:chunk:*"
+            chunk_keys = self.redis_client.keys(chunk_pattern)
+            if chunk_keys:
+                self.redis_client.delete(*chunk_keys)
+                
+            logging.info(f"Cleaned up Redis keys for channel {channel_id}")
+        except Exception as e:
+            logging.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
 

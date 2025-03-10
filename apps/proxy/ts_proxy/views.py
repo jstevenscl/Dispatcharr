@@ -267,7 +267,7 @@ def stream_ts(request, channel_id):
         except Exception as e:
             logger.error(f"[{client_id}] Stream error: {e}", exc_info=True)
         finally:
-            # Client cleanup - simpler now since owner tracks all clients
+            # Client cleanup
             elapsed = time.time() - stream_start_time
             local_clients = 0
             
@@ -275,7 +275,28 @@ def stream_ts(request, channel_id):
                 local_clients = proxy_server.client_managers[channel_id].remove_client(client_id)
                 total_clients = proxy_server.client_managers[channel_id].get_total_client_count()
                 logger.info(f"[{client_id}] Disconnected after {elapsed:.2f}s, {bytes_sent/1024:.1f}KB in {chunks_sent} chunks (local: {local_clients}, total: {total_clients})")
-            
+                
+                # If no clients left and we're the owner, schedule shutdown using the config value
+                if local_clients == 0 and proxy_server.am_i_owner(channel_id):
+                    logger.info(f"No local clients left for channel {channel_id}, scheduling shutdown")
+                    def delayed_shutdown():
+                        # Use the config setting instead of hardcoded value
+                        shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)
+                        logger.info(f"Waiting {shutdown_delay}s before checking if channel should be stopped")
+                        time.sleep(shutdown_delay)
+                        
+                        # After delay, check global client count
+                        if channel_id in proxy_server.client_managers:
+                            total = proxy_server.client_managers[channel_id].get_total_client_count()
+                            if total == 0:
+                                logger.info(f"Shutting down channel {channel_id} as no clients connected")
+                                proxy_server.stop_channel(channel_id)
+                            else:
+                                logger.info(f"Not shutting down channel {channel_id}, {total} clients still connected")
+                    
+                    shutdown_thread = threading.Thread(target=delayed_shutdown)
+                    shutdown_thread.daemon = True
+                    shutdown_thread.start()
             
     # Create streaming response
     response = StreamingHttpResponse(generate(), content_type='video/MP2T')
