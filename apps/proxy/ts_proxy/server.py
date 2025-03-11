@@ -1022,62 +1022,62 @@ class ProxyServer:
                                             self.stop_channel(channel_id)
 
 
-                            elif event_type == "stream_switch":
-                                logging.info(f"Owner received stream switch request for channel {channel_id}")
-                                # Handle stream switch request
-                                new_url = data.get("url")
-                                user_agent = data.get("user_agent")
-                                
-                                if new_url and channel_id in self.stream_managers:
-                                    # Update metadata in Redis
-                                    if self.redis_client:
-                                        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                                        self.redis_client.hset(metadata_key, "url", new_url)
-                                        if user_agent:
-                                            self.redis_client.hset(metadata_key, "user_agent", user_agent)
-                                        
-                                        # Set switch status
-                                        status_key = f"ts_proxy:channel:{channel_id}:switch_status"
-                                        self.redis_client.set(status_key, "switching")
+                                elif event_type == "stream_switch":
+                                    logging.info(f"Owner received stream switch request for channel {channel_id}")
+                                    # Handle stream switch request
+                                    new_url = data.get("url")
+                                    user_agent = data.get("user_agent")
                                     
-                                    # Perform the stream switch
-                                    stream_manager = self.stream_managers[channel_id]
-                                    success = stream_manager.update_url(new_url)
-                                    
-                                    if success:
-                                        logging.info(f"Stream switch initiated for channel {channel_id}")
-                                        
-                                        # Publish confirmation
-                                        switch_result = {
-                                            "event": "stream_switched",
-                                            "channel_id": channel_id,
-                                            "success": True,
-                                            "url": new_url,
-                                            "timestamp": time.time()
-                                        }
-                                        self.redis_client.publish(
-                                            f"ts_proxy:events:{channel_id}", 
-                                            json.dumps(switch_result)
-                                        )
-                                        
-                                        # Update status
+                                    if new_url and channel_id in self.stream_managers:
+                                        # Update metadata in Redis
                                         if self.redis_client:
-                                            self.redis_client.set(status_key, "switched")
-                                    else:
-                                        logging.error(f"Failed to switch stream for channel {channel_id}")
+                                            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                            self.redis_client.hset(metadata_key, "url", new_url)
+                                            if user_agent:
+                                                self.redis_client.hset(metadata_key, "user_agent", user_agent)
+                                            
+                                            # Set switch status
+                                            status_key = f"ts_proxy:channel:{channel_id}:switch_status"
+                                            self.redis_client.set(status_key, "switching")
                                         
-                                        # Publish failure
-                                        switch_result = {
-                                            "event": "stream_switched",
-                                            "channel_id": channel_id,
-                                            "success": False,
-                                            "url": new_url,
-                                            "timestamp": time.time()
-                                        }
-                                        self.redis_client.publish(
-                                            f"ts_proxy:events:{channel_id}", 
-                                            json.dumps(switch_result)
-                                        )
+                                        # Perform the stream switch
+                                        stream_manager = self.stream_managers[channel_id]
+                                        success = stream_manager.update_url(new_url)
+                                        
+                                        if success:
+                                            logging.info(f"Stream switch initiated for channel {channel_id}")
+                                            
+                                            # Publish confirmation
+                                            switch_result = {
+                                                "event": "stream_switched",
+                                                "channel_id": channel_id,
+                                                "success": True,
+                                                "url": new_url,
+                                                "timestamp": time.time()
+                                            }
+                                            self.redis_client.publish(
+                                                f"ts_proxy:events:{channel_id}", 
+                                                json.dumps(switch_result)
+                                            )
+                                            
+                                            # Update status
+                                            if self.redis_client:
+                                                self.redis_client.set(status_key, "switched")
+                                        else:
+                                            logging.error(f"Failed to switch stream for channel {channel_id}")
+                                            
+                                            # Publish failure
+                                            switch_result = {
+                                                "event": "stream_switched",
+                                                "channel_id": channel_id,
+                                                "success": False,
+                                                "url": new_url,
+                                                "timestamp": time.time()
+                                            }
+                                            self.redis_client.publish(
+                                                f"ts_proxy:events:{channel_id}", 
+                                                json.dumps(switch_result)
+                                            )
                     except Exception as e:
                         logging.error(f"Error processing event message: {e}")
             except Exception as e:
