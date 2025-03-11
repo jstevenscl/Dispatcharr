@@ -98,11 +98,46 @@ def stream_ts(request, channel_id):
         chunks_sent = 0
         
         try:
-            logger.info(f"[{client_id}] New client connected to channel {channel_id}")
+            # ENHANCED USER AGENT DETECTION - check multiple possible headers
+            user_agent = None
             
-            # Add client to manager
+            # Try multiple possible header formats
+            ua_headers = ['HTTP_USER_AGENT', 'User-Agent', 'user-agent', 'User_Agent']
+            
+            for header in ua_headers:
+                if header in request.META:
+                    user_agent = request.META[header]
+                    logger.debug(f"Found user agent in header: {header}")
+                    break
+                    
+            # Try request.headers dictionary (Django 2.2+)
+            if not user_agent and hasattr(request, 'headers'):
+                for header in ['User-Agent', 'user-agent']:
+                    if header in request.headers:
+                        user_agent = request.headers[header]
+                        logger.debug(f"Found user agent in request.headers: {header}")
+                        break
+            
+            # Final fallback - check if in any header with case-insensitive matching
+            if not user_agent:
+                for key, value in request.META.items():
+                    if key.upper().replace('_', '-') == 'USER-AGENT':
+                        user_agent = value
+                        logger.debug(f"Found user agent in alternate header: {key}")
+                        break
+            
+            # Log headers for debugging user agent issues
+            if not user_agent:
+                # Log all headers to help troubleshoot
+                headers = {k: v for k, v in request.META.items() if k.startswith('HTTP_')}
+                logger.debug(f"No user agent found in request. Available headers: {headers}")
+                user_agent = "Unknown-Client"  # Default value instead of None
+            
+            logger.info(f"[{client_id}] New client connected to channel {channel_id} with user agent: {user_agent}")
+            
+            # Add client to manager with user agent
             client_manager = proxy_server.client_managers[channel_id]
-            client_count = client_manager.add_client(client_id)
+            client_count = client_manager.add_client(client_id, user_agent)
             
             # If this is the first client, try to acquire ownership
             if client_count == 1 and not proxy_server.am_i_owner(channel_id):
