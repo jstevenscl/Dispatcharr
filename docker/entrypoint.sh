@@ -50,6 +50,8 @@ fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
 
+pip install django-filter
+
 # Run init scripts
 echo "Starting init process..."
 . /app/docker/init/01-user-setup.sh
