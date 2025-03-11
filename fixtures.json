@@ -68,5 +68,13 @@
       "name": "Default Stream Profile",
       "value": "1"
     }
+  },
+  {
+  "model": "core.coresettings",
+  "fields": {
+    "key": "preferred-region",
+    "name": "Preferred Region",
+    "value": "us"
   }
+}
 ]
