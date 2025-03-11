@@ -108,7 +108,7 @@ def refresh_single_m3u_account(account_id):
         return err_msg
 
     logger.info(f"M3U has {len(lines)} lines. Now parsing for Streams.")
-    skip_exts = ('.mkv', '.mp4', '.ts', '.m4v', '.wav', '.avi', '.flv', '.m4p', '.mpg',
+    skip_exts = ('.mkv', '.mp4', '.m4v', '.wav', '.avi', '.flv', '.m4p', '.mpg',
                  '.mpeg', '.m2v', '.mp2', '.mpe', '.mpv')
 
     created_count, updated_count, excluded_count = 0, 0, 0
