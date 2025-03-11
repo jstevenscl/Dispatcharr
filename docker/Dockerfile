@@ -32,7 +32,7 @@ RUN apt-get update && \
     cd /app/frontend && \
     npm install && \
     npm run build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \;
+    find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
 
 FROM python:3.13-slim
 
