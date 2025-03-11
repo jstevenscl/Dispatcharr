@@ -96,27 +96,40 @@ class StreamManager:
         logging.info("Stream manager resources released")
 
     def _process_complete_packets(self):
-        """Process TS packets with detailed logging"""
+        """Process TS packets with improved resync capability"""
         try:
-            # Find sync byte if needed
-            if not self.sync_found and len(self.recv_buffer) >= 376:
-                for i in range(min(188, len(self.recv_buffer) - 188)):
-                    # Look for at least two sync bytes (0x47) at 188-byte intervals
-                    if (self.recv_buffer[i] == 0x47 and 
-                        self.recv_buffer[i + 188] == 0x47):
-                        
-                        # Trim buffer to start at first sync byte
-                        self.recv_buffer = self.recv_buffer[i:]
-                        self.sync_found = True
-                        logging.debug(f"TS sync found at position {i}")
-                        break
+            # Enhanced sync byte detection with re-sync capability
+            if (not self.sync_found or 
+                (len(self.recv_buffer) >= 188 and self.recv_buffer[0] != 0x47)):
                 
-                # If sync not found, keep last 188 bytes and return
-                if not self.sync_found:
-                    if len(self.recv_buffer) > 188:
-                        self.recv_buffer = self.recv_buffer[-188:]
-                    return False
+                # Need to find sync pattern if we haven't found it yet or lost sync
+                if len(self.recv_buffer) >= 376:  # Need at least 2 packet lengths
+                    sync_found = False
                     
+                    # Look for at least two sync bytes (0x47) at 188-byte intervals
+                    for i in range(min(188, len(self.recv_buffer) - 188)):
+                        if (self.recv_buffer[i] == 0x47 and 
+                            self.recv_buffer[i + 188] == 0x47):
+                            
+                            # If already had sync but lost it, log the issue
+                            if self.sync_found:
+                                logging.warning(f"Re-syncing TS stream at position {i} (lost sync)")
+                            else:
+                                logging.debug(f"TS sync found at position {i}")
+                                
+                            # Trim buffer to start at first sync byte
+                            self.recv_buffer = self.recv_buffer[i:]
+                            self.sync_found = True
+                            sync_found = True
+                            break
+                            
+                    # If we couldn't find sync in this buffer, discard partial data
+                    if not sync_found:
+                        logging.warning(f"Failed to find sync pattern - discarding {len(self.recv_buffer) - 188} bytes")
+                        if len(self.recv_buffer) > 188:
+                            self.recv_buffer = self.recv_buffer[-188:]  # Keep last chunk for next attempt
+                        return False
+                            
             # If we don't have a complete packet yet, wait for more data
             if len(self.recv_buffer) < 188:
                 return False
@@ -127,8 +140,17 @@ class StreamManager:
             if packet_count == 0:
                 return False
             
-            # Log packet processing
-            logging.debug(f"Processing {packet_count} TS packets ({packet_count * 188} bytes)")
+            # Verify all packets have sync bytes
+            all_synced = True
+            for i in range(0, packet_count):
+                if self.recv_buffer[i * 188] != 0x47:
+                    all_synced = False
+                    break
+                    
+            # If not all packets are synced, re-scan for sync
+            if not all_synced:
+                self.sync_found = False  # Force re-sync on next call
+                return False
             
             # Extract complete packets
             packets = self.recv_buffer[:packet_count * 188]
@@ -144,6 +166,8 @@ class StreamManager:
                 
                 if first_sync != 0x47 or last_sync != 0x47:
                     logging.warning(f"TS packet alignment issue: first_sync=0x{first_sync:02x}, last_sync=0x{last_sync:02x}")
+                    # Don't process misaligned packets
+                    return False
                 
                 before_index = self.buffer.index
                 success = self.buffer.add_chunk(bytes(packets))
@@ -1123,10 +1147,29 @@ class ProxyServer:
             if self.redis_client:
                 # Store stream metadata - can be done regardless of ownership
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                if url:  # Only update URL if one is provided
-                    self.redis_client.hset(metadata_key, "url", url)
+                
+                # FIXED: Use hash operations consistently - don't mix string and hash operations
+                # Create a dictionary of values to set in the hash
+                metadata = {}
+                if url:  # Only include URL if provided
+                    metadata["url"] = url
                 if user_agent:
-                    self.redis_client.hset(metadata_key, "user_agent", user_agent)
+                    metadata["user_agent"] = user_agent
+                    
+                # Initialize state
+                metadata["state"] = "initializing"
+                metadata["init_time"] = str(time.time())
+                
+                # Set the hash fields all at once
+                if metadata:
+                    self.redis_client.hset(metadata_key, mapping=metadata)
+                    
+                # Set expiration on the hash
+                self.redis_client.expire(metadata_key, 3600)  # 1 hour TTL
+                
+                # Set activity key as a separate key
+                activity_key = f"ts_proxy:active_channel:{channel_id}"
+                self.redis_client.setex(activity_key, 300, "1")  # 5 min TTL
                 
                 # If no url was passed, try to get from Redis
                 if not url:
@@ -1222,6 +1265,21 @@ class ProxyServer:
                     
                     logging.info(f"Channel {channel_id} in connecting state - will start grace period after connection")
                     
+            # SIMPLE CHANNEL REGISTRY - register this channel as active
+            if self.redis_client:
+                # Use a simple key for active channel registration
+                registry_key = f"ts_proxy:active_channels:{channel_id}"
+                # Store basic info and set a longer TTL (5 minutes)
+                channel_info = {
+                    "url": url if url else "",
+                    "init_time": str(time.time()),
+                    "owner": self.worker_id
+                }
+                self.redis_client.hset(registry_key, mapping=channel_info)
+                self.redis_client.expire(registry_key, 300)  # 5 minute TTL
+                
+                logging.info(f"Registered channel {channel_id} in active channels registry")
+            
             return True
             
         except Exception as e:
@@ -1231,27 +1289,16 @@ class ProxyServer:
             return False
 
     def check_if_channel_exists(self, channel_id):
-        """Check if a channel exists in Redis or locally"""
-        # Check local memory first
+        """Simple check if a channel exists using the registry"""
+        # Check local memory first (quick check)
         if channel_id in self.stream_managers or channel_id in self.stream_buffers:
             return True
             
-        # Check Redis for channel metadata
+        # Simple registry check in Redis
         if self.redis_client:
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-            if self.redis_client.exists(metadata_key):
-                return True
-                
-            # Also check for active channel marker
-            activity_key = f"ts_proxy:active_channel:{channel_id}"
-            if self.redis_client.exists(activity_key):
-                return True
-                
-            # Check for any buffer index
-            buffer_key = f"ts_proxy:buffer:{channel_id}:index"
-            if self.redis_client.exists(buffer_key):
-                return True
-        
+            registry_key = f"ts_proxy:active_channels:{channel_id}"
+            return bool(self.redis_client.exists(registry_key))
+            
         return False
 
     def stop_channel(self, channel_id):
@@ -1412,6 +1459,9 @@ class ProxyServer:
                     
                     # Rest of the cleanup thread...
                     
+                    # Refresh active channel registry
+                    self.refresh_channel_registry()
+                    
                 except Exception as e:
                     logging.error(f"Error in cleanup thread: {e}", exc_info=True)
                 
@@ -1490,4 +1540,17 @@ class ProxyServer:
             logging.info(f"Cleaned up Redis keys for channel {channel_id}")
         except Exception as e:
             logging.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
+
+    def refresh_channel_registry(self):
+        """Refresh TTL for active channels in registry"""
+        if not self.redis_client:
+            return
+            
+        # Refresh registry entries for channels we own
+        for channel_id in self.stream_managers.keys():
+            registry_key = f"ts_proxy:active_channels:{channel_id}"
+            if self.redis_client.exists(registry_key):
+                # Update last_active timestamp and extend TTL
+                self.redis_client.hset(registry_key, "last_active", str(time.time()))
+                self.redis_client.expire(registry_key, 300)  # 5 minute TTL
 

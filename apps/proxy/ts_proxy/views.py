@@ -307,61 +307,113 @@ def stream_ts(request, channel_id):
 @csrf_exempt
 @require_http_methods(["POST"])
 def change_stream(request, channel_id):
-    """Change stream URL for existing channel with improved multi-worker support"""
+    """Change stream URL for existing channel with enhanced diagnostics"""
     try:
         data = json.loads(request.body)
         new_url = data.get('url')
-        user_agent = data.get('user_agent')  # Optional user agent
+        user_agent = data.get('user_agent')
         
         if not new_url:
             return JsonResponse({'error': 'No URL provided'}, status=400)
         
-        # Check if channel exists using the proper Redis check
-        if not proxy_server.check_if_channel_exists(channel_id):
-            logger.error(f"Channel {channel_id} not found in any worker or Redis")
-            return JsonResponse({'error': 'Channel not found'}, status=404)
-            
-        logger.info(f"Channel {channel_id} found, checking if current worker is owner")
+        logger.info(f"Attempting to change stream URL for channel {channel_id} to {new_url}")
         
+        # Enhanced channel detection
+        in_local_managers = channel_id in proxy_server.stream_managers
+        in_local_buffers = channel_id in proxy_server.stream_buffers
+        
+        # First check Redis directly before using our wrapper method
+        redis_keys = None
+        if proxy_server.redis_client:
+            try:
+                redis_keys = proxy_server.redis_client.keys(f"ts_proxy:*:{channel_id}*")
+                redis_keys = [k.decode('utf-8') for k in redis_keys] if redis_keys else []
+            except Exception as e:
+                logger.error(f"Error checking Redis keys: {e}")
+        
+        # Now use our standard check
+        channel_exists = proxy_server.check_if_channel_exists(channel_id)
+        
+        # Log detailed diagnostics
+        logger.info(f"Channel {channel_id} diagnostics: "
+                   f"in_local_managers={in_local_managers}, "
+                   f"in_local_buffers={in_local_buffers}, "
+                   f"redis_keys_count={len(redis_keys) if redis_keys else 0}, "
+                   f"channel_exists={channel_exists}")
+        
+        if not channel_exists:
+            # If channel doesn't exist but we found Redis keys, force initialize it
+            if redis_keys:
+                logger.warning(f"Channel {channel_id} not detected by check_if_channel_exists but Redis keys exist. Forcing initialization.")
+                proxy_server.initialize_channel(new_url, channel_id, user_agent)
+            else:
+                logger.error(f"Channel {channel_id} not found in any worker or Redis")
+                return JsonResponse({
+                    'error': 'Channel not found',
+                    'diagnostics': {
+                        'in_local_managers': in_local_managers,
+                        'in_local_buffers': in_local_buffers,
+                        'redis_keys': redis_keys,
+                    }
+                }, status=404)
+        
+        # Update metadata in Redis regardless of ownership - this ensures URL is updated
+        # even if the owner worker is handling another request
+        if proxy_server.redis_client:
+            try:
+                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                
+                # First check if the key exists and what type it is
+                key_type = proxy_server.redis_client.type(metadata_key).decode('utf-8')
+                logger.debug(f"Redis key {metadata_key} is of type: {key_type}")
+                
+                # Use the appropriate method based on the key type
+                if key_type == 'hash':
+                    proxy_server.redis_client.hset(metadata_key, "url", new_url)
+                    if user_agent:
+                        proxy_server.redis_client.hset(metadata_key, "user_agent", user_agent)
+                elif key_type == 'none':  # Key doesn't exist yet
+                    # Create new hash with all required fields
+                    metadata = {"url": new_url}
+                    if user_agent:
+                        metadata["user_agent"] = user_agent
+                    proxy_server.redis_client.hset(metadata_key, mapping=metadata)
+                else:
+                    # If key exists with wrong type, delete it and recreate
+                    proxy_server.redis_client.delete(metadata_key)
+                    metadata = {"url": new_url}
+                    if user_agent:
+                        metadata["user_agent"] = user_agent
+                    proxy_server.redis_client.hset(metadata_key, mapping=metadata)
+                    
+                # Set switch request flag to ensure all workers see it
+                switch_key = f"ts_proxy:channel:{channel_id}:switch_request"
+                proxy_server.redis_client.setex(switch_key, 30, new_url)  # 30 second TTL
+                
+                logger.info(f"Updated metadata for channel {channel_id} in Redis")
+            except Exception as e:
+                logger.error(f"Error updating Redis metadata: {e}", exc_info=True)
+                
         # If we're the owner, update directly
         if proxy_server.am_i_owner(channel_id) and channel_id in proxy_server.stream_managers:
-            logger.info(f"Changing stream URL for channel {channel_id} (owner worker)")
+            logger.info(f"This worker is the owner, changing stream URL for channel {channel_id}")
             manager = proxy_server.stream_managers[channel_id]
-            
-            # Update metadata in Redis first
-            if proxy_server.redis_client:
-                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                proxy_server.redis_client.hset(metadata_key, "url", new_url)
-                if user_agent:
-                    proxy_server.redis_client.hset(metadata_key, "user_agent", user_agent)
+            old_url = manager.url
             
             # Update the stream
-            old_url = manager.url
-            manager.url = new_url
-            manager.connected = False
-            manager._close_socket()  # Close existing connection
-            
-            logger.info(f"Stream URL changed from {old_url} to {new_url}")
+            result = manager.update_url(new_url)
+            logger.info(f"Stream URL changed from {old_url} to {new_url}, result: {result}")
             return JsonResponse({
                 'message': 'Stream URL updated',
                 'channel': channel_id,
                 'url': new_url,
-                'owner': True
+                'owner': True,
+                'worker_id': proxy_server.worker_id
             })
         
-        # If we're not the owner, use Redis to request the change
+        # If we're not the owner, publish an event for the owner to pick up
         else:
-            logger.info(f"Requesting stream URL change for channel {channel_id} (non-owner worker)")
-            
-            if not proxy_server.redis_client:
-                return JsonResponse({'error': 'Redis not available, cannot request stream switch'}, status=500)
-            
-            # Update metadata in Redis first (all workers can do this)
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-            proxy_server.redis_client.hset(metadata_key, "url", new_url)
-            if user_agent:
-                proxy_server.redis_client.hset(metadata_key, "user_agent", user_agent)
-                
+            logger.info(f"This worker is not the owner, requesting URL change via Redis PubSub")
             # Publish switch request event
             switch_request = {
                 "event": "stream_switch",
@@ -377,13 +429,12 @@ def change_stream(request, channel_id):
                 json.dumps(switch_request)
             )
             
-            logger.info(f"Published stream switch request to {new_url}")
-            
             return JsonResponse({
                 'message': 'Stream URL change requested',
                 'channel': channel_id,
                 'url': new_url,
-                'owner': False
+                'owner': False,
+                'worker_id': proxy_server.worker_id
             })
             
     except json.JSONDecodeError:
