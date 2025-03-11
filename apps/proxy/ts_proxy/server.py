@@ -412,15 +412,15 @@ class StreamManager:
                     state_key = f"ts_proxy:channel:{channel_id}:state"
                     redis_client.set(state_key, "waiting_for_clients")
                     
-                    # Set grace period start time
-                    grace_key = f"ts_proxy:channel:{channel_id}:grace_start"
-                    redis_client.setex(grace_key, 120, str(time.time()))
+                    # Set time when connection became ready and waiting for clients
+                    # RENAMED: grace_start → connection_ready_time
+                    ready_key = f"ts_proxy:channel:{channel_id}:connection_ready_time"
+                    redis_client.setex(ready_key, 120, str(time.time()))
                     
                     # Get configured grace period or default
                     grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
                     
                     logging.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
-                    
         except Exception as e:
             logging.error(f"Error setting waiting for clients state: {e}")
 
@@ -434,14 +434,13 @@ class StreamBuffer:
         self.index = 0
         self.TS_PACKET_SIZE = 188
         
-        # Redis keys
-        self.buffer_index_key = f"ts_proxy:buffer:{channel_id}:index"
-        self.buffer_prefix = f"ts_proxy:buffer:{channel_id}:chunk:"
+        # STANDARDIZED KEYS: Move buffer keys under channel namespace
+        self.buffer_index_key = f"ts_proxy:channel:{channel_id}:buffer:index"
+        self.buffer_prefix = f"ts_proxy:channel:{channel_id}:buffer:chunk:"
         
-        # Expiration time for chunks
-        self.chunk_ttl = getattr(Config, 'REDIS_CHUNK_TTL', 60)  # Default 60 seconds
+        self.chunk_ttl = getattr(Config, 'REDIS_CHUNK_TTL', 60)
         
-        # Initialize from Redis if available (important for non-owner workers)
+        # Initialize from Redis if available
         if self.redis_client and channel_id:
             try:
                 current_index = self.redis_client.get(self.buffer_index_key)
@@ -611,14 +610,16 @@ class ClientManager:
     def __init__(self, channel_id, redis_client=None, worker_id=None):
         self.channel_id = channel_id
         self.redis_client = redis_client
-        self.worker_id = worker_id  # Store worker_id directly
-        self.clients = set()  # Local clients only
+        self.worker_id = worker_id
+        self.clients = set()
         self.lock = threading.Lock()
         self.last_active_time = time.time()
+        
+        # STANDARDIZED KEYS: Move client set under channel namespace
         self.client_set_key = f"ts_proxy:channel:{channel_id}:clients"
         self.client_ttl = getattr(Config, 'CLIENT_RECORD_TTL', 60)
         self.heartbeat_interval = getattr(Config, 'CLIENT_HEARTBEAT_INTERVAL', 10)
-        self.last_heartbeat_time = {}  # Track last heartbeat time per client
+        self.last_heartbeat_time = {}
         
         # Start heartbeat thread for local clients
         self._start_heartbeat_thread()
@@ -685,14 +686,13 @@ class ClientManager:
             return
             
         try:
-            # Use the stored worker_id
             worker_id = self.worker_id or "unknown"
                 
-            # Store count of clients on this worker
+            # STANDARDIZED KEY: Worker info under channel namespace
             worker_key = f"ts_proxy:channel:{self.channel_id}:worker:{worker_id}"
             self.redis_client.setex(worker_key, self.client_ttl, str(len(self.clients)))
             
-            # Update channel activity timestamp
+            # STANDARDIZED KEY: Activity timestamp under channel namespace
             activity_key = f"ts_proxy:channel:{self.channel_id}:activity"
             self.redis_client.setex(activity_key, self.client_ttl, str(time.time()))
         except Exception as e:
@@ -704,32 +704,27 @@ class ClientManager:
             self.clients.add(client_id)
             self.last_active_time = time.time()
             
-            # Track in Redis if available
             if self.redis_client:
                 current_time = str(time.time())
                 
-                # Add to channel's client set
+                # Add to channel's client set - already standardized
                 self.redis_client.sadd(self.client_set_key, client_id)
-                
-                # Set TTL on the whole set
                 self.redis_client.expire(self.client_set_key, self.client_ttl)
                 
-                # Set up client key with timestamp as value
-                client_key = f"ts_proxy:client:{self.channel_id}:{client_id}"
+                # STANDARDIZED KEY: Individual client under channel namespace
+                client_key = f"ts_proxy:channel:{self.channel_id}:client:{client_id}"
                 self.redis_client.setex(client_key, self.client_ttl, current_time)
                 
-                # Also track last activity time separately
-                activity_key = f"ts_proxy:client:{self.channel_id}:{client_id}:last_active"
+                # STANDARDIZED KEY: Client activity under channel namespace
+                activity_key = f"ts_proxy:channel:{self.channel_id}:client:{client_id}:last_active"
                 self.redis_client.setex(activity_key, self.client_ttl, current_time)
                 
-                # Clear any initialization timer by removing the init_time key
-                init_key = f"ts_proxy:channel:{self.channel_id}:init_time"
-                self.redis_client.delete(init_key)
+                # Clear any initialization timer
+                self.redis_client.delete(f"ts_proxy:channel:{self.channel_id}:init_time")
                 
-                # Update worker count in Redis
                 self._notify_owner_of_activity()
                 
-                # Also publish an event that the client connected
+                # Publish client connected event
                 event_data = json.dumps({
                     "event": "client_connected",
                     "channel_id": self.channel_id,
@@ -743,7 +738,6 @@ class ClientManager:
             total_clients = self.get_total_client_count()
             logging.info(f"New client connected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
             
-            # Record last heartbeat time
             self.last_heartbeat_time[client_id] = time.time()
             
         return len(self.clients)
@@ -759,20 +753,18 @@ class ClientManager:
                 
             self.last_active_time = time.time()
             
-            # Remove from Redis
             if self.redis_client:
                 # Remove from channel's client set
                 self.redis_client.srem(self.client_set_key, client_id)
                 
-                # Delete individual client keys
-                client_key = f"ts_proxy:client:{self.channel_id}:{client_id}"
-                activity_key = f"ts_proxy:client:{self.channel_id}:{client_id}:last_active"
+                # STANDARDIZED KEY: Delete individual client keys
+                client_key = f"ts_proxy:channel:{self.channel_id}:client:{client_id}"
+                activity_key = f"ts_proxy:channel:{self.channel_id}:client:{client_id}:last_active"
                 self.redis_client.delete(client_key, activity_key)
                 
-                # Update worker count in Redis
                 self._notify_owner_of_activity()
                 
-                # Also publish an event that the client disconnected
+                # Publish client disconnected event
                 event_data = json.dumps({
                     "event": "client_disconnected",
                     "channel_id": self.channel_id,
@@ -782,7 +774,6 @@ class ClientManager:
                 })
                 self.redis_client.publish(f"ts_proxy:events:{self.channel_id}", event_data)
             
-            # Get remaining clients across all workers
             total_clients = self.get_total_client_count()
             logging.info(f"Client disconnected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
             
@@ -968,9 +959,10 @@ class ProxyServer:
                             if self.am_i_owner(channel_id):
                                 if event_type == "client_connected":
                                     logging.debug(f"Owner received client_connected event for channel {channel_id}")
-                                    # Reset any no-clients timer
-                                    no_clients_key = f"ts_proxy:channel:{channel_id}:no_clients_since"
-                                    self.redis_client.delete(no_clients_key)
+                                    # Reset any disconnect timer
+                                    # RENAMED: no_clients_since → last_client_disconnect_time
+                                    disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                    self.redis_client.delete(disconnect_key)
                                     
                                 elif event_type == "client_disconnected":
                                     logging.debug(f"Owner received client_disconnected event for channel {channel_id}")
@@ -979,9 +971,10 @@ class ProxyServer:
                                         total = self.client_managers[channel_id].get_total_client_count()
                                         if total == 0:
                                             logging.info(f"No clients left after disconnect event, starting shutdown timer")
-                                            # Start the no-clients timer
-                                            no_clients_key = f"ts_proxy:channel:{channel_id}:no_clients_since"
-                                            self.redis_client.setex(no_clients_key, 60, str(time.time()))
+                                            # Start the disconnect timer
+                                            # RENAMED: no_clients_since → last_client_disconnect_time
+                                            disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                            self.redis_client.setex(disconnect_key, 60, str(time.time()))
                             elif event_type == "stream_switch":
                                 logging.info(f"Owner received stream switch request for channel {channel_id}")
                                 # Handle stream switch request
@@ -1138,7 +1131,7 @@ class ProxyServer:
             return False
     
     def initialize_channel(self, url, channel_id, user_agent=None):
-        """Initialize a channel with improved worker coordination"""
+        """Initialize a channel with standardized Redis keys"""
         try:
             # Get channel URL from Redis if available
             channel_url = url
@@ -1147,29 +1140,24 @@ class ProxyServer:
             if self.redis_client:
                 # Store stream metadata - can be done regardless of ownership
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                active_key = f"ts_proxy:channel:{channel_id}:active"
                 
-                # FIXED: Use hash operations consistently - don't mix string and hash operations
-                # Create a dictionary of values to set in the hash
-                metadata = {}
-                if url:  # Only include URL if provided
-                    metadata["url"] = url
+                # Store metadata as hash
+                metadata = {
+                    "url": url if url else "",
+                    "init_time": str(time.time()),
+                    "owner": self.worker_id,
+                    "state": "initializing"
+                }
                 if user_agent:
                     metadata["user_agent"] = user_agent
                     
-                # Initialize state
-                metadata["state"] = "initializing"
-                metadata["init_time"] = str(time.time())
-                
-                # Set the hash fields all at once
-                if metadata:
-                    self.redis_client.hset(metadata_key, mapping=metadata)
-                    
-                # Set expiration on the hash
+                # Set channel metadata
+                self.redis_client.hset(metadata_key, mapping=metadata)
                 self.redis_client.expire(metadata_key, 3600)  # 1 hour TTL
                 
-                # Set activity key as a separate key
-                activity_key = f"ts_proxy:active_channel:{channel_id}"
-                self.redis_client.setex(activity_key, 300, "1")  # 5 min TTL
+                # Set simple activity marker - used for quick existence checks
+                self.redis_client.setex(active_key, 300, "1")  # 5 min TTL
                 
                 # If no url was passed, try to get from Redis
                 if not url:
@@ -1241,11 +1229,6 @@ class ProxyServer:
             )
             self.client_managers[channel_id] = client_manager
             
-            # Set channel activity key (separate from lock key)
-            if self.redis_client:
-                activity_key = f"ts_proxy:active_channel:{channel_id}"
-                self.redis_client.set(activity_key, "1", ex=300)
-            
             # Start stream manager thread only for the owner
             thread = threading.Thread(target=stream_manager.run, daemon=True)
             thread.name = f"stream-{channel_id}"
@@ -1259,27 +1242,12 @@ class ProxyServer:
                     state_key = f"ts_proxy:channel:{channel_id}:state"
                     self.redis_client.set(state_key, "connecting")
                     
-                    # Set connection start time for monitoring
-                    connect_key = f"ts_proxy:channel:{channel_id}:connect_time"
-                    self.redis_client.setex(connect_key, 60, str(time.time()))
+                    # Set connection attempt start time for monitoring
+                    # RENAMED: connect_time → connection_attempt_time
+                    attempt_key = f"ts_proxy:channel:{channel_id}:connection_attempt_time"
+                    self.redis_client.setex(attempt_key, 60, str(time.time()))
                     
-                    logging.info(f"Channel {channel_id} in connecting state - will start grace period after connection")
-                    
-            # SIMPLE CHANNEL REGISTRY - register this channel as active
-            if self.redis_client:
-                # Use a simple key for active channel registration
-                registry_key = f"ts_proxy:active_channels:{channel_id}"
-                # Store basic info and set a longer TTL (5 minutes)
-                channel_info = {
-                    "url": url if url else "",
-                    "init_time": str(time.time()),
-                    "owner": self.worker_id
-                }
-                self.redis_client.hset(registry_key, mapping=channel_info)
-                self.redis_client.expire(registry_key, 300)  # 5 minute TTL
-                
-                logging.info(f"Registered channel {channel_id} in active channels registry")
-            
+                    logging.info(f"Channel {channel_id} in connecting state - will start grace period after connection")            
             return True
             
         except Exception as e:
@@ -1289,16 +1257,19 @@ class ProxyServer:
             return False
 
     def check_if_channel_exists(self, channel_id):
-        """Simple check if a channel exists using the registry"""
-        # Check local memory first (quick check)
+        """Check if a channel exists using standardized key structure"""
+        # Check local memory first
         if channel_id in self.stream_managers or channel_id in self.stream_buffers:
             return True
             
-        # Simple registry check in Redis
+        # Check Redis using the standard key pattern
         if self.redis_client:
-            registry_key = f"ts_proxy:active_channels:{channel_id}"
-            return bool(self.redis_client.exists(registry_key))
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             
+            # If metadata exists return true
+            if self.redis_client.exists(metadata_key):
+                return True
+                
         return False
 
     def stop_channel(self, channel_id):
@@ -1412,17 +1383,18 @@ class ProxyServer:
                                 
                                 # If in waiting_for_clients state, check if grace period expired
                                 if channel_state == "waiting_for_clients" and total_clients == 0:
-                                    grace_key = f"ts_proxy:channel:{channel_id}:grace_start"
-                                    grace_start = None
+                                    # RENAMED: grace_start → connection_ready_time
+                                    ready_key = f"ts_proxy:channel:{channel_id}:connection_ready_time"
+                                    ready_time = None
                                     
                                     if self.redis_client:
-                                        grace_value = self.redis_client.get(grace_key)
-                                        if grace_value:
-                                            grace_start = float(grace_value.decode('utf-8'))
+                                        ready_value = self.redis_client.get(ready_key)
+                                        if ready_value:
+                                            ready_time = float(ready_value.decode('utf-8'))
                                     
-                                    if grace_start:
+                                    if ready_time:
                                         grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
-                                        grace_elapsed = time.time() - grace_start
+                                        grace_elapsed = time.time() - ready_time
                                         
                                         if grace_elapsed > grace_period:
                                             logging.info(f"No clients connected within grace period ({grace_elapsed:.1f}s > {grace_period}s), stopping channel {channel_id}")
@@ -1432,30 +1404,30 @@ class ProxyServer:
                                             
                                 # If active and no clients, start normal shutdown procedure
                                 elif channel_state not in ["connecting", "waiting_for_clients"] and total_clients == 0:
-                                    # Check if there's a pending no-clients timeout
-                                    key = f"ts_proxy:channel:{channel_id}:no_clients_since"
-                                    no_clients_since = None
+                                    # RENAMED: no_clients_since → last_client_disconnect_time
+                                    disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                    disconnect_time = None
                                     
                                     if self.redis_client:
-                                        no_clients_value = self.redis_client.get(key)
-                                        if no_clients_value:
-                                            no_clients_since = float(no_clients_value.decode('utf-8'))
+                                        disconnect_value = self.redis_client.get(disconnect_key)
+                                        if disconnect_value:
+                                            disconnect_time = float(disconnect_value.decode('utf-8'))
                                     
                                     current_time = time.time()
                                     
-                                    if not no_clients_since:
+                                    if not disconnect_time:
                                         # First time seeing zero clients, set timestamp
                                         if self.redis_client:
-                                            self.redis_client.setex(key, Config.CLIENT_RECORD_TTL, str(current_time))
+                                            self.redis_client.setex(disconnect_key, Config.CLIENT_RECORD_TTL, str(current_time))
                                         logging.info(f"No clients detected for channel {channel_id}, starting shutdown timer")
-                                    elif current_time - no_clients_since > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
+                                    elif current_time - disconnect_time > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
                                         # We've had no clients for the shutdown delay period
-                                        logging.info(f"No clients for {current_time - no_clients_since:.1f}s, stopping channel {channel_id}")
+                                        logging.info(f"No clients for {current_time - disconnect_time:.1f}s, stopping channel {channel_id}")
                                         self.stop_channel(channel_id)
                                 else:
-                                    # There are clients or we're still connecting - clear any no-clients timestamp
+                                    # There are clients or we're still connecting - clear any disconnect timestamp
                                     if self.redis_client:
-                                        self.redis_client.delete(f"ts_proxy:channel:{channel_id}:no_clients_since")
+                                        self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
                     
                     # Rest of the cleanup thread...
                     
@@ -1517,40 +1489,29 @@ class ProxyServer:
             return
             
         try:
-            # Delete metadata and related keys
-            keys_to_delete = [
-                f"ts_proxy:channel:{channel_id}:metadata",
-                f"ts_proxy:channel:{channel_id}:owner",
-                f"ts_proxy:active_channel:{channel_id}",
-                f"ts_proxy:buffer:{channel_id}:index",
-                f"ts_proxy:channel:{channel_id}:last_data",
-                f"ts_proxy:channel:{channel_id}:clients",
-                f"ts_proxy:channel:{channel_id}:no_clients_since"
-            ]
+            # All keys are now under the channel namespace for easy pattern matching
+            channel_pattern = f"ts_proxy:channel:{channel_id}:*"
+            all_keys = self.redis_client.keys(channel_pattern)
             
-            if keys_to_delete:
-                self.redis_client.delete(*keys_to_delete)
-                
-            # Delete chunk keys with pattern matching
-            chunk_pattern = f"ts_proxy:buffer:{channel_id}:chunk:*"
-            chunk_keys = self.redis_client.keys(chunk_pattern)
-            if chunk_keys:
-                self.redis_client.delete(*chunk_keys)
-                
-            logging.info(f"Cleaned up Redis keys for channel {channel_id}")
+            if all_keys:
+                self.redis_client.delete(*all_keys)
+                logging.info(f"Cleaned up {len(all_keys)} Redis keys for channel {channel_id}")
+                                    
         except Exception as e:
             logging.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
 
     def refresh_channel_registry(self):
-        """Refresh TTL for active channels in registry"""
+        """Refresh TTL for active channels using standard keys"""
         if not self.redis_client:
             return
             
         # Refresh registry entries for channels we own
         for channel_id in self.stream_managers.keys():
-            registry_key = f"ts_proxy:active_channels:{channel_id}"
-            if self.redis_client.exists(registry_key):
-                # Update last_active timestamp and extend TTL
-                self.redis_client.hset(registry_key, "last_active", str(time.time()))
-                self.redis_client.expire(registry_key, 300)  # 5 minute TTL
+            # Use standard key pattern
+            active_key = f"ts_proxy:channel:{channel_id}:active"
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            
+            # Update activity timestamp
+            self.redis_client.setex(active_key, 300, "1")  # 5 minute TTL
+            self.redis_client.hset(metadata_key, "last_active", str(time.time()))
 
