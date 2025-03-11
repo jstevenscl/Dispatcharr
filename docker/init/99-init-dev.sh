@@ -15,3 +15,5 @@ fi
 
 # Install frontend dependencies
 cd /app/frontend && npm install
+
+cd /app && pip install -r requirements.txt

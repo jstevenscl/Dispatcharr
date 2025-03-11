@@ -8,3 +8,5 @@ node_modules/
 staticfiles/
 static/
 data/
+.next
+next-env.d.ts

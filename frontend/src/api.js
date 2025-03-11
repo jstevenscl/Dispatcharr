@@ -9,7 +9,9 @@ import useStreamProfilesStore from './store/streamProfiles';
 import useSettingsStore from './store/settings';
 
 // If needed, you can set a base host or keep it empty if relative requests
-const host = '';
+const host = import.meta.env.DEV
+  ? `http://${window.location.hostname}:5656`
+  : '';
 
 export default class API {
   /**
@@ -17,6 +19,27 @@ export default class API {
    */
   static async getAuthToken() {
     return await useAuthStore.getState().getToken();
+  }
+
+  static async fetchSuperUser() {
+    const response = await fetch(`${host}/api/accounts/initialize-superuser/`);
+    return await response.json();
+  }
+
+  static async createSuperUser({ username, email, password }) {
+    const response = await fetch(`${host}/api/accounts/initialize-superuser/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        email,
+      }),
+    });
+
+    return await response.json();
   }
 
   static async login(username, password) {
