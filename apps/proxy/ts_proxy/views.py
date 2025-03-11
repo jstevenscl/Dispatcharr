@@ -307,31 +307,87 @@ def stream_ts(request, channel_id):
 @csrf_exempt
 @require_http_methods(["POST"])
 def change_stream(request, channel_id):
-    """Change stream URL for existing channel"""
+    """Change stream URL for existing channel with improved multi-worker support"""
     try:
-        if channel_id not in proxy_server.stream_managers:
-            return JsonResponse({'error': 'Channel not found'}, status=404)
-            
         data = json.loads(request.body)
         new_url = data.get('url')
+        user_agent = data.get('user_agent')  # Optional user agent
+        
         if not new_url:
             return JsonResponse({'error': 'No URL provided'}, status=400)
+        
+        # Check if channel exists using the proper Redis check
+        if not proxy_server.check_if_channel_exists(channel_id):
+            logger.error(f"Channel {channel_id} not found in any worker or Redis")
+            return JsonResponse({'error': 'Channel not found'}, status=404)
             
-        manager = proxy_server.stream_managers[channel_id]
-        if manager.update_url(new_url):
+        logger.info(f"Channel {channel_id} found, checking if current worker is owner")
+        
+        # If we're the owner, update directly
+        if proxy_server.am_i_owner(channel_id) and channel_id in proxy_server.stream_managers:
+            logger.info(f"Changing stream URL for channel {channel_id} (owner worker)")
+            manager = proxy_server.stream_managers[channel_id]
+            
+            # Update metadata in Redis first
+            if proxy_server.redis_client:
+                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                proxy_server.redis_client.hset(metadata_key, "url", new_url)
+                if user_agent:
+                    proxy_server.redis_client.hset(metadata_key, "user_agent", user_agent)
+            
+            # Update the stream
+            old_url = manager.url
+            manager.url = new_url
+            manager.connected = False
+            manager._close_socket()  # Close existing connection
+            
+            logger.info(f"Stream URL changed from {old_url} to {new_url}")
             return JsonResponse({
                 'message': 'Stream URL updated',
                 'channel': channel_id,
-                'url': new_url
+                'url': new_url,
+                'owner': True
+            })
+        
+        # If we're not the owner, use Redis to request the change
+        else:
+            logger.info(f"Requesting stream URL change for channel {channel_id} (non-owner worker)")
+            
+            if not proxy_server.redis_client:
+                return JsonResponse({'error': 'Redis not available, cannot request stream switch'}, status=500)
+            
+            # Update metadata in Redis first (all workers can do this)
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            proxy_server.redis_client.hset(metadata_key, "url", new_url)
+            if user_agent:
+                proxy_server.redis_client.hset(metadata_key, "user_agent", user_agent)
+                
+            # Publish switch request event
+            switch_request = {
+                "event": "stream_switch",
+                "channel_id": channel_id,
+                "url": new_url,
+                "user_agent": user_agent,
+                "requester": proxy_server.worker_id,
+                "timestamp": time.time()
+            }
+            
+            proxy_server.redis_client.publish(
+                f"ts_proxy:events:{channel_id}", 
+                json.dumps(switch_request)
+            )
+            
+            logger.info(f"Published stream switch request to {new_url}")
+            
+            return JsonResponse({
+                'message': 'Stream URL change requested',
+                'channel': channel_id,
+                'url': new_url,
+                'owner': False
             })
             
-        return JsonResponse({
-            'message': 'URL unchanged',
-            'channel': channel_id,
-            'url': new_url
-        })
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
-        logger.error(f"Failed to change stream: {e}")
+        logger.error(f"Failed to change stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

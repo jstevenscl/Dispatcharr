@@ -71,14 +71,19 @@ class StreamManager:
         return session
 
     def update_url(self, new_url: str) -> bool:
-        """Update stream URL and signal connection change"""
-        if new_url != self.url:
-            logging.info(f"Stream switch initiated: {self.url} -> {new_url}")
-            self.url = new_url
-            self.connected = False
-            self.ready_event.set()
-            return True
-        return False
+        """Update stream URL and reconnect"""
+        if new_url == self.url:
+            return False
+            
+        logging.info(f"Switching stream URL from {self.url} to {new_url}")
+        self.url = new_url
+        self.connected = False
+        self._close_socket()  # Close existing connection
+        
+        # Signal health monitor to reconnect immediately
+        self.last_data_time = 0
+        
+        return True
 
     def should_retry(self) -> bool:
         """Check if connection retry is allowed"""
@@ -953,6 +958,62 @@ class ProxyServer:
                                             # Start the no-clients timer
                                             no_clients_key = f"ts_proxy:channel:{channel_id}:no_clients_since"
                                             self.redis_client.setex(no_clients_key, 60, str(time.time()))
+                            elif event_type == "stream_switch":
+                                logging.info(f"Owner received stream switch request for channel {channel_id}")
+                                # Handle stream switch request
+                                new_url = data.get("url")
+                                user_agent = data.get("user_agent")
+                                
+                                if new_url and channel_id in self.stream_managers:
+                                    # Update metadata in Redis
+                                    if self.redis_client:
+                                        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                        self.redis_client.hset(metadata_key, "url", new_url)
+                                        if user_agent:
+                                            self.redis_client.hset(metadata_key, "user_agent", user_agent)
+                                        
+                                        # Set switch status
+                                        status_key = f"ts_proxy:channel:{channel_id}:switch_status"
+                                        self.redis_client.set(status_key, "switching")
+                                    
+                                    # Perform the stream switch
+                                    stream_manager = self.stream_managers[channel_id]
+                                    success = stream_manager.update_url(new_url)
+                                    
+                                    if success:
+                                        logging.info(f"Stream switch initiated for channel {channel_id}")
+                                        
+                                        # Publish confirmation
+                                        switch_result = {
+                                            "event": "stream_switched",
+                                            "channel_id": channel_id,
+                                            "success": True,
+                                            "url": new_url,
+                                            "timestamp": time.time()
+                                        }
+                                        self.redis_client.publish(
+                                            f"ts_proxy:events:{channel_id}", 
+                                            json.dumps(switch_result)
+                                        )
+                                        
+                                        # Update status
+                                        if self.redis_client:
+                                            self.redis_client.set(status_key, "switched")
+                                    else:
+                                        logging.error(f"Failed to switch stream for channel {channel_id}")
+                                        
+                                        # Publish failure
+                                        switch_result = {
+                                            "event": "stream_switched",
+                                            "channel_id": channel_id,
+                                            "success": False,
+                                            "url": new_url,
+                                            "timestamp": time.time()
+                                        }
+                                        self.redis_client.publish(
+                                            f"ts_proxy:events:{channel_id}", 
+                                            json.dumps(switch_result)
+                                        )
                     except Exception as e:
                         logging.error(f"Error processing event message: {e}")
             except Exception as e:
@@ -1170,16 +1231,28 @@ class ProxyServer:
             return False
 
     def check_if_channel_exists(self, channel_id):
-        """Check if a channel exists by checking metadata and locks"""
-        if not self.redis_client:
-            return channel_id in self.stream_managers
+        """Check if a channel exists in Redis or locally"""
+        # Check local memory first
+        if channel_id in self.stream_managers or channel_id in self.stream_buffers:
+            return True
+            
+        # Check Redis for channel metadata
+        if self.redis_client:
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            if self.redis_client.exists(metadata_key):
+                return True
+                
+            # Also check for active channel marker
+            activity_key = f"ts_proxy:active_channel:{channel_id}"
+            if self.redis_client.exists(activity_key):
+                return True
+                
+            # Check for any buffer index
+            buffer_key = f"ts_proxy:buffer:{channel_id}:index"
+            if self.redis_client.exists(buffer_key):
+                return True
         
-        # Check both metadata and lock keys
-        metadata_exists = self.redis_client.exists(f"ts_proxy:channel:{channel_id}:metadata")
-        owner_exists = self.redis_client.exists(f"ts_proxy:channel:{channel_id}:owner")
-        activity_exists = self.redis_client.exists(f"ts_proxy:active_channel:{channel_id}")
-        
-        return metadata_exists or owner_exists or activity_exists
+        return False
 
     def stop_channel(self, channel_id):
         """Stop a channel with proper ownership handling"""
