@@ -775,8 +775,16 @@ class ClientManager:
                 
                 # STANDARDIZED KEY: Delete individual client keys
                 client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
-                activity_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}:last_active"
-                self.redis_client.delete(client_key, activity_key)
+                self.redis_client.delete(client_key)
+                
+                # Check if this was the last client
+                remaining = self.redis_client.scard(self.client_set_key) or 0
+                if remaining == 0:
+                    logging.warning(f"Last client removed: {client_id} - channel may shut down soon")
+                    
+                    # Trigger disconnect time tracking even if we're not the owner
+                    disconnect_key = f"ts_proxy:channel:{self.channel_id}:last_client_disconnect_time"
+                    self.redis_client.setex(disconnect_key, 60, str(time.time()))
                 
                 self._notify_owner_of_activity()
                 
@@ -786,7 +794,8 @@ class ClientManager:
                     "channel_id": self.channel_id,
                     "client_id": client_id,
                     "worker_id": self.worker_id or "unknown",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "remaining_clients": remaining
                 })
                 self.redis_client.publish(f"ts_proxy:events:{self.channel_id}", event_data)
             
@@ -985,13 +994,34 @@ class ProxyServer:
                                     logging.debug(f"Owner received client_disconnected event for channel {channel_id}")
                                     # Check if any clients remain
                                     if channel_id in self.client_managers:
-                                        total = self.client_managers[channel_id].get_total_client_count()
+                                        # VERIFY REDIS CLIENT COUNT DIRECTLY
+                                        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+                                        total = self.redis_client.scard(client_set_key) or 0
+                                        
                                         if total == 0:
-                                            logging.info(f"No clients left after disconnect event, starting shutdown timer")
-                                            # Start the disconnect timer
-                                            # RENAMED: no_clients_since → last_client_disconnect_time
+                                            logging.debug(f"No clients left after disconnect event - stopping channel {channel_id}")
+                                            # Set the disconnect timer for other workers to see
                                             disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
                                             self.redis_client.setex(disconnect_key, 60, str(time.time()))
+                                            
+                                            # Get configured shutdown delay or default
+                                            shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 0)
+                                            
+                                            if shutdown_delay > 0:
+                                                logging.info(f"Waiting {shutdown_delay}s before stopping channel...")
+                                                time.sleep(shutdown_delay)
+                                                
+                                                # Re-check client count before stopping
+                                                total = self.redis_client.scard(client_set_key) or 0
+                                                if total > 0:
+                                                    logging.info(f"New clients connected during shutdown delay - aborting shutdown")
+                                                    self.redis_client.delete(disconnect_key)
+                                                    return
+                                            
+                                            # Stop the channel directly
+                                            self.stop_channel(channel_id)
+
+
                             elif event_type == "stream_switch":
                                 logging.info(f"Owner received stream switch request for channel {channel_id}")
                                 # Handle stream switch request
@@ -1402,67 +1432,73 @@ class ProxyServer:
                             # Get channel state
                             channel_state = "unknown"
                             if self.redis_client:
-                                state_bytes = self.redis_client.get(f"ts_proxy:channel:{channel_id}:state")
+                                state_key = f"ts_proxy:channel:{channel_id}:state"
+                                state_bytes = self.redis_client.get(state_key)
                                 if state_bytes:
                                     channel_state = state_bytes.decode('utf-8')
                             
                             # Check if channel has any clients left
+                            total_clients = 0
                             if channel_id in self.client_managers:
                                 client_manager = self.client_managers[channel_id]
                                 total_clients = client_manager.get_total_client_count()
                                 
-                                # If in waiting_for_clients state, check if grace period expired
-                                if channel_state == "waiting_for_clients" and total_clients == 0:
-                                    # RENAMED: grace_start → connection_ready_time
-                                    ready_key = f"ts_proxy:channel:{channel_id}:connection_ready_time"
-                                    ready_time = None
+                            # VERIFY REDIS CLIENT COUNT DIRECTLY - Double check client count
+                            if self.redis_client:
+                                client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+                                redis_client_count = self.redis_client.scard(client_set_key) or 0
+                                
+                                if redis_client_count != total_clients:
+                                    logging.warning(f"Client count mismatch for channel {channel_id}: " 
+                                                  f"manager={total_clients}, redis={redis_client_count}")
+                                    # Trust Redis count as source of truth
+                                    total_clients = redis_client_count
                                     
-                                    if self.redis_client:
-                                        ready_value = self.redis_client.get(ready_key)
-                                        if ready_value:
-                                            ready_time = float(ready_value.decode('utf-8'))
-                                    
-                                    if ready_time:
-                                        grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
-                                        grace_elapsed = time.time() - ready_time
-                                        
-                                        if grace_elapsed > grace_period:
-                                            logging.info(f"No clients connected within grace period ({grace_elapsed:.1f}s > {grace_period}s), stopping channel {channel_id}")
-                                            self.stop_channel(channel_id)
-                                        else:
-                                            logging.debug(f"Channel {channel_id} in grace period - {grace_elapsed:.1f}s of {grace_period}s elapsed, waiting for clients")
+                            # Log client count periodically
+                            if time.time() % 30 < 1:  # Every ~30 seconds
+                                logging.info(f"Channel {channel_id} has {total_clients} clients, state: {channel_state}")
+                                
+                            # If in waiting_for_clients state, check if grace period expired
+                            if channel_state == "waiting_for_clients" and total_clients == 0:
+                                # ... existing grace period logic ...
+                                pass
                                             
-                                # If active and no clients, start normal shutdown procedure
-                                elif channel_state not in ["connecting", "waiting_for_clients"] and total_clients == 0:
-                                    # RENAMED: no_clients_since → last_client_disconnect_time
-                                    disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
-                                    disconnect_time = None
-                                    
-                                    if self.redis_client:
-                                        disconnect_value = self.redis_client.get(disconnect_key)
-                                        if disconnect_value:
+                            # If active and no clients, start normal shutdown procedure
+                            elif channel_state not in ["connecting", "waiting_for_clients"] and total_clients == 0:
+                                # Check if there's a pending no-clients timeout
+                                disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                disconnect_time = None
+                                
+                                if self.redis_client:
+                                    disconnect_value = self.redis_client.get(disconnect_key)
+                                    if disconnect_value:
+                                        try:
                                             disconnect_time = float(disconnect_value.decode('utf-8'))
-                                    
-                                    current_time = time.time()
-                                    
-                                    if not disconnect_time:
-                                        # First time seeing zero clients, set timestamp
-                                        if self.redis_client:
-                                            self.redis_client.setex(disconnect_key, Config.CLIENT_RECORD_TTL, str(current_time))
-                                        logging.info(f"No clients detected for channel {channel_id}, starting shutdown timer")
-                                    elif current_time - disconnect_time > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
-                                        # We've had no clients for the shutdown delay period
-                                        logging.info(f"No clients for {current_time - disconnect_time:.1f}s, stopping channel {channel_id}")
-                                        self.stop_channel(channel_id)
-                                else:
-                                    # There are clients or we're still connecting - clear any disconnect timestamp
+                                        except (ValueError, TypeError) as e:
+                                            logging.error(f"Invalid disconnect time for channel {channel_id}: {e}")
+                                
+                                current_time = time.time()
+                                
+                                if not disconnect_time:
+                                    # First time seeing zero clients, set timestamp
                                     if self.redis_client:
-                                        self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
-                    
-                    # Rest of the cleanup thread...
-                    
-                    # Refresh active channel registry
-                    self.refresh_channel_registry()
+                                        self.redis_client.setex(disconnect_key, 60, str(current_time))
+                                    logging.warning(f"No clients detected for channel {channel_id}, starting shutdown timer")
+                                elif current_time - disconnect_time > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
+                                    # We've had no clients for the shutdown delay period - FORCE STOP
+                                    logging.warning(f"No clients for {current_time - disconnect_time:.1f}s, stopping channel {channel_id}")
+                                    self.stop_channel(channel_id)
+                                else:
+                                    # Still in shutdown delay period
+                                    logging.debug(f"Channel {channel_id} shutdown timer: " 
+                                                f"{current_time - disconnect_time:.1f}s of " 
+                                                f"{getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)}s elapsed")
+                            else:
+                                # There are clients or we're still connecting - clear any disconnect timestamp
+                                if self.redis_client:
+                                    self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
+
+                    # ... rest of the cleanup thread ...
                     
                 except Exception as e:
                     logging.error(f"Error in cleanup thread: {e}", exc_info=True)
