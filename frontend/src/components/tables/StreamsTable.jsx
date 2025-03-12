@@ -30,6 +30,10 @@ import {
   Title,
   Divider,
   Center,
+  Pagination,
+  Group,
+  NumberInput,
+  NativeSelect,
 } from '@mantine/core';
 import {
   IconArrowDown,
@@ -52,10 +56,12 @@ const StreamsTable = ({}) => {
   const [groupOptions, setGroupOptions] = useState([]);
   const [m3uOptions, setM3uOptions] = useState([]);
   const [actionsOpenRow, setActionsOpenRow] = useState(null);
-  const [dataFetched, setDataFetched] = useState(false);
+  const [initialDataCount, setInitialDataCount] = useState(null);
 
   const [data, setData] = useState([]); // Holds fetched data
   const [rowCount, setRowCount] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [paginationString, setPaginationString] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [sorting, setSorting] = useState([]);
   const [selectedStreamIds, setSelectedStreamIds] = useState([]);
@@ -63,7 +69,7 @@ const StreamsTable = ({}) => {
   // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 25,
+    pageSize: 250,
   });
   const [filters, setFilters] = useState({
     name: '',
@@ -112,7 +118,6 @@ const StreamsTable = ({}) => {
             onClick={(e) => e.stopPropagation()}
             onChange={handleFilterChange}
             size="xs"
-            margin="none"
           />
         ),
         Cell: ({ cell }) => (
@@ -230,6 +235,21 @@ const StreamsTable = ({}) => {
       const result = await API.queryStreams(params);
       setData(result.results);
       setRowCount(result.count);
+      setPageCount(Math.ceil(result.count / pagination.pageSize));
+
+      // Calculate the starting and ending item indexes
+      const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
+      const endItem = Math.min(
+        (pagination.pageIndex + 1) * pagination.pageSize,
+        result.count
+      );
+
+      if (initialDataCount === null) {
+        setInitialDataCount(result.count);
+      }
+
+      // Generate the string
+      setPaginationString(`${startItem} to ${endItem} of ${result.count}`);
 
       const newSelection = {};
       result.results.forEach((item, index) => {
@@ -250,9 +270,6 @@ const StreamsTable = ({}) => {
     setGroupOptions(groups);
 
     setIsLoading(false);
-    if (dataFetched === false) {
-      setDataFetched(true);
-    }
   }, [pagination, sorting, debouncedFilters]);
 
   // Fallback: Individual creation (optional)
@@ -374,17 +391,21 @@ const StreamsTable = ({}) => {
     setRowSelection(newSelection);
   };
 
-  const onPageSizeChange = (pageSize) => {
+  const onPageSizeChange = (e) => {
     setPagination({
       ...pagination,
-      pageSize,
+      pageSize: e.target.value,
     });
   };
 
   const onPageIndexChange = (pageIndex) => {
+    if (!pageIndex || pageIndex > pageCount) {
+      return;
+    }
+
     setPagination({
       ...pagination,
-      pageIndex,
+      pageIndex: pageIndex - 1,
     });
   };
 
@@ -409,8 +430,33 @@ const StreamsTable = ({}) => {
     rowVirtualizerInstanceRef,
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     enableBottomToolbar: true,
+    renderBottomToolbar: ({ table }) => (
+      <Group
+        gap={5}
+        justify="center"
+        style={{ padding: 8, borderTop: '1px solid #666' }}
+      >
+        <Text size="xs">Page Size</Text>
+        <NativeSelect
+          size="xxs"
+          value={pagination.pageSize}
+          data={['25', '50', '100', '250', '500', '1000']}
+          onChange={onPageSizeChange}
+          style={{ paddingRight: 20 }}
+        />
+        <Pagination
+          total={pageCount}
+          value={pagination.pageIndex + 1}
+          onChange={onPageIndexChange}
+          size="xs"
+          withEdges
+          style={{ paddingRight: 20 }}
+        />
+        <Text size="xs">{paginationString}</Text>
+      </Group>
+    ),
     enableStickyHeader: true,
-    onPaginationChange: onPaginationChange,
+    // onPaginationChange: onPaginationChange,
     rowCount: rowCount,
     enableRowSelection: true,
     mantineSelectAllCheckboxProps: {
@@ -433,7 +479,7 @@ const StreamsTable = ({}) => {
     state: {
       isLoading: isLoading,
       sorting,
-      pagination,
+      // pagination,
       rowSelection,
     },
     enableRowActions: true,
@@ -498,7 +544,7 @@ const StreamsTable = ({}) => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 180px)',
+        height: 'calc(100vh - 167px)',
         overflowY: 'auto',
       },
     },
@@ -537,7 +583,7 @@ const StreamsTable = ({}) => {
   return (
     <>
       <Flex
-        style={{ display: 'flex', alignItems: 'center', paddingBottom: 10 }}
+        style={{ display: 'flex', alignItems: 'center', paddingBottom: 12 }}
         gap={15}
       >
         <Text
@@ -616,7 +662,7 @@ const StreamsTable = ({}) => {
           </Flex>
         </Box>
 
-        {!dataFetched && (
+        {initialDataCount === 0 && (
           <Center style={{ paddingTop: 20 }}>
             <Card
               shadow="sm"
@@ -669,7 +715,7 @@ const StreamsTable = ({}) => {
             </Card>
           </Center>
         )}
-        {dataFetched && <MantineReactTable table={table} />}
+        {initialDataCount > 0 && <MantineReactTable table={table} />}
       </Paper>
       <StreamForm
         stream={stream}

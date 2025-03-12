@@ -24,11 +24,11 @@ import {
   ScreenShare,
   Scroll,
   SquareMinus,
-  Pencil,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  TvMinimalPlay,
+  CirclePlay,
+  SquarePen,
+  Binary,
+  ArrowDown01,
+  SquarePlus,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -40,24 +40,14 @@ import {
   Button,
   Paper,
   Flex,
-  Center,
   Text,
   Tooltip,
   Grid,
   Group,
   useMantineTheme,
-  UnstyledButton,
+  Center,
   Container,
-  Space,
 } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconDeviceDesktopSearch,
-  IconSelector,
-  IconSortAscendingNumbers,
-  IconSquarePlus,
-} from '@tabler/icons-react'; // Import custom icons
 
 const ChannelStreams = ({ channel, isExpanded }) => {
   const channelStreams = useChannelsStore(
@@ -142,76 +132,12 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     return <></>;
   }
 
-  return (
-    <Box
-      sx={{
-        backgroundColor: 'primary.main',
-        pt: 1,
-        pb: 1,
-        width: '100%',
-      }}
-    >
-      <MantineReactTable table={channelStreamsTable} />
-    </Box>
-  );
+  return <MantineReactTable table={channelStreamsTable} />;
 };
 
-// /* -----------------------------------------------------------
-//    2) Custom-styled "chip" buttons for HDHR, M3U, EPG
-// ------------------------------------------------------------ */
-// const HDHRButton = styled(Button)(() => ({
-//   border: '1px solid #a3d977',
-//   color: '#a3d977',
-//   backgroundColor: 'transparent',
-//   textTransform: 'none',
-//   fontSize: '0.85rem',
-//   display: 'flex',
-//   alignItems: 'center',
-//   gap: '4px',
-//   padding: '2px 8px',
-//   minWidth: 'auto',
-//   '&:hover': {
-//     borderColor: '#c2e583',
-//     color: '#c2e583',
-//     backgroundColor: 'rgba(163,217,119,0.1)',
-//   },
-// }));
-
-// const M3UButton = styled(Button)(() => ({
-//   border: '1px solid #5f6dc6',
-//   color: '#5f6dc6',
-//   backgroundColor: 'transparent',
-//   textTransform: 'none',
-//   fontSize: '0.85rem',
-//   display: 'flex',
-//   alignItems: 'center',
-//   gap: '4px',
-//   padding: '2px 8px',
-//   minWidth: 'auto',
-//   '&:hover': {
-//     borderColor: '#7f8de6',
-//     color: '#7f8de6',
-//     backgroundColor: 'rgba(95,109,198,0.1)',
-//   },
-// }));
-
-// const EPGButton = styled(Button)(() => ({
-//   border: '1px solid #707070',
-//   color: '#a0a0a0',
-//   backgroundColor: 'transparent',
-//   textTransform: 'none',
-//   fontSize: '0.85rem',
-//   display: 'flex',
-//   alignItems: 'center',
-//   gap: '4px',
-//   padding: '2px 8px',
-//   minWidth: 'auto',
-//   '&:hover': {
-//     borderColor: '#a0a0a0',
-//     color: '#c0c0c0',
-//     backgroundColor: 'rgba(112,112,112,0.1)',
-//   },
-// }));
+const m3uUrl = `${window.location.protocol}//${window.location.host}/output/m3u`;
+const epgUrl = `${window.location.protocol}//${window.location.host}/output/epg`;
+const hdhrUrl = `${window.location.protocol}//${window.location.host}/output/hdhr`;
 
 const ChannelsTable = ({}) => {
   const [channel, setChannel] = useState(null);
@@ -219,7 +145,6 @@ const ChannelsTable = ({}) => {
   const [rowSelection, setRowSelection] = useState([]);
   const [channelGroupOptions, setChannelGroupOptions] = useState([]);
 
-  const [anchorEl, setAnchorEl] = useState(null);
   const [textToCopy, setTextToCopy] = useState('');
 
   const [filterValues, setFilterValues] = useState({});
@@ -252,7 +177,9 @@ const ChannelsTable = ({}) => {
     }));
   };
 
-  const outputUrlRef = useRef(null);
+  const hdhrUrlRef = useRef(null);
+  const m3uUrlRef = useRef(null);
+  const epgUrlRef = useRef(null);
 
   const {
     environment: { env_mode },
@@ -269,14 +196,18 @@ const ChannelsTable = ({}) => {
       {
         header: 'Name',
         accessorKey: 'channel_name',
-        muiTableHeadCellProps: {
+        mantineTableHeadCellProps: {
           sx: { textAlign: 'center' },
         },
         Header: ({ column }) => (
           <TextInput
+            name="name"
             placeholder="Name"
             value={filterValues[column.id]}
-            onChange={(e) => handleFilterChange(column.id, e.target.value)}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleFilterChange(column.id, e.target.value);
+            }}
             size="xs"
           />
         ),
@@ -447,12 +378,16 @@ const ChannelsTable = ({}) => {
     }
   }, [sorting]);
 
-  const handleCopy = async () => {
+  const handleCopy = async (textToCopy, ref) => {
     try {
       await navigator.clipboard.writeText(textToCopy);
-      showAlert('Copied!');
+      notifications.show({
+        title: 'Copied!',
+        // style: { width: '200px', left: '200px' },
+      });
     } catch (err) {
-      const inputElement = outputUrlRef.current.querySelector('input'); // Get the actual input
+      const inputElement = ref.current; // Get the actual input
+      console.log(inputElement);
 
       if (inputElement) {
         inputElement.focus();
@@ -460,28 +395,28 @@ const ChannelsTable = ({}) => {
 
         // For older browsers
         document.execCommand('copy');
-        showAlert('Copied!');
+        notifications.show({ title: 'Copied!' });
       }
     }
   };
 
   // Example copy URLs
-  const copyM3UUrl = (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy(
-      `${window.location.protocol}//${window.location.host}/output/m3u`
+  const copyM3UUrl = () => {
+    handleCopy(
+      `${window.location.protocol}//${window.location.host}/output/m3u`,
+      m3uUrlRef
     );
   };
-  const copyEPGUrl = (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy(
-      `${window.location.protocol}//${window.location.host}/output/epg`
+  const copyEPGUrl = () => {
+    handleCopy(
+      `${window.location.protocol}//${window.location.host}/output/epg`,
+      epgUrlRef
     );
   };
-  const copyHDHRUrl = (event) => {
-    setAnchorEl(event.currentTarget);
-    setTextToCopy(
-      `${window.location.protocol}//${window.location.host}/output/hdhr`
+  const copyHDHRUrl = () => {
+    handleCopy(
+      `${window.location.protocol}//${window.location.host}/output/hdhr`,
+      hdhrUrlRef
     );
   };
 
@@ -509,11 +444,6 @@ const ChannelsTable = ({}) => {
     enableRowVirtualization: true,
     enableRowSelection: true,
     renderTopToolbar: false,
-    icons: {
-      IconSortAscending: IconArrowUp, // Upward arrow for ascending sort
-      IconSortDescending: IconArrowDown, // Downward arrow for descending sort
-      IconSort: IconSelector, // Default sort icon (unsorted state)
-    },
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
@@ -535,23 +465,18 @@ const ChannelsTable = ({}) => {
       'mrt-row-expand': {
         size: 10,
         header: '',
-        muiTableHeadCellProps: {
-          sx: { width: 38, minWidth: 38, maxWidth: 38, height: '100%' },
-        },
-        muiTableBodyCellProps: {
-          sx: { width: 38, minWidth: 38, maxWidth: 38 },
-        },
       },
       'mrt-row-actions': {
         size: 74,
       },
     },
-    muiExpandButtonProps: ({ row, table }) => ({
+    mantineExpandButtonProps: ({ row, table }) => ({
       onClick: () => {
         setRowSelection({ [row.index]: true });
         table.setExpanded({ [row.id]: !row.getIsExpanded() });
       },
-      sx: {
+      size: 'xs',
+      style: {
         transform: row.getIsExpanded() ? 'rotate(180deg)' : 'rotate(-90deg)',
         transition: 'transform 0.2s',
       },
@@ -561,40 +486,42 @@ const ChannelsTable = ({}) => {
     ),
     renderRowActions: ({ row }) => (
       <Box sx={{ justifyContent: 'right' }}>
-        <Tooltip label="Edit Channel">
-          <ActionIcon
-            size="sm"
-            variant="transparent"
-            color="yellow.5"
-            onClick={() => {
-              editChannel(row.original);
-            }}
-          >
-            <Pencil size="14" />
-          </ActionIcon>
-        </Tooltip>
+        <Center>
+          <Tooltip label="Edit Channel">
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              color="yellow.5"
+              onClick={() => {
+                editChannel(row.original);
+              }}
+            >
+              <SquarePen size="18" />
+            </ActionIcon>
+          </Tooltip>
 
-        <Tooltip label="Delete Channel">
-          <ActionIcon
-            size="sm"
-            variant="transparent"
-            color="red.9"
-            onClick={() => deleteChannel(row.original.id)}
-          >
-            <SquareMinus size="14" />
-          </ActionIcon>
-        </Tooltip>
+          <Tooltip label="Delete Channel">
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              color="red.9"
+              onClick={() => deleteChannel(row.original.id)}
+            >
+              <SquareMinus size="18" />
+            </ActionIcon>
+          </Tooltip>
 
-        <Tooltip label="Preview Channel">
-          <ActionIcon
-            size="sm"
-            variant="transparent"
-            color="green.5"
-            onClick={() => handleWatchStream(row.original.channel_number)}
-          >
-            <TvMinimalPlay size="14" />
-          </ActionIcon>
-        </Tooltip>
+          <Tooltip label="Preview Channel">
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              color="green.5"
+              onClick={() => handleWatchStream(row.original.channel_number)}
+            >
+              <CirclePlay size="18" />
+            </ActionIcon>
+          </Tooltip>
+        </Center>
       </Box>
     ),
     mantineTableContainerProps: {
@@ -602,9 +529,6 @@ const ChannelsTable = ({}) => {
         height: 'calc(100vh - 127px)',
         overflowY: 'auto',
       },
-    },
-    muiSearchTextFieldProps: {
-      variant: 'standard',
     },
   });
 
@@ -658,12 +582,10 @@ const ChannelsTable = ({}) => {
                 <Button
                   leftSection={<Tv2 size={18} />}
                   size="compact-sm"
-                  onClick={copyHDHRUrl}
                   p={5}
                   color="green"
                   variant="subtle"
                   style={{
-                    borderWidth: 1,
                     borderColor: theme.palette.custom.greenMain,
                     color: theme.palette.custom.greenMain,
                   }}
@@ -673,11 +595,12 @@ const ChannelsTable = ({}) => {
               </Popover.Target>
               <Popover.Dropdown>
                 <Group>
-                  <TextInput value={textToCopy} size="small" sx={{ mr: 1 }} />
+                  <TextInput ref={hdhrUrlRef} value={hdhrUrl} size="small" />
                   <ActionIcon
-                    onClick={handleCopy}
+                    onClick={copyHDHRUrl}
                     size="sm"
                     variant="transparent"
+                    color="gray.5"
                   >
                     <ContentCopy size="18" fontSize="small" />
                   </ActionIcon>
@@ -690,12 +613,9 @@ const ChannelsTable = ({}) => {
                 <Button
                   leftSection={<ScreenShare size={18} />}
                   size="compact-sm"
-                  onClick={copyM3UUrl}
                   p={5}
-                  color="green"
                   variant="subtle"
                   style={{
-                    borderWidth: 1,
                     borderColor: theme.palette.custom.indigoMain,
                     color: theme.palette.custom.indigoMain,
                   }}
@@ -705,11 +625,12 @@ const ChannelsTable = ({}) => {
               </Popover.Target>
               <Popover.Dropdown>
                 <Group>
-                  <TextInput value={textToCopy} size="small" sx={{ mr: 1 }} />
+                  <TextInput ref={m3uUrlRef} value={m3uUrl} size="small" />
                   <ActionIcon
-                    onClick={handleCopy}
+                    onClick={copyM3UUrl}
                     size="sm"
                     variant="transparent"
+                    color="gray.5"
                   >
                     <ContentCopy size="18" fontSize="small" />
                   </ActionIcon>
@@ -722,12 +643,10 @@ const ChannelsTable = ({}) => {
                 <Button
                   leftSection={<Scroll size={18} />}
                   size="compact-sm"
-                  onClick={copyEPGUrl}
                   p={5}
-                  color="green"
                   variant="subtle"
+                  color="gray.5"
                   style={{
-                    borderWidth: 1,
                     borderColor: theme.palette.custom.greyBorder,
                     color: theme.palette.custom.greyBorder,
                   }}
@@ -737,11 +656,12 @@ const ChannelsTable = ({}) => {
               </Popover.Target>
               <Popover.Dropdown>
                 <Group>
-                  <TextInput value={textToCopy} size="small" sx={{ mr: 1 }} />
+                  <TextInput ref={epgUrlRef} value={epgUrl} size="small" />
                   <ActionIcon
-                    onClick={handleCopy}
+                    onClick={copyEPGUrl}
                     size="sm"
                     variant="transparent"
+                    color="gray.5"
                   >
                     <ContentCopy size="18" fontSize="small" />
                   </ActionIcon>
@@ -775,20 +695,18 @@ const ChannelsTable = ({}) => {
           }}
         >
           <Flex gap={6}>
-            <Tooltip label="Remove Channels">
-              <Button
-                leftSection={<SquareMinus size={18} />}
-                variant="default"
-                size="xs"
-                onClick={deleteChannels}
-              >
-                Remove
-              </Button>
-            </Tooltip>
+            <Button
+              leftSection={<SquareMinus size={18} />}
+              variant="default"
+              size="xs"
+              onClick={deleteChannels}
+            >
+              Remove
+            </Button>
 
             <Tooltip label="Assign Channel #s">
               <Button
-                leftSection={<IconSortAscendingNumbers size={18} />}
+                leftSection={<ArrowDown01 size={18} />}
                 variant="default"
                 size="xs"
                 onClick={assignChannels}
@@ -800,7 +718,7 @@ const ChannelsTable = ({}) => {
 
             <Tooltip label="Auto-Match EPG">
               <Button
-                leftSection={<IconDeviceDesktopSearch size={18} />}
+                leftSection={<Binary size={18} />}
                 variant="default"
                 size="xs"
                 onClick={matchEpg}
@@ -810,115 +728,104 @@ const ChannelsTable = ({}) => {
               </Button>
             </Tooltip>
 
-            <Tooltip label="Create New Channel">
-              <Button
-                leftSection={<IconSquarePlus size={18} />}
-                variant="light"
-                size="xs"
-                onClick={() => editChannel()}
-                p={5}
-                color="green"
-                style={{
-                  borderWidth: '1px',
-                  borderColor: 'green',
-                  color: 'white',
-                }}
-              >
-                Add
-              </Button>
-            </Tooltip>
+            <Button
+              leftSection={<SquarePlus size={18} />}
+              variant="light"
+              size="xs"
+              onClick={() => editChannel()}
+              p={5}
+              color="green"
+              style={{
+                borderWidth: '1px',
+                borderColor: 'green',
+                color: 'white',
+              }}
+            >
+              Add
+            </Button>
           </Flex>
         </Box>
 
         {/* Table or ghost empty state inside Paper */}
-        <Box style={{ flex: 1, position: 'relative' }}>
+        <Box style={{ height: '100%', width: '100%' }}>
           {filteredData.length === 0 && (
-            <Flex
+            <Box
               style={{
-                position: 'relative',
+                paddingTop: 20,
                 bgcolor: theme.palette.background.paper,
-                height: 'calc(50vh - 124px)',
               }}
             >
-              <Box
-                component="img"
-                src={ghostImage}
-                alt="Ghost"
-                style={{
-                  position: 'absolute',
-                  top: '80%',
-                  left: '50%',
-                  width: '120px',
-                  height: 'auto',
-                  transform: 'translate(-50%, -50%)',
-                  opacity: 0.2,
-                  pointerEvents: 'none',
-                }}
-              />
-              <Box
-                style={{
-                  position: 'absolute',
-                  top: '25%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  textAlign: 'center',
-                  zIndex: 2,
-                  width: 467,
-                  px: 2,
-                }}
-              >
-                <Text
+              <Center>
+                <Box
                   style={{
-                    fontFamily: 'Inter, sans-serif',
-                    fontWeight: 400,
-                    fontSize: '20px',
-                    lineHeight: '28px',
-                    letterSpacing: '-0.3px',
-                    color: theme.palette.text.secondary,
-                    mb: 1,
+                    textAlign: 'center',
+                    width: '55%',
                   }}
                 >
-                  It’s recommended to create channels after adding your M3U or
-                  streams.
-                </Text>
-                <Text
+                  <Text
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontWeight: 400,
+                      fontSize: '20px',
+                      lineHeight: '28px',
+                      letterSpacing: '-0.3px',
+                      color: theme.palette.text.secondary,
+                      mb: 1,
+                    }}
+                  >
+                    It’s recommended to create channels after adding your M3U or
+                    streams.
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontWeight: 400,
+                      fontSize: '16px',
+                      lineHeight: '24px',
+                      letterSpacing: '-0.2px',
+                      color: theme.palette.text.secondary,
+                      mb: 2,
+                    }}
+                  >
+                    You can still create channels without streams if you’d like,
+                    and map them later.
+                  </Text>
+                  <Button
+                    leftSection={<SquarePlus size={18} />}
+                    variant="light"
+                    size="xs"
+                    onClick={() => editChannel()}
+                    color="gray"
+                    style={{
+                      marginTop: 20,
+                      borderWidth: '1px',
+                      borderColor: 'gray',
+                      color: 'white',
+                    }}
+                  >
+                    Create Channel
+                  </Button>
+                </Box>
+              </Center>
+
+              <Center>
+                <Box
+                  component="img"
+                  src={ghostImage}
+                  alt="Ghost"
                   style={{
-                    fontFamily: 'Inter, sans-serif',
-                    fontWeight: 400,
-                    fontSize: '16px',
-                    lineHeight: '24px',
-                    letterSpacing: '-0.2px',
-                    color: theme.palette.text.secondary,
-                    mb: 2,
+                    paddingTop: 30,
+                    width: '120px',
+                    height: 'auto',
+                    opacity: 0.2,
+                    pointerEvents: 'none',
                   }}
-                >
-                  You can still create channels without streams if you’d like,
-                  and map them later.
-                </Text>
-                <Button
-                  leftSection={<IconSquarePlus size={18} />}
-                  variant="light"
-                  size="xs"
-                  onClick={() => editChannel()}
-                  color="gray"
-                  style={{
-                    marginTop: 20,
-                    borderWidth: '1px',
-                    borderColor: 'gray',
-                    color: 'white',
-                  }}
-                >
-                  Create Channel
-                </Button>
-              </Box>
-            </Flex>
+                />
+              </Center>
+            </Box>
           )}
         </Box>
-        {filteredData.length > 0 && (
-          <Box style={{ flex: 1, overflow: 'auto' }}>
-            <MantineReactTable table={table} />
-          </Box>
-        )}
+        {filteredData.length > 0 && <MantineReactTable table={table} />}
       </Paper>
 
       <ChannelForm
