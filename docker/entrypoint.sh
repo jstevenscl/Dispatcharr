@@ -46,10 +46,11 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export POSTGRES_HOST=$POSTGRES_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
-    echo "export REACT_APP_ENV_MODE=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
+
+pip install django-filter
 
 # Run init scripts
 echo "Starting init process..."

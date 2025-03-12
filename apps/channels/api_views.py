@@ -359,7 +359,7 @@ class BulkDeleteChannelsAPIView(APIView):
         ),
         responses={204: "Channels deleted"}
     )
-    def destroy(self, request):
+    def delete(self, request):
         channel_ids = request.data.get('channel_ids', [])
         Channel.objects.filter(id__in=channel_ids).delete()
         return Response({"message": "Channels deleted"}, status=status.HTTP_204_NO_CONTENT)

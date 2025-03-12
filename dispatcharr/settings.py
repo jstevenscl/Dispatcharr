@@ -56,7 +56,7 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
-            os.path.join(BASE_DIR, 'frontend/build'),
+            os.path.join(BASE_DIR, 'frontend/dist'),
             BASE_DIR / "templates"
         ],
         'APP_DIRS': True,
@@ -140,7 +140,7 @@ STATIC_ROOT = BASE_DIR / 'static'  # Directory where static files will be collec
 
 # Adjust STATICFILES_DIRS to include the paths to the directories that contain your static files.
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'frontend/build/static'),  # React build static files
+    os.path.join(BASE_DIR, 'frontend/dist'),  # React build static files
 ]
 
 

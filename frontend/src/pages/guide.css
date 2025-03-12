@@ -1,0 +1,25 @@
+.tv-guide .guide-program-container .guide-program {
+  position: relative;
+  left: 2px;
+  top: 2px;
+  padding: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 8px;
+  background: linear-gradient(to right, #2d3748, #2d3748); /* Default background */
+  color: #fff;
+  transition: background 0.3s ease;
+}
+
+.tv-guide .guide-program-container .guide-program.live {
+  background: linear-gradient(to right, #1e3a8a, #2c5282);
+}
+
+.tv-guide .guide-program-container .guide-program.live:hover {
+  background: linear-gradient(to right, #1e3a8a, #2a4365);
+}
+
+.tv-guide .guide-program-container .guide-program.not-live:hover {
+  background: linear-gradient(to right, #2d3748, #1a202c);
+}

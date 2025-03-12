@@ -12,3 +12,5 @@ static/
 docker/DockerfileAIO
 docker/Dockerfile DEV
 data/
+.next
+next-env.d.ts
