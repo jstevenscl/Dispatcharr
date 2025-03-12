@@ -53,7 +53,7 @@ export const WebsocketProvider = ({ children }) => {
           if (event.message?.success) {
             fetchStreams();
             notifications.show({
-              title: 'event.message.message',
+              message: event.message.message,
               color: 'green.5',
             });
           }
