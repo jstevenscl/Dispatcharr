@@ -8,7 +8,6 @@ import {
   SwapVert as SwapVertIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import {
   LiveTv as LiveTvIcon,
@@ -45,6 +44,8 @@ import {
   ArrowDown,
   ArrowUpDown,
   TvMinimalPlay,
+  SquarePen,
+  RefreshCcw,
 } from 'lucide-react';
 import {
   IconArrowDown,
@@ -193,15 +194,15 @@ const Example = () => {
             editPlaylist(row.original);
           }}
         >
-          <EditIcon fontSize="sm" />
+          <SquarePen size="18" />
         </ActionIcon>
         <ActionIcon
           variant="transparent"
           size="sm"
-          color="red.5"
+          color="red.9"
           onClick={() => deletePlaylist(row.original.id)}
         >
-          <DeleteIcon fontSize="sm" />
+          <SquareMinus size="18" />
         </ActionIcon>
         <ActionIcon
           variant="transparent"
@@ -209,7 +210,7 @@ const Example = () => {
           color="blue.5"
           onClick={() => refreshPlaylist(row.original.id)}
         >
-          <RefreshIcon fontSize="sm" />
+          <RefreshCcw size="18" />
         </ActionIcon>
       </>
     ),

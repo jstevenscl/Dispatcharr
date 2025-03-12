@@ -32,6 +32,7 @@ import {
   IconSortAscendingNumbers,
   IconSquarePlus,
 } from '@tabler/icons-react';
+import { SquareMinus, SquarePen } from 'lucide-react';
 
 const UserAgentsTable = () => {
   const [userAgent, setUserAgent] = useState(null);
@@ -191,14 +192,14 @@ const UserAgentsTable = () => {
     data: userAgents,
     enablePagination: false,
     enableRowVirtualization: true,
-    enableRowSelection: true,
+    // enableRowSelection: true,
     renderTopToolbar: false,
-    onRowSelectionChange: setRowSelection,
+    // onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
       isLoading,
       sorting,
-      rowSelection,
+      // rowSelection,
     },
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
@@ -210,21 +211,21 @@ const UserAgentsTable = () => {
       <>
         <ActionIcon
           variant="transparent"
-          size="small" // Makes the button smaller
+          size="sm" // Makes the button smaller
           color="yellow.5" // Red color for delete actions
           onClick={() => {
             editUserAgent(row.original);
           }}
         >
-          <EditIcon fontSize="small" /> {/* Small icon size */}
+          <SquarePen size="18" /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="small" // Makes the button smaller
-          color="error" // Red color for delete actions
+          size="sm"
+          color="red.9" // Red color for delete actions
           onClick={() => deleteUserAgent(row.original.id)}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <SquareMinus size="18" /> {/* Small icon size */}
         </ActionIcon>
       </>
     ),

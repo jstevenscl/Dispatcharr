@@ -24,6 +24,7 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
+import { SquareMinus, SquarePen } from 'lucide-react';
 
 const StreamProfiles = () => {
   const [profile, setProfile] = useState(null);
@@ -140,14 +141,14 @@ const StreamProfiles = () => {
     data: streamProfiles,
     enablePagination: false,
     enableRowVirtualization: true,
-    enableRowSelection: true,
+    // enableRowSelection: true,
     renderTopToolbar: false,
-    onRowSelectionChange: setRowSelection,
+    // onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     state: {
       isLoading,
       sorting,
-      rowSelection,
+      // rowSelection,
     },
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
@@ -160,17 +161,18 @@ const StreamProfiles = () => {
         <ActionIcon
           variant="transparent"
           color="yellow.5"
+          size="sm"
           onClick={() => editStreamProfile(row.original)}
         >
-          <EditIcon fontSize="small" /> {/* Small icon size */}
+          <SquarePen size="18" /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="small"
-          color="red.5"
+          size="sm"
+          color="red.9"
           onClick={() => deleteStreamProfile(row.original.id)}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <SquareMinus fontSize="small" /> {/* Small icon size */}
         </ActionIcon>
       </>
     ),

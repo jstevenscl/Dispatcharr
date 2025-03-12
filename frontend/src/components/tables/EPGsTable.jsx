@@ -22,6 +22,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
+import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
 
 const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
@@ -124,23 +125,23 @@ const EPGsTable = () => {
           color="yellow.5" // Red color for delete actions
           onClick={() => editEPG(row.original)}
         >
-          <EditIcon fontSize="small" /> {/* Small icon size */}
+          <SquarePen size="18" /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
           size="sm" // Makes the button smaller
-          color="red.5" // Red color for delete actions
+          color="red.9" // Red color for delete actions
           onClick={() => deleteEPG(row.original.id)}
         >
-          <DeleteIcon fontSize="small" /> {/* Small icon size */}
+          <SquareMinus size="18" /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
           size="sm" // Makes the button smaller
-          // color="blue.5" // Red color for delete actions
+          color="blue.5" // Red color for delete actions
           onClick={() => refreshEPG(row.original.id)}
         >
-          <RefreshIcon fontSize="small" /> {/* Small icon size */}
+          <RefreshCcw size="18" /> {/* Small icon size */}
         </ActionIcon>
       </>
     ),
