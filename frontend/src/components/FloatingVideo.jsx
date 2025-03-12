@@ -8,6 +8,7 @@ export default function FloatingVideo() {
   const { isVisible, streamUrl, hideVideo } = useVideoStore();
   const videoRef = useRef(null);
   const playerRef = useRef(null);
+  const videoContainerRef = useRef(null);
 
   useEffect(() => {
     if (!isVisible || !streamUrl) {
@@ -48,8 +49,9 @@ export default function FloatingVideo() {
   }
 
   return (
-    <Draggable>
+    <Draggable nodeRef={videoContainerRef}>
       <div
+        ref={videoContainerRef}
         style={{
           position: 'fixed',
           bottom: '20px',
