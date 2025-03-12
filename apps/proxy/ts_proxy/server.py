@@ -174,11 +174,9 @@ class StreamManager:
                 after_index = self.buffer.index
                 
                 # Log successful write
-                if success:
-                    logging.debug(f"Added chunk: {packet_count} packets, buffer index {before_index} → {after_index}")
-                else:
+                if not success:                   
                     logging.warning("Failed to add chunk to buffer")
-                    
+                                       
                 # If successful, update last data timestamp in Redis
                 if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                     last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
@@ -408,19 +406,36 @@ class StreamManager:
                 redis_client = self.buffer.redis_client
                 
                 if channel_id and redis_client:
-                    # Set state to waiting
-                    state_key = f"ts_proxy:channel:{channel_id}:state"
-                    redis_client.set(state_key, "waiting_for_clients")
+                    current_time = str(time.time())
                     
-                    # Set time when connection became ready and waiting for clients
-                    # RENAMED: grace_start → connection_ready_time
-                    ready_key = f"ts_proxy:channel:{channel_id}:connection_ready_time"
-                    redis_client.setex(ready_key, 120, str(time.time()))
+                    # SIMPLIFIED: Always use direct Redis update for reliability
+                    metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                     
-                    # Get configured grace period or default
-                    grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
+                    # Check current state first
+                    current_state = None
+                    try:
+                        metadata = redis_client.hgetall(metadata_key)
+                        if metadata and b'state' in metadata:
+                            current_state = metadata[b'state'].decode('utf-8')
+                    except Exception as e:
+                        logging.error(f"Error checking current state: {e}")
                     
-                    logging.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
+                    # Only update if not already past connecting
+                    if not current_state or current_state in ["initializing", "connecting"]:
+                        # Update directly - don't rely on proxy_server reference
+                        update_data = {
+                            "state": "waiting_for_clients",
+                            "connection_ready_time": current_time,
+                            "state_changed_at": current_time
+                        }
+                        redis_client.hset(metadata_key, mapping=update_data)
+                        
+                        # Get configured grace period or default
+                        grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
+                        logging.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → waiting_for_clients")
+                        logging.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
+                    else:
+                        logging.debug(f"Not changing state: channel {channel_id} already in {current_state} state")
         except Exception as e:
             logging.error(f"Error setting waiting for clients state: {e}")
 
@@ -1178,41 +1193,26 @@ class ProxyServer:
             return False
     
     def initialize_channel(self, url, channel_id, user_agent=None):
-        """Initialize a channel with standardized Redis keys"""
+        """Initialize a channel without redundant active key"""
         try:
             # Get channel URL from Redis if available
             channel_url = url
             channel_user_agent = user_agent
             
+            # First check if channel metadata already exists
+            existing_metadata = None
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            
             if self.redis_client:
-                # Store stream metadata - can be done regardless of ownership
-                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                active_key = f"ts_proxy:channel:{channel_id}:active"
-                
-                # Store metadata as hash
-                metadata = {
-                    "url": url if url else "",
-                    "init_time": str(time.time()),
-                    "owner": self.worker_id,
-                    "state": "initializing"
-                }
-                if user_agent:
-                    metadata["user_agent"] = user_agent
-                    
-                # Set channel metadata
-                self.redis_client.hset(metadata_key, mapping=metadata)
-                self.redis_client.expire(metadata_key, 3600)  # 1 hour TTL
-                
-                # Set simple activity marker - used for quick existence checks
-                self.redis_client.setex(active_key, 300, "1")  # 5 min TTL
+                existing_metadata = self.redis_client.hgetall(metadata_key)
                 
                 # If no url was passed, try to get from Redis
-                if not url:
-                    url_bytes = self.redis_client.hget(metadata_key, "url")
+                if not url and existing_metadata:
+                    url_bytes = existing_metadata.get(b'url')
                     if url_bytes:
                         channel_url = url_bytes.decode('utf-8')
                     
-                    ua_bytes = self.redis_client.hget(metadata_key, "user_agent")
+                    ua_bytes = existing_metadata.get(b'user_agent')
                     if ua_bytes:
                         channel_user_agent = ua_bytes.decode('utf-8')
             
@@ -1255,8 +1255,24 @@ class ProxyServer:
                 
                 return True
             
-            # We now own the channel - create stream manager
+            # We now own the channel - ONLY NOW should we set metadata with initializing state
             logging.info(f"Worker {self.worker_id} is now the owner of channel {channel_id}")
+            
+            if self.redis_client:
+                # NOW create or update metadata with initializing state
+                metadata = {
+                    "url": channel_url,
+                    "init_time": str(time.time()),
+                    "last_active": str(time.time()),
+                    "owner": self.worker_id,
+                    "state": "initializing"  # Only the owner sets this initial state
+                }
+                if channel_user_agent:
+                    metadata["user_agent"] = channel_user_agent
+                    
+                # Set channel metadata
+                self.redis_client.hset(metadata_key, mapping=metadata)
+                self.redis_client.expire(metadata_key, 3600)  # 1 hour TTL
             
             # Create stream buffer
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
@@ -1284,17 +1300,16 @@ class ProxyServer:
             
             # If we're the owner, we need to set the channel state rather than starting a grace period immediately
             if self.am_i_owner(channel_id):
-                # Set channel state to "connecting"
-                if self.redis_client:
-                    state_key = f"ts_proxy:channel:{channel_id}:state"
-                    self.redis_client.set(state_key, "connecting")
-                    
-                    # Set connection attempt start time for monitoring
-                    # RENAMED: connect_time → connection_attempt_time
-                    attempt_key = f"ts_proxy:channel:{channel_id}:connection_attempt_time"
-                    self.redis_client.setex(attempt_key, 60, str(time.time()))
-                    
-                    logging.info(f"Channel {channel_id} in connecting state - will start grace period after connection")            
+                self.update_channel_state(channel_id, "connecting", {
+                    "init_time": str(time.time()),
+                    "owner": self.worker_id
+                })
+                
+                # Set connection attempt start time
+                attempt_key = f"ts_proxy:channel:{channel_id}:connection_attempt_time"
+                self.redis_client.setex(attempt_key, 60, str(time.time()))
+                
+                logging.info(f"Channel {channel_id} in connecting state - will start grace period after connection")            
             return True
             
         except Exception as e:
@@ -1320,7 +1335,6 @@ class ProxyServer:
                     
             # Additional checks if metadata doesn't exist
             additional_keys = [
-                f"ts_proxy:channel:{channel_id}:active",
                 f"ts_proxy:channel:{channel_id}:clients",
                 f"ts_proxy:channel:{channel_id}:buffer:index",
                 f"ts_proxy:channel:{channel_id}:owner"
@@ -1429,40 +1443,68 @@ class ProxyServer:
                             # Extend ownership lease
                             self.extend_ownership(channel_id)
                             
-                            # Get channel state
+                            # Get channel state from metadata hash
                             channel_state = "unknown"
                             if self.redis_client:
-                                state_key = f"ts_proxy:channel:{channel_id}:state"
-                                state_bytes = self.redis_client.get(state_key)
-                                if state_bytes:
-                                    channel_state = state_bytes.decode('utf-8')
-                            
+                                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                metadata = self.redis_client.hgetall(metadata_key)
+                                if metadata and b'state' in metadata:
+                                    channel_state = metadata[b'state'].decode('utf-8')
+
                             # Check if channel has any clients left
                             total_clients = 0
                             if channel_id in self.client_managers:
                                 client_manager = self.client_managers[channel_id]
                                 total_clients = client_manager.get_total_client_count()
                                 
-                            # VERIFY REDIS CLIENT COUNT DIRECTLY - Double check client count
-                            if self.redis_client:
-                                client_set_key = f"ts_proxy:channel:{channel_id}:clients"
-                                redis_client_count = self.redis_client.scard(client_set_key) or 0
-                                
-                                if redis_client_count != total_clients:
-                                    logging.warning(f"Client count mismatch for channel {channel_id}: " 
-                                                  f"manager={total_clients}, redis={redis_client_count}")
-                                    # Trust Redis count as source of truth
-                                    total_clients = redis_client_count
-                                    
                             # Log client count periodically
                             if time.time() % 30 < 1:  # Every ~30 seconds
                                 logging.info(f"Channel {channel_id} has {total_clients} clients, state: {channel_state}")
                                 
-                            # If in waiting_for_clients state, check if grace period expired
-                            if channel_state == "waiting_for_clients" and total_clients == 0:
-                                # ... existing grace period logic ...
-                                pass
-                                            
+                            # If in connecting or waiting_for_clients state, check grace period
+                            if channel_state in ["connecting", "waiting_for_clients"]:
+                                # Get connection ready time from metadata
+                                connection_ready_time = None
+                                if metadata and b'connection_ready_time' in metadata:
+                                    try:
+                                        connection_ready_time = float(metadata[b'connection_ready_time'].decode('utf-8'))
+                                    except (ValueError, TypeError):
+                                        pass
+                                    
+                                # If still connecting, give it more time
+                                if channel_state == "connecting":
+                                    logging.debug(f"Channel {channel_id} still connecting - not checking for clients yet")
+                                    continue
+                                    
+                                # If waiting for clients, check grace period
+                                if connection_ready_time:
+                                    grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
+                                    time_since_ready = time.time() - connection_ready_time
+                                    
+                                    # Add this debug log
+                                    logging.debug(f"GRACE PERIOD CHECK: Channel {channel_id} in {channel_state} state, " 
+                                                 f"time_since_ready={time_since_ready:.1f}s, grace_period={grace_period}s, "
+                                                 f"total_clients={total_clients}")
+                                    
+                                    if time_since_ready <= grace_period:
+                                        # Still within grace period
+                                        logging.debug(f"Channel {channel_id} in grace period - {time_since_ready:.1f}s of {grace_period}s elapsed")
+                                        continue
+                                    elif total_clients == 0:
+                                        # Grace period expired with no clients
+                                        logging.info(f"Grace period expired ({time_since_ready:.1f}s > {grace_period}s) with no clients - stopping channel {channel_id}")
+                                        self.stop_channel(channel_id)
+                                    else:
+                                        # Grace period expired but we have clients - mark channel as active
+                                        logging.info(f"Grace period expired with {total_clients} clients - marking channel {channel_id} as active")
+                                        old_state = "unknown"
+                                        if metadata and b'state' in metadata:
+                                            old_state = metadata[b'state'].decode('utf-8')
+                                        if self.update_channel_state(channel_id, "active", {
+                                            "grace_period_ended_at": str(time.time()),
+                                            "clients_at_activation": str(total_clients)
+                                        }):
+                                            logging.info(f"Channel {channel_id} activated with {total_clients} clients after grace period")
                             # If active and no clients, start normal shutdown procedure
                             elif channel_state not in ["connecting", "waiting_for_clients"] and total_clients == 0:
                                 # Check if there's a pending no-clients timeout
@@ -1485,7 +1527,7 @@ class ProxyServer:
                                         self.redis_client.setex(disconnect_key, 60, str(current_time))
                                     logging.warning(f"No clients detected for channel {channel_id}, starting shutdown timer")
                                 elif current_time - disconnect_time > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
-                                    # We've had no clients for the shutdown delay period - FORCE STOP
+                                    # We've had no clients for the shutdown delay period
                                     logging.warning(f"No clients for {current_time - disconnect_time:.1f}s, stopping channel {channel_id}")
                                     self.stop_channel(channel_id)
                                 else:
@@ -1497,8 +1539,6 @@ class ProxyServer:
                                 # There are clients or we're still connecting - clear any disconnect timestamp
                                 if self.redis_client:
                                     self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
-
-                    # ... rest of the cleanup thread ...
                     
                 except Exception as e:
                     logging.error(f"Error in cleanup thread: {e}", exc_info=True)
@@ -1574,10 +1614,48 @@ class ProxyServer:
         # Refresh registry entries for channels we own
         for channel_id in self.stream_managers.keys():
             # Use standard key pattern
-            active_key = f"ts_proxy:channel:{channel_id}:active"
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             
-            # Update activity timestamp
-            self.redis_client.setex(active_key, 300, "1")  # 5 minute TTL
+            # Update activity timestamp in metadata only
             self.redis_client.hset(metadata_key, "last_active", str(time.time()))
+            self.redis_client.expire(metadata_key, 3600)  # Reset TTL on metadata hash
+
+    def update_channel_state(self, channel_id, new_state, additional_fields=None):
+        """Update channel state with proper history tracking and logging"""
+        if not self.redis_client:
+            return False
+            
+        try:
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            
+            # Get current state for logging
+            current_state = None
+            metadata = self.redis_client.hgetall(metadata_key)
+            if metadata and b'state' in metadata:
+                current_state = metadata[b'state'].decode('utf-8')
+            
+            # Only update if state is actually changing
+            if current_state == new_state:
+                logging.debug(f"Channel {channel_id} state unchanged: {current_state}")
+                return True
+                
+            # Prepare update data
+            update_data = {
+                "state": new_state,
+                "state_changed_at": str(time.time())
+            }
+            
+            # Add optional additional fields
+            if additional_fields:
+                update_data.update(additional_fields)
+                
+            # Update the metadata
+            self.redis_client.hset(metadata_key, mapping=update_data)
+            
+            # Log the transition
+            logging.info(f"Channel {channel_id} state transition: {current_state or 'None'} → {new_state}")
+            return True
+        except Exception as e:
+            logging.error(f"Error updating channel state: {e}")
+            return False
 
