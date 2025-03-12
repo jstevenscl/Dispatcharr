@@ -535,7 +535,10 @@ const StreamsTable = ({}) => {
             >
               Edit
             </Menu.Item>
-            <Menu.Item onClick={() => deleteStream(row.original.id)}>
+            <Menu.Item
+              onClick={() => deleteStream(row.original.id)}
+              disabled={row.original.m3u_account ? true : false}
+            >
               Delete Stream
             </Menu.Item>
           </Menu.Dropdown>
