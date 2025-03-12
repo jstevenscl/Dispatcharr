@@ -54,7 +54,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
   }
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Stream Profile">
+    <Modal opened={isOpen} onClose={onClose} title="Stream Profile">
       <form onSubmit={formik.handleSubmit}>
         <TextInput
           id="profile_name"
