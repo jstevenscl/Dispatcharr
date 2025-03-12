@@ -6,7 +6,6 @@ export default {
     enableDensityToggle: false,
     enableFullScreenToggle: false,
     positionToolbarAlertBanner: 'none',
-    // columnFilterDisplayMode: 'popover',
     enableRowNumbers: false,
     positionActionsColumn: 'last',
     enableColumnActions: false,
@@ -15,11 +14,26 @@ export default {
     initialState: {
       density: 'compact',
     },
+    mantinePaperProps: {
+      style: {
+        '--mrt-selected-row-background-color': '#163632',
+      },
+    },
     mantineSelectAllCheckboxProps: {
       size: 'xs',
     },
     mantineSelectCheckboxProps: {
       size: 'xs',
+    },
+    mantineTableBodyRowProps: ({ isDetailPane, row }) => {
+      if (isDetailPane) {
+        console.log('here');
+        return {
+          style: {
+            backgroundColor: '#163632',
+          },
+        };
+      }
     },
     mantineTableBodyCellProps: {
       style: {
