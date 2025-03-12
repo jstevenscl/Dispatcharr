@@ -169,8 +169,6 @@ const ChannelsTable = ({}) => {
   }, [channels]);
 
   const handleFilterChange = (columnId, value) => {
-    console.log(columnId);
-    console.log(value);
     setFilterValues((prev) => ({
       ...prev,
       [columnId]: value ? value.toLowerCase() : '',
@@ -294,12 +292,8 @@ const ChannelsTable = ({}) => {
     const selected = table
       .getRowModel()
       .rows.filter((row) => row.getIsSelected());
-    await utils.Limiter(
-      4,
-      selected.map((chan) => () => deleteChannel(chan.original.id))
-    );
-    // If you have a real bulk-delete endpoint, call it here:
-    // await API.deleteChannels(selected.map((sel) => sel.id));
+
+    await API.deleteChannels(selected.map((row) => row.original.id));
     setIsLoading(false);
   };
 
@@ -747,8 +741,8 @@ const ChannelsTable = ({}) => {
         </Box>
 
         {/* Table or ghost empty state inside Paper */}
-        <Box style={{ height: '100%', width: '100%' }}>
-          {filteredData.length === 0 && (
+        <Box>
+          {Object.keys(channels).length === 0 && (
             <Box
               style={{
                 paddingTop: 20,
@@ -825,7 +819,9 @@ const ChannelsTable = ({}) => {
             </Box>
           )}
         </Box>
-        {filteredData.length > 0 && <MantineReactTable table={table} />}
+        {Object.keys(channels).length > 0 && (
+          <MantineReactTable table={table} />
+        )}
       </Paper>
 
       <ChannelForm
