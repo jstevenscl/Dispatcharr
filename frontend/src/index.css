@@ -29,3 +29,7 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #777;
 }
+
+table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Table-td-detail-panel {
+  width: 100% !important;
+}

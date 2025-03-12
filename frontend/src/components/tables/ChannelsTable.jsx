@@ -69,17 +69,46 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     columns: useMemo(
       () => [
         {
+          size: 400,
           header: 'Name',
           accessorKey: 'name',
+          Cell: ({ cell }) => (
+            <div
+              style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {cell.getValue()}
+            </div>
+          ),
         },
         {
+          size: 100,
           header: 'M3U',
           accessorFn: (row) =>
             playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
+          Cell: ({ cell }) => (
+            <div
+              style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {cell.getValue()}
+            </div>
+          ),
         },
       ],
       [playlists]
     ),
+    displayColumnDefOptions: {
+      'mrt-row-actions': {
+        size: 10,
+      },
+    },
     enableKeyboardShortcuts: false,
     enableColumnFilters: false,
     enableBottomToolbar: false,
@@ -94,6 +123,18 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     },
     enableRowActions: true,
     enableRowOrdering: true,
+    mantineTableHeadRowProps: {
+      style: { display: 'none' },
+    },
+    mantineTableBodyCellProps: {
+      style: {
+        // py: 0,
+        padding: 4,
+        borderColor: '#444',
+        color: '#E0E0E0',
+        fontSize: '0.85rem',
+      },
+    },
     mantineRowDragHandleProps: ({ table }) => ({
       onDragEnd: async () => {
         const { draggingRow, hoveredRow } = table.getState();
@@ -132,7 +173,11 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     return <></>;
   }
 
-  return <MantineReactTable table={channelStreamsTable} />;
+  return (
+    <Box style={{ width: '100%' }}>
+      <MantineReactTable table={channelStreamsTable} />
+    </Box>
+  );
 };
 
 const m3uUrl = `${window.location.protocol}//${window.location.host}/output/m3u`;

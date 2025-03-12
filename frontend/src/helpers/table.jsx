@@ -25,9 +25,8 @@ export default {
     mantineSelectCheckboxProps: {
       size: 'xs',
     },
-    mantineTableBodyRowProps: ({ isDetailPane, row }) => {
-      if (isDetailPane) {
-        console.log('here');
+    mantineTableBodyRowProps: ({ isDetailPanel, row }) => {
+      if (isDetailPanel && row.getIsSelected()) {
         return {
           style: {
             backgroundColor: '#163632',
