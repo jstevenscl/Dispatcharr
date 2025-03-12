@@ -1,3 +1,4 @@
+import React, { useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ListOrdered,
@@ -15,10 +16,14 @@ import {
   Box,
   Text,
   UnstyledButton,
+  TextInput,
+  ActionIcon,
 } from '@mantine/core';
 import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
+import useSettingsStore from '../store/settings';
+import { ContentCopy } from '@mui/icons-material';
 
 const NavLink = ({ item, isActive, collapsed }) => {
   return (
@@ -55,6 +60,8 @@ const NavLink = ({ item, isActive, collapsed }) => {
 const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const location = useLocation();
   const { channels } = useChannelsStore();
+  const { environment } = useSettingsStore();
+  const publicIPRef = useRef(null);
 
   // Navigation Items
   const navItems = [
@@ -78,6 +85,23 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       path: '/settings',
     },
   ];
+
+  const copyPublicIP = async () => {
+    try {
+      await navigator.clipboard.writeText(environment.public_ip);
+    } catch (err) {
+      const inputElement = publicIPRef.current; // Get the actual input
+      console.log(inputElement);
+
+      if (inputElement) {
+        inputElement.focus();
+        inputElement.select();
+
+        // For older browsers
+        document.execCommand('copy');
+      }
+    }
+  };
 
   return (
     <AppShell.Navbar
@@ -128,7 +152,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       </Group>
 
       {/* Navigation Links */}
-      <Stack spacing="sm" mt="lg">
+      <Stack gap="xs" mt="lg">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
 
@@ -150,23 +174,52 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}
       >
-        <Avatar src="https://via.placeholder.com/40" radius="xl" />
-        {!collapsed && (
-          <Group
-            style={{
-              flex: 1,
-              justifyContent: 'space-between',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <Text size="sm" color="white">
-              John Doe
-            </Text>
-            <Text size="sm" color="white">
-              •••
-            </Text>
-          </Group>
-        )}
+        <Group>
+          {!collapsed && (
+            <TextInput
+              label="Public IP"
+              disabled
+              ref={publicIPRef}
+              value={environment.public_ip}
+              leftSection={
+                environment.country_code && (
+                  <img
+                    src={`https://flagcdn.com/16x12/${environment.country_code.toLowerCase()}.png`}
+                    alt={environment.country_name || environment.country_code}
+                    title={environment.country_name || environment.country_code}
+                  />
+                )
+              }
+              rightSection={
+                <ActionIcon
+                  variant="transparent"
+                  color="gray.9"
+                  onClick={copyPublicIP}
+                >
+                  <ContentCopy />
+                </ActionIcon>
+              }
+            />
+          )}
+
+          <Avatar src="https://via.placeholder.com/40" radius="xl" />
+          {!collapsed && (
+            <Group
+              style={{
+                flex: 1,
+                justifyContent: 'space-between',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Text size="sm" color="white">
+                John Doe
+              </Text>
+              <Text size="sm" color="white">
+                •••
+              </Text>
+            </Group>
+          )}
+        </Group>
       </Box>
     </AppShell.Navbar>
   );
