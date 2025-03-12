@@ -30,6 +30,12 @@ code {
   background: #777;
 }
 
+@supports (-moz-appearance: none) {
+  input[readonly][aria-haspopup] {
+      pointer-events: auto !important;
+  }
+}
+
 table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Table-td-detail-panel {
   width: 100% !important;
 }
