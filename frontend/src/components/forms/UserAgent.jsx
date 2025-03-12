@@ -108,7 +108,7 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
             variant="contained"
             disabled={formik.isSubmitting}
           >
-            {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
+            Submit
           </Button>
         </Flex>
       </form>

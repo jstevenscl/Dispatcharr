@@ -104,7 +104,7 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
             color="primary"
             disabled={formik.isSubmitting}
           >
-            {formik.isSubmitting ? <CircularProgress size={24} /> : 'Submit'}
+            Submit
           </Button>
         </Flex>
       </form>

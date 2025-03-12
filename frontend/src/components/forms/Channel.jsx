@@ -81,13 +81,13 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           id: channel.id,
           ...values,
           logo_file: logoFile,
-          stream_ids: channelStreams.map((stream) => stream.id),
+          streams: channelStreams.map((stream) => stream.id),
         });
       } else {
         await API.addChannel({
           ...values,
           logo_file: logoFile,
-          stream_ids: channelStreams.map((stream) => stream.id),
+          streams: channelStreams.map((stream) => stream.id),
         });
       }
 
