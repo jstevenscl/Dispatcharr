@@ -48,7 +48,10 @@ const useChannelsStore = create((set) => ({
     set((state) => ({
       channels: {
         ...state.channels,
-        ...newChannels,
+        ...newChannels.reduce((acc, channel) => {
+          acc[channel.id] = channel;
+          return acc;
+        }, {}),
       },
     })),
 
