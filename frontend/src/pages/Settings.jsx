@@ -6,7 +6,14 @@ import API from '../api';
 import useSettingsStore from '../store/settings';
 import useUserAgentsStore from '../store/userAgents';
 import useStreamProfilesStore from '../store/streamProfiles';
-import { Button, Center, Flex, Paper, Select, Title } from '@mantine/core';
+import {
+  Button,
+  Center,
+  Flex,
+  Paper,
+  NativeSelect,
+  Title,
+} from '@mantine/core';
 
 const SettingsPage = () => {
   const { settings } = useSettingsStore();
@@ -24,9 +31,9 @@ const SettingsPage = () => {
 
   const formik = useFormik({
     initialValues: {
-      'default-user-agent': '',
-      'default-stream-profile': '',
-      'preferred-region': '',
+      'default-user-agent': `${settings['default-user-agent'].id}`,
+      'default-stream-profile': `${settings['default-stream-profile'].id}`,
+      // 'preferred-region': '',
     },
     validationSchema: Yup.object({
       'default-user-agent': Yup.string().required('User-Agent is required'),
@@ -37,6 +44,7 @@ const SettingsPage = () => {
       // 'preferred-region': Yup.string().required('Region is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
+      console.log(values);
       const changedSettings = {};
       for (const settingKey in values) {
         // If the user changed the setting’s value from what’s in the DB:
@@ -88,26 +96,26 @@ const SettingsPage = () => {
           Settings
         </Title>
         <form onSubmit={formik.handleSubmit}>
-          <Select
+          <NativeSelect
             id={settings['default-user-agent']?.id}
             name={settings['default-user-agent']?.key}
             label={settings['default-user-agent']?.name}
             value={formik.values['default-user-agent'] || ''}
             onChange={formik.handleChange}
-            error={formik.touched['default-user-agent']}
+            error={formik.errors['default-user-agent']}
             data={userAgents.map((option) => ({
               value: `${option.id}`,
               label: option.user_agent_name,
             }))}
           />
 
-          <Select
-            id={settings['default-user-agent']?.id}
-            name={settings['default-user-agent']?.key}
-            label={settings['default-user-agent']?.name}
-            value={formik.values['default-user-agent'] || ''}
+          <NativeSelect
+            id={settings['default-stream-profile']?.id}
+            name={settings['default-stream-profile']?.key}
+            label={settings['default-stream-profile']?.name}
+            value={formik.values['default-stream-profile'] || ''}
             onChange={formik.handleChange}
-            error={formik.touched['default-user-agent']}
+            error={formik.errors['default-stream-profile']}
             data={streamProfiles.map((option) => ({
               value: `${option.id}`,
               label: option.profile_name,
