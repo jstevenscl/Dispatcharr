@@ -178,7 +178,6 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           {!collapsed && (
             <TextInput
               label="Public IP"
-              disabled
               ref={publicIPRef}
               value={environment.public_ip}
               leftSection={

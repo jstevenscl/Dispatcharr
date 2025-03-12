@@ -426,7 +426,6 @@ const ChannelsTable = ({}) => {
       });
     } catch (err) {
       const inputElement = ref.current; // Get the actual input
-      console.log(inputElement);
 
       if (inputElement) {
         inputElement.focus();
