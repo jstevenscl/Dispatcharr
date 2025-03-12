@@ -10,7 +10,6 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
   const [selectedStreamProfile, setSelectedStreamProfile] = useState('');
 
-  console.log(stream);
   const formik = useFormik({
     initialValues: {
       name: '',

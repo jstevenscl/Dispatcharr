@@ -23,6 +23,7 @@ import {
   Grid,
   Flex,
 } from '@mantine/core';
+import { SquarePlus } from 'lucide-react';
 
 const Channel = ({ channel = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((state) => state.channelGroups);
@@ -250,7 +251,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   return (
     <>
-      <Modal opened={isOpen} onClose={onClose} size="70%" title="Channel">
+      <Modal opened={isOpen} onClose={onClose} size={800} title="Channel">
         <form onSubmit={formik.handleSubmit}>
           <Grid gap={2}>
             <Grid.Col span={6}>
@@ -265,35 +266,38 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 }
               />
 
-              <Group>
-                <NativeSelect
-                  id="channel_group_id"
-                  name="channel_group_id"
-                  label="Channel Group"
-                  value={formik.values.channel_group_id}
-                  onChange={formik.handleChange}
-                  error={
-                    formik.errors.channel_group_id
-                      ? formik.touched.channel_group_id
-                      : ''
-                  }
-                  data={channelGroups.map((option, index) => ({
-                    value: `${option.id}`,
-                    label: option.name,
-                  }))}
-                />
-                <Center>
+              <Grid>
+                <Grid.Col span={11}>
+                  <NativeSelect
+                    id="channel_group_id"
+                    name="channel_group_id"
+                    label="Channel Group"
+                    value={formik.values.channel_group_id}
+                    onChange={formik.handleChange}
+                    error={
+                      formik.errors.channel_group_id
+                        ? formik.touched.channel_group_id
+                        : ''
+                    }
+                    data={channelGroups.map((option, index) => ({
+                      value: `${option.id}`,
+                      label: option.name,
+                    }))}
+                  />
+                </Grid.Col>
+                <Grid.Col span={1}>
                   <ActionIcon
                     color="green.5"
                     onClick={() => setChannelGroupModalOpen(true)}
                     title="Create new group"
                     size="small"
-                    variant="filled"
+                    variant="light"
+                    style={{ marginTop: '175%' }} // @TODO: I don't like this, figure out better placement
                   >
-                    <AddIcon fontSize="small" />
+                    <SquarePlus />
                   </ActionIcon>
-                </Center>
-              </Group>
+                </Grid.Col>
+              </Grid>
 
               <NativeSelect
                 id="stream_profile_id"

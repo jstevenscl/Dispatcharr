@@ -4,7 +4,7 @@ import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import API from '../../api';
 import useUserAgentsStore from '../../store/userAgents';
-import { Modal, TextInput, Select, Button } from '@mantine/core';
+import { Modal, TextInput, Select, Button, Flex } from '@mantine/core';
 
 const StreamProfile = ({ profile = null, isOpen, onClose }) => {
   const userAgents = useUserAgentsStore((state) => state.userAgents);
@@ -62,7 +62,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           label="Name"
           value={formik.values.profile_name}
           onChange={formik.handleChange}
-          error={formik.touched.profile_name}
+          error={formik.errors.profile_name}
         />
         <TextInput
           id="command"
@@ -70,7 +70,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           label="Command"
           value={formik.values.command}
           onChange={formik.handleChange}
-          error={formik.touched.command}
+          error={formik.errors.command}
         />
         <TextInput
           id="parameters"
@@ -78,7 +78,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           label="Parameters"
           value={formik.values.parameters}
           onChange={formik.handleChange}
-          error={formik.touched.parameters}
+          error={formik.errors.parameters}
         />
 
         <Select
@@ -87,22 +87,24 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           label="User-Agent"
           value={formik.values.user_agent}
           onChange={formik.handleChange}
-          error={formik.touched.user_agent}
+          error={formik.errors.user_agent}
           data={userAgents.map((ua) => ({
             label: ua.user_agent_name,
             value: `${ua.id}`,
           }))}
         />
 
-        <Button
-          type="submit"
-          variant="contained"
-          color="primary"
-          disabled={formik.isSubmitting}
-          size="small"
-        >
-          Submit
-        </Button>
+        <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={formik.isSubmitting}
+            size="small"
+          >
+            Submit
+          </Button>
+        </Flex>
       </form>
     </Modal>
   );
