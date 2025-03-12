@@ -47,4 +47,5 @@ class TSConfig(BaseConfig):
     CLEANUP_CHECK_INTERVAL = 1  # How often to check for disconnected clients (seconds)
     CHANNEL_INIT_GRACE_PERIOD = 5  # How long to wait for first client after initialization (seconds)
     CLIENT_HEARTBEAT_INTERVAL = 1  # How often to send client heartbeats (seconds)
+    GHOST_CLIENT_MULTIPLIER = 5.0  # How many heartbeat intervals before client considered ghost (5 would mean 5 secondsif heartbeat interval is 1)
 

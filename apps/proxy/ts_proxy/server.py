@@ -651,25 +651,62 @@ class ClientManager:
                     with self.lock:
                         if not self.clients or not self.redis_client:
                             continue
+                        
+                        # IMPROVED GHOST DETECTION: Check for stale clients before sending heartbeats
+                        current_time = time.time()
+                        clients_to_remove = set()
+                        
+                        # First identify clients that should be removed
+                        for client_id in self.clients:
+                            client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
                             
-                        # Use pipeline for efficiency
+                            # Check if client exists in Redis at all
+                            exists = self.redis_client.exists(client_key)
+                            if not exists:
+                                # Client entry has expired in Redis but still in our local set
+                                logging.warning(f"Found ghost client {client_id} - expired in Redis but still in local set")
+                                clients_to_remove.add(client_id)
+                                continue
+                                
+                            # Check for stale activity using last_active field
+                            last_active = self.redis_client.hget(client_key, "last_active")
+                            if last_active:
+                                last_active_time = float(last_active.decode('utf-8'))
+                                time_since_activity = current_time - last_active_time
+                                
+                                # If client hasn't been active for too long, mark for removal
+                                # Use configurable threshold for detection
+                                ghost_threshold = getattr(Config, 'GHOST_CLIENT_MULTIPLIER', 5.0)
+                                if time_since_activity > self.heartbeat_interval * ghost_threshold:
+                                    logging.warning(f"Detected ghost client {client_id} - last active {time_since_activity:.1f}s ago")
+                                    clients_to_remove.add(client_id)
+                        
+                        # Remove ghost clients in a separate step
+                        for client_id in clients_to_remove:
+                            self.remove_client(client_id)
+                        
+                        if clients_to_remove:
+                            logging.info(f"Removed {len(clients_to_remove)} ghost clients from channel {self.channel_id}")
+                        
+                        # Now send heartbeats only for remaining clients
                         pipe = self.redis_client.pipeline()
                         current_time = time.time()
                         
-                        # For each client, update its TTL and timestamp
                         for client_id in self.clients:
+                            # Skip clients we just marked for removal
+                            if client_id in clients_to_remove:
+                                continue
+                                
                             # Skip if we just sent a heartbeat recently
                             if client_id in self.last_heartbeat_time:
                                 time_since_last = current_time - self.last_heartbeat_time[client_id]
                                 if time_since_last < self.heartbeat_interval * 0.8:
                                     continue
                             
-                            # FIXED: Update client hash instead of separate activity key
+                            # Only update clients that remain
                             client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
-                            
-                            # Only update the last_active field in the hash, preserving other fields
                             pipe.hset(client_key, "last_active", str(current_time))
-                            pipe.expire(client_key, self.client_ttl)  # Refresh TTL
+                            pipe.expire(client_key, self.client_ttl)
                             
                             # Keep client in the set with TTL
                             pipe.sadd(self.client_set_key, client_id)
@@ -681,9 +718,10 @@ class ClientManager:
                         # Execute all commands atomically
                         pipe.execute()
                         
-                        # Notify channel owner of client activity
-                        self._notify_owner_of_activity()
-                        
+                        # Only notify if we have real clients
+                        if self.clients and not all(c in clients_to_remove for c in self.clients):
+                            self._notify_owner_of_activity()
+                    
                 except Exception as e:
                     logging.error(f"Error in client heartbeat thread: {e}")
             

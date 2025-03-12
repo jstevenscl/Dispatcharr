@@ -293,7 +293,16 @@ def stream_ts(request, channel_id):
                             packets_in_chunk = len(chunk) // ts_packet_size
                             bytes_sent += len(chunk)
                             chunks_sent += 1
-                            yield chunk
+                            
+                            # CRITICAL FIX: Detect client disconnection when yielding data
+                            try:
+                                yield chunk
+                            except Exception as e:
+                                logger.info(f"[{client_id}] Client disconnected while yielding data: {e}")
+                                # Explicit client removal when we detect a broken pipe
+                                if channel_id in proxy_server.client_managers:
+                                    proxy_server.client_managers[channel_id].remove_client(client_id)
+                                break  # Exit the generator
                             
                             # Pacing logic
                             packets_sent_in_batch += packets_in_chunk
@@ -351,6 +360,21 @@ def stream_ts(request, channel_id):
                             stream_status = "healthy" if (stream_manager and stream_manager.healthy) else "unknown"
                             logger.debug(f"[{client_id}] Waiting for chunks beyond {local_index} (buffer at {buffer.index}, stream: {stream_status})")
                         
+                        # CRITICAL FIX: Check for client disconnect during wait periods
+                        # Django/WSGI might not immediately detect disconnections, but we can check periodically
+                        if consecutive_empty > 10:  # After some number of empty reads
+                            if hasattr(request, 'META') and request.META.get('wsgi.input'):
+                                try:
+                                    # Try to check if the connection is still alive
+                                    available = request.META['wsgi.input'].read(0)
+                                    if available is None:  # Connection closed
+                                        logger.info(f"[{client_id}] Detected client disconnect during wait")
+                                        break
+                                except Exception:
+                                    # Error reading from connection, likely closed
+                                    logger.info(f"[{client_id}] Connection error, client likely disconnected")
+                                    break
+                        
                         # Disconnect after long inactivity
                         # For non-owner workers, we're more lenient with timeout
                         if time.time() - last_yield_time > Config.STREAM_TIMEOUT:
@@ -361,6 +385,12 @@ def stream_ts(request, channel_id):
                                 # Non-owner worker without data for too long
                                 logger.warning(f"[{client_id}] Non-owner worker with no data for {Config.STREAM_TIMEOUT}s, disconnecting")
                                 break
+                        
+                        # ADD THIS: Check if worker has more recent chunks but still stuck
+                        # This can indicate the client is disconnected but we're not detecting it
+                        if consecutive_empty > 100 and buffer.index > local_index + 50:
+                            logger.warning(f"[{client_id}] Possible ghost client: buffer has advanced {buffer.index - local_index} chunks ahead but client stuck at {local_index}")
+                            break
                         
             except Exception as e:
                 logger.error(f"[{client_id}] Stream error: {e}", exc_info=True)
