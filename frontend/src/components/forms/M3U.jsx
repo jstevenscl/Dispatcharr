@@ -23,10 +23,7 @@ const M3U = ({ playlist = null, isOpen, onClose }) => {
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
-  console.log(playlist);
-
   const handleFileChange = (file) => {
-    console.log(file);
     if (file) {
       setFile(file);
     }
