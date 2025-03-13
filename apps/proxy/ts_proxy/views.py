@@ -163,8 +163,7 @@ def stream_ts(request, channel_id):
         logger.info(f"[{client_id}] Client registered with channel {channel_id}")
         
         # Start stream response
-        def generate():
-            client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+        def generate():            
             stream_start_time = time.time()
             bytes_sent = 0
             chunks_sent = 0
