@@ -1,6 +1,5 @@
 import json
 import threading
-import logging
 import time
 import random
 import sys
@@ -10,18 +9,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_GET
 from apps.proxy.config import TSConfig as Config
 from .server import ProxyServer
+from apps.proxy.ts_proxy.server import logging as server_logging
 
 # Configure logging properly to ensure visibility
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
-
-# Print directly to output for critical messages (bypass logging system)
-print("TS PROXY VIEWS INITIALIZED", file=sys.stderr)
+logger = server_logging
 
 # Initialize proxy server
 proxy_server = ProxyServer()
@@ -79,19 +70,24 @@ def initialize_stream(request, channel_id):
 
 @require_GET
 def stream_ts(request, channel_id):
-    """Stream TS data to client with improved waiting for initialization"""
+    """Stream TS data to client with single client registration"""
     try:
-        # Check if channel exists or initialize it
-        if not proxy_server.check_if_channel_exists(channel_id):
-            return JsonResponse({'error': 'Channel not found'}, status=404)
-
-        # Get user agent from request headers
+        # Generate a unique client ID
+        client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+        logger.info(f"[{client_id}] Requested stream for channel {channel_id}")
+        
+        # Extract user agent only once
         user_agent = None
         for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
             if header in request.META:
                 user_agent = request.META[header]
-                logger.debug(f"Found user agent in header: {header}")
+                logger.debug(f"[{client_id}] Found user agent in header: {header}")
                 break
+                
+        # Check if channel exists or initialize it
+        if not proxy_server.check_if_channel_exists(channel_id):
+            logger.error(f"[{client_id}] Channel {channel_id} not found")
+            return JsonResponse({'error': 'Channel not found'}, status=404)
         
         # Wait for channel to become ready if it's initializing
         if proxy_server.redis_client:
@@ -100,62 +96,63 @@ def stream_ts(request, channel_id):
             
             # Check channel state
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-            while time.time() - wait_start < max_wait:
+            waiting = True
+            
+            while waiting and time.time() - wait_start < max_wait:
                 metadata = proxy_server.redis_client.hgetall(metadata_key)
                 if not metadata or b'state' not in metadata:
-                    logger.warning(f"Channel {channel_id} metadata missing")
+                    logger.warning(f"[{client_id}] Channel {channel_id} metadata missing")
                     break
                     
                 state = metadata[b'state'].decode('utf-8')
                 
-                # If channel is already active or waiting for clients, no need to wait
+                # If channel is ready for clients, continue
                 if state in ['waiting_for_clients', 'active']:
-                    logger.debug(f"Channel {channel_id} ready (state={state})")
-                    break
+                    logger.info(f"[{client_id}] Channel {channel_id} ready (state={state}), proceeding with connection")
+                    waiting = False
                 elif state in ['initializing', 'connecting']:
                     # Channel is still initializing or connecting, wait a bit longer
                     elapsed = time.time() - wait_start
-                    logger.info(f"Client waiting for channel {channel_id} to become ready ({elapsed:.1f}s), current state: {state}")
+                    logger.info(f"[{client_id}] Waiting for channel {channel_id} to become ready ({elapsed:.1f}s), current state: {state}")
                     time.sleep(0.5)  # Wait 500ms before checking again
                 else:
                     # Unknown or error state
-                    logger.warning(f"Channel {channel_id} in unexpected state: {state}")
+                    logger.warning(f"[{client_id}] Channel {channel_id} in unexpected state: {state}")
                     break
             
             # Check if we timed out waiting
-            if time.time() - wait_start >= max_wait:
-                logger.warning(f"Timeout waiting for channel {channel_id} to become ready")
+            if waiting and time.time() - wait_start >= max_wait:
+                logger.warning(f"[{client_id}] Timeout waiting for channel {channel_id} to become ready")
                 return JsonResponse({'error': 'Timeout waiting for channel to initialize'}, status=503)
 
         # CRITICAL FIX: Ensure local resources are properly initialized before streaming
-        # This handles the case where channel exists in Redis but not in this worker
         if channel_id not in proxy_server.stream_buffers or channel_id not in proxy_server.client_managers:
-            logger.warning(f"Channel {channel_id} exists in Redis but not initialized in this worker - initializing now")
+            logger.warning(f"[{client_id}] Channel {channel_id} exists in Redis but not initialized in this worker - initializing now")
             
-            # Get URL from Redis metadata if available
+            # Get URL from Redis metadata
             url = None
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             if proxy_server.redis_client:
+                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                 url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
             
-            # Initialize local resources (won't recreate stream connection if another worker owns it)
+            # Initialize local resources - pass the user_agent we extracted earlier
             success = proxy_server.initialize_channel(url, channel_id, user_agent)
             if not success:
-                logger.error(f"Failed to initialize channel {channel_id} locally")
+                logger.error(f"[{client_id}] Failed to initialize channel {channel_id} locally")
                 return JsonResponse({'error': 'Failed to initialize channel locally'}, status=500)
                 
-            logger.info(f"Successfully initialized channel {channel_id} locally")
-            
-            # Double-check after initialization
-            if channel_id not in proxy_server.client_managers:
-                logger.error(f"Critical error: Channel {channel_id} client manager still missing after initialization")
-                return JsonResponse({'error': 'Failed to create client manager'}, status=500)
-
-        # Continue with normal streaming response
-        def generate():
-            client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+            logger.info(f"[{client_id}] Successfully initialized channel {channel_id} locally")
+        
+        # Get stream buffer and client manager
+        buffer = proxy_server.stream_buffers[channel_id]
+        client_manager = proxy_server.client_managers[channel_id]
+        client_manager.add_client(client_id, user_agent)
+        logger.info(f"[{client_id}] Client registered with channel {channel_id}")
+        
+        # Start stream response
+        def generate():            
             stream_start_time = time.time()
             bytes_sent = 0
             chunks_sent = 0
@@ -246,7 +243,11 @@ def stream_ts(request, channel_id):
                     return
                 
                 # Client state tracking - use config for initial position
-                local_index = max(0, buffer.index - Config.INITIAL_BEHIND_CHUNKS)
+                initial_behind = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
+                current_buffer_index = buffer.index
+                local_index = max(0, current_buffer_index - initial_behind)
+                logger.debug(f"[{client_id}] Buffer at {current_buffer_index}, starting {initial_behind} chunks behind at index {local_index}")
+
                 initial_position = local_index
                 last_yield_time = time.time()
                 empty_reads = 0
@@ -267,62 +268,36 @@ def stream_ts(request, channel_id):
                 
                 # Main streaming loop
                 while True:
-                    # Get chunks at client's position
-                    chunks = buffer.get_chunks_exact(local_index, Config.CHUNK_BATCH_SIZE)
+                    # Get chunks at client's position using improved strategy
+                    chunks, next_index = get_client_data(buffer, local_index)
                     
                     if chunks:
-                        # Reset empty counters since we got data
                         empty_reads = 0
                         consecutive_empty = 0
                         
-                        # Track and send chunks
-                        chunk_sizes = [len(c) for c in chunks]
-                        total_size = sum(chunk_sizes)
-                        start_idx = local_index + 1
-                        end_idx = local_index + len(chunks)
+                        # Process and send chunks
+                        total_size = sum(len(c) for c in chunks)
+                        logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {local_index+1} to {next_index}")
                         
-                        logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {start_idx} to {end_idx}")
-                        
-                        # Calculate total packet count for this batch to maintain timing
-                        total_packets = sum(len(chunk) // ts_packet_size for chunk in chunks)
-                        batch_start_time = time.time()
-                        packets_sent_in_batch = 0
-                        
-                        # Send chunks with pacing
+                        # CRITICAL FIX: Actually send the chunks to the client
                         for chunk in chunks:
-                            packets_in_chunk = len(chunk) // ts_packet_size
-                            bytes_sent += len(chunk)
-                            chunks_sent += 1
-                            
-                            # CRITICAL FIX: Detect client disconnection when yielding data
                             try:
+                                # This is the crucial line that was likely missing
                                 yield chunk
+                                bytes_sent += len(chunk)
+                                chunks_sent += 1
+                                
+                                # Log every 100 chunks for visibility
+                                if chunks_sent % 100 == 0:
+                                    elapsed = time.time() - stream_start_time
+                                    rate = bytes_sent / elapsed / 1024 if elapsed > 0 else 0
+                                    logger.info(f"[{client_id}] Stats: {chunks_sent} chunks, {bytes_sent/1024:.1f}KB, {rate:.1f}KB/s")
                             except Exception as e:
-                                logger.info(f"[{client_id}] Client disconnected while yielding data: {e}")
-                                # Explicit client removal when we detect a broken pipe
-                                if channel_id in proxy_server.client_managers:
-                                    proxy_server.client_managers[channel_id].remove_client(client_id)
-                                break  # Exit the generator
-                            
-                            # Pacing logic
-                            packets_sent_in_batch += packets_in_chunk
-                            elapsed = time.time() - batch_start_time
-                            target_time = packets_sent_in_batch / packets_per_second
-                            
-                            # If we're sending too fast, add a small delay
-                            if elapsed < target_time and packets_sent_in_batch < total_packets:
-                                sleep_time = min(target_time - elapsed, 0.05)
-                                if sleep_time > 0.001:
-                                    time.sleep(sleep_time)
+                                logger.error(f"[{client_id}] Error sending chunk to client: {e}")
+                                raise  # Re-raise to exit the generator
                         
-                        # Log progress periodically
-                        if chunks_sent % 100 == 0:
-                            elapsed = time.time() - stream_start_time
-                            rate = bytes_sent / elapsed / 1024 if elapsed > 0 else 0
-                            logger.info(f"[{client_id}] Stats: {chunks_sent} chunks, {bytes_sent/1024:.1f}KB, {rate:.1f}KB/s")
-                        
-                        # Update local index
-                        local_index = end_idx
+                        # Update index after successfully sending all chunks
+                        local_index = next_index
                         last_yield_time = time.time()
                     else:
                         # No chunks available
@@ -574,3 +549,45 @@ def change_stream(request, channel_id):
     except Exception as e:
         logger.error(f"Failed to change stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
+
+def get_client_data(buffer, local_index):
+    """Get optimal amount of data for client"""
+    # Define limits
+    MIN_CHUNKS = 3                      # Minimum chunks to read for efficiency
+    MAX_CHUNKS = 20                     # Safety limit to prevent memory spikes
+    TARGET_SIZE = 1024 * 1024           # Target ~1MB per response (typical media buffer)
+    MAX_SIZE = 2 * 1024 * 1024          # Hard cap at 2MB
+    
+    # Calculate how far behind we are
+    chunks_behind = buffer.index - local_index
+    
+    # Determine optimal chunk count
+    if chunks_behind <= MIN_CHUNKS:
+        # Not much data, retrieve what's available
+        chunk_count = max(1, chunks_behind)
+    elif chunks_behind <= MAX_CHUNKS:
+        # Reasonable amount behind, catch up completely
+        chunk_count = chunks_behind
+    else:
+        # Way behind, retrieve MAX_CHUNKS to avoid memory pressure
+        chunk_count = MAX_CHUNKS
+    
+    # Retrieve chunks
+    chunks = buffer.get_chunks_exact(local_index, chunk_count)
+    
+    # Check total size
+    total_size = sum(len(c) for c in chunks)
+    
+    # If we're under target and have more chunks available, get more
+    if total_size < TARGET_SIZE and chunks_behind > chunk_count:
+        # Calculate how many more chunks we can get
+        additional = min(MAX_CHUNKS - chunk_count, chunks_behind - chunk_count)
+        more_chunks = buffer.get_chunks_exact(local_index + chunk_count, additional)
+        
+        # Check if adding more would exceed MAX_SIZE
+        additional_size = sum(len(c) for c in more_chunks)
+        if total_size + additional_size <= MAX_SIZE:
+            chunks.extend(more_chunks)
+            chunk_count += additional
+    
+    return chunks, local_index + chunk_count

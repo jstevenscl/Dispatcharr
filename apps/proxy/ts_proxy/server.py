@@ -19,69 +19,210 @@ from typing import Optional, Set, Deque, Dict
 import json
 from apps.proxy.config import TSConfig as Config
 
-# Configure root logger for this module
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - TS_PROXY - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-
-# Force immediate output
-print("TS PROXY SERVER MODULE LOADED", file=sys.stderr)
+logger = logging.getLogger("ts_proxy")
 
 class StreamManager:
-    """Manages a connection to a TS stream with continuity tracking"""
+    """Manages a connection to a TS stream without using raw sockets"""
     
     def __init__(self, url, buffer, user_agent=None):
-        # Existing initialization code
+        # Basic properties
         self.url = url
         self.buffer = buffer
         self.running = True
         self.connected = False
-        self.socket = None
-        self.ready_event = threading.Event()
         self.retry_count = 0
         self.max_retries = Config.MAX_RETRIES
+        self.current_response = None
+        self.current_session = None
         
         # User agent for connection
         self.user_agent = user_agent or Config.DEFAULT_USER_AGENT
-        
-        # TS packet handling
-        self.TS_PACKET_SIZE = 188
-        self.recv_buffer = bytearray()
-        self.sync_found = False
-        self.continuity_counters = {}
         
         # Stream health monitoring
         self.last_data_time = time.time()
         self.healthy = True
         self.health_check_interval = Config.HEALTH_CHECK_INTERVAL
+        self.chunk_size = getattr(Config, 'CHUNK_SIZE', 8192)
         
-        # Buffer management
-        self._last_buffer_check = time.time()
-        logging.info(f"Initialized stream manager for channel {buffer.channel_id}")
-
-    def _create_session(self) -> requests.Session:
-        """Create and configure requests session"""
+        logger.info(f"Initialized stream manager for channel {buffer.channel_id}")
+    
+    def _create_session(self):
+        """Create and configure requests session with optimal settings"""
         session = requests.Session()
+        
+        # Configure session headers
         session.headers.update({
             'User-Agent': self.user_agent,
             'Connection': 'keep-alive'
         })
+        
+        # Set up connection pooling for better performance
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=1,     # Single connection for this stream
+            pool_maxsize=1,         # Max size of connection pool
+            max_retries=3,          # Auto-retry for failed requests
+            pool_block=False        # Don't block when pool is full
+        )
+        
+        # Apply adapter to both HTTP and HTTPS
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        
         return session
+    
+    def run(self):
+        """Main execution loop using HTTP streaming with improved connection handling"""
+        try:
+            # Start health monitor thread
+            health_thread = threading.Thread(target=self._monitor_health, daemon=True)
+            health_thread.start()
+            
+            logger.info(f"Starting stream for URL: {self.url}")
+            
+            while self.running:
+                try:
+                    # Create new session for each connection attempt
+                    session = self._create_session()
+                    self.current_session = session
+                    
+                    # Stream the URL with proper timeout handling
+                    response = session.get(
+                        self.url, 
+                        stream=True,
+                        timeout=(10, 60)  # 10s connect timeout, 60s read timeout
+                    )
+                    self.current_response = response
+                    
+                    if response.status_code == 200:
+                        self.connected = True
+                        self.healthy = True
+                        logger.info("Successfully connected to stream source")
+                        
+                        # Set channel state to waiting for clients
+                        self._set_waiting_for_clients()
+                        
+                        # Process the stream in chunks with improved error handling
+                        try:
+                            chunk_count = 0
+                            for chunk in response.iter_content(chunk_size=self.chunk_size):
+                                if not self.running:
+                                    break
+                                    
+                                if chunk:
+                                    # Add chunk to buffer with TS packet alignment
+                                    success = self.buffer.add_chunk(chunk)
+                                    
+                                    if success:
+                                        self.last_data_time = time.time()
+                                        chunk_count += 1
+                                        
+                                        # Update last data timestamp in Redis
+                                        if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                                            last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                                            self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
+                        except AttributeError as e:
+                            # Handle the specific 'NoneType' object has no attribute 'read' error
+                            if "'NoneType' object has no attribute 'read'" in str(e):
+                                logger.warning(f"Connection closed by server (read {chunk_count} chunks before disconnect)")
+                            else:
+                                # Re-raise unexpected AttributeError
+                                raise
+                    else:
+                        logger.error(f"Failed to connect to stream: HTTP {response.status_code}")
+                        time.sleep(2)
+                        
+                except requests.exceptions.ReadTimeout:
+                    logger.warning("Read timeout - server stopped sending data")
+                    self.connected = False
+                    time.sleep(1)
+                    
+                except requests.RequestException as e:
+                    logger.error(f"HTTP request error: {e}")
+                    self.connected = False
+                    time.sleep(5)
+                    
+                finally:
+                    # Clean up response and session
+                    if self.current_response:
+                        try:
+                            self.current_response.close()
+                        except Exception as e:
+                            logger.debug(f"Error closing response: {e}")
+                        self.current_response = None
+                        
+                    if self.current_session:
+                        try:
+                            self.current_session.close()
+                        except Exception as e:
+                            logger.debug(f"Error closing session: {e}")
+                        self.current_session = None
+                
+                # Connection retry logic
+                if self.running and not self.connected:
+                    self.retry_count += 1
+                    if self.retry_count > self.max_retries:
+                        logger.error(f"Maximum retry attempts ({self.max_retries}) exceeded")
+                        break
+                    
+                    timeout = min(2 ** self.retry_count, 30)
+                    logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
+                    time.sleep(timeout)
+                
+        except Exception as e:
+            logger.error(f"Stream error: {e}", exc_info=True)
+        finally:
+            self.connected = False
+            
+            if self.current_response:
+                try:
+                    self.current_response.close()
+                except:
+                    pass
+                    
+            if self.current_session:
+                try:
+                    self.current_session.close() 
+                except:
+                    pass
+                
+            logger.info("Stream manager stopped")
+    
+    def stop(self):
+        """Stop the stream manager and clean up resources"""
+        self.running = False
+        
+        if self.current_response:
+            try:
+                self.current_response.close()
+            except:
+                pass
+                
+        if self.current_session:
+            try:
+                self.current_session.close()
+            except:
+                pass
+                
+        logger.info("Stream manager resources released")
 
-    def update_url(self, new_url: str) -> bool:
-        """Update stream URL and reconnect"""
+    def update_url(self, new_url):
+        """Update stream URL and reconnect with HTTP streaming approach"""
         if new_url == self.url:
+            logger.info(f"URL unchanged: {new_url}")
             return False
             
-        logging.info(f"Switching stream URL from {self.url} to {new_url}")
+        logger.info(f"Switching stream URL from {self.url} to {new_url}")
+        
+        # Close existing HTTP connection resources instead of socket
+        self._close_connection()  # Use our new method instead of _close_socket
+        
+        # Update URL and reset connection state
+        old_url = self.url
         self.url = new_url
         self.connected = False
-        self._close_socket()  # Close existing connection
         
-        # Signal health monitor to reconnect immediately
-        self.last_data_time = 0
+        # Reset retry counter to allow immediate reconnect
+        self.retry_count = 0
         
         return True
 
@@ -89,226 +230,6 @@ class StreamManager:
         """Check if connection retry is allowed"""
         return self.retry_count < self.max_retries
 
-    def stop(self) -> None:
-        """Stop the stream manager and close all resources"""
-        self.running = False
-        self._close_socket()
-        logging.info("Stream manager resources released")
-
-    def _process_complete_packets(self):
-        """Process TS packets with improved resync capability"""
-        try:
-            # Enhanced sync byte detection with re-sync capability
-            if (not self.sync_found or 
-                (len(self.recv_buffer) >= 188 and self.recv_buffer[0] != 0x47)):
-                
-                # Need to find sync pattern if we haven't found it yet or lost sync
-                if len(self.recv_buffer) >= 376:  # Need at least 2 packet lengths
-                    sync_found = False
-                    
-                    # Look for at least two sync bytes (0x47) at 188-byte intervals
-                    for i in range(min(188, len(self.recv_buffer) - 188)):
-                        if (self.recv_buffer[i] == 0x47 and 
-                            self.recv_buffer[i + 188] == 0x47):
-                            
-                            # If already had sync but lost it, log the issue
-                            if self.sync_found:
-                                logging.warning(f"Re-syncing TS stream at position {i} (lost sync)")
-                            else:
-                                logging.debug(f"TS sync found at position {i}")
-                                
-                            # Trim buffer to start at first sync byte
-                            self.recv_buffer = self.recv_buffer[i:]
-                            self.sync_found = True
-                            sync_found = True
-                            break
-                            
-                    # If we couldn't find sync in this buffer, discard partial data
-                    if not sync_found:
-                        logging.warning(f"Failed to find sync pattern - discarding {len(self.recv_buffer) - 188} bytes")
-                        if len(self.recv_buffer) > 188:
-                            self.recv_buffer = self.recv_buffer[-188:]  # Keep last chunk for next attempt
-                        return False
-                            
-            # If we don't have a complete packet yet, wait for more data
-            if len(self.recv_buffer) < 188:
-                return False
-                
-            # Calculate how many complete packets we have
-            packet_count = len(self.recv_buffer) // 188
-            
-            if packet_count == 0:
-                return False
-            
-            # Verify all packets have sync bytes
-            all_synced = True
-            for i in range(0, packet_count):
-                if self.recv_buffer[i * 188] != 0x47:
-                    all_synced = False
-                    break
-                    
-            # If not all packets are synced, re-scan for sync
-            if not all_synced:
-                self.sync_found = False  # Force re-sync on next call
-                return False
-            
-            # Extract complete packets
-            packets = self.recv_buffer[:packet_count * 188]
-            
-            # Keep remaining data in buffer
-            self.recv_buffer = self.recv_buffer[packet_count * 188:]
-            
-            # Send packets to buffer
-            if packets:
-                # Log first and last sync byte to validate alignment
-                first_sync = packets[0] if len(packets) > 0 else None
-                last_sync = packets[188 * (packet_count - 1)] if packet_count > 0 else None
-                
-                if first_sync != 0x47 or last_sync != 0x47:
-                    logging.warning(f"TS packet alignment issue: first_sync=0x{first_sync:02x}, last_sync=0x{last_sync:02x}")
-                    # Don't process misaligned packets
-                    return False
-                
-                before_index = self.buffer.index
-                success = self.buffer.add_chunk(bytes(packets))
-                after_index = self.buffer.index
-                
-                # Log successful write
-                if not success:                   
-                    logging.warning("Failed to add chunk to buffer")
-                                       
-                # If successful, update last data timestamp in Redis
-                if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                    self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)  # 1 minute expiry
-                
-                return success
-                
-            return False
-            
-        except Exception as e:
-            logging.error(f"Error processing TS packets: {e}", exc_info=True)
-            self.sync_found = False  # Reset sync state on error
-            return False
-
-    def _process_ts_data(self, chunk):
-        """Process received data and add to buffer"""
-        if not chunk:
-            return False
-            
-        # Add to existing buffer
-        self.recv_buffer.extend(chunk)
-        
-        # Process complete packets now
-        return self._process_complete_packets()
-
-    def run(self):
-        """Main execution loop with stream health monitoring"""
-        try:
-            # Check if buffer already has data - in which case we might not need to connect
-            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                buffer_index = self.buffer.redis_client.get(f"ts_proxy:buffer:{self.buffer.channel_id}:index")
-                if buffer_index and int(buffer_index) > 0:
-                    # There's already data in Redis, check if it's recent (within last 10 seconds)
-                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                    last_data = self.buffer.redis_client.get(last_data_key)
-                    if last_data:
-                        last_time = float(last_data)
-                        if time.time() - last_time < 10:
-                            logging.info(f"Recent data found in Redis, no need to reconnect")
-                            self.connected = True
-                            self.healthy = True
-                            return
-            
-            # Start health monitor thread
-            health_thread = threading.Thread(target=self._monitor_health, daemon=True)
-            health_thread.start()
-            
-            current_response = None  # Track the current response object
-            current_session = None   # Track the current session
-            
-            # Establish network connection
-            import socket
-            import requests
-            
-            logging.info(f"Starting stream for URL: {self.url}")
-            
-            while self.running:
-                try:
-                    # Parse URL
-                    if self.url.startswith("http"):
-                        # HTTP connection
-                        session = self._create_session()
-                        current_session = session
-                        
-                        try:
-                            # Create an initial connection to get socket
-                            response = session.get(self.url, stream=True)
-                            current_response = response
-                            
-                            if response.status_code == 200:
-                                self.connected = True
-                                self.socket = response.raw._fp.fp.raw
-                                self.healthy = True
-                                logging.info("Successfully connected to stream source")
-                                
-                                # Connection successful - START GRACE PERIOD HERE
-                                self._set_waiting_for_clients()
-                                
-                                # Main fetch loop
-                                while self.running and self.connected:
-                                    if self.fetch_chunk():
-                                        self.last_data_time = time.time()
-                                    else:
-                                        if not self.running:
-                                            break
-                                        time.sleep(0.1)
-                            else:
-                                logging.error(f"Failed to connect to stream: HTTP {response.status_code}")
-                                time.sleep(2)
-                        finally:
-                            # Properly close response before session
-                            if current_response:
-                                try:
-                                    # Close the response explicitly to avoid the urllib3 error
-                                    current_response.close()
-                                except Exception as e:
-                                    logging.debug(f"Error closing response: {e}")
-                                current_response = None
-                            
-                            if current_session:
-                                try:
-                                    current_session.close()
-                                except Exception as e:
-                                    logging.debug(f"Error closing session: {e}")
-                                current_session = None
-                    else:
-                        logging.error(f"Unsupported URL scheme: {self.url}")
-                    
-                    # Connection retry logic
-                    if self.running and not self.connected:
-                        self.retry_count += 1
-                        if self.retry_count > self.max_retries:
-                            logging.error(f"Maximum retry attempts ({self.max_retries}) exceeded")
-                            break
-                        
-                        timeout = min(2 ** self.retry_count, 30)
-                        logging.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
-                        time.sleep(timeout)
-                    
-                except Exception as e:
-                    logging.error(f"Connection error: {e}")
-                    self._close_socket()
-                    time.sleep(5)
-                    
-        except Exception as e:
-            logging.error(f"Stream error: {e}")
-            self._close_socket()
-        finally:
-            # Final cleanup
-            self._close_socket()
-            logging.info("Stream manager stopped")
-    
     def _monitor_health(self):
         """Monitor stream health and attempt recovery if needed"""
         while self.running:
@@ -317,85 +238,92 @@ class StreamManager:
                 if now - self.last_data_time > 10 and self.connected:
                     # No data for 10 seconds, mark as unhealthy
                     if self.healthy:
-                        logging.warning("Stream health check: No data received for 10+ seconds")
+                        logger.warning("Stream health check: No data received for 10+ seconds")
                         self.healthy = False
                     
                     # After 30 seconds with no data, force reconnection
                     if now - self.last_data_time > 30:
-                        logging.warning("Stream appears dead, forcing reconnection")
+                        logger.warning("Stream appears dead, forcing reconnection")
                         self._close_socket()
                         self.connected = False
                         self.last_data_time = time.time()  # Reset timer for the reconnect
                 elif self.connected and not self.healthy:
                     # Stream is receiving data again after being unhealthy
-                    logging.info("Stream health restored, receiving data again")
+                    logger.info("Stream health restored, receiving data again")
                     self.healthy = True
                     
             except Exception as e:
-                logging.error(f"Error in health monitor: {e}")
+                logger.error(f"Error in health monitor: {e}")
                 
             time.sleep(self.health_check_interval)
     
-    def _close_socket(self):
-        """Close the socket connection safely"""
-        if self.socket:
+    def _close_connection(self):
+        """Close HTTP connection resources"""
+        # Close response if it exists
+        if hasattr(self, 'current_response') and self.current_response:
             try:
-                self.socket.close()
+                self.current_response.close()
             except Exception as e:
-                logging.debug(f"Error closing socket: {e}")
-                pass
-            self.socket = None
-            self.connected = False
+                logger.debug(f"Error closing response: {e}")
+            self.current_response = None
+            
+        # Close session if it exists
+        if hasattr(self, 'current_session') and self.current_session:
+            try:
+                self.current_session.close()
+            except Exception as e:
+                logger.debug(f"Error closing session: {e}")
+            self.current_session = None
+
+    # Keep backward compatibility - let's create an alias to the new method
+    def _close_socket(self):
+        """Backward compatibility wrapper for _close_connection"""
+        return self._close_connection()
 
     def fetch_chunk(self):
-        """Fetch data from socket with improved buffer management"""
+        """Fetch data from socket with direct pass-through to buffer"""
         if not self.connected or not self.socket:
             return False
             
         try:
-            # SocketIO objects use read instead of recv and don't support settimeout
+            # Read data chunk - no need to align with TS packet size anymore
             try:
-                # Try to read data chunk - use a multiple of TS packet size
+                # Try to read data chunk
                 if hasattr(self.socket, 'recv'):
-                    chunk = self.socket.recv(188 * 64)  # Standard socket
+                    chunk = self.socket.recv(Config.CHUNK_SIZE)  # Standard socket
                 else:
-                    chunk = self.socket.read(188 * 64)  # SocketIO object
+                    chunk = self.socket.read(Config.CHUNK_SIZE)  # SocketIO object
                 
             except AttributeError:
                 # Fall back to read() if recv() isn't available
-                chunk = self.socket.read(188 * 64)
+                chunk = self.socket.read(Config.CHUNK_SIZE)
             
             if not chunk:
                 # Connection closed by server
-                logging.warning("Server closed connection")
+                logger.warning("Server closed connection")
                 self._close_socket()
                 self.connected = False
                 return False
                 
-            # Process this chunk
-            self._process_ts_data(chunk)
+            # Add directly to buffer without TS-specific processing
+            success = self.buffer.add_chunk(chunk)
             
-            # Memory management - clear any internal buffers periodically
-            current_time = time.time()
-            if current_time - self._last_buffer_check > 60:  # Check every minute
-                self._last_buffer_check = current_time
-                if len(self.recv_buffer) > 188 * 1024:  # If buffer is extremely large
-                    logging.warning(f"Receive buffer unusually large ({len(self.recv_buffer)} bytes), trimming")
-                    # Keep only recent data, aligned to TS packet boundary
-                    keep_size = 188 * 128  # Keep reasonable buffer
-                    self.recv_buffer = self.recv_buffer[-keep_size:]
+            # Update last data timestamp in Redis if successful
+            if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
             
             return True
             
         except (socket.timeout, socket.error) as e:
             # Socket error
-            logging.error(f"Socket error: {e}")
+            logger.error(f"Socket error: {e}")
             self._close_socket()
             self.connected = False
             return False
             
         except Exception as e:
-            logging.error(f"Error in fetch_chunk: {e}")
+            logger.error(f"Error in fetch_chunk: {e}")
             return False
 
     def _set_waiting_for_clients(self):
@@ -418,7 +346,7 @@ class StreamManager:
                         if metadata and b'state' in metadata:
                             current_state = metadata[b'state'].decode('utf-8')
                     except Exception as e:
-                        logging.error(f"Error checking current state: {e}")
+                        logger.error(f"Error checking current state: {e}")
                     
                     # Only update if not already past connecting
                     if not current_state or current_state in ["initializing", "connecting"]:
@@ -432,15 +360,46 @@ class StreamManager:
                         
                         # Get configured grace period or default
                         grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
-                        logging.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → waiting_for_clients")
-                        logging.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
+                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → waiting_for_clients")
+                        logger.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
                     else:
-                        logging.debug(f"Not changing state: channel {channel_id} already in {current_state} state")
+                        logger.debug(f"Not changing state: channel {channel_id} already in {current_state} state")
         except Exception as e:
-            logging.error(f"Error setting waiting for clients state: {e}")
+            logger.error(f"Error setting waiting for clients state: {e}")
+
+    def _read_stream(self):
+        """Read from stream with minimal processing"""
+        try:
+            # Read up to CHUNK_SIZE bytes
+            chunk = self.sock.recv(self.CHUNK_SIZE)
+            
+            if not chunk:
+                # Connection closed
+                logger.debug("Connection closed by remote host")
+                return False
+                
+            # If we got data, just add it directly to the buffer 
+            if chunk:
+                success = self.buffer.add_chunk(chunk)
+                
+                # Update last data timestamp in Redis if successful
+                if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                    self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)  # 1 minute expiry
+                
+                return success
+            return True
+            
+        except socket.timeout:
+            # Expected timeout - no data available
+            return True
+        except Exception as e:
+            # Error reading from socket
+            logger.error(f"Error reading from stream: {e}")
+            return False
 
 class StreamBuffer:
-    """Manages stream data buffering using Redis for persistence"""
+    """Manages stream data buffering with optimized chunk storage"""
     
     def __init__(self, channel_id=None, redis_client=None):
         self.channel_id = channel_id
@@ -461,58 +420,82 @@ class StreamBuffer:
                 current_index = self.redis_client.get(self.buffer_index_key)
                 if current_index:
                     self.index = int(current_index)
-                    logging.info(f"Initialized buffer from Redis with index {self.index}")
+                    logger.info(f"Initialized buffer from Redis with index {self.index}")
             except Exception as e:
-                logging.error(f"Error initializing buffer from Redis: {e}")
-    
+                logger.error(f"Error initializing buffer from Redis: {e}")
+        
+        self._write_buffer = bytearray()
+        self.target_chunk_size = getattr(Config, 'BUFFER_CHUNK_SIZE', 188 * 5644)  # ~1MB default
+        
     def add_chunk(self, chunk):
-        """Add a chunk to the buffer"""
+        """Add data with optimized Redis storage and TS packet alignment"""
         if not chunk:
             return False
             
         try:
-            # Ensure chunk is properly aligned with TS packets
-            if len(chunk) % self.TS_PACKET_SIZE != 0:
-                logging.warning(f"Received non-aligned chunk of size {len(chunk)}")
-                aligned_size = (len(chunk) // self.TS_PACKET_SIZE) * self.TS_PACKET_SIZE
-                if (aligned_size == 0):
-                    return False
-                chunk = chunk[:aligned_size]
+            # Accumulate partial packets between chunks
+            if not hasattr(self, '_partial_packet'):
+                self._partial_packet = bytearray()
+                
+            # Combine with any previous partial packet
+            combined_data = bytearray(self._partial_packet) + bytearray(chunk)
             
+            # Calculate complete packets
+            complete_packets_size = (len(combined_data) // 188) * 188
+            
+            if complete_packets_size == 0:
+                # Not enough data for a complete packet
+                self._partial_packet = combined_data
+                return True
+                
+            # Split into complete packets and remainder
+            complete_packets = combined_data[:complete_packets_size]
+            self._partial_packet = combined_data[complete_packets_size:]
+            
+            # Add completed packets to write buffer
+            self._write_buffer.extend(complete_packets)
+            
+            # Only write to Redis when we have enough data for an optimized chunk
+            writes_done = 0
             with self.lock:
-                # Increment index atomically
-                if self.redis_client:
-                    # Use Redis to store and track chunks
-                    chunk_index = self.redis_client.incr(self.buffer_index_key)
-                    chunk_key = f"{self.buffer_prefix}{chunk_index}"
-                    self.redis_client.setex(chunk_key, self.chunk_ttl, chunk)
+                while len(self._write_buffer) >= self.target_chunk_size:
+                    # Extract a full chunk
+                    chunk_data = self._write_buffer[:self.target_chunk_size]
+                    self._write_buffer = self._write_buffer[self.target_chunk_size:]
                     
-                    # Update local tracking of position only
-                    self.index = chunk_index
-                    return True
-                else:
-                    # No Redis - can't function in multi-worker mode
-                    logging.error("Redis not available, cannot store chunks")
-                    return False
-                    
+                    # Write optimized chunk to Redis
+                    if self.redis_client:
+                        chunk_index = self.redis_client.incr(self.buffer_index_key)
+                        chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                        self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(chunk_data))
+                        
+                        # Update local tracking
+                        self.index = chunk_index
+                        writes_done += 1
+                
+            if writes_done > 0:
+                logger.debug(f"Added {writes_done} optimized chunks ({self.target_chunk_size} bytes each) to Redis")
+                
+            return True
+                
         except Exception as e:
-            logging.error(f"Error adding chunk to buffer: {e}")
+            logger.error(f"Error adding chunk to buffer: {e}")
             return False
     
     def get_chunks(self, start_index=None):
         """Get chunks from the buffer with detailed logging"""
         try:
             request_id = f"req_{random.randint(1000, 9999)}"
-            logging.debug(f"[{request_id}] get_chunks called with start_index={start_index}")
+            logger.debug(f"[{request_id}] get_chunks called with start_index={start_index}")
             
             if not self.redis_client:
-                logging.error("Redis not available, cannot retrieve chunks")
+                logger.error("Redis not available, cannot retrieve chunks")
                 return []
             
             # If no start_index provided, use most recent chunks
             if start_index is None:
                 start_index = max(0, self.index - 10)  # Start closer to current position
-                logging.debug(f"[{request_id}] No start_index provided, using {start_index}")
+                logger.debug(f"[{request_id}] No start_index provided, using {start_index}")
             
             # Get current index from Redis
             current_index = int(self.redis_client.get(self.buffer_index_key) or 0)
@@ -524,25 +507,25 @@ class StreamBuffer:
             # Adaptive chunk retrieval based on how far behind
             if chunks_behind > 100:
                 fetch_count = 15
-                logging.debug(f"[{request_id}] Client very behind ({chunks_behind} chunks), fetching {fetch_count}")
+                logger.debug(f"[{request_id}] Client very behind ({chunks_behind} chunks), fetching {fetch_count}")
             elif chunks_behind > 50:
                 fetch_count = 10  
-                logging.debug(f"[{request_id}] Client moderately behind ({chunks_behind} chunks), fetching {fetch_count}")
+                logger.debug(f"[{request_id}] Client moderately behind ({chunks_behind} chunks), fetching {fetch_count}")
             elif chunks_behind > 20:
                 fetch_count = 5
-                logging.debug(f"[{request_id}] Client slightly behind ({chunks_behind} chunks), fetching {fetch_count}")
+                logger.debug(f"[{request_id}] Client slightly behind ({chunks_behind} chunks), fetching {fetch_count}")
             else:
                 fetch_count = 3
-                logging.debug(f"[{request_id}] Client up-to-date (only {chunks_behind} chunks behind), fetching {fetch_count}")
+                logger.debug(f"[{request_id}] Client up-to-date (only {chunks_behind} chunks behind), fetching {fetch_count}")
             
             end_id = min(current_index + 1, start_id + fetch_count)
             
             if start_id >= end_id:
-                logging.debug(f"[{request_id}] No new chunks to fetch (start_id={start_id}, end_id={end_id})")
+                logger.debug(f"[{request_id}] No new chunks to fetch (start_id={start_id}, end_id={end_id})")
                 return []
             
             # Log the range we're retrieving
-            logging.debug(f"[{request_id}] Retrieving chunks {start_id} to {end_id-1} (total: {end_id-start_id})")
+            logger.debug(f"[{request_id}] Retrieving chunks {start_id} to {end_id-1} (total: {end_id-start_id})")
             
             # Directly fetch from Redis using pipeline for efficiency
             pipe = self.redis_client.pipeline()
@@ -560,7 +543,7 @@ class StreamBuffer:
             missing_chunks = len(results) - found_chunks
             
             if missing_chunks > 0:
-                logging.debug(f"[{request_id}] Missing {missing_chunks}/{len(results)} chunks in Redis")
+                logger.debug(f"[{request_id}] Missing {missing_chunks}/{len(results)} chunks in Redis")
             
             # Update local tracking
             if chunks:
@@ -569,19 +552,19 @@ class StreamBuffer:
             # Final log message
             chunk_sizes = [len(c) for c in chunks]
             total_bytes = sum(chunk_sizes) if chunks else 0
-            logging.debug(f"[{request_id}] Returning {len(chunks)} chunks ({total_bytes} bytes)")
+            logger.debug(f"[{request_id}] Returning {len(chunks)} chunks ({total_bytes} bytes)")
             
             return chunks
             
         except Exception as e:
-            logging.error(f"Error getting chunks from buffer: {e}", exc_info=True)
+            logger.error(f"Error getting chunks from buffer: {e}", exc_info=True)
             return []
     
     def get_chunks_exact(self, start_index, count):
         """Get exactly the requested number of chunks from given index"""
         try:
             if not self.redis_client:
-                logging.error("Redis not available, cannot retrieve chunks")
+                logger.error("Redis not available, cannot retrieve chunks")
                 return []
             
             # Calculate range to retrieve
@@ -616,19 +599,50 @@ class StreamBuffer:
             return chunks
             
         except Exception as e:
-            logging.error(f"Error getting exact chunks: {e}", exc_info=True)
+            logger.error(f"Error getting exact chunks: {e}", exc_info=True)
             return []
 
+    def stop(self):
+        """Stop the buffer and flush any remaining data"""
+        try:
+            # Flush any remaining data in the write buffer
+            if hasattr(self, '_write_buffer') and len(self._write_buffer) > 0:
+                # Ensure remaining data is aligned to TS packets
+                complete_size = (len(self._write_buffer) // 188) * 188
+                
+                if complete_size > 0:
+                    final_chunk = self._write_buffer[:complete_size]
+                    
+                    # Write final chunk to Redis
+                    with self.lock:
+                        if self.redis_client:
+                            try:
+                                chunk_index = self.redis_client.incr(self.buffer_index_key)
+                                chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                                self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(final_chunk))
+                                self.index = chunk_index
+                                logger.info(f"Flushed final chunk of {len(final_chunk)} bytes to Redis")
+                            except Exception as e:
+                                logger.error(f"Error flushing final chunk: {e}")
+                
+                # Clear buffers
+                self._write_buffer = bytearray()
+                if hasattr(self, '_partial_packet'):
+                    self._partial_packet = bytearray()
+                    
+        except Exception as e:
+            logger.error(f"Error during buffer stop: {e}")
+
 class ClientManager:
-    """Manages connected clients for a channel with cross-worker visibility"""
+    """Manages client connections with no duplicates"""
     
-    def __init__(self, channel_id, redis_client=None, worker_id=None):
+    def __init__(self, channel_id=None, redis_client=None, heartbeat_interval=1, worker_id=None):
         self.channel_id = channel_id
         self.redis_client = redis_client
-        self.worker_id = worker_id
         self.clients = set()
         self.lock = threading.Lock()
         self.last_active_time = time.time()
+        self.worker_id = worker_id  # Store worker ID as instance variable
         
         # STANDARDIZED KEYS: Move client set under channel namespace
         self.client_set_key = f"ts_proxy:channel:{channel_id}:clients"
@@ -638,6 +652,7 @@ class ClientManager:
         
         # Start heartbeat thread for local clients
         self._start_heartbeat_thread()
+        self._registered_clients = set()  # Track already registered client IDs
     
     def _start_heartbeat_thread(self):
         """Start thread to regularly refresh client presence in Redis"""
@@ -664,7 +679,7 @@ class ClientManager:
                             exists = self.redis_client.exists(client_key)
                             if not exists:
                                 # Client entry has expired in Redis but still in our local set
-                                logging.warning(f"Found ghost client {client_id} - expired in Redis but still in local set")
+                                logger.warning(f"Found ghost client {client_id} - expired in Redis but still in local set")
                                 clients_to_remove.add(client_id)
                                 continue
                                 
@@ -678,7 +693,7 @@ class ClientManager:
                                 # Use configurable threshold for detection
                                 ghost_threshold = getattr(Config, 'GHOST_CLIENT_MULTIPLIER', 5.0)
                                 if time_since_activity > self.heartbeat_interval * ghost_threshold:
-                                    logging.warning(f"Detected ghost client {client_id} - last active {time_since_activity:.1f}s ago")
+                                    logger.warning(f"Detected ghost client {client_id} - last active {time_since_activity:.1f}s ago")
                                     clients_to_remove.add(client_id)
                         
                         # Remove ghost clients in a separate step
@@ -686,7 +701,7 @@ class ClientManager:
                             self.remove_client(client_id)
                         
                         if clients_to_remove:
-                            logging.info(f"Removed {len(clients_to_remove)} ghost clients from channel {self.channel_id}")
+                            logger.info(f"Removed {len(clients_to_remove)} ghost clients from channel {self.channel_id}")
                         
                         # Now send heartbeats only for remaining clients
                         pipe = self.redis_client.pipeline()
@@ -723,12 +738,12 @@ class ClientManager:
                             self._notify_owner_of_activity()
                     
                 except Exception as e:
-                    logging.error(f"Error in client heartbeat thread: {e}")
+                    logger.error(f"Error in client heartbeat thread: {e}")
             
         thread = threading.Thread(target=heartbeat_task, daemon=True)
         thread.name = f"client-heartbeat-{self.channel_id}"
         thread.start()
-        logging.debug(f"Started client heartbeat thread for channel {self.channel_id} (interval: {self.heartbeat_interval}s)")
+        logger.debug(f"Started client heartbeat thread for channel {self.channel_id} (interval: {self.heartbeat_interval}s)")
     
     def _notify_owner_of_activity(self):
         """Notify channel owner that clients are active on this worker"""
@@ -746,70 +761,79 @@ class ClientManager:
             activity_key = f"ts_proxy:channel:{self.channel_id}:activity"
             self.redis_client.setex(activity_key, self.client_ttl, str(time.time()))
         except Exception as e:
-            logging.error(f"Error notifying owner of client activity: {e}")
+            logger.error(f"Error notifying owner of client activity: {e}")
     
     def add_client(self, client_id, user_agent=None):
-        """Add a client to this channel locally and in Redis"""
-        with self.lock:
-            self.clients.add(client_id)
-            self.last_active_time = time.time()
+        """Add a client with duplicate prevention"""
+        if client_id in self._registered_clients:
+            logger.debug(f"Client {client_id} already registered, skipping")
+            return False
             
-            if self.redis_client:
-                current_time = str(time.time())
+        self._registered_clients.add(client_id)
+        
+        # FIX: Consistent key naming - note the 's' in 'clients'
+        client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
+        
+        # Prepare client data
+        current_time = str(time.time())
+        client_data = {
+            "user_agent": user_agent or "unknown",
+            "connected_at": current_time,
+            "last_active": current_time,
+            "worker_id": self.worker_id or "unknown"
+        }
+        
+        try:
+            with self.lock:
+                # Store client in local set
+                self.clients.add(client_id)
                 
-                # Add to channel's client set
-                self.redis_client.sadd(self.client_set_key, client_id)
-                self.redis_client.expire(self.client_set_key, self.client_ttl)
-                
-                # STANDARDIZED KEY: Individual client under channel namespace
-                client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
-                
-                # Store client info as a hash with all info in one place
-                client_data = {
-                    "last_active": current_time,
-                    "worker_id": self.worker_id or "unknown",
-                    "connect_time": current_time
-                }
-                
-                # Add user agent if provided
-                if user_agent:
-                    client_data["user_agent"] = user_agent
+                # Store in Redis
+                if self.redis_client:
+                    # FIXED: Store client data just once with proper key
+                    self.redis_client.hset(client_key, mapping=client_data)
+                    self.redis_client.expire(client_key, self.client_ttl)
                     
-                # Use HSET to store client data as a hash
-                self.redis_client.hset(client_key, mapping=client_data)
-                self.redis_client.expire(client_key, self.client_ttl)
+                    # Add to the client set
+                    self.redis_client.sadd(self.client_set_key, client_id)
+                    self.redis_client.expire(self.client_set_key, self.client_ttl)
+                    
+                    # Clear any initialization timer
+                    self.redis_client.delete(f"ts_proxy:channel:{self.channel_id}:init_time")
+                    
+                    self._notify_owner_of_activity()
+                    
+                    # Publish client connected event with user agent
+                    event_data = {
+                        "event": "client_connected",
+                        "channel_id": self.channel_id,
+                        "client_id": client_id,
+                        "worker_id": self.worker_id or "unknown",
+                        "timestamp": time.time()
+                    }
+                    
+                    if user_agent:
+                        event_data["user_agent"] = user_agent
+                        logger.debug(f"Storing user agent '{user_agent}' for client {client_id}")
+                    else:
+                        logger.debug(f"No user agent provided for client {client_id}")
+                        
+                    self.redis_client.publish(
+                        f"ts_proxy:events:{self.channel_id}", 
+                        json.dumps(event_data)
+                    )
+                    
+                # Get total clients across all workers
+                total_clients = self.get_total_client_count()
+                logger.info(f"New client connected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
                 
-                # Clear any initialization timer
-                self.redis_client.delete(f"ts_proxy:channel:{self.channel_id}:init_time")
+                self.last_heartbeat_time[client_id] = time.time()
                 
-                self._notify_owner_of_activity()
-                
-                # Publish client connected event with user agent
-                event_data = {
-                    "event": "client_connected",
-                    "channel_id": self.channel_id,
-                    "client_id": client_id,
-                    "worker_id": self.worker_id or "unknown",
-                    "timestamp": time.time()
-                }
-                
-                if user_agent:
-                    event_data["user_agent"] = user_agent
-                    logging.debug(f"Storing user agent '{user_agent}' for client {client_id}")
-                else:
-                    logging.debug(f"No user agent provided for client {client_id}")
-                self.redis_client.publish(
-                    f"ts_proxy:events:{self.channel_id}", 
-                    json.dumps(event_data)
-                )
-                
-            # Get total clients across all workers
-            total_clients = self.get_total_client_count()
-            logging.info(f"New client connected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
-            
-            self.last_heartbeat_time[client_id] = time.time()
-            
-        return len(self.clients)
+                return len(self.clients)
+        
+        except Exception as e:
+            logger.error(f"Error adding client {client_id}: {e}")
+            return False
     
     def remove_client(self, client_id):
         """Remove a client from this channel and Redis"""
@@ -833,7 +857,7 @@ class ClientManager:
                 # Check if this was the last client
                 remaining = self.redis_client.scard(self.client_set_key) or 0
                 if remaining == 0:
-                    logging.warning(f"Last client removed: {client_id} - channel may shut down soon")
+                    logger.warning(f"Last client removed: {client_id} - channel may shut down soon")
                     
                     # Trigger disconnect time tracking even if we're not the owner
                     disconnect_key = f"ts_proxy:channel:{self.channel_id}:last_client_disconnect_time"
@@ -853,7 +877,7 @@ class ClientManager:
                 self.redis_client.publish(f"ts_proxy:events:{self.channel_id}", event_data)
             
             total_clients = self.get_total_client_count()
-            logging.info(f"Client disconnected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
+            logger.info(f"Client disconnected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
             
         return len(self.clients)
     
@@ -871,7 +895,7 @@ class ClientManager:
             # Count members in the client set
             return self.redis_client.scard(self.client_set_key) or 0
         except Exception as e:
-            logging.error(f"Error getting total client count: {e}")
+            logger.error(f"Error getting total client count: {e}")
             return len(self.clients)  # Fall back to local count
             
     def refresh_client_ttl(self):
@@ -889,7 +913,7 @@ class ClientManager:
             # Refresh TTL on the set itself
             self.redis_client.expire(self.client_set_key, self.client_ttl)
         except Exception as e:
-            logging.error(f"Error refreshing client TTL: {e}")
+            logger.error(f"Error refreshing client TTL: {e}")
 
 class StreamFetcher:
     """Handles stream data fetching"""
@@ -917,21 +941,21 @@ class StreamFetcher:
         """Handle connection state and retries"""
         if not self.manager.connected:
             if not self.manager.should_retry():
-                logging.error(f"Failed to connect after {self.manager.max_retries} attempts")
+                logger.error(f"Failed to connect after {self.manager.max_retries} attempts")
                 return False
             
             if not self.manager.running:
                 return False
                 
             self.manager.retry_count += 1
-            logging.info(f"Connecting to stream: {self.manager.url} "
+            logger.info(f"Connecting to stream: {self.manager.url} "
                         f"(attempt {self.manager.retry_count}/{self.manager.max_retries})")
         return True
 
     def _handle_successful_connection(self) -> None:
         """Handle successful stream connection"""
         if not self.manager.connected:
-            logging.info("Stream connected successfully")
+            logger.info("Stream connected successfully")
             self.manager.connected = True
             self.manager.retry_count = 0
 
@@ -939,12 +963,12 @@ class StreamFetcher:
         """Process incoming stream data"""
         for chunk in response.iter_content(chunk_size=Config.CHUNK_SIZE):
             if not self.manager.running:
-                logging.info("Stream fetch stopped - shutting down")
+                logger.info("Stream fetch stopped - shutting down")
                 return
                 
             if chunk:
                 if self.manager.ready_event.is_set():
-                    logging.info("Stream switch in progress, closing connection")
+                    logger.info("Stream switch in progress, closing connection")
                     self.manager.ready_event.clear()
                     break
                     
@@ -954,13 +978,13 @@ class StreamFetcher:
 
     def _handle_connection_error(self, error: Exception) -> None:
         """Handle stream connection errors"""
-        logging.error(f"Stream connection error: {error}")
+        logger.error(f"Stream connection error: {error}")
         self.manager.connected = False
         
         if not self.manager.running:
             return
             
-        logging.info(f"Attempting to reconnect in {Config.RECONNECT_DELAY} seconds...")
+        logger.info(f"Attempting to reconnect in {Config.RECONNECT_DELAY} seconds...")
         if not wait_for_running(self.manager, Config.RECONNECT_DELAY):
             return
 
@@ -997,11 +1021,11 @@ class ProxyServer:
             
             redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
             self.redis_client = redis.from_url(redis_url)
-            logging.info(f"Connected to Redis at {redis_url}")
-            logging.info(f"Worker ID: {self.worker_id}")
+            logger.info(f"Connected to Redis at {redis_url}")
+            logger.info(f"Worker ID: {self.worker_id}")
         except Exception as e:
             self.redis_client = None
-            logging.error(f"Failed to connect to Redis: {e}")
+            logger.error(f"Failed to connect to Redis: {e}")
         
         # Start cleanup thread
         self.cleanup_interval = getattr(Config, 'CLEANUP_INTERVAL', 60)
@@ -1020,7 +1044,7 @@ class ProxyServer:
                 pubsub = self.redis_client.pubsub()
                 pubsub.psubscribe("ts_proxy:events:*")
                 
-                logging.info("Started Redis event listener for client activity")
+                logger.info("Started Redis event listener for client activity")
                 
                 for message in pubsub.listen():
                     if message["type"] != "pmessage":
@@ -1037,14 +1061,14 @@ class ProxyServer:
                             # For owner, update client status immediately
                             if self.am_i_owner(channel_id):
                                 if event_type == "client_connected":
-                                    logging.debug(f"Owner received client_connected event for channel {channel_id}")
+                                    logger.debug(f"Owner received client_connected event for channel {channel_id}")
                                     # Reset any disconnect timer
                                     # RENAMED: no_clients_since → last_client_disconnect_time
                                     disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
                                     self.redis_client.delete(disconnect_key)
                                     
                                 elif event_type == "client_disconnected":
-                                    logging.debug(f"Owner received client_disconnected event for channel {channel_id}")
+                                    logger.debug(f"Owner received client_disconnected event for channel {channel_id}")
                                     # Check if any clients remain
                                     if channel_id in self.client_managers:
                                         # VERIFY REDIS CLIENT COUNT DIRECTLY
@@ -1052,7 +1076,7 @@ class ProxyServer:
                                         total = self.redis_client.scard(client_set_key) or 0
                                         
                                         if total == 0:
-                                            logging.debug(f"No clients left after disconnect event - stopping channel {channel_id}")
+                                            logger.debug(f"No clients left after disconnect event - stopping channel {channel_id}")
                                             # Set the disconnect timer for other workers to see
                                             disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
                                             self.redis_client.setex(disconnect_key, 60, str(time.time()))
@@ -1061,13 +1085,13 @@ class ProxyServer:
                                             shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 0)
                                             
                                             if shutdown_delay > 0:
-                                                logging.info(f"Waiting {shutdown_delay}s before stopping channel...")
+                                                logger.info(f"Waiting {shutdown_delay}s before stopping channel...")
                                                 time.sleep(shutdown_delay)
                                                 
                                                 # Re-check client count before stopping
                                                 total = self.redis_client.scard(client_set_key) or 0
                                                 if total > 0:
-                                                    logging.info(f"New clients connected during shutdown delay - aborting shutdown")
+                                                    logger.info(f"New clients connected during shutdown delay - aborting shutdown")
                                                     self.redis_client.delete(disconnect_key)
                                                     return
                                             
@@ -1076,7 +1100,7 @@ class ProxyServer:
 
 
                                 elif event_type == "stream_switch":
-                                    logging.info(f"Owner received stream switch request for channel {channel_id}")
+                                    logger.info(f"Owner received stream switch request for channel {channel_id}")
                                     # Handle stream switch request
                                     new_url = data.get("url")
                                     user_agent = data.get("user_agent")
@@ -1098,7 +1122,7 @@ class ProxyServer:
                                         success = stream_manager.update_url(new_url)
                                         
                                         if success:
-                                            logging.info(f"Stream switch initiated for channel {channel_id}")
+                                            logger.info(f"Stream switch initiated for channel {channel_id}")
                                             
                                             # Publish confirmation
                                             switch_result = {
@@ -1117,7 +1141,7 @@ class ProxyServer:
                                             if self.redis_client:
                                                 self.redis_client.set(status_key, "switched")
                                         else:
-                                            logging.error(f"Failed to switch stream for channel {channel_id}")
+                                            logger.error(f"Failed to switch stream for channel {channel_id}")
                                             
                                             # Publish failure
                                             switch_result = {
@@ -1132,9 +1156,9 @@ class ProxyServer:
                                                 json.dumps(switch_result)
                                             )
                     except Exception as e:
-                        logging.error(f"Error processing event message: {e}")
+                        logger.error(f"Error processing event message: {e}")
             except Exception as e:
-                logging.error(f"Error in event listener: {e}")
+                logger.error(f"Error in event listener: {e}")
                 time.sleep(5)  # Wait before reconnecting
                 # Try to restart the listener
                 self._start_event_listener()
@@ -1155,7 +1179,7 @@ class ProxyServer:
                 return owner.decode('utf-8')
             return None
         except Exception as e:
-            logging.error(f"Error getting channel owner: {e}")
+            logger.error(f"Error getting channel owner: {e}")
             return None
     
     def am_i_owner(self, channel_id):
@@ -1178,7 +1202,7 @@ class ProxyServer:
             # If acquired, set expiry to prevent orphaned locks
             if acquired:
                 self.redis_client.expire(lock_key, ttl)
-                logging.info(f"Worker {self.worker_id} acquired ownership of channel {channel_id}")
+                logger.info(f"Worker {self.worker_id} acquired ownership of channel {channel_id}")
                 return True
             
             # If not acquired, check if we already own it (might be a retry)
@@ -1186,14 +1210,14 @@ class ProxyServer:
             if current_owner and current_owner.decode('utf-8') == self.worker_id:
                 # Refresh TTL
                 self.redis_client.expire(lock_key, ttl)
-                logging.info(f"Worker {self.worker_id} refreshed ownership of channel {channel_id}")
+                logger.info(f"Worker {self.worker_id} refreshed ownership of channel {channel_id}")
                 return True
                 
             # Someone else owns it
             return False
             
         except Exception as e:
-            logging.error(f"Error acquiring channel ownership: {e}")
+            logger.error(f"Error acquiring channel ownership: {e}")
             return False
     
     def release_ownership(self, channel_id):
@@ -1208,9 +1232,9 @@ class ProxyServer:
             current = self.redis_client.get(lock_key)
             if current and current.decode('utf-8') == self.worker_id:
                 self.redis_client.delete(lock_key)
-                logging.info(f"Released ownership of channel {channel_id}")
+                logger.info(f"Released ownership of channel {channel_id}")
         except Exception as e:
-            logging.error(f"Error releasing channel ownership: {e}")
+            logger.error(f"Error releasing channel ownership: {e}")
     
     def extend_ownership(self, channel_id, ttl=30):
         """Extend ownership lease with grace period"""
@@ -1227,7 +1251,7 @@ class ProxyServer:
                 return True
             return False
         except Exception as e:
-            logging.error(f"Error extending ownership: {e}")
+            logger.error(f"Error extending ownership: {e}")
             return False
     
     def initialize_channel(self, url, channel_id, user_agent=None):
@@ -1259,8 +1283,8 @@ class ProxyServer:
             
             # Exit early if another worker owns the channel
             if current_owner and current_owner != self.worker_id:
-                logging.info(f"Channel {channel_id} already owned by worker {current_owner}")
-                logging.info(f"This worker ({self.worker_id}) will read from Redis buffer only")
+                logger.info(f"Channel {channel_id} already owned by worker {current_owner}")
+                logger.info(f"This worker ({self.worker_id}) will read from Redis buffer only")
                 
                 # Create buffer but not stream manager
                 buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
@@ -1275,13 +1299,13 @@ class ProxyServer:
             # Only continue with full initialization if URL is provided
             # or we can get it from Redis
             if not channel_url:
-                logging.error(f"No URL available for channel {channel_id}")
+                logger.error(f"No URL available for channel {channel_id}")
                 return False
             
             # Try to acquire ownership with Redis locking
             if not self.try_acquire_ownership(channel_id):
                 # Another worker just acquired ownership
-                logging.info(f"Another worker just acquired ownership of channel {channel_id}")
+                logger.info(f"Another worker just acquired ownership of channel {channel_id}")
                 
                 # Create buffer but not stream manager
                 buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
@@ -1294,7 +1318,7 @@ class ProxyServer:
                 return True
             
             # We now own the channel - ONLY NOW should we set metadata with initializing state
-            logging.info(f"Worker {self.worker_id} is now the owner of channel {channel_id}")
+            logger.info(f"Worker {self.worker_id} is now the owner of channel {channel_id}")
             
             if self.redis_client:
                 # NOW create or update metadata with initializing state
@@ -1314,12 +1338,12 @@ class ProxyServer:
             
             # Create stream buffer
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
-            logging.debug(f"Created StreamBuffer for channel {channel_id}")
+            logger.debug(f"Created StreamBuffer for channel {channel_id}")
             self.stream_buffers[channel_id] = buffer
             
             # Only the owner worker creates the actual stream manager
             stream_manager = StreamManager(channel_url, buffer, user_agent=channel_user_agent)
-            logging.debug(f"Created StreamManager for channel {channel_id}")
+            logger.debug(f"Created StreamManager for channel {channel_id}")
             self.stream_managers[channel_id] = stream_manager
             
             # Create client manager with channel_id, redis_client AND worker_id
@@ -1334,7 +1358,7 @@ class ProxyServer:
             thread = threading.Thread(target=stream_manager.run, daemon=True)
             thread.name = f"stream-{channel_id}"
             thread.start()
-            logging.info(f"Started stream manager thread for channel {channel_id}")
+            logger.info(f"Started stream manager thread for channel {channel_id}")
             
             # If we're the owner, we need to set the channel state rather than starting a grace period immediately
             if self.am_i_owner(channel_id):
@@ -1347,11 +1371,11 @@ class ProxyServer:
                 attempt_key = f"ts_proxy:channel:{channel_id}:connection_attempt_time"
                 self.redis_client.setex(attempt_key, 60, str(time.time()))
                 
-                logging.info(f"Channel {channel_id} in connecting state - will start grace period after connection")            
+                logger.info(f"Channel {channel_id} in connecting state - will start grace period after connection")            
             return True
             
         except Exception as e:
-            logging.error(f"Error initializing channel {channel_id}: {e}", exc_info=True)
+            logger.error(f"Error initializing channel {channel_id}: {e}", exc_info=True)
             # Release ownership on failure
             self.release_ownership(channel_id)
             return False
@@ -1387,11 +1411,11 @@ class ProxyServer:
     def stop_channel(self, channel_id):
         """Stop a channel with proper ownership handling"""
         try:
-            logging.info(f"Stopping channel {channel_id}")
+            logger.info(f"Stopping channel {channel_id}")
             
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
-                logging.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")
+                logger.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")
                 if channel_id in self.stream_managers:
                     stream_manager = self.stream_managers[channel_id]
                     
@@ -1413,38 +1437,38 @@ class ProxyServer:
                         break
                 
                 if stream_thread and stream_thread.is_alive():
-                    logging.info(f"Waiting for stream thread to terminate")
+                    logger.info(f"Waiting for stream thread to terminate")
                     try:
                         # Very short timeout to prevent hanging the app
                         stream_thread.join(timeout=2.0)
                         if stream_thread.is_alive():
-                            logging.warning(f"Stream thread did not terminate within timeout")
+                            logger.warning(f"Stream thread did not terminate within timeout")
                     except RuntimeError:
-                        logging.debug("Could not join stream thread (may be current thread)")
+                        logger.debug("Could not join stream thread (may be current thread)")
                 
                 # Release ownership
                 self.release_ownership(channel_id)
-                logging.info(f"Released ownership of channel {channel_id}")
+                logger.info(f"Released ownership of channel {channel_id}")
             
             # Always clean up local resources
             if channel_id in self.stream_managers:
                 del self.stream_managers[channel_id]
-                logging.info(f"Removed stream manager for channel {channel_id}")
+                logger.info(f"Removed stream manager for channel {channel_id}")
             
             if channel_id in self.stream_buffers:
                 del self.stream_buffers[channel_id]
-                logging.info(f"Removed stream buffer for channel {channel_id}")
+                logger.info(f"Removed stream buffer for channel {channel_id}")
             
             if channel_id in self.client_managers:
                 del self.client_managers[channel_id]
-                logging.info(f"Removed client manager for channel {channel_id}")
+                logger.info(f"Removed client manager for channel {channel_id}")
             
             # Clean up Redis keys
             self._clean_redis_keys(channel_id)
             
             return True
         except Exception as e:
-            logging.error(f"Error stopping channel {channel_id}: {e}", exc_info=True)
+            logger.error(f"Error stopping channel {channel_id}: {e}", exc_info=True)
             return False
 
     def check_inactive_channels(self):
@@ -1456,7 +1480,7 @@ class ProxyServer:
                 channels_to_stop.append(channel_id)
         
         for channel_id in channels_to_stop:
-            logging.info(f"Auto-stopping inactive channel {channel_id}")
+            logger.info(f"Auto-stopping inactive channel {channel_id}")
             self.stop_channel(channel_id)
 
     def _cleanup_channel(self, channel_id: str) -> None:
@@ -1497,7 +1521,7 @@ class ProxyServer:
                                 
                             # Log client count periodically
                             if time.time() % 30 < 1:  # Every ~30 seconds
-                                logging.info(f"Channel {channel_id} has {total_clients} clients, state: {channel_state}")
+                                logger.info(f"Channel {channel_id} has {total_clients} clients, state: {channel_state}")
                                 
                             # If in connecting or waiting_for_clients state, check grace period
                             if channel_state in ["connecting", "waiting_for_clients"]:
@@ -1511,7 +1535,7 @@ class ProxyServer:
                                     
                                 # If still connecting, give it more time
                                 if channel_state == "connecting":
-                                    logging.debug(f"Channel {channel_id} still connecting - not checking for clients yet")
+                                    logger.debug(f"Channel {channel_id} still connecting - not checking for clients yet")
                                     continue
                                     
                                 # If waiting for clients, check grace period
@@ -1520,21 +1544,21 @@ class ProxyServer:
                                     time_since_ready = time.time() - connection_ready_time
                                     
                                     # Add this debug log
-                                    logging.debug(f"GRACE PERIOD CHECK: Channel {channel_id} in {channel_state} state, " 
+                                    logger.debug(f"GRACE PERIOD CHECK: Channel {channel_id} in {channel_state} state, " 
                                                  f"time_since_ready={time_since_ready:.1f}s, grace_period={grace_period}s, "
                                                  f"total_clients={total_clients}")
                                     
                                     if time_since_ready <= grace_period:
                                         # Still within grace period
-                                        logging.debug(f"Channel {channel_id} in grace period - {time_since_ready:.1f}s of {grace_period}s elapsed")
+                                        logger.debug(f"Channel {channel_id} in grace period - {time_since_ready:.1f}s of {grace_period}s elapsed")
                                         continue
                                     elif total_clients == 0:
                                         # Grace period expired with no clients
-                                        logging.info(f"Grace period expired ({time_since_ready:.1f}s > {grace_period}s) with no clients - stopping channel {channel_id}")
+                                        logger.info(f"Grace period expired ({time_since_ready:.1f}s > {grace_period}s) with no clients - stopping channel {channel_id}")
                                         self.stop_channel(channel_id)
                                     else:
                                         # Grace period expired but we have clients - mark channel as active
-                                        logging.info(f"Grace period expired with {total_clients} clients - marking channel {channel_id} as active")
+                                        logger.info(f"Grace period expired with {total_clients} clients - marking channel {channel_id} as active")
                                         old_state = "unknown"
                                         if metadata and b'state' in metadata:
                                             old_state = metadata[b'state'].decode('utf-8')
@@ -1542,7 +1566,7 @@ class ProxyServer:
                                             "grace_period_ended_at": str(time.time()),
                                             "clients_at_activation": str(total_clients)
                                         }):
-                                            logging.info(f"Channel {channel_id} activated with {total_clients} clients after grace period")
+                                            logger.info(f"Channel {channel_id} activated with {total_clients} clients after grace period")
                             # If active and no clients, start normal shutdown procedure
                             elif channel_state not in ["connecting", "waiting_for_clients"] and total_clients == 0:
                                 # Check if there's a pending no-clients timeout
@@ -1555,7 +1579,7 @@ class ProxyServer:
                                         try:
                                             disconnect_time = float(disconnect_value.decode('utf-8'))
                                         except (ValueError, TypeError) as e:
-                                            logging.error(f"Invalid disconnect time for channel {channel_id}: {e}")
+                                            logger.error(f"Invalid disconnect time for channel {channel_id}: {e}")
                                 
                                 current_time = time.time()
                                 
@@ -1563,14 +1587,14 @@ class ProxyServer:
                                     # First time seeing zero clients, set timestamp
                                     if self.redis_client:
                                         self.redis_client.setex(disconnect_key, 60, str(current_time))
-                                    logging.warning(f"No clients detected for channel {channel_id}, starting shutdown timer")
+                                    logger.warning(f"No clients detected for channel {channel_id}, starting shutdown timer")
                                 elif current_time - disconnect_time > getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5):
                                     # We've had no clients for the shutdown delay period
-                                    logging.warning(f"No clients for {current_time - disconnect_time:.1f}s, stopping channel {channel_id}")
+                                    logger.warning(f"No clients for {current_time - disconnect_time:.1f}s, stopping channel {channel_id}")
                                     self.stop_channel(channel_id)
                                 else:
                                     # Still in shutdown delay period
-                                    logging.debug(f"Channel {channel_id} shutdown timer: " 
+                                    logger.debug(f"Channel {channel_id} shutdown timer: " 
                                                 f"{current_time - disconnect_time:.1f}s of " 
                                                 f"{getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)}s elapsed")
                             else:
@@ -1579,14 +1603,14 @@ class ProxyServer:
                                     self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
                     
                 except Exception as e:
-                    logging.error(f"Error in cleanup thread: {e}", exc_info=True)
+                    logger.error(f"Error in cleanup thread: {e}", exc_info=True)
                 
                 time.sleep(getattr(Config, 'CLEANUP_CHECK_INTERVAL', 1))
         
         thread = threading.Thread(target=cleanup_task, daemon=True)
         thread.name = "ts-proxy-cleanup"
         thread.start()
-        logging.info(f"Started TS proxy cleanup thread (interval: {getattr(Config, 'CLEANUP_CHECK_INTERVAL', 3)}s)")
+        logger.info(f"Started TS proxy cleanup thread (interval: {getattr(Config, 'CLEANUP_CHECK_INTERVAL', 3)}s)")
 
     def _check_orphaned_channels(self):
         """Check for orphaned channels in Redis (owner worker crashed)"""
@@ -1616,16 +1640,16 @@ class ProxyServer:
                         
                         if client_count > 0:
                             # Orphaned channel with clients - we could take ownership
-                            logging.info(f"Found orphaned channel {channel_id} with {client_count} clients")
+                            logger.info(f"Found orphaned channel {channel_id} with {client_count} clients")
                         else:
                             # Orphaned channel with no clients - clean it up
-                            logging.info(f"Cleaning up orphaned channel {channel_id}")
+                            logger.info(f"Cleaning up orphaned channel {channel_id}")
                             self._clean_redis_keys(channel_id)
                 except Exception as e:
-                    logging.error(f"Error processing channel key {key}: {e}")
+                    logger.error(f"Error processing channel key {key}: {e}")
                     
         except Exception as e:
-            logging.error(f"Error checking orphaned channels: {e}")
+            logger.error(f"Error checking orphaned channels: {e}")
 
     def _clean_redis_keys(self, channel_id):
         """Clean up all Redis keys for a channel"""
@@ -1639,10 +1663,10 @@ class ProxyServer:
             
             if all_keys:
                 self.redis_client.delete(*all_keys)
-                logging.info(f"Cleaned up {len(all_keys)} Redis keys for channel {channel_id}")
+                logger.info(f"Cleaned up {len(all_keys)} Redis keys for channel {channel_id}")
                                     
         except Exception as e:
-            logging.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
+            logger.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
 
     def refresh_channel_registry(self):
         """Refresh TTL for active channels using standard keys"""
@@ -1674,7 +1698,7 @@ class ProxyServer:
             
             # Only update if state is actually changing
             if current_state == new_state:
-                logging.debug(f"Channel {channel_id} state unchanged: {current_state}")
+                logger.debug(f"Channel {channel_id} state unchanged: {current_state}")
                 return True
                 
             # Prepare update data
@@ -1691,9 +1715,10 @@ class ProxyServer:
             self.redis_client.hset(metadata_key, mapping=update_data)
             
             # Log the transition
-            logging.info(f"Channel {channel_id} state transition: {current_state or 'None'} → {new_state}")
+            logger.info(f"Channel {channel_id} state transition: {current_state or 'None'} → {new_state}")
             return True
         except Exception as e:
-            logging.error(f"Error updating channel state: {e}")
+            logger.error(f"Error updating channel state: {e}")
             return False
+
 
