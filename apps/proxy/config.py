@@ -48,4 +48,9 @@ class TSConfig(BaseConfig):
     CHANNEL_INIT_GRACE_PERIOD = 5  # How long to wait for first client after initialization (seconds)
     CLIENT_HEARTBEAT_INTERVAL = 1  # How often to send client heartbeats (seconds)
     GHOST_CLIENT_MULTIPLIER = 5.0  # How many heartbeat intervals before client considered ghost (5 would mean 5 secondsif heartbeat interval is 1)
+    
+    # TS packets are 188 bytes
+    # Make chunk size a multiple of TS packet size for perfect alignment
+    # ~1MB is ideal for streaming (matches typical media buffer sizes)
+    BUFFER_CHUNK_SIZE = 188 * 5644  # ~1MB (exactly 1,061,072 bytes)
 

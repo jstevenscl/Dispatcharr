@@ -30,18 +30,18 @@ logging.basicConfig(
 print("TS PROXY SERVER MODULE LOADED", file=sys.stderr)
 
 class StreamManager:
-    """Manages a connection to a TS stream with continuity tracking"""
+    """Manages a connection to a TS stream without using raw sockets"""
     
     def __init__(self, url, buffer, user_agent=None):
-        # Existing initialization code
+        # Basic properties
         self.url = url
         self.buffer = buffer
         self.running = True
         self.connected = False
-        self.socket = None
-        self.ready_event = threading.Event()
         self.retry_count = 0
         self.max_retries = Config.MAX_RETRIES
+        self.current_response = None
+        self.current_session = None
         
         # User agent for connection
         self.user_agent = user_agent or Config.DEFAULT_USER_AGENT
@@ -50,32 +50,187 @@ class StreamManager:
         self.last_data_time = time.time()
         self.healthy = True
         self.health_check_interval = Config.HEALTH_CHECK_INTERVAL
+        self.chunk_size = getattr(Config, 'CHUNK_SIZE', 8192)
         
-        # Buffer management
-        self._last_buffer_check = time.time()
         logging.info(f"Initialized stream manager for channel {buffer.channel_id}")
-
-    def _create_session(self) -> requests.Session:
-        """Create and configure requests session"""
+    
+    def _create_session(self):
+        """Create and configure requests session with optimal settings"""
         session = requests.Session()
+        
+        # Configure session headers
         session.headers.update({
             'User-Agent': self.user_agent,
             'Connection': 'keep-alive'
         })
+        
+        # Set up connection pooling for better performance
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=1,     # Single connection for this stream
+            pool_maxsize=1,         # Max size of connection pool
+            max_retries=3,          # Auto-retry for failed requests
+            pool_block=False        # Don't block when pool is full
+        )
+        
+        # Apply adapter to both HTTP and HTTPS
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        
         return session
+    
+    def run(self):
+        """Main execution loop using HTTP streaming with improved connection handling"""
+        try:
+            # Start health monitor thread
+            health_thread = threading.Thread(target=self._monitor_health, daemon=True)
+            health_thread.start()
+            
+            logging.info(f"Starting stream for URL: {self.url}")
+            
+            while self.running:
+                try:
+                    # Create new session for each connection attempt
+                    session = self._create_session()
+                    self.current_session = session
+                    
+                    # Stream the URL with proper timeout handling
+                    response = session.get(
+                        self.url, 
+                        stream=True,
+                        timeout=(10, 60)  # 10s connect timeout, 60s read timeout
+                    )
+                    self.current_response = response
+                    
+                    if response.status_code == 200:
+                        self.connected = True
+                        self.healthy = True
+                        logging.info("Successfully connected to stream source")
+                        
+                        # Set channel state to waiting for clients
+                        self._set_waiting_for_clients()
+                        
+                        # Process the stream in chunks with improved error handling
+                        try:
+                            chunk_count = 0
+                            for chunk in response.iter_content(chunk_size=self.chunk_size):
+                                if not self.running:
+                                    break
+                                    
+                                if chunk:
+                                    # Add chunk to buffer with TS packet alignment
+                                    success = self.buffer.add_chunk(chunk)
+                                    
+                                    if success:
+                                        self.last_data_time = time.time()
+                                        chunk_count += 1
+                                        
+                                        # Update last data timestamp in Redis
+                                        if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                                            last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                                            self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
+                        except AttributeError as e:
+                            # Handle the specific 'NoneType' object has no attribute 'read' error
+                            if "'NoneType' object has no attribute 'read'" in str(e):
+                                logging.warning(f"Connection closed by server (read {chunk_count} chunks before disconnect)")
+                            else:
+                                # Re-raise unexpected AttributeError
+                                raise
+                    else:
+                        logging.error(f"Failed to connect to stream: HTTP {response.status_code}")
+                        time.sleep(2)
+                        
+                except requests.exceptions.ReadTimeout:
+                    logging.warning("Read timeout - server stopped sending data")
+                    self.connected = False
+                    time.sleep(1)
+                    
+                except requests.RequestException as e:
+                    logging.error(f"HTTP request error: {e}")
+                    self.connected = False
+                    time.sleep(5)
+                    
+                finally:
+                    # Clean up response and session
+                    if self.current_response:
+                        try:
+                            self.current_response.close()
+                        except Exception as e:
+                            logging.debug(f"Error closing response: {e}")
+                        self.current_response = None
+                        
+                    if self.current_session:
+                        try:
+                            self.current_session.close()
+                        except Exception as e:
+                            logging.debug(f"Error closing session: {e}")
+                        self.current_session = None
+                
+                # Connection retry logic
+                if self.running and not self.connected:
+                    self.retry_count += 1
+                    if self.retry_count > self.max_retries:
+                        logging.error(f"Maximum retry attempts ({self.max_retries}) exceeded")
+                        break
+                    
+                    timeout = min(2 ** self.retry_count, 30)
+                    logging.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
+                    time.sleep(timeout)
+                
+        except Exception as e:
+            logging.error(f"Stream error: {e}", exc_info=True)
+        finally:
+            self.connected = False
+            
+            if self.current_response:
+                try:
+                    self.current_response.close()
+                except:
+                    pass
+                    
+            if self.current_session:
+                try:
+                    self.current_session.close() 
+                except:
+                    pass
+                
+            logging.info("Stream manager stopped")
+    
+    def stop(self):
+        """Stop the stream manager and clean up resources"""
+        self.running = False
+        
+        if self.current_response:
+            try:
+                self.current_response.close()
+            except:
+                pass
+                
+        if self.current_session:
+            try:
+                self.current_session.close()
+            except:
+                pass
+                
+        logging.info("Stream manager resources released")
 
-    def update_url(self, new_url: str) -> bool:
-        """Update stream URL and reconnect"""
+    def update_url(self, new_url):
+        """Update stream URL and reconnect with HTTP streaming approach"""
         if new_url == self.url:
+            logging.info(f"URL unchanged: {new_url}")
             return False
             
         logging.info(f"Switching stream URL from {self.url} to {new_url}")
+        
+        # Close existing HTTP connection resources instead of socket
+        self._close_connection()  # Use our new method instead of _close_socket
+        
+        # Update URL and reset connection state
+        old_url = self.url
         self.url = new_url
         self.connected = False
-        self._close_socket()  # Close existing connection
         
-        # Signal health monitor to reconnect immediately
-        self.last_data_time = 0
+        # Reset retry counter to allow immediate reconnect
+        self.retry_count = 0
         
         return True
 
@@ -83,119 +238,6 @@ class StreamManager:
         """Check if connection retry is allowed"""
         return self.retry_count < self.max_retries
 
-    def stop(self) -> None:
-        """Stop the stream manager and close all resources"""
-        self.running = False
-        self._close_socket()
-        logging.info("Stream manager resources released")
-
-    def run(self):
-        """Main execution loop with stream health monitoring"""
-        try:
-            # Check if buffer already has data - in which case we might not need to connect
-            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                buffer_index = self.buffer.redis_client.get(f"ts_proxy:buffer:{self.buffer.channel_id}:index")
-                if buffer_index and int(buffer_index) > 0:
-                    # There's already data in Redis, check if it's recent (within last 10 seconds)
-                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                    last_data = self.buffer.redis_client.get(last_data_key)
-                    if last_data:
-                        last_time = float(last_data)
-                        if time.time() - last_time < 10:
-                            logging.info(f"Recent data found in Redis, no need to reconnect")
-                            self.connected = True
-                            self.healthy = True
-                            return
-            
-            # Start health monitor thread
-            health_thread = threading.Thread(target=self._monitor_health, daemon=True)
-            health_thread.start()
-            
-            current_response = None  # Track the current response object
-            current_session = None   # Track the current session
-            
-            # Establish network connection
-            import socket
-            import requests
-            
-            logging.info(f"Starting stream for URL: {self.url}")
-            
-            while self.running:
-                try:
-                    # Parse URL
-                    if self.url.startswith("http"):
-                        # HTTP connection
-                        session = self._create_session()
-                        current_session = session
-                        
-                        try:
-                            # Create an initial connection to get socket
-                            response = session.get(self.url, stream=True)
-                            current_response = response
-                            
-                            if response.status_code == 200:
-                                self.connected = True
-                                self.socket = response.raw._fp.fp.raw
-                                self.healthy = True
-                                logging.info("Successfully connected to stream source")
-                                
-                                # Connection successful - START GRACE PERIOD HERE
-                                self._set_waiting_for_clients()
-                                
-                                # Main fetch loop
-                                while self.running and self.connected:
-                                    if self.fetch_chunk():
-                                        self.last_data_time = time.time()
-                                    else:
-                                        if not self.running:
-                                            break
-                                        time.sleep(0.1)
-                            else:
-                                logging.error(f"Failed to connect to stream: HTTP {response.status_code}")
-                                time.sleep(2)
-                        finally:
-                            # Properly close response before session
-                            if current_response:
-                                try:
-                                    # Close the response explicitly to avoid the urllib3 error
-                                    current_response.close()
-                                except Exception as e:
-                                    logging.debug(f"Error closing response: {e}")
-                                current_response = None
-                            
-                            if current_session:
-                                try:
-                                    current_session.close()
-                                except Exception as e:
-                                    logging.debug(f"Error closing session: {e}")
-                                current_session = None
-                    else:
-                        logging.error(f"Unsupported URL scheme: {self.url}")
-                    
-                    # Connection retry logic
-                    if self.running and not self.connected:
-                        self.retry_count += 1
-                        if self.retry_count > self.max_retries:
-                            logging.error(f"Maximum retry attempts ({self.max_retries}) exceeded")
-                            break
-                        
-                        timeout = min(2 ** self.retry_count, 30)
-                        logging.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
-                        time.sleep(timeout)
-                    
-                except Exception as e:
-                    logging.error(f"Connection error: {e}")
-                    self._close_socket()
-                    time.sleep(5)
-                    
-        except Exception as e:
-            logging.error(f"Stream error: {e}")
-            self._close_socket()
-        finally:
-            # Final cleanup
-            self._close_socket()
-            logging.info("Stream manager stopped")
-    
     def _monitor_health(self):
         """Monitor stream health and attempt recovery if needed"""
         while self.running:
@@ -223,16 +265,28 @@ class StreamManager:
                 
             time.sleep(self.health_check_interval)
     
-    def _close_socket(self):
-        """Close the socket connection safely"""
-        if self.socket:
+    def _close_connection(self):
+        """Close HTTP connection resources"""
+        # Close response if it exists
+        if hasattr(self, 'current_response') and self.current_response:
             try:
-                self.socket.close()
+                self.current_response.close()
             except Exception as e:
-                logging.debug(f"Error closing socket: {e}")
-                pass
-            self.socket = None
-            self.connected = False
+                logging.debug(f"Error closing response: {e}")
+            self.current_response = None
+            
+        # Close session if it exists
+        if hasattr(self, 'current_session') and self.current_session:
+            try:
+                self.current_session.close()
+            except Exception as e:
+                logging.debug(f"Error closing session: {e}")
+            self.current_session = None
+
+    # Keep backward compatibility - let's create an alias to the new method
+    def _close_socket(self):
+        """Backward compatibility wrapper for _close_connection"""
+        return self._close_connection()
 
     def fetch_chunk(self):
         """Fetch data from socket with direct pass-through to buffer"""
@@ -355,6 +409,7 @@ class StreamManager:
 class StreamBuffer:
     """Manages stream data buffering using Redis for persistence"""
     
+    # Add a memory buffer to collect data before writing to Redis
     def __init__(self, channel_id=None, redis_client=None):
         self.channel_id = channel_id
         self.redis_client = redis_client
@@ -377,39 +432,70 @@ class StreamBuffer:
                     logging.info(f"Initialized buffer from Redis with index {self.index}")
             except Exception as e:
                 logging.error(f"Error initializing buffer from Redis: {e}")
-    
+        
+        self._write_buffer = bytearray()
+        self.target_chunk_size = getattr(Config, 'BUFFER_CHUNK_SIZE', 188 * 5644)  # ~1MB default
+        
     def add_chunk(self, chunk):
-        """Add a chunk to the buffer with minimal processing"""
+        """Add data with optimized Redis storage"""
         if not chunk:
             return False
             
         try:
+            # Accumulate partial packets between chunks
+            if not hasattr(self, '_partial_packet'):
+                self._partial_packet = bytearray()
+                
+            # Combine with any previous partial packet
+            combined_data = bytearray(self._partial_packet) + bytearray(chunk)
+            
+            # Calculate complete packets
+            complete_packets_size = (len(combined_data) // 188) * 188
+            
+            if complete_packets_size == 0:
+                # Not enough data for a complete packet
+                self._partial_packet = combined_data
+                return True
+                
+            # Split into complete packets and remainder
+            complete_packets = combined_data[:complete_packets_size]
+            self._partial_packet = combined_data[complete_packets_size:]
+            
+            # Add completed packets to write buffer
+            self._write_buffer.extend(complete_packets)
+            
+            # Only write to Redis when we have enough data for an optimized chunk
+            writes_done = 0
             with self.lock:
-                # Increment index atomically
-                if self.redis_client:
-                    # Use Redis to store and track chunks
-                    try:
-                        chunk_index = self.redis_client.incr(self.buffer_index_key)
-                        chunk_key = f"{self.buffer_prefix}{chunk_index}"
-                        setex_result = self.redis_client.setex(chunk_key, self.chunk_ttl, chunk)
-                        
-                        if not setex_result:
-                            logging.error(f"Redis SETEX failed for chunk {chunk_index}")
-                            return False
-                        
-                        # Update local tracking
-                        self.index = chunk_index
-                        
-                        logging.debug(f"Added chunk {chunk_index} ({len(chunk)} bytes) to buffer")
-                        return True
-                        
-                    except Exception as e:
-                        logging.error(f"Redis operation failed in add_chunk: {e}")
-                        return False
-                else:
-                    logging.error("Redis not available, cannot store chunks")
-                    return False
+                while len(self._write_buffer) >= self.target_chunk_size:
+                    # Extract a full chunk
+                    chunk_data = self._write_buffer[:self.target_chunk_size]
+                    self._write_buffer = self._write_buffer[self.target_chunk_size:]
                     
+                    # Write optimized chunk to Redis
+                    if self.redis_client:
+                        try:
+                            chunk_index = self.redis_client.incr(self.buffer_index_key)
+                            chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                            setex_result = self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(chunk_data))
+                            
+                            if not setex_result:
+                                logging.error(f"Redis SETEX failed for chunk {chunk_index}")
+                                continue
+                                
+                            # Update local tracking
+                            self.index = chunk_index
+                            writes_done += 1
+                            
+                        except Exception as e:
+                            logging.error(f"Redis operation failed in add_chunk: {e}")
+                            return False
+                
+            if writes_done > 0:
+                logging.debug(f"Added {writes_done} optimized chunks ({self.target_chunk_size} bytes each) to Redis")
+                
+            return True
+                
         except Exception as e:
             logging.error(f"Error adding chunk to buffer: {e}")
             return False
@@ -533,6 +619,37 @@ class StreamBuffer:
         except Exception as e:
             logging.error(f"Error getting exact chunks: {e}", exc_info=True)
             return []
+
+    def stop(self):
+        """Stop the buffer and flush any remaining data"""
+        try:
+            # Flush any remaining data in the write buffer
+            if hasattr(self, '_write_buffer') and len(self._write_buffer) > 0:
+                # Ensure remaining data is aligned to TS packets
+                complete_size = (len(self._write_buffer) // 188) * 188
+                
+                if complete_size > 0:
+                    final_chunk = self._write_buffer[:complete_size]
+                    
+                    # Write final chunk to Redis
+                    with self.lock:
+                        if self.redis_client:
+                            try:
+                                chunk_index = self.redis_client.incr(self.buffer_index_key)
+                                chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                                self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(final_chunk))
+                                self.index = chunk_index
+                                logging.info(f"Flushed final chunk of {len(final_chunk)} bytes to Redis")
+                            except Exception as e:
+                                logging.error(f"Error flushing final chunk: {e}")
+                
+                # Clear buffers
+                self._write_buffer = bytearray()
+                if hasattr(self, '_partial_packet'):
+                    self._partial_packet = bytearray()
+                    
+        except Exception as e:
+            logging.error(f"Error during buffer stop: {e}")
 
 class ClientManager:
     """Manages connected clients for a channel with cross-worker visibility"""

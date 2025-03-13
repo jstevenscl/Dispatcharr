@@ -276,42 +276,36 @@ def stream_ts(request, channel_id):
                 
                 # Main streaming loop
                 while True:
-                    # Get chunks at client's position
-                    chunks = buffer.get_chunks_exact(local_index, Config.CHUNK_BATCH_SIZE)
+                    # Get chunks at client's position using improved strategy
+                    chunks, next_index = get_client_data(buffer, local_index)
                     
                     if chunks:
                         empty_reads = 0
                         consecutive_empty = 0
                         
-                        # Track and send chunks
-                        chunk_sizes = [len(c) for c in chunks]
-                        total_size = sum(chunk_sizes)
-                        start_idx = local_index + 1
-                        end_idx = local_index + len(chunks)
+                        # Process and send chunks
+                        total_size = sum(len(c) for c in chunks)
+                        logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {local_index+1} to {next_index}")
                         
-                        logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {start_idx} to {end_idx}")
-                        
-                        # SIMPLIFIED: Just send chunks directly without pacing
+                        # CRITICAL FIX: Actually send the chunks to the client
                         for chunk in chunks:
-                            bytes_sent += len(chunk)
-                            chunks_sent += 1
-                            
                             try:
+                                # This is the crucial line that was likely missing
                                 yield chunk
+                                bytes_sent += len(chunk)
+                                chunks_sent += 1
+                                
+                                # Log every 100 chunks for visibility
+                                if chunks_sent % 100 == 0:
+                                    elapsed = time.time() - stream_start_time
+                                    rate = bytes_sent / elapsed / 1024 if elapsed > 0 else 0
+                                    logger.info(f"[{client_id}] Stats: {chunks_sent} chunks, {bytes_sent/1024:.1f}KB, {rate:.1f}KB/s")
                             except Exception as e:
-                                logger.info(f"[{client_id}] Client disconnected while yielding data: {e}")
-                                if channel_id in proxy_server.client_managers:
-                                    proxy_server.client_managers[channel_id].remove_client(client_id)
-                                return  # Exit the generator
+                                logger.error(f"[{client_id}] Error sending chunk to client: {e}")
+                                raise  # Re-raise to exit the generator
                         
-                        # Log progress periodically
-                        if chunks_sent % 100 == 0:
-                            elapsed = time.time() - stream_start_time
-                            rate = bytes_sent / elapsed / 1024 if elapsed > 0 else 0
-                            logger.info(f"[{client_id}] Stats: {chunks_sent} chunks, {bytes_sent/1024:.1f}KB, {rate:.1f}KB/s")
-                        
-                        # Update local index and last yield time
-                        local_index = end_idx
+                        # Update index after successfully sending all chunks
+                        local_index = next_index
                         last_yield_time = time.time()
                     else:
                         # No chunks available
@@ -563,3 +557,45 @@ def change_stream(request, channel_id):
     except Exception as e:
         logger.error(f"Failed to change stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
+
+def get_client_data(buffer, local_index):
+    """Get optimal amount of data for client"""
+    # Define limits
+    MIN_CHUNKS = 3                      # Minimum chunks to read for efficiency
+    MAX_CHUNKS = 20                     # Safety limit to prevent memory spikes
+    TARGET_SIZE = 1024 * 1024           # Target ~1MB per response (typical media buffer)
+    MAX_SIZE = 2 * 1024 * 1024          # Hard cap at 2MB
+    
+    # Calculate how far behind we are
+    chunks_behind = buffer.index - local_index
+    
+    # Determine optimal chunk count
+    if chunks_behind <= MIN_CHUNKS:
+        # Not much data, retrieve what's available
+        chunk_count = max(1, chunks_behind)
+    elif chunks_behind <= MAX_CHUNKS:
+        # Reasonable amount behind, catch up completely
+        chunk_count = chunks_behind
+    else:
+        # Way behind, retrieve MAX_CHUNKS to avoid memory pressure
+        chunk_count = MAX_CHUNKS
+    
+    # Retrieve chunks
+    chunks = buffer.get_chunks_exact(local_index, chunk_count)
+    
+    # Check total size
+    total_size = sum(len(c) for c in chunks)
+    
+    # If we're under target and have more chunks available, get more
+    if total_size < TARGET_SIZE and chunks_behind > chunk_count:
+        # Calculate how many more chunks we can get
+        additional = min(MAX_CHUNKS - chunk_count, chunks_behind - chunk_count)
+        more_chunks = buffer.get_chunks_exact(local_index + chunk_count, additional)
+        
+        # Check if adding more would exceed MAX_SIZE
+        additional_size = sum(len(c) for c in more_chunks)
+        if total_size + additional_size <= MAX_SIZE:
+            chunks.extend(more_chunks)
+            chunk_count += additional
+    
+    return chunks, local_index + chunk_count
