@@ -1,6 +1,5 @@
 import json
 import threading
-import logging
 import time
 import random
 import sys
@@ -10,15 +9,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_GET
 from apps.proxy.config import TSConfig as Config
 from .server import ProxyServer
+from apps.proxy.ts_proxy.server import logging as server_logging
 
 # Configure logging properly to ensure visibility
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger = server_logging
 
 # Print directly to output for critical messages (bypass logging system)
 print("TS PROXY VIEWS INITIALIZED", file=sys.stderr)
@@ -79,13 +73,13 @@ def initialize_stream(request, channel_id):
 
 @require_GET
 def stream_ts(request, channel_id):
-    """Stream TS data to client with improved waiting for initialization"""
+    """Stream TS data to client with single client registration"""
     try:
         # Generate a unique client ID
         client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
         logger.info(f"[{client_id}] Requested stream for channel {channel_id}")
         
-        # Get user agent from request headers - MOVED UP TO ENSURE IT'S DEFINED
+        # Extract user agent only once
         user_agent = None
         for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
             if header in request.META:
@@ -157,8 +151,6 @@ def stream_ts(request, channel_id):
         # Get stream buffer and client manager
         buffer = proxy_server.stream_buffers[channel_id]
         client_manager = proxy_server.client_managers[channel_id]
-        
-        # Register client before starting stream
         client_manager.add_client(client_id, user_agent)
         logger.info(f"[{client_id}] Client registered with channel {channel_id}")
         

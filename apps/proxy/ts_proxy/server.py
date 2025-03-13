@@ -407,9 +407,8 @@ class StreamManager:
             return False
 
 class StreamBuffer:
-    """Manages stream data buffering using Redis for persistence"""
+    """Manages stream data buffering with optimized chunk storage"""
     
-    # Add a memory buffer to collect data before writing to Redis
     def __init__(self, channel_id=None, redis_client=None):
         self.channel_id = channel_id
         self.redis_client = redis_client
@@ -437,7 +436,7 @@ class StreamBuffer:
         self.target_chunk_size = getattr(Config, 'BUFFER_CHUNK_SIZE', 188 * 5644)  # ~1MB default
         
     def add_chunk(self, chunk):
-        """Add data with optimized Redis storage"""
+        """Add data with optimized Redis storage and TS packet alignment"""
         if not chunk:
             return False
             
@@ -474,22 +473,13 @@ class StreamBuffer:
                     
                     # Write optimized chunk to Redis
                     if self.redis_client:
-                        try:
-                            chunk_index = self.redis_client.incr(self.buffer_index_key)
-                            chunk_key = f"{self.buffer_prefix}{chunk_index}"
-                            setex_result = self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(chunk_data))
-                            
-                            if not setex_result:
-                                logging.error(f"Redis SETEX failed for chunk {chunk_index}")
-                                continue
-                                
-                            # Update local tracking
-                            self.index = chunk_index
-                            writes_done += 1
-                            
-                        except Exception as e:
-                            logging.error(f"Redis operation failed in add_chunk: {e}")
-                            return False
+                        chunk_index = self.redis_client.incr(self.buffer_index_key)
+                        chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                        self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(chunk_data))
+                        
+                        # Update local tracking
+                        self.index = chunk_index
+                        writes_done += 1
                 
             if writes_done > 0:
                 logging.debug(f"Added {writes_done} optimized chunks ({self.target_chunk_size} bytes each) to Redis")
@@ -652,15 +642,15 @@ class StreamBuffer:
             logging.error(f"Error during buffer stop: {e}")
 
 class ClientManager:
-    """Manages connected clients for a channel with cross-worker visibility"""
+    """Manages client connections with no duplicates"""
     
-    def __init__(self, channel_id, redis_client=None, worker_id=None):
+    def __init__(self, channel_id=None, redis_client=None, heartbeat_interval=1, worker_id=None):
         self.channel_id = channel_id
         self.redis_client = redis_client
-        self.worker_id = worker_id
         self.clients = set()
         self.lock = threading.Lock()
         self.last_active_time = time.time()
+        self.worker_id = worker_id  # Store worker ID as instance variable
         
         # STANDARDIZED KEYS: Move client set under channel namespace
         self.client_set_key = f"ts_proxy:channel:{channel_id}:clients"
@@ -670,6 +660,7 @@ class ClientManager:
         
         # Start heartbeat thread for local clients
         self._start_heartbeat_thread()
+        self._registered_clients = set()  # Track already registered client IDs
     
     def _start_heartbeat_thread(self):
         """Start thread to regularly refresh client presence in Redis"""
@@ -781,67 +772,76 @@ class ClientManager:
             logging.error(f"Error notifying owner of client activity: {e}")
     
     def add_client(self, client_id, user_agent=None):
-        """Add a client to this channel locally and in Redis"""
-        with self.lock:
-            self.clients.add(client_id)
-            self.last_active_time = time.time()
+        """Add a client with duplicate prevention"""
+        if client_id in self._registered_clients:
+            logging.debug(f"Client {client_id} already registered, skipping")
+            return False
             
-            if self.redis_client:
-                current_time = str(time.time())
+        self._registered_clients.add(client_id)
+        
+        # FIX: Consistent key naming - note the 's' in 'clients'
+        client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
+        
+        # Prepare client data
+        current_time = str(time.time())
+        client_data = {
+            "user_agent": user_agent or "unknown",
+            "connected_at": current_time,
+            "last_active": current_time,
+            "worker_id": self.worker_id or "unknown"
+        }
+        
+        try:
+            with self.lock:
+                # Store client in local set
+                self.clients.add(client_id)
                 
-                # Add to channel's client set
-                self.redis_client.sadd(self.client_set_key, client_id)
-                self.redis_client.expire(self.client_set_key, self.client_ttl)
-                
-                # STANDARDIZED KEY: Individual client under channel namespace
-                client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
-                
-                # Store client info as a hash with all info in one place
-                client_data = {
-                    "last_active": current_time,
-                    "worker_id": self.worker_id or "unknown",
-                    "connect_time": current_time
-                }
-                
-                # Add user agent if provided
-                if user_agent:
-                    client_data["user_agent"] = user_agent
+                # Store in Redis
+                if self.redis_client:
+                    # FIXED: Store client data just once with proper key
+                    self.redis_client.hset(client_key, mapping=client_data)
+                    self.redis_client.expire(client_key, self.client_ttl)
                     
-                # Use HSET to store client data as a hash
-                self.redis_client.hset(client_key, mapping=client_data)
-                self.redis_client.expire(client_key, self.client_ttl)
+                    # Add to the client set
+                    self.redis_client.sadd(self.client_set_key, client_id)
+                    self.redis_client.expire(self.client_set_key, self.client_ttl)
+                    
+                    # Clear any initialization timer
+                    self.redis_client.delete(f"ts_proxy:channel:{self.channel_id}:init_time")
+                    
+                    self._notify_owner_of_activity()
+                    
+                    # Publish client connected event with user agent
+                    event_data = {
+                        "event": "client_connected",
+                        "channel_id": self.channel_id,
+                        "client_id": client_id,
+                        "worker_id": self.worker_id or "unknown",
+                        "timestamp": time.time()
+                    }
+                    
+                    if user_agent:
+                        event_data["user_agent"] = user_agent
+                        logging.debug(f"Storing user agent '{user_agent}' for client {client_id}")
+                    else:
+                        logging.debug(f"No user agent provided for client {client_id}")
+                        
+                    self.redis_client.publish(
+                        f"ts_proxy:events:{self.channel_id}", 
+                        json.dumps(event_data)
+                    )
+                    
+                # Get total clients across all workers
+                total_clients = self.get_total_client_count()
+                logging.info(f"New client connected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
                 
-                # Clear any initialization timer
-                self.redis_client.delete(f"ts_proxy:channel:{self.channel_id}:init_time")
+                self.last_heartbeat_time[client_id] = time.time()
                 
-                self._notify_owner_of_activity()
-                
-                # Publish client connected event with user agent
-                event_data = {
-                    "event": "client_connected",
-                    "channel_id": self.channel_id,
-                    "client_id": client_id,
-                    "worker_id": self.worker_id or "unknown",
-                    "timestamp": time.time()
-                }
-                
-                if user_agent:
-                    event_data["user_agent"] = user_agent
-                    logging.debug(f"Storing user agent '{user_agent}' for client {client_id}")
-                else:
-                    logging.debug(f"No user agent provided for client {client_id}")
-                self.redis_client.publish(
-                    f"ts_proxy:events:{self.channel_id}", 
-                    json.dumps(event_data)
-                )
-                
-            # Get total clients across all workers
-            total_clients = self.get_total_client_count()
-            logging.info(f"New client connected: {client_id} (local: {len(self.clients)}, total: {total_clients})")
-            
-            self.last_heartbeat_time[client_id] = time.time()
-            
-        return len(self.clients)
+                return len(self.clients)
+        
+        except Exception as e:
+            logging.error(f"Error adding client {client_id}: {e}")
+            return False
     
     def remove_client(self, client_id):
         """Remove a client from this channel and Redis"""
@@ -1728,4 +1728,5 @@ class ProxyServer:
         except Exception as e:
             logging.error(f"Error updating channel state: {e}")
             return False
+
 
