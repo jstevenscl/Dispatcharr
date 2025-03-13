@@ -14,9 +14,6 @@ from apps.proxy.ts_proxy.server import logging as server_logging
 # Configure logging properly to ensure visibility
 logger = server_logging
 
-# Print directly to output for critical messages (bypass logging system)
-print("TS PROXY VIEWS INITIALIZED", file=sys.stderr)
-
 # Initialize proxy server
 proxy_server = ProxyServer()
 
