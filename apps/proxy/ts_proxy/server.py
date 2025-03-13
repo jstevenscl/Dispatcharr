@@ -46,12 +46,6 @@ class StreamManager:
         # User agent for connection
         self.user_agent = user_agent or Config.DEFAULT_USER_AGENT
         
-        # TS packet handling
-        self.TS_PACKET_SIZE = 188
-        self.recv_buffer = bytearray()
-        self.sync_found = False
-        self.continuity_counters = {}
-        
         # Stream health monitoring
         self.last_data_time = time.time()
         self.healthy = True
@@ -94,113 +88,6 @@ class StreamManager:
         self.running = False
         self._close_socket()
         logging.info("Stream manager resources released")
-
-    def _process_complete_packets(self):
-        """Process TS packets with improved resync capability"""
-        try:
-            # Enhanced sync byte detection with re-sync capability
-            if (not self.sync_found or 
-                (len(self.recv_buffer) >= 188 and self.recv_buffer[0] != 0x47)):
-                
-                # Need to find sync pattern if we haven't found it yet or lost sync
-                if len(self.recv_buffer) >= 376:  # Need at least 2 packet lengths
-                    sync_found = False
-                    
-                    # Look for at least two sync bytes (0x47) at 188-byte intervals
-                    for i in range(min(188, len(self.recv_buffer) - 188)):
-                        if (self.recv_buffer[i] == 0x47 and 
-                            self.recv_buffer[i + 188] == 0x47):
-                            
-                            # If already had sync but lost it, log the issue
-                            if self.sync_found:
-                                logging.warning(f"Re-syncing TS stream at position {i} (lost sync)")
-                            else:
-                                logging.debug(f"TS sync found at position {i}")
-                                
-                            # Trim buffer to start at first sync byte
-                            self.recv_buffer = self.recv_buffer[i:]
-                            self.sync_found = True
-                            sync_found = True
-                            break
-                            
-                    # If we couldn't find sync in this buffer, discard partial data
-                    if not sync_found:
-                        logging.warning(f"Failed to find sync pattern - discarding {len(self.recv_buffer) - 188} bytes")
-                        if len(self.recv_buffer) > 188:
-                            self.recv_buffer = self.recv_buffer[-188:]  # Keep last chunk for next attempt
-                        return False
-                            
-            # If we don't have a complete packet yet, wait for more data
-            if len(self.recv_buffer) < 188:
-                return False
-                
-            # Calculate how many complete packets we have
-            packet_count = len(self.recv_buffer) // 188
-            
-            if packet_count == 0:
-                return False
-            
-            # Verify all packets have sync bytes
-            all_synced = True
-            for i in range(0, packet_count):
-                if self.recv_buffer[i * 188] != 0x47:
-                    all_synced = False
-                    break
-                    
-            # If not all packets are synced, re-scan for sync
-            if not all_synced:
-                self.sync_found = False  # Force re-sync on next call
-                return False
-            
-            # Extract complete packets
-            packets = self.recv_buffer[:packet_count * 188]
-            
-            # Keep remaining data in buffer
-            self.recv_buffer = self.recv_buffer[packet_count * 188:]
-            
-            # Send packets to buffer
-            if packets:
-                # Log first and last sync byte to validate alignment
-                first_sync = packets[0] if len(packets) > 0 else None
-                last_sync = packets[188 * (packet_count - 1)] if packet_count > 0 else None
-                
-                if first_sync != 0x47 or last_sync != 0x47:
-                    logging.warning(f"TS packet alignment issue: first_sync=0x{first_sync:02x}, last_sync=0x{last_sync:02x}")
-                    # Don't process misaligned packets
-                    return False
-                
-                before_index = self.buffer.index
-                success = self.buffer.add_chunk(bytes(packets))
-                after_index = self.buffer.index
-                
-                # Log successful write
-                if not success:                   
-                    logging.warning("Failed to add chunk to buffer")
-                                       
-                # If successful, update last data timestamp in Redis
-                if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                    self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)  # 1 minute expiry
-                
-                return success
-                
-            return False
-            
-        except Exception as e:
-            logging.error(f"Error processing TS packets: {e}", exc_info=True)
-            self.sync_found = False  # Reset sync state on error
-            return False
-
-    def _process_ts_data(self, chunk):
-        """Process received data and add to buffer"""
-        if not chunk:
-            return False
-            
-        # Add to existing buffer
-        self.recv_buffer.extend(chunk)
-        
-        # Process complete packets now
-        return self._process_complete_packets()
 
     def run(self):
         """Main execution loop with stream health monitoring"""
@@ -348,22 +235,22 @@ class StreamManager:
             self.connected = False
 
     def fetch_chunk(self):
-        """Fetch data from socket with improved buffer management"""
+        """Fetch data from socket with direct pass-through to buffer"""
         if not self.connected or not self.socket:
             return False
             
         try:
-            # SocketIO objects use read instead of recv and don't support settimeout
+            # Read data chunk - no need to align with TS packet size anymore
             try:
-                # Try to read data chunk - use a multiple of TS packet size
+                # Try to read data chunk
                 if hasattr(self.socket, 'recv'):
-                    chunk = self.socket.recv(188 * 64)  # Standard socket
+                    chunk = self.socket.recv(Config.CHUNK_SIZE)  # Standard socket
                 else:
-                    chunk = self.socket.read(188 * 64)  # SocketIO object
+                    chunk = self.socket.read(Config.CHUNK_SIZE)  # SocketIO object
                 
             except AttributeError:
                 # Fall back to read() if recv() isn't available
-                chunk = self.socket.read(188 * 64)
+                chunk = self.socket.read(Config.CHUNK_SIZE)
             
             if not chunk:
                 # Connection closed by server
@@ -372,18 +259,13 @@ class StreamManager:
                 self.connected = False
                 return False
                 
-            # Process this chunk
-            self._process_ts_data(chunk)
+            # Add directly to buffer without TS-specific processing
+            success = self.buffer.add_chunk(chunk)
             
-            # Memory management - clear any internal buffers periodically
-            current_time = time.time()
-            if current_time - self._last_buffer_check > 60:  # Check every minute
-                self._last_buffer_check = current_time
-                if len(self.recv_buffer) > 188 * 1024:  # If buffer is extremely large
-                    logging.warning(f"Receive buffer unusually large ({len(self.recv_buffer)} bytes), trimming")
-                    # Keep only recent data, aligned to TS packet boundary
-                    keep_size = 188 * 128  # Keep reasonable buffer
-                    self.recv_buffer = self.recv_buffer[-keep_size:]
+            # Update last data timestamp in Redis if successful
+            if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
             
             return True
             
@@ -439,6 +321,37 @@ class StreamManager:
         except Exception as e:
             logging.error(f"Error setting waiting for clients state: {e}")
 
+    def _read_stream(self):
+        """Read from stream with minimal processing"""
+        try:
+            # Read up to CHUNK_SIZE bytes
+            chunk = self.sock.recv(self.CHUNK_SIZE)
+            
+            if not chunk:
+                # Connection closed
+                logging.debug("Connection closed by remote host")
+                return False
+                
+            # If we got data, just add it directly to the buffer 
+            if chunk:
+                success = self.buffer.add_chunk(chunk)
+                
+                # Update last data timestamp in Redis if successful
+                if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                    self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)  # 1 minute expiry
+                
+                return success
+            return True
+            
+        except socket.timeout:
+            # Expected timeout - no data available
+            return True
+        except Exception as e:
+            # Error reading from socket
+            logging.error(f"Error reading from stream: {e}")
+            return False
+
 class StreamBuffer:
     """Manages stream data buffering using Redis for persistence"""
     
@@ -466,32 +379,34 @@ class StreamBuffer:
                 logging.error(f"Error initializing buffer from Redis: {e}")
     
     def add_chunk(self, chunk):
-        """Add a chunk to the buffer"""
+        """Add a chunk to the buffer with minimal processing"""
         if not chunk:
             return False
             
         try:
-            # Ensure chunk is properly aligned with TS packets
-            if len(chunk) % self.TS_PACKET_SIZE != 0:
-                logging.warning(f"Received non-aligned chunk of size {len(chunk)}")
-                aligned_size = (len(chunk) // self.TS_PACKET_SIZE) * self.TS_PACKET_SIZE
-                if (aligned_size == 0):
-                    return False
-                chunk = chunk[:aligned_size]
-            
             with self.lock:
                 # Increment index atomically
                 if self.redis_client:
                     # Use Redis to store and track chunks
-                    chunk_index = self.redis_client.incr(self.buffer_index_key)
-                    chunk_key = f"{self.buffer_prefix}{chunk_index}"
-                    self.redis_client.setex(chunk_key, self.chunk_ttl, chunk)
-                    
-                    # Update local tracking of position only
-                    self.index = chunk_index
-                    return True
+                    try:
+                        chunk_index = self.redis_client.incr(self.buffer_index_key)
+                        chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                        setex_result = self.redis_client.setex(chunk_key, self.chunk_ttl, chunk)
+                        
+                        if not setex_result:
+                            logging.error(f"Redis SETEX failed for chunk {chunk_index}")
+                            return False
+                        
+                        # Update local tracking
+                        self.index = chunk_index
+                        
+                        logging.debug(f"Added chunk {chunk_index} ({len(chunk)} bytes) to buffer")
+                        return True
+                        
+                    except Exception as e:
+                        logging.error(f"Redis operation failed in add_chunk: {e}")
+                        return False
                 else:
-                    # No Redis - can't function in multi-worker mode
                     logging.error("Redis not available, cannot store chunks")
                     return False
                     

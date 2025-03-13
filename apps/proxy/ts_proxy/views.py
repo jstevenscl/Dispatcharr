@@ -79,81 +79,82 @@ def initialize_stream(request, channel_id):
 
 @require_GET
 def stream_ts(request, channel_id):
-    """Stream TS data to client with improved waiting for initialization"""
+    """Stream TS data to client"""
     try:
+        # Generate a unique client ID
+        client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+        logger.info(f"[{client_id}] Requested stream for channel {channel_id}")
+        
         # Check if channel exists or initialize it
         if not proxy_server.check_if_channel_exists(channel_id):
             return JsonResponse({'error': 'Channel not found'}, status=404)
-
-        # Get user agent from request headers
-        user_agent = None
-        for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
-            if header in request.META:
-                user_agent = request.META[header]
-                logger.debug(f"Found user agent in header: {header}")
-                break
-        
-        # Wait for channel to become ready if it's initializing
+            
+        # NEW: Wait for channel to become ready if it's initializing
         if proxy_server.redis_client:
             wait_start = time.time()
             max_wait = getattr(Config, 'CLIENT_WAIT_TIMEOUT', 30)  # Maximum wait time in seconds
             
             # Check channel state
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-            while time.time() - wait_start < max_wait:
+            waiting = True
+            
+            while waiting and time.time() - wait_start < max_wait:
                 metadata = proxy_server.redis_client.hgetall(metadata_key)
                 if not metadata or b'state' not in metadata:
-                    logger.warning(f"Channel {channel_id} metadata missing")
+                    logger.warning(f"[{client_id}] Channel {channel_id} metadata missing")
                     break
                     
                 state = metadata[b'state'].decode('utf-8')
                 
-                # If channel is already active or waiting for clients, no need to wait
+                # If channel is ready for clients, continue
                 if state in ['waiting_for_clients', 'active']:
-                    logger.debug(f"Channel {channel_id} ready (state={state})")
-                    break
+                    logger.info(f"[{client_id}] Channel {channel_id} ready (state={state}), proceeding with connection")
+                    waiting = False
                 elif state in ['initializing', 'connecting']:
                     # Channel is still initializing or connecting, wait a bit longer
                     elapsed = time.time() - wait_start
-                    logger.info(f"Client waiting for channel {channel_id} to become ready ({elapsed:.1f}s), current state: {state}")
+                    logger.info(f"[{client_id}] Waiting for channel {channel_id} to become ready ({elapsed:.1f}s), current state: {state}")
                     time.sleep(0.5)  # Wait 500ms before checking again
                 else:
                     # Unknown or error state
-                    logger.warning(f"Channel {channel_id} in unexpected state: {state}")
+                    logger.warning(f"[{client_id}] Channel {channel_id} in unexpected state: {state}")
                     break
             
             # Check if we timed out waiting
-            if time.time() - wait_start >= max_wait:
-                logger.warning(f"Timeout waiting for channel {channel_id} to become ready")
+            if waiting and time.time() - wait_start >= max_wait:
+                logger.warning(f"[{client_id}] Timeout waiting for channel {channel_id} to become ready")
                 return JsonResponse({'error': 'Timeout waiting for channel to initialize'}, status=503)
 
         # CRITICAL FIX: Ensure local resources are properly initialized before streaming
-        # This handles the case where channel exists in Redis but not in this worker
         if channel_id not in proxy_server.stream_buffers or channel_id not in proxy_server.client_managers:
-            logger.warning(f"Channel {channel_id} exists in Redis but not initialized in this worker - initializing now")
+            logger.warning(f"[{client_id}] Channel {channel_id} exists in Redis but not initialized in this worker - initializing now")
             
-            # Get URL from Redis metadata if available
+            # Get URL from Redis metadata
             url = None
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             if proxy_server.redis_client:
+                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                 url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
             
-            # Initialize local resources (won't recreate stream connection if another worker owns it)
+            # Initialize local resources
             success = proxy_server.initialize_channel(url, channel_id, user_agent)
             if not success:
-                logger.error(f"Failed to initialize channel {channel_id} locally")
+                logger.error(f"[{client_id}] Failed to initialize channel {channel_id} locally")
                 return JsonResponse({'error': 'Failed to initialize channel locally'}, status=500)
                 
-            logger.info(f"Successfully initialized channel {channel_id} locally")
-            
-            # Double-check after initialization
-            if channel_id not in proxy_server.client_managers:
-                logger.error(f"Critical error: Channel {channel_id} client manager still missing after initialization")
-                return JsonResponse({'error': 'Failed to create client manager'}, status=500)
-
-        # Continue with normal streaming response
+            logger.info(f"[{client_id}] Successfully initialized channel {channel_id} locally")
+        
+        # Get stream buffer and client manager
+        buffer = proxy_server.stream_buffers[channel_id]
+        client_manager = proxy_server.client_managers[channel_id]
+        
+        # IMPORTANT: Register client BEFORE starting stream
+        # This ensures the channel knows there's a client before streaming starts
+        client_manager.add_client(client_id, user_agent)
+        logger.info(f"[{client_id}] Client registered with channel {channel_id}")
+        
+        # Start stream response
         def generate():
             client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
             stream_start_time = time.time()
@@ -271,7 +272,6 @@ def stream_ts(request, channel_id):
                     chunks = buffer.get_chunks_exact(local_index, Config.CHUNK_BATCH_SIZE)
                     
                     if chunks:
-                        # Reset empty counters since we got data
                         empty_reads = 0
                         consecutive_empty = 0
                         
