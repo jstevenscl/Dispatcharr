@@ -29,7 +29,7 @@ class TSConfig(BaseConfig):
     MAX_RETRIES = 3         # maximum connection retry attempts
     
     # Buffer settings
-    INITIAL_BEHIND_CHUNKS = 100  # How many chunks behind to start a client
+    INITIAL_BEHIND_CHUNKS = 4  # How many chunks behind to start a client
     CHUNK_BATCH_SIZE = 5       # How many chunks to fetch in one batch
     KEEPALIVE_INTERVAL = 0.5   # Seconds between keepalive packets when at buffer head
     
@@ -52,5 +52,5 @@ class TSConfig(BaseConfig):
     # TS packets are 188 bytes
     # Make chunk size a multiple of TS packet size for perfect alignment
     # ~1MB is ideal for streaming (matches typical media buffer sizes)
-    BUFFER_CHUNK_SIZE = 188 * 5644  # ~1MB (exactly 1,061,072 bytes)
+    BUFFER_CHUNK_SIZE = 188 * 1361  # ~256KB
 

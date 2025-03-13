@@ -243,7 +243,11 @@ def stream_ts(request, channel_id):
                     return
                 
                 # Client state tracking - use config for initial position
-                local_index = max(0, buffer.index - Config.INITIAL_BEHIND_CHUNKS)
+                initial_behind = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
+                current_buffer_index = buffer.index
+                local_index = max(0, current_buffer_index - initial_behind)
+                logger.debug(f"[{client_id}] Buffer at {current_buffer_index}, starting {initial_behind} chunks behind at index {local_index}")
+
                 initial_position = local_index
                 last_yield_time = time.time()
                 empty_reads = 0
