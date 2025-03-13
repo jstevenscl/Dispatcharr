@@ -7,3 +7,6 @@ node_modules/
 .history/
 staticfiles/
 static/
+data/
+.next
+next-env.d.ts

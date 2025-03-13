@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'django_filters',
 ]
 
 
@@ -54,7 +55,7 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
-            os.path.join(BASE_DIR, 'frontend/build'),
+            os.path.join(BASE_DIR, 'frontend/dist'),
             BASE_DIR / "templates"
         ],
         'APP_DIRS': True,
@@ -112,6 +113,10 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
 }
 
 SWAGGER_SETTINGS = {
@@ -134,7 +139,7 @@ STATIC_ROOT = BASE_DIR / 'static'  # Directory where static files will be collec
 
 # Adjust STATICFILES_DIRS to include the paths to the directories that contain your static files.
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'frontend/build/static'),  # React build static files
+    os.path.join(BASE_DIR, 'frontend/dist'),  # React build static files
 ]
 
 
@@ -157,12 +162,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://*'
 ]
 APPEND_SLASH = True
-
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
-}
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),

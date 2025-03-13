@@ -1,5 +1,5 @@
 // prettier.config.js or .prettierrc.js
-module.exports = {
+export default {
   semi: true, // Add semicolons at the end of statements
   singleQuote: true, // Use single quotes instead of double
   tabWidth: 2, // Set the indentation width
