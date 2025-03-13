@@ -235,21 +235,14 @@ class StreamManager:
         while self.running:
             try:
                 now = time.time()
-                if now - self.last_data_time > 10 and self.connected:
-                    # No data for 10 seconds, mark as unhealthy
+                if now - self.last_data_time > getattr(Config.CONNECTION_TIMEOUT,10) and self.connected:
+                    # Mark unhealthy if no data for too long
                     if self.healthy:
-                        logger.warning("Stream health check: No data received for 10+ seconds")
+                        logger.warning(f"Stream unhealthy - no data for {now - self.last_data_time:.1f}s")
                         self.healthy = False
-                    
-                    # After 30 seconds with no data, force reconnection
-                    if now - self.last_data_time > 30:
-                        logger.warning("Stream appears dead, forcing reconnection")
-                        self._close_socket()
-                        self.connected = False
-                        self.last_data_time = time.time()  # Reset timer for the reconnect
                 elif self.connected and not self.healthy:
-                    # Stream is receiving data again after being unhealthy
-                    logger.info("Stream health restored, receiving data again")
+                    # Auto-recover health when data resumes
+                    logger.info("Stream health restored")
                     self.healthy = True
                     
             except Exception as e:
@@ -279,53 +272,7 @@ class StreamManager:
     def _close_socket(self):
         """Backward compatibility wrapper for _close_connection"""
         return self._close_connection()
-
-    def fetch_chunk(self):
-        """Fetch data from socket with direct pass-through to buffer"""
-        if not self.connected or not self.socket:
-            return False
-            
-        try:
-            # Read data chunk - no need to align with TS packet size anymore
-            try:
-                # Try to read data chunk
-                if hasattr(self.socket, 'recv'):
-                    chunk = self.socket.recv(Config.CHUNK_SIZE)  # Standard socket
-                else:
-                    chunk = self.socket.read(Config.CHUNK_SIZE)  # SocketIO object
-                
-            except AttributeError:
-                # Fall back to read() if recv() isn't available
-                chunk = self.socket.read(Config.CHUNK_SIZE)
-            
-            if not chunk:
-                # Connection closed by server
-                logger.warning("Server closed connection")
-                self._close_socket()
-                self.connected = False
-                return False
-                
-            # Add directly to buffer without TS-specific processing
-            success = self.buffer.add_chunk(chunk)
-            
-            # Update last data timestamp in Redis if successful
-            if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
-            
-            return True
-            
-        except (socket.timeout, socket.error) as e:
-            # Socket error
-            logger.error(f"Socket error: {e}")
-            self._close_socket()
-            self.connected = False
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error in fetch_chunk: {e}")
-            return False
-
+    
     def _set_waiting_for_clients(self):
         """Set channel state to waiting for clients after successful connection"""
         try:
@@ -367,36 +314,6 @@ class StreamManager:
         except Exception as e:
             logger.error(f"Error setting waiting for clients state: {e}")
 
-    def _read_stream(self):
-        """Read from stream with minimal processing"""
-        try:
-            # Read up to CHUNK_SIZE bytes
-            chunk = self.sock.recv(self.CHUNK_SIZE)
-            
-            if not chunk:
-                # Connection closed
-                logger.debug("Connection closed by remote host")
-                return False
-                
-            # If we got data, just add it directly to the buffer 
-            if chunk:
-                success = self.buffer.add_chunk(chunk)
-                
-                # Update last data timestamp in Redis if successful
-                if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                    self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)  # 1 minute expiry
-                
-                return success
-            return True
-            
-        except socket.timeout:
-            # Expected timeout - no data available
-            return True
-        except Exception as e:
-            # Error reading from socket
-            logger.error(f"Error reading from stream: {e}")
-            return False
 
 class StreamBuffer:
     """Manages stream data buffering with optimized chunk storage"""
@@ -914,88 +831,6 @@ class ClientManager:
             self.redis_client.expire(self.client_set_key, self.client_ttl)
         except Exception as e:
             logger.error(f"Error refreshing client TTL: {e}")
-
-class StreamFetcher:
-    """Handles stream data fetching"""
-    
-    def __init__(self, manager: StreamManager, buffer: StreamBuffer):
-        self.manager = manager
-        self.buffer = buffer
-
-    def fetch_loop(self) -> None:
-        """Main fetch loop for stream data"""
-        while self.manager.running:
-            try:
-                if not self._handle_connection():
-                    continue
-
-                with self.manager.session.get(self.manager.url, stream=True) as response:
-                    if response.status_code == 200:
-                        self._handle_successful_connection()
-                        self._process_stream(response)
-
-            except requests.exceptions.RequestException as e:
-                self._handle_connection_error(e)
-
-    def _handle_connection(self) -> bool:
-        """Handle connection state and retries"""
-        if not self.manager.connected:
-            if not self.manager.should_retry():
-                logger.error(f"Failed to connect after {self.manager.max_retries} attempts")
-                return False
-            
-            if not self.manager.running:
-                return False
-                
-            self.manager.retry_count += 1
-            logger.info(f"Connecting to stream: {self.manager.url} "
-                        f"(attempt {self.manager.retry_count}/{self.manager.max_retries})")
-        return True
-
-    def _handle_successful_connection(self) -> None:
-        """Handle successful stream connection"""
-        if not self.manager.connected:
-            logger.info("Stream connected successfully")
-            self.manager.connected = True
-            self.manager.retry_count = 0
-
-    def _process_stream(self, response: requests.Response) -> None:
-        """Process incoming stream data"""
-        for chunk in response.iter_content(chunk_size=Config.CHUNK_SIZE):
-            if not self.manager.running:
-                logger.info("Stream fetch stopped - shutting down")
-                return
-                
-            if chunk:
-                if self.manager.ready_event.is_set():
-                    logger.info("Stream switch in progress, closing connection")
-                    self.manager.ready_event.clear()
-                    break
-                    
-                with self.buffer.lock:
-                    self.buffer.buffer.append(chunk)
-                    self.buffer.index += 1
-
-    def _handle_connection_error(self, error: Exception) -> None:
-        """Handle stream connection errors"""
-        logger.error(f"Stream connection error: {error}")
-        self.manager.connected = False
-        
-        if not self.manager.running:
-            return
-            
-        logger.info(f"Attempting to reconnect in {Config.RECONNECT_DELAY} seconds...")
-        if not wait_for_running(self.manager, Config.RECONNECT_DELAY):
-            return
-
-def wait_for_running(manager: StreamManager, delay: float) -> bool:
-    """Wait while checking manager running state"""
-    start = time.time()
-    while time.time() - start < delay:
-        if not manager.running:
-            return False
-        threading.Event().wait(0.1)
-    return True
 
 class ProxyServer:
     """Manages TS proxy server instance with worker coordination"""
@@ -1662,9 +1497,9 @@ class ProxyServer:
             all_keys = self.redis_client.keys(channel_pattern)
             
             if all_keys:
+                # Delete all matching keys in bulk
                 self.redis_client.delete(*all_keys)
                 logger.info(f"Cleaned up {len(all_keys)} Redis keys for channel {channel_id}")
-                                    
         except Exception as e:
             logger.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
 
