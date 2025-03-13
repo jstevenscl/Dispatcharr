@@ -79,17 +79,26 @@ def initialize_stream(request, channel_id):
 
 @require_GET
 def stream_ts(request, channel_id):
-    """Stream TS data to client"""
+    """Stream TS data to client with improved waiting for initialization"""
     try:
         # Generate a unique client ID
         client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
         logger.info(f"[{client_id}] Requested stream for channel {channel_id}")
         
+        # Get user agent from request headers - MOVED UP TO ENSURE IT'S DEFINED
+        user_agent = None
+        for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
+            if header in request.META:
+                user_agent = request.META[header]
+                logger.debug(f"[{client_id}] Found user agent in header: {header}")
+                break
+                
         # Check if channel exists or initialize it
         if not proxy_server.check_if_channel_exists(channel_id):
+            logger.error(f"[{client_id}] Channel {channel_id} not found")
             return JsonResponse({'error': 'Channel not found'}, status=404)
-            
-        # NEW: Wait for channel to become ready if it's initializing
+        
+        # Wait for channel to become ready if it's initializing
         if proxy_server.redis_client:
             wait_start = time.time()
             max_wait = getattr(Config, 'CLIENT_WAIT_TIMEOUT', 30)  # Maximum wait time in seconds
@@ -137,7 +146,7 @@ def stream_ts(request, channel_id):
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
             
-            # Initialize local resources
+            # Initialize local resources - pass the user_agent we extracted earlier
             success = proxy_server.initialize_channel(url, channel_id, user_agent)
             if not success:
                 logger.error(f"[{client_id}] Failed to initialize channel {channel_id} locally")
@@ -149,8 +158,7 @@ def stream_ts(request, channel_id):
         buffer = proxy_server.stream_buffers[channel_id]
         client_manager = proxy_server.client_managers[channel_id]
         
-        # IMPORTANT: Register client BEFORE starting stream
-        # This ensures the channel knows there's a client before streaming starts
+        # Register client before starting stream
         client_manager.add_client(client_id, user_agent)
         logger.info(f"[{client_id}] Client registered with channel {channel_id}")
         
@@ -283,37 +291,18 @@ def stream_ts(request, channel_id):
                         
                         logger.debug(f"[{client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {start_idx} to {end_idx}")
                         
-                        # Calculate total packet count for this batch to maintain timing
-                        total_packets = sum(len(chunk) // ts_packet_size for chunk in chunks)
-                        batch_start_time = time.time()
-                        packets_sent_in_batch = 0
-                        
-                        # Send chunks with pacing
+                        # SIMPLIFIED: Just send chunks directly without pacing
                         for chunk in chunks:
-                            packets_in_chunk = len(chunk) // ts_packet_size
                             bytes_sent += len(chunk)
                             chunks_sent += 1
                             
-                            # CRITICAL FIX: Detect client disconnection when yielding data
                             try:
                                 yield chunk
                             except Exception as e:
                                 logger.info(f"[{client_id}] Client disconnected while yielding data: {e}")
-                                # Explicit client removal when we detect a broken pipe
                                 if channel_id in proxy_server.client_managers:
                                     proxy_server.client_managers[channel_id].remove_client(client_id)
-                                break  # Exit the generator
-                            
-                            # Pacing logic
-                            packets_sent_in_batch += packets_in_chunk
-                            elapsed = time.time() - batch_start_time
-                            target_time = packets_sent_in_batch / packets_per_second
-                            
-                            # If we're sending too fast, add a small delay
-                            if elapsed < target_time and packets_sent_in_batch < total_packets:
-                                sleep_time = min(target_time - elapsed, 0.05)
-                                if sleep_time > 0.001:
-                                    time.sleep(sleep_time)
+                                return  # Exit the generator
                         
                         # Log progress periodically
                         if chunks_sent % 100 == 0:
@@ -321,7 +310,7 @@ def stream_ts(request, channel_id):
                             rate = bytes_sent / elapsed / 1024 if elapsed > 0 else 0
                             logger.info(f"[{client_id}] Stats: {chunks_sent} chunks, {bytes_sent/1024:.1f}KB, {rate:.1f}KB/s")
                         
-                        # Update local index
+                        # Update local index and last yield time
                         local_index = end_idx
                         last_yield_time = time.time()
                     else:
