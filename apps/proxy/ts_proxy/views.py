@@ -59,6 +59,7 @@ def initialize_stream(channel_id, url, user_agent, transcode_cmd):
 @require_GET
 def stream_ts(request, channel_id):
     """Stream TS data to client with single client registration"""
+    client_user_agent = None
     user_agent = None
     logger.info(f"Fetching channel ID {channel_id}")
     channel = get_object_or_404(Channel, pk=channel_id)
@@ -84,8 +85,11 @@ def stream_ts(request, channel_id):
             m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
             user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
             if user_agent is None:
+                
                 user_agent = CoreSettings.get_default_user_agent()
-
+                logger.debug("No user agent found for account, using default: {user_agent}")
+            else:
+                logger.debug(f"User agent found for account: {user_agent}")
             # Generate stream URL based on the selected profile
             input_url = stream.custom_url or stream.url
             logger.debug("Executing the following pattern replacement:")
@@ -107,10 +111,10 @@ def stream_ts(request, channel_id):
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
 
         # Extract user agent from client
-        user_agent = None
+        client_user_agent = None
         for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
             if header in request.META:
-                user_agent = request.META[header]
+                client_user_agent = request.META[header]
                 logger.debug(f"[{client_id}] Found user agent in header: {header}")
                 break
 
@@ -173,7 +177,7 @@ def stream_ts(request, channel_id):
         # Get stream buffer and client manager
         buffer = proxy_server.stream_buffers[channel_id]
         client_manager = proxy_server.client_managers[channel_id]
-        client_manager.add_client(client_id, user_agent)
+        client_manager.add_client(client_id, client_user_agent)
         logger.info(f"[{client_id}] Client registered with channel {channel_id}")
 
         # Start stream response
