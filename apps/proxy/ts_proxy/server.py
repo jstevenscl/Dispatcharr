@@ -155,7 +155,8 @@ class StreamManager:
                                 if "'NoneType' object has no attribute 'read'" in str(e):
                                     logger.warning(f"Connection closed by server (read {chunk_count} chunks before disconnect)")
                                 else:
-                                    # Re-raise unexpected AttributeError
+                                    # Re-raise unexpected AttributeErrors
+                                    logger.error(f"Unexpected AttributeError: {e}")
                                     raise
                         else:
                             logger.error(f"Failed to connect to stream: HTTP {response.status_code}")
@@ -200,10 +201,14 @@ class StreamManager:
 
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
-            if self.socket is not None:
-                self._close_socket()
         finally:
             self.connected = False
+
+            if self.socket:
+                try:
+                    self._close_socket()
+                except:
+                    pass
 
             if self.current_response:
                 try:
@@ -216,9 +221,6 @@ class StreamManager:
                     self.current_session.close()
                 except:
                     pass
-
-            if self.socket:
-                self._close_socket()
 
             logger.info("Stream manager stopped")
 
@@ -270,21 +272,14 @@ class StreamManager:
         while self.running:
             try:
                 now = time.time()
-                if now - self.last_data_time > 10 and self.connected:
-                    # No data for 10 seconds, mark as unhealthy
+                if now - self.last_data_time > getattr(Config, 'CONNECTION_TIMEOUT', 10) and self.connected:
+                    # Mark unhealthy if no data for too long
                     if self.healthy:
-                        logger.warning("Stream health check: No data received for 10+ seconds")
+                        logger.warning(f"Stream unhealthy - no data for {now - self.last_data_time:.1f}s")
                         self.healthy = False
-
-                    # After 30 seconds with no data, force reconnection
-                    if now - self.last_data_time > 30:
-                        logger.warning("Stream appears dead, forcing reconnection")
-                        self._close_socket()
-                        self.connected = False
-                        self.last_data_time = time.time()  # Reset timer for the reconnect
                 elif self.connected and not self.healthy:
-                    # Stream is receiving data again after being unhealthy
-                    logger.info("Stream health restored, receiving data again")
+                    # Auto-recover health when data resumes
+                    logger.info("Stream health restored")
                     self.healthy = True
 
             except Exception as e:
@@ -326,8 +321,13 @@ class StreamManager:
             self.connected = False
 
         if self.transcode_process:
-            self.transcode_process.terminate()
-            self.transcode_process.wait()
+            try:
+                self.transcode_process.terminate()
+                self.transcode_process.wait()
+            except Exception as e:
+                logging.debug(f"Error terminating transcode process: {e}")
+                pass
+
             self.transcode_process = None
 
     def fetch_chunk(self):
@@ -416,37 +416,6 @@ class StreamManager:
                         logger.debug(f"Not changing state: channel {channel_id} already in {current_state} state")
         except Exception as e:
             logger.error(f"Error setting waiting for clients state: {e}")
-
-    def _read_stream(self):
-        """Read from stream with minimal processing"""
-        try:
-            # Read up to CHUNK_SIZE bytes
-            chunk = self.sock.recv(self.CHUNK_SIZE)
-
-            if not chunk:
-                # Connection closed
-                logger.debug("Connection closed by remote host")
-                return False
-
-            # If we got data, just add it directly to the buffer
-            if chunk:
-                success = self.buffer.add_chunk(chunk)
-
-                # Update last data timestamp in Redis if successful
-                if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                    last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
-                    self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)  # 1 minute expiry
-
-                return success
-            return True
-
-        except socket.timeout:
-            # Expected timeout - no data available
-            return True
-        except Exception as e:
-            # Error reading from socket
-            logger.error(f"Error reading from stream: {e}")
-            return False
 
 class StreamBuffer:
     """Manages stream data buffering with optimized chunk storage"""
@@ -728,8 +697,7 @@ class ClientManager:
                             # Check if client exists in Redis at all
                             exists = self.redis_client.exists(client_key)
                             if not exists:
-                                # Client entry has expired in Redis but still in our local set
-                                logger.warning(f"Found ghost client {client_id} - expired in Redis but still in local set")
+                                logger.debug(f"Client {client_id} no longer exists in Redis, removing locally")
                                 clients_to_remove.add(client_id)
                                 continue
 
@@ -737,13 +705,10 @@ class ClientManager:
                             last_active = self.redis_client.hget(client_key, "last_active")
                             if last_active:
                                 last_active_time = float(last_active.decode('utf-8'))
-                                time_since_activity = current_time - last_active_time
+                                ghost_timeout = self.heartbeat_interval * getattr(Config, 'GHOST_CLIENT_MULTIPLIER', 5.0)
 
-                                # If client hasn't been active for too long, mark for removal
-                                # Use configurable threshold for detection
-                                ghost_threshold = getattr(Config, 'GHOST_CLIENT_MULTIPLIER', 5.0)
-                                if time_since_activity > self.heartbeat_interval * ghost_threshold:
-                                    logger.warning(f"Detected ghost client {client_id} - last active {time_since_activity:.1f}s ago")
+                                if current_time - last_active_time > ghost_timeout:
+                                    logger.debug(f"Client {client_id} inactive for {current_time - last_active_time:.1f}s, removing as ghost")
                                     clients_to_remove.add(client_id)
 
                         # Remove ghost clients in a separate step
@@ -764,8 +729,8 @@ class ClientManager:
 
                             # Skip if we just sent a heartbeat recently
                             if client_id in self.last_heartbeat_time:
-                                time_since_last = current_time - self.last_heartbeat_time[client_id]
-                                if time_since_last < self.heartbeat_interval * 0.8:
+                                time_since_heartbeat = current_time - self.last_heartbeat_time[client_id]
+                                if time_since_heartbeat < self.heartbeat_interval * 0.5:  # Only heartbeat at half interval minimum
                                     continue
 
                             # Only update clients that remain
@@ -964,88 +929,6 @@ class ClientManager:
             self.redis_client.expire(self.client_set_key, self.client_ttl)
         except Exception as e:
             logger.error(f"Error refreshing client TTL: {e}")
-
-class StreamFetcher:
-    """Handles stream data fetching"""
-
-    def __init__(self, manager: StreamManager, buffer: StreamBuffer):
-        self.manager = manager
-        self.buffer = buffer
-
-    def fetch_loop(self) -> None:
-        """Main fetch loop for stream data"""
-        while self.manager.running:
-            try:
-                if not self._handle_connection():
-                    continue
-
-                with self.manager.session.get(self.manager.url, stream=True) as response:
-                    if response.status_code == 200:
-                        self._handle_successful_connection()
-                        self._process_stream(response)
-
-            except requests.exceptions.RequestException as e:
-                self._handle_connection_error(e)
-
-    def _handle_connection(self) -> bool:
-        """Handle connection state and retries"""
-        if not self.manager.connected:
-            if not self.manager.should_retry():
-                logger.error(f"Failed to connect after {self.manager.max_retries} attempts")
-                return False
-
-            if not self.manager.running:
-                return False
-
-            self.manager.retry_count += 1
-            logger.info(f"Connecting to stream: {self.manager.url} "
-                        f"(attempt {self.manager.retry_count}/{self.manager.max_retries})")
-        return True
-
-    def _handle_successful_connection(self) -> None:
-        """Handle successful stream connection"""
-        if not self.manager.connected:
-            logger.info("Stream connected successfully")
-            self.manager.connected = True
-            self.manager.retry_count = 0
-
-    def _process_stream(self, response: requests.Response) -> None:
-        """Process incoming stream data"""
-        for chunk in response.iter_content(chunk_size=Config.CHUNK_SIZE):
-            if not self.manager.running:
-                logger.info("Stream fetch stopped - shutting down")
-                return
-
-            if chunk:
-                if self.manager.ready_event.is_set():
-                    logger.info("Stream switch in progress, closing connection")
-                    self.manager.ready_event.clear()
-                    break
-
-                with self.buffer.lock:
-                    self.buffer.buffer.append(chunk)
-                    self.buffer.index += 1
-
-    def _handle_connection_error(self, error: Exception) -> None:
-        """Handle stream connection errors"""
-        logger.error(f"Stream connection error: {error}")
-        self.manager.connected = False
-
-        if not self.manager.running:
-            return
-
-        logger.info(f"Attempting to reconnect in {Config.RECONNECT_DELAY} seconds...")
-        if not wait_for_running(self.manager, Config.RECONNECT_DELAY):
-            return
-
-def wait_for_running(manager: StreamManager, delay: float) -> bool:
-    """Wait while checking manager running state"""
-    start = time.time()
-    while time.time() - start < delay:
-        if not manager.running:
-            return False
-        threading.Event().wait(0.1)
-    return True
 
 class ProxyServer:
     """Manages TS proxy server instance with worker coordination"""
@@ -1702,23 +1585,41 @@ class ProxyServer:
             logger.error(f"Error checking orphaned channels: {e}")
 
     def _clean_redis_keys(self, channel_id):
-        """Clean up all Redis keys for a channel"""
+        """Clean up all Redis keys for a channel more efficiently"""
+        # Release the channel, stream, and profile keys from the channel
+        channel = Channel.objects.get(id=channel_id)
+        channel.release_stream()
+
         if not self.redis_client:
-            return
+            return 0
 
         try:
-            channel = Channel.objects.get(id=channel_id)
-            channel.release_stream()
-            # All keys are now under the channel namespace for easy pattern matching
-            channel_pattern = f"ts_proxy:channel:{channel_id}:*"
-            all_keys = self.redis_client.keys(channel_pattern)
+            # Define key patterns to scan for
+            patterns = [
+                f"ts_proxy:channel:{channel_id}:*",  # All channel keys
+                f"ts_proxy:events:{channel_id}"      # Event channel
+            ]
 
-            if all_keys:
-                self.redis_client.delete(*all_keys)
-                logger.info(f"Cleaned up {len(all_keys)} Redis keys for channel {channel_id}")
+            total_deleted = 0
+
+            for pattern in patterns:
+                cursor = 0
+                while True:
+                    cursor, keys = self.redis_client.scan(cursor, match=pattern, count=100)
+                    if keys:
+                        self.redis_client.delete(*keys)
+                        total_deleted += len(keys)
+
+                    # Exit when cursor returns to 0
+                    if cursor == 0:
+                        break
+
+            logger.info(f"Cleaned up {total_deleted} Redis keys for channel {channel_id}")
+            return total_deleted
 
         except Exception as e:
             logger.error(f"Error cleaning Redis keys for channel {channel_id}: {e}")
+            return 0
 
     def refresh_channel_registry(self):
         """Refresh TTL for active channels using standard keys"""
