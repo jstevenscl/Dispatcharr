@@ -5,7 +5,7 @@ import random
 import sys
 import os
 import re
-from django.http import StreamingHttpResponse, JsonResponse
+from django.http import StreamingHttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_GET
 from django.shortcuts import get_object_or_404
@@ -14,7 +14,7 @@ from .server import ProxyServer
 from apps.proxy.ts_proxy.server import logging as server_logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
-from core.models import UserAgent
+from core.models import UserAgent, CoreSettings
 
 # Configure logging properly to ensure visibility
 logger = server_logging
@@ -83,6 +83,8 @@ def stream_ts(request, channel_id):
             # Load in the user-agent for the account
             m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
             user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
+            if user_agent is None:
+                user_agent = CoreSettings.get_default_user_agent()
 
             # Generate stream URL based on the selected profile
             input_url = stream.custom_url or stream.url
@@ -95,19 +97,22 @@ def stream_ts(request, channel_id):
             logger.debug(f"Generated stream url: {stream_url}")
 
             # Generate transcode command
-            # @TODO: once complete, provide option to direct proxy
-            transcode_cmd = channel.get_stream_profile().build_command(stream_url)
+            stream_profile = channel.get_stream_profile()
+            if stream_profile.is_redirect():
+                return HttpResponseRedirect(stream_url)
+
+            transcode_cmd = stream_profile.build_command(stream_url, user_agent or "")
 
             if not initialize_stream(channel_id, stream_url, user_agent, transcode_cmd):
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
 
-        if user_agent is None:
-            # Extract if not set
-            for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
-                if header in request.META:
-                    user_agent = request.META[header]
-                    logger.debug(f"[{client_id}] Found user agent in header: {header}")
-                    break
+        # Extract user agent from client
+        user_agent = None
+        for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
+            if header in request.META:
+                user_agent = request.META[header]
+                logger.debug(f"[{client_id}] Found user agent in header: {header}")
+                break
 
         # Wait for channel to become ready if it's initializing
         if proxy_server.redis_client:
@@ -581,81 +586,81 @@ def channel_status(request, channel_id=None):
         # Check if Redis is available
         if not proxy_server.redis_client:
             return JsonResponse({'error': 'Redis connection not available'}, status=500)
-            
+
         # Function for detailed channel info (used when channel_id is provided)
         def get_detailed_channel_info(channel_id):
             # Get channel metadata
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             metadata = proxy_server.redis_client.hgetall(metadata_key)
-            
+
             if not metadata:
                 return None
-                
+
             # Get detailed info - existing implementation
             # Get channel metadata
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             metadata = proxy_server.redis_client.hgetall(metadata_key)
-            
+
             if not metadata:
                 return None
-                
+
             # Basic channel info
             buffer_index_value = proxy_server.redis_client.get(f"ts_proxy:channel:{channel_id}:buffer:index")
-            
+
             info = {
                 'channel_id': channel_id,
                 'state': metadata.get(b'state', b'unknown').decode('utf-8'),
                 'url': metadata.get(b'url', b'').decode('utf-8'),
                 'created_at': metadata.get(b'created_at', b'0').decode('utf-8'),
                 'owner': metadata.get(b'owner', b'unknown').decode('utf-8'),
-                
+
                 # Properly decode the buffer index value
                 'buffer_index': int(buffer_index_value.decode('utf-8')) if buffer_index_value else 0,
             }
-            
+
             # Add timing information
             if b'state_changed_at' in metadata:
                 state_changed_at = float(metadata[b'state_changed_at'].decode('utf-8'))
                 info['state_changed_at'] = state_changed_at
                 info['state_duration'] = time.time() - state_changed_at
-                
+
             if b'created_at' in metadata:
                 created_at = float(metadata[b'created_at'].decode('utf-8'))
                 info['created_at'] = created_at
                 info['uptime'] = time.time() - created_at
-                
+
             # Get client information
             client_set_key = f"ts_proxy:channel:{channel_id}:clients"
             client_ids = proxy_server.redis_client.smembers(client_set_key)
             clients = []
-            
+
             for client_id in client_ids:
                 client_id_str = client_id.decode('utf-8')
                 client_key = f"ts_proxy:channel:{channel_id}:clients:{client_id_str}"
                 client_data = proxy_server.redis_client.hgetall(client_key)
-                
+
                 if client_data:
                     client_info = {
                         'client_id': client_id_str,
                         'user_agent': client_data.get(b'user_agent', b'unknown').decode('utf-8'),
                         'worker_id': client_data.get(b'worker_id', b'unknown').decode('utf-8'),
                     }
-                    
+
                     if b'connected_at' in client_data:
                         connected_at = float(client_data[b'connected_at'].decode('utf-8'))
                         client_info['connected_at'] = connected_at
                         client_info['connection_duration'] = time.time() - connected_at
-                        
+
                     if b'last_active' in client_data:
                         last_active = float(client_data[b'last_active'].decode('utf-8'))
                         client_info['last_active'] = last_active
                         client_info['last_active_ago'] = time.time() - last_active
-                        
+
                     clients.append(client_info)
-            
+
             info['clients'] = clients
             info['client_count'] = len(clients)
-            
+
             # Get buffer health with improved diagnostics
             buffer_stats = {
                 'chunks': info['buffer_index'],
@@ -669,11 +674,11 @@ def channel_status(request, channel_id=None):
                     chunk_sizes = []
                     chunk_keys_found = []
                     chunk_keys_missing = []
-                    
+
                     # Check if the keys exist before getting
                     for i in range(info['buffer_index']-sample_chunks+1, info['buffer_index']+1):
                         chunk_key = f"ts_proxy:channel:{channel_id}:buffer:chunk:{i}"
-                        
+
                         # Check if key exists first
                         if proxy_server.redis_client.exists(chunk_key):
                             chunk_data = proxy_server.redis_client.get(chunk_key)
@@ -681,11 +686,11 @@ def channel_status(request, channel_id=None):
                                 chunk_size = len(chunk_data)
                                 chunk_sizes.append(chunk_size)
                                 chunk_keys_found.append(i)
-                                
+
                                 # Check for TS alignment (packets are 188 bytes)
                                 ts_packets = chunk_size // 188
                                 ts_aligned = chunk_size % 188 == 0
-                                
+
                                 # Add for first chunk only to avoid too much data
                                 if len(chunk_keys_found) == 1:
                                     buffer_stats['diagnostics']['first_chunk'] = {
@@ -697,18 +702,18 @@ def channel_status(request, channel_id=None):
                                     }
                         else:
                             chunk_keys_missing.append(i)
-                            
-                    # Add detailed diagnostics        
+
+                    # Add detailed diagnostics
                     if chunk_sizes:
                         buffer_stats['avg_chunk_size'] = sum(chunk_sizes) / len(chunk_sizes)
-                        buffer_stats['recent_chunk_sizes'] = chunk_sizes 
+                        buffer_stats['recent_chunk_sizes'] = chunk_sizes
                         buffer_stats['keys_found'] = chunk_keys_found
                         buffer_stats['keys_missing'] = chunk_keys_missing
-                        
+
                         # Calculate data rate
                         total_data = sum(chunk_sizes)
                         buffer_stats['total_sample_bytes'] = total_data
-                        
+
                         # Add TS packet analysis
                         total_ts_packets = total_data // 188
                         buffer_stats['estimated_ts_packets'] = total_ts_packets
@@ -719,29 +724,29 @@ def channel_status(request, channel_id=None):
                         cursor = 0
 
                         buffer_key_pattern = f"ts_proxy:channel:{channel_id}:buffer:chunk:*"
-                        
+
                         while True:
                             cursor, keys = proxy_server.redis_client.scan(cursor, match=buffer_key_pattern, count=100)
                             if keys:
                                 all_buffer_keys.extend([k.decode('utf-8') for k in keys])
                             if cursor == 0 or len(all_buffer_keys) >= 20:  # Limit to 20 keys
                                 break
-                                
+
                         buffer_stats['diagnostics']['all_buffer_keys'] = all_buffer_keys[:20]  # First 20 keys
                         buffer_stats['diagnostics']['total_buffer_keys'] = len(all_buffer_keys)
-                        
+
                 except Exception as e:
                     # Capture any errors for diagnostics
                     buffer_stats['error'] = str(e)
                     buffer_stats['diagnostics']['exception'] = str(e)
-                    
+
             # Add TTL information to see if chunks are expiring
-            chunk_ttl_key = f"ts_proxy:channel:{channel_id}:buffer:chunk:{info['buffer_index']}" 
+            chunk_ttl_key = f"ts_proxy:channel:{channel_id}:buffer:chunk:{info['buffer_index']}"
             chunk_ttl = proxy_server.redis_client.ttl(chunk_ttl_key)
             buffer_stats['latest_chunk_ttl'] = chunk_ttl
 
             info['buffer_stats'] = buffer_stats
-                
+
             # Get local worker info if available
             if channel_id in proxy_server.stream_managers:
                 manager = proxy_server.stream_managers[channel_id]
@@ -751,29 +756,29 @@ def channel_status(request, channel_id=None):
                     'last_data_time': manager.last_data_time,
                     'last_data_age': time.time() - manager.last_data_time
                 }
-                
+
             return info
-        
+
         # Function for basic channel info (used for all channels summary)
         def get_basic_channel_info(channel_id):
             # Get channel metadata
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
             metadata = proxy_server.redis_client.hgetall(metadata_key)
-            
+
             if not metadata:
                 return None
-                
+
             # Basic channel info only - omit diagnostics and details
             buffer_index_value = proxy_server.redis_client.get(f"ts_proxy:channel:{channel_id}:buffer:index")
-            
+
             # Count clients (using efficient count method)
             client_set_key = f"ts_proxy:channel:{channel_id}:clients"
             client_count = proxy_server.redis_client.scard(client_set_key) or 0
-            
+
             # Calculate uptime
             created_at = float(metadata.get(b'init_time', b'0').decode('utf-8'))
             uptime = time.time() - created_at if created_at > 0 else 0
-            
+
             # Simplified info
             info = {
                 'channel_id': channel_id,
@@ -784,7 +789,7 @@ def channel_status(request, channel_id=None):
                 'client_count': client_count,
                 'uptime': uptime
             }
-            
+
             # Quick health check if available locally
             if channel_id in proxy_server.stream_managers:
                 manager = proxy_server.stream_managers[channel_id]
@@ -801,31 +806,31 @@ def channel_status(request, channel_id=None):
                 for client_id in list(client_ids)[:10]:
                     client_id_str = client_id.decode('utf-8')
                     client_key = f"ts_proxy:channel:{channel_id}:clients:{client_id_str}"
-                    
+
                     # Efficient way - just retrieve the essentials
                     client_info = {
                         'client_id': client_id_str,
                         'user_agent': proxy_server.redis_client.hget(client_key, 'user_agent')
                     }
-                    
+
                     if client_info['user_agent']:
                         client_info['user_agent'] = client_info['user_agent'].decode('utf-8')
                     else:
                         client_info['user_agent'] = 'unknown'
-                        
+
                     # Just get connected_at for client age
                     connected_at_bytes = proxy_server.redis_client.hget(client_key, 'connected_at')
                     if connected_at_bytes:
                         connected_at = float(connected_at_bytes.decode('utf-8'))
                         client_info['connected_since'] = time.time() - connected_at
-                        
+
                     clients.append(client_info)
 
             # Add clients to info
             info['clients'] = clients
-            
+
             return info
-            
+
         # Handle single channel or all channels
         if channel_id:
             # Detailed info for specific channel
@@ -838,7 +843,7 @@ def channel_status(request, channel_id=None):
             # Basic info for all channels
             channel_pattern = "ts_proxy:channel:*:metadata"
             all_channels = []
-            
+
             # Extract channel IDs from keys
             cursor = 0
             while True:
@@ -850,12 +855,12 @@ def channel_status(request, channel_id=None):
                         channel_info = get_basic_channel_info(ch_id)
                         if channel_info:
                             all_channels.append(channel_info)
-                
+
                 if cursor == 0:
                     break
-            
+
             return JsonResponse({'channels': all_channels, 'count': len(all_channels)})
-            
+
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

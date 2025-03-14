@@ -109,7 +109,7 @@ class Channel(models.Model):
     def get_stream_profile(self):
         stream_profile = self.stream_profile
         if not stream_profile:
-            stream_profile = StreamProfile.objects.get(id=CoreSettings.objects.get(key="default-stream-profile").value)
+            stream_profile = CoreSettings.get_default_stream_profile()
 
         return stream_profile
 
