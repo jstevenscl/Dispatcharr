@@ -108,12 +108,12 @@ class StreamProfile(models.Model):
         return instance
 
     def is_proxy(self):
-        if self.locked and self.name == PROXY_PROFILE:
+        if self.locked and self.profile_name == PROXY_PROFILE:
             return True
         return False
 
     def is_redirect(self):
-        if self.locked and self.name == REDIRECT_PROFILE:
+        if self.locked and self.profile_name == REDIRECT_PROFILE:
             return True
         return False
 
