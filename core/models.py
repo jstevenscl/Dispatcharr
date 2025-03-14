@@ -47,6 +47,14 @@ class StreamProfile(models.Model):
     def __str__(self):
         return self.profile_name
 
+    def build_command(self, stream_url):
+        cmd = []
+        if self.command == "ffmpeg":
+            cmd = ["ffmpeg", "-i", stream_url] + self.parameters.split() + ["pipe:1"]
+        elif self.command == "streamlink":
+            cmd = ["streamlink", stream_url] + self.parameters.split()
+
+        return cmd
 
 class CoreSettings(models.Model):
     key = models.CharField(
