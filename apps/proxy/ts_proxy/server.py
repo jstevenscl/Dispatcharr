@@ -1267,7 +1267,7 @@ class ProxyServer:
 
                 # Set channel metadata
                 self.redis_client.hset(metadata_key, mapping=metadata)
-                self.redis_client.expire(metadata_key, 3600)  # 1 hour TTL
+                self.redis_client.expire(metadata_key, 30)  # 1 hour TTL
 
             # Create stream buffer
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
@@ -1432,6 +1432,8 @@ class ProxyServer:
         def cleanup_task():
             while True:
                 try:
+                    # Refresh channel registry
+                    self.refresh_channel_registry()
                     # For channels we own, check total clients and cleanup as needed
                     for channel_id in list(self.stream_managers.keys()):
                         if self.am_i_owner(channel_id):
@@ -1633,8 +1635,8 @@ class ProxyServer:
 
             # Update activity timestamp in metadata only
             self.redis_client.hset(metadata_key, "last_active", str(time.time()))
-            self.redis_client.expire(metadata_key, 3600)  # Reset TTL on metadata hash
-
+            self.redis_client.expire(metadata_key, 30)  # Reset TTL on metadata hash
+            logger.debug("Refreshed metadata TTL for channel {channel_id}")
     def update_channel_state(self, channel_id, new_state, additional_fields=None):
         """Update channel state with proper history tracking and logging"""
         if not self.redis_client:
