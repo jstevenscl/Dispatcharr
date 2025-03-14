@@ -34,6 +34,9 @@ export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
 export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
 export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 
+export REDIS_HOST=${REDIS_HOST:-localhost}
+export REDIS_DB=${REDIS_DB:-0}
+
 # Global variables, stored so other users inherit them
 if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export PATH=$PATH" >> /etc/profile.d/dispatcharr.sh
@@ -46,6 +49,8 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export POSTGRES_HOST=$POSTGRES_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
+    echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
+    echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
