@@ -1,7 +1,7 @@
 """Shared configuration between proxy types"""
 
 class BaseConfig:
-    DEFAULT_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20'
+    DEFAULT_USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20' # Will only be used if connection to settings fail
     CHUNK_SIZE = 8192
     CLIENT_POLL_INTERVAL = 0.1
     MAX_RETRIES = 3

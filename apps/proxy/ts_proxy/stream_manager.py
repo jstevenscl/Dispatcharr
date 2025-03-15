@@ -69,6 +69,9 @@ class StreamManager:
 
     def run(self):
         """Main execution loop using HTTP streaming with improved connection handling"""
+        # Add a stop flag to the class properties
+        self.stop_requested = False
+
         try:
             # Start health monitor thread
             health_thread = threading.Thread(target=self._monitor_health, daemon=True)
@@ -78,6 +81,8 @@ class StreamManager:
 
             while self.running:
                 if len(self.transcode_cmd) > 0:
+                    # Start command process for transcoding
+                    logger.debug(f"Starting transcode process: {self.transcode_cmd}")
                     self.transcode_process = subprocess.Popen(
                         self.transcode_cmd,
                         stdout=subprocess.PIPE,
@@ -101,6 +106,8 @@ class StreamManager:
                                 time.sleep(0.1)
                 else:
                     try:
+                        # Using direct HTTP streaming
+                        logger.debug(f"Using TS Proxy to connect to stream: {self.url}")
                         # Create new session for each connection attempt
                         session = self._create_session()
                         self.current_session = session
@@ -125,7 +132,9 @@ class StreamManager:
                             try:
                                 chunk_count = 0
                                 for chunk in response.iter_content(chunk_size=self.chunk_size):
-                                    if not self.running:
+                                    # Check if we've been asked to stop
+                                    if self.stop_requested:
+                                        logger.info(f"Stream loop for channel {self.channel_id} stopping due to request")
                                         break
 
                                     if chunk:
@@ -140,7 +149,15 @@ class StreamManager:
                                             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                                                 last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
                                                 self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
-                            except AttributeError as e:
+                            except (AttributeError, ConnectionError) as e:
+                                if self.stop_requested:
+                                    # This is expected during shutdown, just log at debug level
+                                    logger.debug(f"Expected connection error during shutdown: {e}")
+                                else:
+                                    # Unexpected error during normal operation
+                                    logger.error(f"Unexpected stream error: {e}")
+                                    # Handle the error appropriately
+                            except Exception as e:
                                 # Handle the specific 'NoneType' object has no attribute 'read' error
                                 if "'NoneType' object has no attribute 'read'" in str(e):
                                     logger.warning(f"Connection closed by server (read {chunk_count} chunks before disconnect)")
@@ -215,22 +232,26 @@ class StreamManager:
             logger.info("Stream manager stopped")
 
     def stop(self):
-        """Stop the stream manager and clean up resources"""
-        self.running = False
-
-        if self.current_response:
+        """Stop this stream"""
+        # Set the flag first
+        self.stop_requested = True
+        
+        # Close any active response connection
+        if hasattr(self, 'current_response') and self.current_response:  # CORRECT NAME
             try:
-                self.current_response.close()
-            except:
+                self.current_response.close()  # CORRECT NAME
+            except Exception:
                 pass
-
-        if self.current_session:
+            
+        # Also close the session
+        if hasattr(self, 'current_session') and self.current_session:
             try:
                 self.current_session.close()
-            except:
+            except Exception:
                 pass
-
-        logger.info("Stream manager resources released")
+        
+        # Set running to false to ensure thread exits
+        self.running = False
 
     def update_url(self, new_url):
         """Update stream URL and reconnect with HTTP streaming approach"""
