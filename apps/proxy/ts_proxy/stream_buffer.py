@@ -5,6 +5,7 @@ import logging
 import time
 from collections import deque
 from typing import Optional, Deque
+import random
 from apps.proxy.config import TSConfig as Config
 
 logger = logging.getLogger("ts_proxy")
