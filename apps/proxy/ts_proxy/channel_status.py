@@ -30,7 +30,8 @@ class ChannelStatus:
             'channel_id': channel_id,
             'state': metadata.get(b'state', b'unknown').decode('utf-8'),
             'url': metadata.get(b'url', b'').decode('utf-8'),
-            'created_at': metadata.get(b'created_at', b'0').decode('utf-8'),
+            'profile': metadata.get(b'profile', b'unknown').decode('utf-8'),
+            'started_at': metadata.get(b'init_time', b'0').decode('utf-8'),
             'owner': metadata.get(b'owner', b'unknown').decode('utf-8'),
 
             # Properly decode the buffer index value
@@ -43,9 +44,9 @@ class ChannelStatus:
             info['state_changed_at'] = state_changed_at
             info['state_duration'] = time.time() - state_changed_at
 
-        if b'created_at' in metadata:
-            created_at = float(metadata[b'created_at'].decode('utf-8'))
-            info['created_at'] = created_at
+        if b'init_time' in metadata:
+            created_at = float(metadata[b'init_time'].decode('utf-8'))
+            info['started_at'] = created_at
             info['uptime'] = time.time() - created_at
 
         # Get client information
@@ -203,6 +204,7 @@ class ChannelStatus:
             'channel_id': channel_id,
             'state': metadata.get(b'state', b'unknown').decode('utf-8'),
             'url': metadata.get(b'url', b'').decode('utf-8'),
+            'profile': metadata.get(b'profile', b'unknown').decode('utf-8'),
             'owner': metadata.get(b'owner', b'unknown').decode('utf-8'),
             'buffer_index': int(buffer_index_value.decode('utf-8')) if buffer_index_value else 0,
             'client_count': client_count,

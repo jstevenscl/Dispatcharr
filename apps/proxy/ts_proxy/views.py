@@ -81,7 +81,7 @@ def stream_ts(request, channel_id):
             # Need to check if profile is transcoded
             logger.debug(f"Using profile {stream_profile} for stream {stream_id}")
             if stream_profile == 'PROXY' or stream_profile is None:
-                transcode = True
+                transcode = False
             else:
                 transcode = True
 
@@ -89,7 +89,8 @@ def stream_ts(request, channel_id):
             success = proxy_server.initialize_channel(stream_url, channel_id, stream_user_agent, transcode)
             if proxy_server.redis_client:
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                proxy_server.redis_client.hset(metadata_key, "transcode", "1" if transcode else "0")
+                profile_value = str(stream_profile)
+                proxy_server.redis_client.hset(metadata_key, "profile", profile_value)                
             if not success:
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
 
@@ -124,14 +125,15 @@ def stream_ts(request, channel_id):
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                 url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
                 ua_bytes = proxy_server.redis_client.hget(metadata_key, "user_agent")
-                transcode_bytes = proxy_server.redis_client.hget(metadata_key, "transcode")
+                profile_bytes = proxy_server.redis_client.hget(metadata_key, "profile")
                 
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
                 if ua_bytes:
                     stream_user_agent = ua_bytes.decode('utf-8')
                 # Extract transcode setting from Redis
-                use_transcode = transcode_bytes == b'1' if transcode_bytes else False
+                profile_str = profile_bytes.decode('utf-8')
+                use_transcode = (profile_str == 'PROXY' or profile_str == 'None')
                     
             # Use client_user_agent as fallback if stream_user_agent is None
             success = proxy_server.initialize_channel(url, channel_id, stream_user_agent or client_user_agent, use_transcode)

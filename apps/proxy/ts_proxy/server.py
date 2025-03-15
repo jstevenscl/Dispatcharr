@@ -71,7 +71,7 @@ class ProxyServer:
                 pubsub = self.redis_client.pubsub()
                 pubsub.psubscribe("ts_proxy:events:*")
 
-                logger.info("Started Redis event listener for client activity")
+                logger.info(f"Started Redis event listener for client activity")
 
                 for message in pubsub.listen():
                     if message["type"] != "pmessage":
@@ -483,7 +483,7 @@ class ProxyServer:
                         if stream_thread.is_alive():
                             logger.warning(f"Stream thread did not terminate within timeout")
                     except RuntimeError:
-                        logger.debug("Could not join stream thread (may be current thread)")
+                        logger.debug(f"Could not join stream thread (may be current thread)")
 
                 # Release ownership
                 self.release_ownership(channel_id)
@@ -742,7 +742,7 @@ class ProxyServer:
             # Update activity timestamp in metadata only
             self.redis_client.hset(metadata_key, "last_active", str(time.time()))
             self.redis_client.expire(metadata_key, 30)  # Reset TTL on metadata hash
-            logger.debug("Refreshed metadata TTL for channel {channel_id}")
+            logger.debug(f"Refreshed metadata TTL for channel {channel_id}")
     def update_channel_state(self, channel_id, new_state, additional_fields=None):
         """Update channel state with proper history tracking and logging"""
         if not self.redis_client:

@@ -139,7 +139,7 @@ class StreamManager:
                         if response.status_code == 200:
                             self.connected = True
                             self.healthy = True
-                            logger.info("Successfully connected to stream source")
+                            logger.info(f"Successfully connected to stream source")
 
                             # Set channel state to waiting for clients
                             self._set_waiting_for_clients()
@@ -246,7 +246,7 @@ class StreamManager:
                 except:
                     pass
 
-            logger.info("Stream manager stopped")
+            logger.info(f"Stream manager stopped")
 
     def stop(self):
         """Stop this stream"""
@@ -327,7 +327,7 @@ class StreamManager:
                         self.healthy = False
                 elif self.connected and not self.healthy:
                     # Auto-recover health when data resumes
-                    logger.info("Stream health restored")
+                    logger.info(f"Stream health restored")
                     self.healthy = True
 
             except Exception as e:
