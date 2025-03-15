@@ -6,9 +6,11 @@ import time
 import requests
 import subprocess
 from typing import Optional, List
+from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
-
-# Import StreamBuffer but use lazy imports inside methods if needed
+from apps.channels.models import Channel, Stream
+from apps.m3u.models import M3UAccount, M3UAccountProfile
+from core.models import UserAgent, CoreSettings
 from .stream_buffer import StreamBuffer
 
 logger = logging.getLogger("ts_proxy")
@@ -16,7 +18,7 @@ logger = logging.getLogger("ts_proxy")
 class StreamManager:
     """Manages a connection to a TS stream without using raw sockets"""
 
-    def __init__(self, url, buffer, user_agent=None, transcode_cmd=[]):
+    def __init__(self, url, buffer, user_agent=None, transcode=False):
         # Basic properties
         self.url = url
         self.buffer = buffer
@@ -26,10 +28,11 @@ class StreamManager:
         self.max_retries = Config.MAX_RETRIES
         self.current_response = None
         self.current_session = None
+        self.url_switching = False
 
         # Sockets used for transcode jobs
         self.socket = None
-        self.transcode_cmd = transcode_cmd
+        self.transcode = transcode
         self.transcode_process = None
 
         # User agent for connection
@@ -80,7 +83,16 @@ class StreamManager:
             logger.info(f"Starting stream for URL: {self.url}")
 
             while self.running:
-                if len(self.transcode_cmd) > 0:
+                if self.transcode:
+                    if self.url_switching:
+                        logger.debug("Skipping connection attempt during URL switch")
+                        time.sleep(.1)
+                        continue
+                    # Generate transcode command
+                    logger.debug(f"Building transcode command for channel {self.channel_id}")
+                    channel = get_object_or_404(Channel, pk=self.channel_id)
+                    stream_profile = channel.get_stream_profile()
+                    self.transcode_cmd = stream_profile.build_command(self.url, self.user_agent)
                     # Start command process for transcoding
                     logger.debug(f"Starting transcode process: {self.transcode_cmd}")
                     self.transcode_process = subprocess.Popen(
@@ -107,6 +119,10 @@ class StreamManager:
                 else:
                     try:
                         # Using direct HTTP streaming
+                        if self.url_switching:
+                            logger.debug("Skipping connection attempt during URL switch")
+                            time.sleep(.1)
+                            continue
                         logger.debug(f"Using TS Proxy to connect to stream: {self.url}")
                         # Create new session for each connection attempt
                         session = self._create_session()
@@ -151,12 +167,13 @@ class StreamManager:
                                                 self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
                             except (AttributeError, ConnectionError) as e:
                                 if self.stop_requested:
-                                    # This is expected during shutdown, just log at debug level
                                     logger.debug(f"Expected connection error during shutdown: {e}")
+                                elif hasattr(self, 'url_switching') and self.url_switching:
+                                    # This is expected during URL switching, just log at debug level
+                                    logger.debug(f"Expected connection error during URL switch: {e}")
                                 else:
                                     # Unexpected error during normal operation
                                     logger.error(f"Unexpected stream error: {e}")
-                                    # Handle the error appropriately
                             except Exception as e:
                                 # Handle the specific 'NoneType' object has no attribute 'read' error
                                 if "'NoneType' object has no attribute 'read'" in str(e):
@@ -254,15 +271,23 @@ class StreamManager:
         self.running = False
 
     def update_url(self, new_url):
-        """Update stream URL and reconnect with HTTP streaming approach"""
+        """Update stream URL and reconnect with proper cleanup for both HTTP and transcode sessions"""
         if new_url == self.url:
             logger.info(f"URL unchanged: {new_url}")
             return False
 
         logger.info(f"Switching stream URL from {self.url} to {new_url}")
 
-        # Close existing HTTP connection resources instead of socket
-        self._close_connection()  # Use our new method instead of _close_socket
+        # CRITICAL: Set a flag to prevent immediate reconnection with old URL
+        self.url_switching = True
+
+        # Check which type of connection we're using and close it properly
+        if self.transcode or self.socket:
+            logger.debug("Closing transcode process before URL change")
+            self._close_socket()
+        else:
+            logger.debug("Closing HTTP connection before URL change")
+            self._close_connection()
 
         # Update URL and reset connection state
         old_url = self.url
@@ -272,6 +297,18 @@ class StreamManager:
         # Reset retry counter to allow immediate reconnect
         self.retry_count = 0
 
+        # Also reset buffer position to prevent stale data after URL change
+        if hasattr(self.buffer, 'reset_buffer_position'):
+            try:
+                self.buffer.reset_buffer_position()
+                logger.debug("Reset buffer position for clean URL switch")
+            except Exception as e:
+                logger.warning(f"Failed to reset buffer position: {e}")
+
+        # Done with URL switch
+        self.url_switching = False
+        logger.info(f"Stream switch completed for channel {self.buffer.channel_id}")
+        
         return True
 
     def should_retry(self) -> bool:

@@ -281,7 +281,7 @@ class ProxyServer:
             logger.error(f"Error extending ownership: {e}")
             return False
 
-    def initialize_channel(self, url, channel_id, user_agent=None, transcode_cmd=[]):
+    def initialize_channel(self, url, channel_id, user_agent=None, transcode=False):
         """Initialize a channel without redundant active key"""
         try:
             # Create buffer and client manager instances
@@ -381,7 +381,7 @@ class ProxyServer:
             self.stream_buffers[channel_id] = buffer
 
             # Only the owner worker creates the actual stream manager
-            stream_manager = StreamManager(channel_url, buffer, user_agent=channel_user_agent, transcode_cmd=transcode_cmd)
+            stream_manager = StreamManager(channel_url, buffer, user_agent=channel_user_agent, transcode=False)
             logger.debug(f"Created StreamManager for channel {channel_id}")
             self.stream_managers[channel_id] = stream_manager
 
