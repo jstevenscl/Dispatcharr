@@ -252,7 +252,7 @@ def stream_ts(request, channel_id):
                 # Main streaming loop
                 while True:
                     # Get chunks at client's position using improved strategy
-                    chunks, next_index = get_client_data(buffer, local_index)
+                    chunks, next_index = buffer.get_optimized_client_data(local_index)
 
                     if chunks:
                         empty_reads = 0
@@ -579,45 +579,3 @@ def channel_status(request, channel_id=None):
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
-
-def get_client_data(buffer, local_index):
-    """Get optimal amount of data for client"""
-    # Define limits
-    MIN_CHUNKS = 3                      # Minimum chunks to read for efficiency
-    MAX_CHUNKS = 20                     # Safety limit to prevent memory spikes
-    TARGET_SIZE = 1024 * 1024           # Target ~1MB per response (typical media buffer)
-    MAX_SIZE = 2 * 1024 * 1024          # Hard cap at 2MB
-
-    # Calculate how far behind we are
-    chunks_behind = buffer.index - local_index
-
-    # Determine optimal chunk count
-    if chunks_behind <= MIN_CHUNKS:
-        # Not much data, retrieve what's available
-        chunk_count = max(1, chunks_behind)
-    elif chunks_behind <= MAX_CHUNKS:
-        # Reasonable amount behind, catch up completely
-        chunk_count = chunks_behind
-    else:
-        # Way behind, retrieve MAX_CHUNKS to avoid memory pressure
-        chunk_count = MAX_CHUNKS
-
-    # Retrieve chunks
-    chunks = buffer.get_chunks_exact(local_index, chunk_count)
-
-    # Check total size
-    total_size = sum(len(c) for c in chunks)
-
-    # If we're under target and have more chunks available, get more
-    if total_size < TARGET_SIZE and chunks_behind > chunk_count:
-        # Calculate how many more chunks we can get
-        additional = min(MAX_CHUNKS - chunk_count, chunks_behind - chunk_count)
-        more_chunks = buffer.get_chunks_exact(local_index + chunk_count, additional)
-
-        # Check if adding more would exceed MAX_SIZE
-        additional_size = sum(len(c) for c in more_chunks)
-        if total_size + additional_size <= MAX_SIZE:
-            chunks.extend(more_chunks)
-            chunk_count += additional
-
-    return chunks, local_index + chunk_count
