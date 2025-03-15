@@ -29,7 +29,7 @@ class TSConfig(BaseConfig):
     MAX_RETRIES = 3         # maximum connection retry attempts
     
     # Buffer settings
-    INITIAL_BEHIND_CHUNKS = 4  # How many chunks behind to start a client
+    INITIAL_BEHIND_CHUNKS = 3  # How many chunks behind to start a client
     CHUNK_BATCH_SIZE = 5       # How many chunks to fetch in one batch
     KEEPALIVE_INTERVAL = 0.5   # Seconds between keepalive packets when at buffer head
     
