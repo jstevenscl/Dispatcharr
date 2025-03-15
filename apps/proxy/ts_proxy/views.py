@@ -17,45 +17,11 @@ from core.models import UserAgent, CoreSettings
 # Configure logging properly
 logger = logging.getLogger("ts_proxy")
 
-def initialize_stream(channel_id, url, user_agent, transcode_cmd):
-    """Initialize a new stream channel with initialization-based ownership"""
-    try:
-        # Try to acquire ownership and create connection
-        success = proxy_server.initialize_channel(url, channel_id, user_agent, transcode_cmd)
-        if not success:
-            return False
-
-        # If we're the owner, wait for connection
-        if proxy_server.am_i_owner(channel_id):
-            # Wait for connection to be established
-            manager = proxy_server.stream_managers.get(channel_id)
-            if manager:
-                wait_start = time.time()
-                while not manager.connected:
-                    if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
-                        proxy_server.stop_channel(channel_id)
-                        return JsonResponse({
-                            'error': 'Connection timeout'
-                        }, status=504)
-                    if not manager.should_retry():
-                        proxy_server.stop_channel(channel_id)
-                        return JsonResponse({
-                            'error': 'Failed to connect'
-                        }, status=502)
-                    time.sleep(0.1)
-
-        # Return success response with owner status
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to initialize stream: {e}")
-        return False
 
 @require_GET
 def stream_ts(request, channel_id):
-    """Stream TS data to client with single client registration"""
+    """Stream TS data to client with integrated channel initialization"""
     client_user_agent = None
-    user_agent = None
     logger.info(f"Fetching channel ID {channel_id}")
     channel = get_object_or_404(Channel, pk=channel_id)
 
@@ -64,8 +30,18 @@ def stream_ts(request, channel_id):
         client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
         logger.info(f"[{client_id}] Requested stream for channel {channel_id}")
 
+        # Extract client user agent early
+        for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
+            if header in request.META:
+                client_user_agent = request.META[header]
+                logger.debug(f"[{client_id}] Client connected with user agent: {client_user_agent}")
+                break
+
         # Check if channel exists or initialize it
         if not proxy_server.check_if_channel_exists(channel_id):
+            logger.info(f"[{client_id}] Channel {channel_id} needs initialization")
+            
+            # Get stream details from channel model
             stream_id, profile_id = channel.get_stream()
             if stream_id is None or profile_id is None:
                 return JsonResponse({'error': 'Channel not available'}, status=404)
@@ -76,15 +52,15 @@ def stream_ts(request, channel_id):
             logger.info(f"Fetching profile ID {profile_id}")
             profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
 
-            # Load in the user-agent for the account
+            # Load in the user-agent for the STREAM connection (not client)
             m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
-            user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
-            if user_agent is None:
-                
-                user_agent = CoreSettings.get_default_user_agent()
-                logger.debug("No user agent found for account, using default: {user_agent}")
+            stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
+            if stream_user_agent is None:
+                stream_user_agent = CoreSettings.get_default_user_agent()
+                logger.debug(f"No user agent found for account, using default: {stream_user_agent}")
             else:
-                logger.debug(f"User agent found for account: {user_agent}")
+                logger.debug(f"User agent found for account: {stream_user_agent}")
+                
             # Generate stream URL based on the selected profile
             input_url = stream.custom_url or stream.url
             logger.debug("Executing the following pattern replacement:")
@@ -95,23 +71,33 @@ def stream_ts(request, channel_id):
             stream_url = re.sub(profile.search_pattern, safe_replace_pattern, input_url)
             logger.debug(f"Generated stream url: {stream_url}")
 
-            # Generate transcode command
+            # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
             if stream_profile.is_redirect():
                 return HttpResponseRedirect(stream_url)
 
-            transcode_cmd = stream_profile.build_command(stream_url, user_agent or "")
+            transcode_cmd = stream_profile.build_command(stream_url, stream_user_agent or "")
 
-            if not initialize_stream(channel_id, stream_url, user_agent, transcode_cmd):
+            # Initialize channel with the stream's user agent (not the client's)
+            success = proxy_server.initialize_channel(stream_url, channel_id, stream_user_agent, transcode_cmd)
+            if not success:
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
 
-        # Extract user agent from client
-        client_user_agent = None
-        for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
-            if header in request.META:
-                client_user_agent = request.META[header]
-                logger.debug(f"[{client_id}] Found user agent in header: {header}")
-                break
+            # If we're the owner, wait for connection to establish
+            if proxy_server.am_i_owner(channel_id):
+                manager = proxy_server.stream_managers.get(channel_id)
+                if manager:
+                    wait_start = time.time()
+                    while not manager.connected:
+                        if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
+                            proxy_server.stop_channel(channel_id)
+                            return JsonResponse({'error': 'Connection timeout'}, status=504)
+                        if not manager.should_retry():
+                            proxy_server.stop_channel(channel_id)
+                            return JsonResponse({'error': 'Failed to connect'}, status=502)
+                        time.sleep(0.1)
+            
+            logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")
 
         # Wait for channel to become ready if it's initializing
         if proxy_server.redis_client:
@@ -155,14 +141,20 @@ def stream_ts(request, channel_id):
 
             # Get URL from Redis metadata
             url = None
+            stream_user_agent = None  # Initialize the variable
+            
             if proxy_server.redis_client:
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                 url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
+                ua_bytes = proxy_server.redis_client.hget(metadata_key, "user_agent")
+                
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
-
-            # Initialize local resources - pass the user_agent we extracted earlier
-            success = proxy_server.initialize_channel(url, channel_id, user_agent)
+                if ua_bytes:
+                    stream_user_agent = ua_bytes.decode('utf-8')
+                    
+            # Use client_user_agent as fallback if stream_user_agent is None
+            success = proxy_server.initialize_channel(url, channel_id, stream_user_agent or client_user_agent)
             if not success:
                 logger.error(f"[{client_id}] Failed to initialize channel {channel_id} locally")
                 return JsonResponse({'error': 'Failed to initialize channel locally'}, status=500)
@@ -182,46 +174,12 @@ def stream_ts(request, channel_id):
             chunks_sent = 0
 
             try:
-                # ENHANCED USER AGENT DETECTION - check multiple possible headers
-                user_agent = None
 
-                # Try multiple possible header formats
-                ua_headers = ['HTTP_USER_AGENT', 'User-Agent', 'user-agent', 'User_Agent']
-
-                for header in ua_headers:
-                    if header in request.META:
-                        user_agent = request.META[header]
-                        logger.debug(f"Found user agent in header: {header}")
-                        break
-
-                # Try request.headers dictionary (Django 2.2+)
-                if not user_agent and hasattr(request, 'headers'):
-                    for header in ['User-Agent', 'user-agent']:
-                        if header in request.headers:
-                            user_agent = request.headers[header]
-                            logger.debug(f"Found user agent in request.headers: {header}")
-                            break
-
-                # Final fallback - check if in any header with case-insensitive matching
-                if not user_agent:
-                    for key, value in request.META.items():
-                        if key.upper().replace('_', '-') == 'USER-AGENT':
-                            user_agent = value
-                            logger.debug(f"Found user agent in alternate header: {key}")
-                            break
-
-                # Log headers for debugging user agent issues
-                if not user_agent:
-                    # Log all headers to help troubleshoot
-                    headers = {k: v for k, v in request.META.items() if k.startswith('HTTP_')}
-                    logger.debug(f"No user agent found in request. Available headers: {headers}")
-                    user_agent = "Unknown-Client"  # Default value instead of None
-
-                logger.info(f"[{client_id}] New client connected to channel {channel_id} with user agent: {user_agent}")
+                logger.info(f"[{client_id}] New client connected to channel {channel_id} with user agent: {client_user_agent}")
 
                 # Add client to manager with user agent
                 client_manager = proxy_server.client_managers[channel_id]
-                client_count = client_manager.add_client(client_id, user_agent)
+                client_count = client_manager.add_client(client_id, client_user_agent)
 
                 # If this is the first client, try to acquire ownership
                 if client_count == 1 and not proxy_server.am_i_owner(channel_id):
@@ -429,6 +387,7 @@ def stream_ts(request, channel_id):
             streaming_content=generate(),
             content_type='video/mp2t'
         )
+        response['Cache-Control'] = 'no-cache'
         return response
 
     except Exception as e:
