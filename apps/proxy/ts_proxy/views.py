@@ -2,25 +2,20 @@ import json
 import threading
 import time
 import random
-import sys
-import os
 import re
 from django.http import StreamingHttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_GET
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
-from .server import ProxyServer
-from apps.proxy.ts_proxy.server import logging as server_logging
+from . import proxy_server
+import logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
 
-# Configure logging properly to ensure visibility
-logger = server_logging
-
-# Initialize proxy server
-proxy_server = ProxyServer()
+# Configure logging properly
+logger = logging.getLogger("ts_proxy")
 
 def initialize_stream(channel_id, url, user_agent, transcode_cmd):
     """Initialize a new stream channel with initialization-based ownership"""
@@ -244,7 +239,7 @@ def stream_ts(request, channel_id):
 
                             if url:
                                 # Create and start stream connection
-                                from .server import StreamManager  # Import here to avoid circular import
+                                from .stream_manager import StreamManager 
 
                                 logger.info(f"[{client_id}] Creating stream connection for URL: {url}")
                                 buffer = proxy_server.stream_buffers[channel_id]
