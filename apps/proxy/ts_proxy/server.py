@@ -216,12 +216,18 @@ class ProxyServer:
                                     if client_id and channel_id:
                                         logger.info(f"Received request to stop client {client_id} on channel {channel_id}")
                                         
-                                        # Check if we have this client locally
-                                        if (channel_id in self.client_managers and 
-                                            client_id in self.client_managers[channel_id].clients):
-                                            # Use the existing remove_client method to properly clean up
-                                            self.client_managers[channel_id].remove_client(client_id)
-                                            logger.info(f"Stopped client {client_id} on channel {channel_id} based on event")
+                                        # Both remove from client manager AND set a key for the generator to detect
+                                        if channel_id in self.client_managers:
+                                            client_manager = self.client_managers[channel_id]
+                                            if client_id in client_manager.clients:
+                                                client_manager.remove_client(client_id)
+                                                logger.info(f"Removed client {client_id} from client manager")
+                                        
+                                        # Set a Redis key for the generator to detect
+                                        if self.redis_client:
+                                            stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
+                                            self.redis_client.setex(stop_key, 30, "true")  # 30 second TTL
+                                            logger.info(f"Set stop key for client {client_id}")
                     except Exception as e:
                         logger.error(f"Error processing event message: {e}")
             except Exception as e:

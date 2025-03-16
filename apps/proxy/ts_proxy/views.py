@@ -116,7 +116,7 @@ def stream_ts(request, channel_id):
         # Register client - can do this regardless of initialization state
         # Create local resources if needed
         if channel_id not in proxy_server.stream_buffers or channel_id not in proxy_server.client_managers:
-            logger.warning(f"[{client_id}] Channel {channel_id} exists in Redis but not initialized in this worker - initializing now")
+            logger.debug(f"[{client_id}] Channel {channel_id} exists in Redis but not initialized in this worker - initializing now")
 
             # Get URL from Redis metadata
             url = None
@@ -280,13 +280,27 @@ def stream_ts(request, channel_id):
                     if channel_id not in proxy_server.client_managers:
                         logger.info(f"[{client_id}] Client manager no longer exists, terminating stream")
                         break
-
-                    # Keep the existing stopping flag check
+                        
+                    # Check if this specific client has been stopped
                     if proxy_server.redis_client:
+                        # Channel stop check
                         stop_key = f"ts_proxy:channel:{channel_id}:stopping"
                         if proxy_server.redis_client.exists(stop_key):
                             logger.info(f"[{client_id}] Detected channel stop signal, terminating stream")
                             break
+                            
+                        # Client stop check - NEW
+                        client_stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
+                        if proxy_server.redis_client.exists(client_stop_key):
+                            logger.info(f"[{client_id}] Detected client stop signal, terminating stream")
+                            break
+                            
+                        # Also check if client has been removed from client_manager
+                        if channel_id in proxy_server.client_managers:
+                            client_manager = proxy_server.client_managers[channel_id]
+                            if client_id not in client_manager.clients:
+                                logger.info(f"[{client_id}] Client no longer in client manager, terminating stream")
+                                break
 
                     # Get chunks at client's position using improved strategy
                     chunks, next_index = buffer.get_optimized_client_data(local_index)
@@ -698,6 +712,12 @@ def stop_client(request, channel_id):
             return JsonResponse({'error': 'No client_id provided'}, status=400)
             
         logger.info(f"Request to stop client {client_id} on channel {channel_id}")
+        
+        # Set a Redis key for the generator to detect regardless of whether client is local
+        if proxy_server.redis_client:
+            stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
+            proxy_server.redis_client.setex(stop_key, 30, "true")  # 30 second TTL
+            logger.info(f"Set stop key for client {client_id}")
         
         # Check if channel exists
         channel_exists = proxy_server.check_if_channel_exists(channel_id)
