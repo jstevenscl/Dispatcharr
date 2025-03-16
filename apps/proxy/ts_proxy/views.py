@@ -272,12 +272,21 @@ def stream_ts(request, channel_id):
 
                 # Main streaming loop
                 while True:
-                    # Check if channel has been stopped
+                    # Enhanced resource checks
+                    if channel_id not in proxy_server.stream_buffers:
+                        logger.info(f"[{client_id}] Channel buffer no longer exists, terminating stream")
+                        break
+
+                    if channel_id not in proxy_server.client_managers:
+                        logger.info(f"[{client_id}] Client manager no longer exists, terminating stream")
+                        break
+
+                    # Keep the existing stopping flag check
                     if proxy_server.redis_client:
                         stop_key = f"ts_proxy:channel:{channel_id}:stopping"
                         if proxy_server.redis_client.exists(stop_key):
                             logger.info(f"[{client_id}] Detected channel stop signal, terminating stream")
-                            break  # Exit loop immediately
+                            break
 
                     # Get chunks at client's position using improved strategy
                     chunks, next_index = buffer.get_optimized_client_data(local_index)
