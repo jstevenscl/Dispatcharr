@@ -575,12 +575,17 @@ class ProxyServer:
                 try:
                     # Refresh channel registry
                     self.refresh_channel_registry()
-                    # For channels we own, check total clients and cleanup as needed
-                    for channel_id in list(self.stream_managers.keys()):
+                    
+                    # Create a unified list of all channels we have locally
+                    all_local_channels = set(self.stream_managers.keys()) | set(self.client_managers.keys())
+                    
+                    # Single loop through all channels - process each exactly once
+                    for channel_id in list(all_local_channels):
                         if self.am_i_owner(channel_id):
+                            # === OWNER CHANNEL HANDLING ===
                             # Extend ownership lease
                             self.extend_ownership(channel_id)
-
+                            
                             # Get channel state from metadata hash
                             channel_state = "unknown"
                             if self.redis_client:
@@ -677,6 +682,37 @@ class ProxyServer:
                                 # There are clients or we're still connecting - clear any disconnect timestamp
                                 if self.redis_client:
                                     self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
+
+                        else:
+                            # === NON-OWNER CHANNEL HANDLING === 
+                            # For channels we don't own, check if they've been stopped/cleaned up in Redis
+                            if self.redis_client:
+                                # Method 1: Check for stopping key
+                                stop_key = f"ts_proxy:channel:{channel_id}:stopping"
+                                if self.redis_client.exists(stop_key):
+                                    logger.debug(f"Non-owner cleanup: Channel {channel_id} has stopping flag in Redis, cleaning up local resources")
+                                    self._cleanup_local_resources(channel_id)
+                                    continue
+                                
+                                # Method 2: Check if owner still exists
+                                owner_key = f"ts_proxy:channel:{channel_id}:owner"
+                                if not self.redis_client.exists(owner_key):
+                                    logger.debug(f"Non-owner cleanup: Channel {channel_id} has no owner in Redis, cleaning up local resources")
+                                    self._cleanup_local_resources(channel_id)
+                                    continue
+                                
+                                # Method 3: Check if metadata still exists
+                                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                if not self.redis_client.exists(metadata_key):
+                                    logger.debug(f"Non-owner cleanup: Channel {channel_id} has no metadata in Redis, cleaning up local resources")
+                                    self._cleanup_local_resources(channel_id)
+                                    continue
+                            
+                            # Check for local client count - if zero, clean up our local resources
+                            if self.client_managers[channel_id].get_client_count() == 0:
+                                # We're not the owner, and we have no local clients - clean up our resources
+                                logger.debug(f"Non-owner cleanup: Channel {channel_id} has no local clients, cleaning up local resources")
+                                self._cleanup_local_resources(channel_id)
 
                 except Exception as e:
                     logger.error(f"Error in cleanup thread: {e}", exc_info=True)
@@ -815,4 +851,27 @@ class ProxyServer:
             return True
         except Exception as e:
             logger.error(f"Error updating channel state: {e}")
+            return False
+
+    def _cleanup_local_resources(self, channel_id):
+        """Clean up local resources for a channel without affecting Redis keys"""
+        try:
+            # Clean up local objects only
+            if channel_id in self.stream_managers:
+                if hasattr(self.stream_managers[channel_id], 'stop'):
+                    self.stream_managers[channel_id].stop()
+                del self.stream_managers[channel_id]
+                logger.info(f"Non-owner cleanup: Removed stream manager for channel {channel_id}")
+
+            if channel_id in self.stream_buffers:
+                del self.stream_buffers[channel_id]
+                logger.info(f"Non-owner cleanup: Removed stream buffer for channel {channel_id}")
+
+            if channel_id in self.client_managers:
+                del self.client_managers[channel_id]
+                logger.info(f"Non-owner cleanup: Removed client manager for channel {channel_id}")
+                
+            return True
+        except Exception as e:
+            logger.error(f"Error cleaning up local resources: {e}", exc_info=True)
             return False
