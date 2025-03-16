@@ -24,7 +24,7 @@ def stream_ts(request, channel_id):
     """Stream TS data to client with immediate response and keep-alive packets during initialization"""
     client_user_agent = None
     logger.info(f"Fetching channel ID {channel_id}")
-    channel = get_object_or_404(Channel, pk=channel_id)
+    channel = get_object_or_404(Channel, uuid=channel_id)
 
     try:
         # Generate a unique client ID
@@ -59,7 +59,7 @@ def stream_ts(request, channel_id):
             m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
             stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
             if stream_user_agent is None:
-                stream_user_agent = CoreSettings.get_default_user_agent()
+                stream_user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
                 logger.debug(f"No user agent found for account, using default: {stream_user_agent}")
             else:
                 logger.debug(f"User agent found for account: {stream_user_agent}")

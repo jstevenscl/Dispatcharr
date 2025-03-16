@@ -93,6 +93,7 @@ class ChannelSerializer(serializers.ModelSerializer):
             'streams',
             'stream_ids',
             'stream_profile_id',
+            'uuid',
         ]
 
     def get_streams(self, obj):

@@ -82,7 +82,6 @@ class Channel(models.Model):
     )
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
     tvg_name = models.CharField(max_length=255, blank=True, null=True)
-    objects = ChannelManager()
 
     stream_profile = models.ForeignKey(
         StreamProfile,
@@ -92,6 +91,7 @@ class Channel(models.Model):
         related_name='channels'
     )
 
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     def clean(self):
         # Enforce unique channel_number within a given group
@@ -110,7 +110,7 @@ class Channel(models.Model):
     def get_stream_profile(self):
         stream_profile = self.stream_profile
         if not stream_profile:
-            stream_profile = CoreSettings.get_default_stream_profile()
+            stream_profile = StreamProfile.objects.get(id=CoreSettings.get_default_stream_profile_id())
 
         return stream_profile
 

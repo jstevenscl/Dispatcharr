@@ -554,7 +554,7 @@ const ChannelsTable = ({}) => {
               size="sm"
               variant="transparent"
               color="green.5"
-              onClick={() => handleWatchStream(row.original.id)}
+              onClick={() => handleWatchStream(row.original.uuid)}
             >
               <CirclePlay size="18" />
             </ActionIcon>

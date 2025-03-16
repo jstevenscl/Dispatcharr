@@ -18,8 +18,9 @@ logger = logging.getLogger("ts_proxy")
 class StreamManager:
     """Manages a connection to a TS stream without using raw sockets"""
 
-    def __init__(self, url, buffer, user_agent=None, transcode=False):
+    def __init__(self, channel_id, url, buffer, user_agent=None, transcode=False):
         # Basic properties
+        self.channel_id = channel_id
         self.url = url
         self.buffer = buffer
         self.running = True
@@ -90,7 +91,7 @@ class StreamManager:
                         continue
                     # Generate transcode command
                     logger.debug(f"Building transcode command for channel {self.channel_id}")
-                    channel = get_object_or_404(Channel, pk=self.channel_id)
+                    channel = get_object_or_404(Channel, uuid=self.channel_id)
                     stream_profile = channel.get_stream_profile()
                     self.transcode_cmd = stream_profile.build_command(self.url, self.user_agent)
                     # Start command process for transcoding
@@ -252,21 +253,21 @@ class StreamManager:
         """Stop this stream"""
         # Set the flag first
         self.stop_requested = True
-        
+
         # Close any active response connection
         if hasattr(self, 'current_response') and self.current_response:  # CORRECT NAME
             try:
                 self.current_response.close()  # CORRECT NAME
             except Exception:
                 pass
-            
+
         # Also close the session
         if hasattr(self, 'current_session') and self.current_session:
             try:
                 self.current_session.close()
             except Exception:
                 pass
-        
+
         # Set running to false to ensure thread exits
         self.running = False
 
@@ -308,7 +309,7 @@ class StreamManager:
         # Done with URL switch
         self.url_switching = False
         logger.info(f"Stream switch completed for channel {self.buffer.channel_id}")
-        
+
         return True
 
     def should_retry(self) -> bool:
@@ -449,7 +450,7 @@ class StreamManager:
                         # NEW CODE: Check if buffer has enough chunks
                         current_buffer_index = getattr(self.buffer, 'index', 0)
                         initial_chunks_needed = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
-                        
+
                         if current_buffer_index < initial_chunks_needed:
                             # Not enough buffer yet - set to connecting state if not already
                             if current_state != "connecting":
@@ -459,13 +460,13 @@ class StreamManager:
                                 }
                                 redis_client.hset(metadata_key, mapping=update_data)
                                 logger.info(f"Channel {channel_id} connected but waiting for buffer to fill: {current_buffer_index}/{initial_chunks_needed} chunks")
-                            
+
                             # Schedule a retry to check buffer status again
                             timer = threading.Timer(0.5, self._check_buffer_and_set_state)
                             timer.daemon = True
                             timer.start()
                             return False
-                        
+
                         # We have enough buffer, proceed with state change
                         update_data = {
                             "state": "waiting_for_clients",
@@ -493,7 +494,7 @@ class StreamManager:
                 current_buffer_index = self.buffer.index
                 initial_chunks_needed = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
                 channel_id = self.buffer.channel_id
-                
+
                 if current_buffer_index >= initial_chunks_needed:
                     # We now have enough buffer, call _set_waiting_for_clients again
                     logger.info(f"Buffer threshold reached for channel {channel_id}: {current_buffer_index}/{initial_chunks_needed} chunks")
@@ -504,7 +505,7 @@ class StreamManager:
                     if current_buffer_index > 0 and current_buffer_index % 5 == 0:
                         # Log less frequently to avoid spamming logs
                         logger.info(f"Buffer filling for channel {channel_id}: {current_buffer_index}/{initial_chunks_needed} chunks")
-                    
+
                     # Schedule another check
                     timer = threading.Timer(0.5, self._check_buffer_and_set_state)
                     timer.daemon = True

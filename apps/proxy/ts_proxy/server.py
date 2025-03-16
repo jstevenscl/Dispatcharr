@@ -287,15 +287,15 @@ class ProxyServer:
             # Create buffer and client manager instances
             buffer = StreamBuffer(channel_id, redis_client=self.redis_client)
             client_manager = ClientManager(
-                channel_id, 
-                redis_client=self.redis_client, 
+                channel_id,
+                redis_client=self.redis_client,
                 worker_id=self.worker_id
             )
-            
+
             # Store in local tracking
             self.stream_buffers[channel_id] = buffer
             self.client_managers[channel_id] = client_manager
-            
+
             # Get channel URL from Redis if available
             channel_url = url
             channel_user_agent = user_agent
@@ -381,7 +381,7 @@ class ProxyServer:
             self.stream_buffers[channel_id] = buffer
 
             # Only the owner worker creates the actual stream manager
-            stream_manager = StreamManager(channel_url, buffer, user_agent=channel_user_agent, transcode=False)
+            stream_manager = StreamManager(channel_id, channel_url, buffer, user_agent=channel_user_agent, transcode=transcode)
             logger.debug(f"Created StreamManager for channel {channel_id}")
             self.stream_managers[channel_id] = stream_manager
 
@@ -695,7 +695,7 @@ class ProxyServer:
     def _clean_redis_keys(self, channel_id):
         """Clean up all Redis keys for a channel more efficiently"""
         # Release the channel, stream, and profile keys from the channel
-        channel = Channel.objects.get(id=channel_id)
+        channel = Channel.objects.get(uuid=channel_id)
         channel.release_stream()
 
         if not self.redis_client:
@@ -781,4 +781,3 @@ class ProxyServer:
         except Exception as e:
             logger.error(f"Error updating channel state: {e}")
             return False
-
