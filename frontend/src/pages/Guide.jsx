@@ -167,7 +167,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       return;
     }
     // Build a playable stream URL for that channel
-    let vidUrl = `/output/stream/${matched.uuid}/`;
+    let vidUrl = `/proxy/ts/stream/${matched.uui}`;
     if (env_mode == 'dev') {
       vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
     }
