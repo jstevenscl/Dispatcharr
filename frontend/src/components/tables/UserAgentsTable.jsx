@@ -48,7 +48,7 @@ const UserAgentsTable = () => {
     () => [
       {
         header: 'Name',
-        accessorKey: 'user_agent_name',
+        accessorKey: 'name',
       },
       {
         header: 'User-Agent',

@@ -18,13 +18,13 @@ import {
 const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
-      user_agent_name: '',
+      name: '',
       user_agent: '',
       description: '',
       is_active: true,
     },
     validationSchema: Yup.object({
-      user_agent_name: Yup.string().required('Name is required'),
+      name: Yup.string().required('Name is required'),
       user_agent: Yup.string().required('User-Agent is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
@@ -43,7 +43,7 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
   useEffect(() => {
     if (userAgent) {
       formik.setValues({
-        user_agent_name: userAgent.user_agent_name,
+        name: userAgent.name,
         user_agent: userAgent.user_agent,
         description: userAgent.description,
         is_active: userAgent.is_active,
@@ -61,15 +61,12 @@ const UserAgent = ({ userAgent = null, isOpen, onClose }) => {
     <Modal opened={isOpen} onClose={onClose} title="User-Agent">
       <form onSubmit={formik.handleSubmit}>
         <TextInput
-          id="user_agent_name"
-          name="user_agent_name"
+          id="name"
+          name="name"
           label="Name"
-          value={formik.values.user_agent_name}
+          value={formik.values.name}
           onChange={formik.handleChange}
-          error={
-            formik.touched.user_agent_name &&
-            Boolean(formik.errors.user_agent_name)
-          }
+          error={formik.touched.name && Boolean(formik.errors.name)}
         />
 
         <TextInput

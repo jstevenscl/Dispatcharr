@@ -105,7 +105,7 @@ const SettingsPage = () => {
             error={formik.errors['default-user-agent']}
             data={userAgents.map((option) => ({
               value: `${option.id}`,
-              label: option.user_agent_name,
+              label: option.name,
             }))}
           />
 
@@ -118,7 +118,7 @@ const SettingsPage = () => {
             error={formik.errors['default-stream-profile']}
             data={streamProfiles.map((option) => ({
               value: `${option.id}`,
-              label: option.profile_name,
+              label: option.name,
             }))}
           />
           {/* <Select

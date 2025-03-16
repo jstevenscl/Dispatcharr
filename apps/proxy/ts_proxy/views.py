@@ -13,7 +13,7 @@ from .channel_status import ChannelStatus
 import logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
-from core.models import UserAgent, CoreSettings
+from core.models import UserAgent, CoreSettings, PROXY_PROFILE_NAME
 
 # Configure logging properly
 logger = logging.getLogger("ts_proxy")
@@ -43,7 +43,7 @@ def stream_ts(request, channel_id):
         if not proxy_server.check_if_channel_exists(channel_id):
             # Initialize the channel (but don't wait for completion)
             logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
-            
+
             # Get stream details from channel model
             stream_id, profile_id = channel.get_stream()
             if stream_id is None or profile_id is None:
@@ -63,9 +63,9 @@ def stream_ts(request, channel_id):
                 logger.debug(f"No user agent found for account, using default: {stream_user_agent}")
             else:
                 logger.debug(f"User agent found for account: {stream_user_agent}")
-                
+
             # Generate stream URL based on the selected profile
-            input_url = stream.custom_url or stream.url
+            input_url = stream.url
             logger.debug("Executing the following pattern replacement:")
             logger.debug(f"  search: {profile.search_pattern}")
             safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', profile.replace_pattern)
@@ -78,9 +78,10 @@ def stream_ts(request, channel_id):
             stream_profile = channel.get_stream_profile()
             if stream_profile.is_redirect():
                 return HttpResponseRedirect(stream_url)
+
             # Need to check if profile is transcoded
             logger.debug(f"Using profile {stream_profile} for stream {stream_id}")
-            if stream_profile == 'PROXY' or stream_profile is None:
+            if stream_profile.is_proxy() or stream_profile is None:
                 transcode = False
             else:
                 transcode = True
@@ -90,7 +91,7 @@ def stream_ts(request, channel_id):
             if proxy_server.redis_client:
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                 profile_value = str(stream_profile)
-                proxy_server.redis_client.hset(metadata_key, "profile", profile_value)                
+                proxy_server.redis_client.hset(metadata_key, "profile", profile_value)
             if not success:
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
 
@@ -107,11 +108,11 @@ def stream_ts(request, channel_id):
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Failed to connect'}, status=502)
                         time.sleep(0.1)
-            
+
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")
             channel_initializing = True
             logger.info(f"[{client_id}] Channel {channel_id} initialization started")
-            
+
         # Register client - can do this regardless of initialization state
         # Create local resources if needed
         if channel_id not in proxy_server.stream_buffers or channel_id not in proxy_server.client_managers:
@@ -120,21 +121,21 @@ def stream_ts(request, channel_id):
             # Get URL from Redis metadata
             url = None
             stream_user_agent = None  # Initialize the variable
-            
+
             if proxy_server.redis_client:
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                 url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
                 ua_bytes = proxy_server.redis_client.hget(metadata_key, "user_agent")
                 profile_bytes = proxy_server.redis_client.hget(metadata_key, "profile")
-                
+
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
                 if ua_bytes:
                     stream_user_agent = ua_bytes.decode('utf-8')
                 # Extract transcode setting from Redis
                 profile_str = profile_bytes.decode('utf-8')
-                use_transcode = (profile_str == 'PROXY' or profile_str == 'None')
-                    
+                use_transcode = (profile_str == PROXY_PROFILE_NAME or profile_str == 'None')
+
             # Use client_user_agent as fallback if stream_user_agent is None
             success = proxy_server.initialize_channel(url, channel_id, stream_user_agent or client_user_agent, use_transcode)
             if not success:
@@ -142,7 +143,7 @@ def stream_ts(request, channel_id):
                 return JsonResponse({'error': 'Failed to initialize channel locally'}, status=500)
 
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id} locally")
-            
+
         # Register client
         buffer = proxy_server.stream_buffers[channel_id]
         client_manager = proxy_server.client_managers[channel_id]
@@ -154,17 +155,17 @@ def stream_ts(request, channel_id):
             stream_start_time = time.time()
             bytes_sent = 0
             chunks_sent = 0
-            
+
             # Keep track of initialization state
             initialization_start = time.time()
             max_init_wait = getattr(Config, 'CLIENT_WAIT_TIMEOUT', 30)
             channel_ready = not channel_initializing
             keepalive_interval = 0.5
             last_keepalive = 0
-            
+
             try:
                 logger.info(f"[{client_id}] Stream generator started, channel_ready={channel_ready}")
-                
+
                 # Wait for initialization to complete if needed
                 if not channel_ready:
                     # While init is happening, send keepalive packets
@@ -173,7 +174,7 @@ def stream_ts(request, channel_id):
                         if proxy_server.redis_client:
                             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                             metadata = proxy_server.redis_client.hgetall(metadata_key)
-                            
+
                             if metadata and b'state' in metadata:
                                 state = metadata[b'state'].decode('utf-8')
                                 if state in ['waiting_for_clients', 'active']:
@@ -199,19 +200,19 @@ def stream_ts(request, channel_id):
                                         keepalive_packet[0] = 0x47  # Sync byte
                                         keepalive_packet[1] = 0x1F  # PID high bits (null packet)
                                         keepalive_packet[2] = 0xFF  # PID low bits (null packet)
-                                        
+
                                         # Add status info in packet payload (will be ignored by players)
                                         status_msg = f"Initializing: {state}".encode('utf-8')
                                         keepalive_packet[4:4+min(len(status_msg), 180)] = status_msg[:180]
-                                        
+
                                         logger.debug(f"[{client_id}] Sending keepalive packet during initialization, state={state}")
                                         yield bytes(keepalive_packet)
                                         bytes_sent += len(keepalive_packet)
                                         last_keepalive = time.time()
-                        
+
                         # Wait a bit before checking again (don't send too many keepalives)
                         time.sleep(0.1)
-                    
+
                     # Check if we timed out waiting
                     if not channel_ready:
                         logger.warning(f"[{client_id}] Timed out waiting for initialization")
@@ -223,13 +224,13 @@ def stream_ts(request, channel_id):
                         error_packet[4:4+min(len(error_msg), 180)] = error_msg[:180]
                         yield bytes(error_packet)
                         return
-                
+
                 # Channel is now ready - original streaming code goes here
                 logger.info(f"[{client_id}] Channel {channel_id} ready, starting normal streaming")
-                
+
                 # Reset start time for real streaming
                 stream_start_time = time.time()
-                                
+
                 # Get buffer - stream manager may not exist in this worker
                 buffer = proxy_server.stream_buffers.get(channel_id)
                 stream_manager = proxy_server.stream_managers.get(channel_id)
@@ -558,7 +559,7 @@ def channel_status(request, channel_id=None):
     try:
         # Check if Redis is available
         if not proxy_server.redis_client:
-            return JsonResponse({'error': 'Redis connection not available'}, status=500)      
+            return JsonResponse({'error': 'Redis connection not available'}, status=500)
 
         # Handle single channel or all channels
         if channel_id:

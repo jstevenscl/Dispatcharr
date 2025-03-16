@@ -21,7 +21,7 @@ def parse_extinf_line(line: str) -> dict:
     Parse an EXTINF line from an M3U file.
     This function removes the "#EXTINF:" prefix, then splits the remaining
     string on the first comma that is not enclosed in quotes.
-    
+
     Returns a dictionary with:
       - 'attributes': a dict of attribute key/value pairs (e.g. tvg-id, tvg-logo, group-title)
       - 'display_name': the text after the comma (the fallback display name)
@@ -186,7 +186,7 @@ def refresh_single_m3u_account(account_id):
             try:
                 obj, created = Stream.objects.update_or_create(
                     name=current_info["name"],
-                    custom_url=line,
+                    url=line,
                     m3u_account=account,
                     group_name=current_info["group_title"],
                     defaults=defaults
@@ -267,7 +267,7 @@ def parse_m3u_file(file_path, account):
             try:
                 obj, created = Stream.objects.update_or_create(
                     name=current_info["name"],
-                    custom_url=line,
+                    url=line,
                     m3u_account=account,
                     defaults=defaults
                 )

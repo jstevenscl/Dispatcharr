@@ -19,7 +19,6 @@ class StreamSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'url',
-            'custom_url',
             'm3u_account',  # Uncomment if using M3U fields
             'logo_url',
             'tvg_id',
@@ -84,7 +83,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'channel_number',
-            'channel_name',
+            'name',
             'logo_url',
             'logo_file',
             'channel_group',
@@ -99,9 +98,6 @@ class ChannelSerializer(serializers.ModelSerializer):
     def get_streams(self, obj):
         """Retrieve ordered stream objects for GET requests."""
         ordered_streams = obj.streams.all().order_by('channelstream__order')
-        print(f'Retrieving streams in order')
-        for index, stream in enumerate(ordered_streams):
-            print(f'Stream {stream.id}, index {index}')
         return StreamSerializer(ordered_streams, many=True).data
 
     # def get_stream_ids(self, obj):
@@ -119,13 +115,11 @@ class ChannelSerializer(serializers.ModelSerializer):
         return channel
 
     def update(self, instance, validated_data):
-        print("Validated Data:", validated_data)
         streams = validated_data.pop('stream_ids', None)
-        print(f'stream ids: {streams}')
 
         # Update the actual Channel fields
         instance.channel_number = validated_data.get('channel_number', instance.channel_number)
-        instance.channel_name = validated_data.get('channel_name', instance.channel_name)
+        instance.name = validated_data.get('name', instance.name)
         instance.logo_url = validated_data.get('logo_url', instance.logo_url)
         instance.tvg_id = validated_data.get('tvg_id', instance.tvg_id)
         instance.tvg_name = validated_data.get('tvg_name', instance.tvg_name)

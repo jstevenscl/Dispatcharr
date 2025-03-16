@@ -281,7 +281,7 @@ const StreamsTable = ({}) => {
   // Fallback: Individual creation (optional)
   const createChannelFromStream = async (stream) => {
     await API.createChannelFromStream({
-      channel_name: stream.name,
+      name: stream.name,
       channel_number: null,
       stream_id: stream.id,
     });
@@ -431,7 +431,7 @@ const StreamsTable = ({}) => {
     enableTopToolbar: false,
     enableRowVirtualization: true,
     renderTopToolbar: () => null, // Removes the entire top toolbar
-    renderToolbarInternalActions: () => null, 
+    renderToolbarInternalActions: () => null,
     rowVirtualizerInstanceRef,
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     enableBottomToolbar: true,

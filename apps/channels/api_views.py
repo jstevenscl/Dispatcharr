@@ -145,7 +145,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     type=openapi.TYPE_INTEGER,
                     description="(Optional) Desired channel number. Must not be in use."
                 ),
-                "channel_name": openapi.Schema(
+                "name": openapi.Schema(
                     type=openapi.TYPE_STRING, description="Desired channel name"
                 )
             }
@@ -176,13 +176,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        channel_name = request.data.get('channel_name')
-        if channel_name is None:
-            channel_name = stream.name
+        name = request.data.get('name')
+        if name is None:
+            name = stream.name
 
         channel_data = {
             'channel_number': channel_number,
-            'channel_name': channel_name,
+            'name': name,
             'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
             'logo_url': stream.logo_url,
@@ -199,7 +199,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         operation_description=(
             "Bulk create channels from existing streams. For each object, if 'channel_number' is provided, "
             "it is used (if available); otherwise, the next available number is auto-assigned. "
-            "Each object must include 'stream_id' and 'channel_name'."
+            "Each object must include 'stream_id' and 'name'."
         ),
         request_body=openapi.Schema(
             type=openapi.TYPE_ARRAY,
@@ -214,7 +214,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         type=openapi.TYPE_INTEGER,
                         description="(Optional) Desired channel number. Must not be in use."
                     ),
-                    "channel_name": openapi.Schema(
+                    "name": openapi.Schema(
                         type=openapi.TYPE_STRING, description="Desired channel name"
                     )
                 }
@@ -245,7 +245,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         for item in data_list:
             stream_id = item.get('stream_id')
             if not all([stream_id]):
-                errors.append({"item": item, "error": "Missing required fields: stream_id and channel_name are required."})
+                errors.append({"item": item, "error": "Missing required fields: stream_id and name are required."})
                 continue
 
             try:
@@ -271,13 +271,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     continue
                 used_numbers.add(channel_number)
 
-            channel_name = item.get('channel_name')
-            if channel_name is None:
-                channel_name = stream.name
+            name = item.get('name')
+            if name is None:
+                name = stream.name
 
             channel_data = {
                 "channel_number": channel_number,
-                "channel_name": channel_name,
+                "name": name,
                 "tvg_id": stream.tvg_id,
                 "channel_group_id": channel_group.id,
                 "logo_url": stream.logo_url,

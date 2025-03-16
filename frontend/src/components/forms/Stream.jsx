@@ -91,7 +91,7 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
           onChange={setSelectedStreamProfile}
           error={formik.errors.stream_profile_id}
           data={streamProfiles.map((profile) => ({
-            label: profile.profile_name,
+            label: profile.name,
             value: `${profile.id}`,
           }))}
           comboboxProps={{ withinPortal: false, zIndex: 1000 }}

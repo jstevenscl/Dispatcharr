@@ -297,7 +297,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
           />
           {guideChannels.map((channel) => (
             <Box
-              key={channel.channel_name}
+              key={channel.name}
               style={{
                 display: 'flex',
                 height: PROGRAM_HEIGHT,
@@ -318,7 +318,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
               >
                 <img
                   src={channel.logo_url || logo}
-                  alt={channel.channel_name}
+                  alt={channel.name}
                   style={{
                     width: '100%',
                     height: 'auto',
@@ -424,7 +424,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
               );
               return (
                 <Box
-                  key={channel.channel_name}
+                  key={channel.name}
                   style={{
                     display: 'flex',
                     position: 'relative',

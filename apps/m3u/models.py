@@ -186,7 +186,7 @@ class M3UAccountProfile(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['m3u_account', 'name'], name='unique_account_profile_name')
+            models.UniqueConstraint(fields=['m3u_account', 'name'], name='unique_account_name')
         ]
 
     def __str__(self):
@@ -210,7 +210,7 @@ def create_profile_for_m3u_account(sender, instance, created, **kwargs):
             m3u_account=instance,
             is_default=True,
         )
-        
+
 
         profile.max_streams = instance.max_streams
         profile.save()

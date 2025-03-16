@@ -238,7 +238,7 @@ const ChannelsTable = ({}) => {
       },
       {
         header: 'Name',
-        accessorKey: 'channel_name',
+        accessorKey: 'name',
         mantineTableHeadCellProps: {
           sx: { textAlign: 'center' },
         },
@@ -324,7 +324,7 @@ const ChannelsTable = ({}) => {
   };
 
   function handleWatchStream(channelNumber) {
-    let vidUrl = `/output/stream/${channelNumber}/`;
+    let vidUrl = `/proxy/ts/stream/${channelNumber}`;
     if (env_mode == 'dev') {
       vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
     }
@@ -554,7 +554,7 @@ const ChannelsTable = ({}) => {
               size="sm"
               variant="transparent"
               color="green.5"
-              onClick={() => handleWatchStream(row.original.channel_number)}
+              onClick={() => handleWatchStream(row.original.id)}
             >
               <CirclePlay size="18" />
             </ActionIcon>

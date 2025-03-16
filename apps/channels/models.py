@@ -5,6 +5,7 @@ from django.conf import settings
 from core.models import StreamProfile, CoreSettings
 from core.utils import redis_client
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,7 @@ class Stream(models.Model):
     Represents a single stream (e.g. from an M3U source or custom URL).
     """
     name = models.CharField(max_length=255, default="Default Stream")
-    url = models.URLField()
-    custom_url = models.URLField(max_length=2000, blank=True, null=True)
+    url = models.URLField(max_length=2000, blank=True, null=True)
     m3u_account = models.ForeignKey(
         M3UAccount,
         on_delete=models.CASCADE,
@@ -38,14 +38,15 @@ class Stream(models.Model):
         on_delete=models.SET_NULL,
         related_name='streams'
     )
+
     class Meta:
-        # If you use m3u_account, you might do unique_together = ('name','custom_url','m3u_account')
+        # If you use m3u_account, you might do unique_together = ('name','url','m3u_account')
         verbose_name = "Stream"
         verbose_name_plural = "Streams"
         ordering = ['-updated_at']
 
     def __str__(self):
-        return self.name or self.custom_url or f"Stream ID {self.id}"
+        return self.name or self.url or f"Stream ID {self.id}"
 
 
 class ChannelManager(models.Manager):
@@ -55,7 +56,7 @@ class ChannelManager(models.Manager):
 
 class Channel(models.Model):
     channel_number = models.IntegerField()
-    channel_name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
     logo_url = models.URLField(max_length=2000, blank=True, null=True)
     logo_file = models.ImageField(
         upload_to='logos/',  # Will store in MEDIA_ROOT/logos
@@ -104,7 +105,7 @@ class Channel(models.Model):
             )
 
     def __str__(self):
-        return f"{self.channel_number} - {self.channel_name}"
+        return f"{self.channel_number} - {self.name}"
 
     def get_stream_profile(self):
         stream_profile = self.stream_profile

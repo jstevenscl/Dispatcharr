@@ -25,7 +25,7 @@ class ChannelForm(forms.ModelForm):
         model = Channel
         fields = [
             'channel_number',
-            'channel_name',
+            'name',
             'channel_group',
         ]
 
@@ -39,7 +39,6 @@ class StreamForm(forms.ModelForm):
         fields = [
             'name',
             'url',
-            'custom_url',
             'logo_url',
             'tvg_id',
             'local_file',

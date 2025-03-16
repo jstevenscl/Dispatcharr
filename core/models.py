@@ -3,7 +3,7 @@ from django.db import models
 from django.utils.text import slugify
 
 class UserAgent(models.Model):
-    user_agent_name = models.CharField(
+    name = models.CharField(
         max_length=512,
         unique=True,
         help_text="The User-Agent name."
@@ -26,13 +26,13 @@ class UserAgent(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.user_agent_name
+        return self.name
 
-PROXY_PROFILE = 'Proxy'
-REDIRECT_PROFILE = 'Redirect'
+PROXY_PROFILE_NAME = 'Proxy'
+REDIRECT_PROFILE_NAME = 'Redirect'
 
 class StreamProfile(models.Model):
-    profile_name = models.CharField(max_length=255, help_text="Name of the stream profile")
+    name = models.CharField(max_length=255, help_text="Name of the stream profile")
     command = models.CharField(
         max_length=255,
         help_text="Command to execute (e.g., 'yt.sh', 'streamlink', or 'vlc')",
@@ -56,7 +56,7 @@ class StreamProfile(models.Model):
     )
 
     def __str__(self):
-        return self.profile_name
+        return self.name
 
     def delete(self):
         if self.locked():
@@ -108,12 +108,12 @@ class StreamProfile(models.Model):
         return instance
 
     def is_proxy(self):
-        if self.locked and self.profile_name == PROXY_PROFILE:
+        if self.locked and self.name == PROXY_PROFILE_NAME:
             return True
         return False
 
     def is_redirect(self):
-        if self.locked and self.profile_name == REDIRECT_PROFILE:
+        if self.locked and self.name == REDIRECT_PROFILE_NAME:
             return True
         return False
 
@@ -149,12 +149,10 @@ class CoreSettings(models.Model):
         return "Core Settings"
 
     @classmethod
-    def get_default_user_agent(cls):
+    def get_default_user_agent_id(cls):
         """Retrieve a system profile by name (or return None if not found)."""
-        default_ua_id = cls.objects.get(key=DEFAULT_USER_AGENT_KEY).value
-        return UserAgent.objects.get(id=default_ua_id)
+        return cls.objects.get(key=DEFAULT_USER_AGENT_KEY).value
 
     @classmethod
-    def get_default_stream_profile(cls):
-        default_sp_id = cls.objects.get(key=DEFAULT_STREAM_PROFILE_KEY).value
-        return StreamProfile.objects.get(id=default_sp_id)
+    def get_default_stream_profile_id(cls):
+        return cls.objects.get(key=DEFAULT_STREAM_PROFILE_KEY).value

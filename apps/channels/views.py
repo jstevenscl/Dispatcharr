@@ -15,7 +15,7 @@ class StreamDashboardView(View):
     """
     def get(self, request, *args, **kwargs):
         streams = Stream.objects.values(
-            'id', 'name', 'url', 'custom_url',
+            'id', 'name', 'url',
             'group_name', 'current_viewers'
         )
         return JsonResponse({'data': list(streams)}, safe=False)

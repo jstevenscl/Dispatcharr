@@ -58,7 +58,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const formik = useFormik({
     initialValues: {
-      channel_name: '',
+      name: '',
       channel_number: '',
       channel_group_id: '',
       stream_profile_id: '0',
@@ -66,7 +66,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       tvg_name: '',
     },
     validationSchema: Yup.object({
-      channel_name: Yup.string().required('Name is required'),
+      name: Yup.string().required('Name is required'),
       channel_number: Yup.string().required('Invalid channel number').min(0),
       channel_group_id: Yup.string().required('Channel group is required'),
     }),
@@ -102,7 +102,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   useEffect(() => {
     if (channel) {
       formik.setValues({
-        channel_name: channel.channel_name,
+        name: channel.name,
         channel_number: channel.channel_number,
         channel_group_id: channel.channel_group?.id,
         stream_profile_id: channel.stream_profile_id || '0',
@@ -256,14 +256,12 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           <Grid gap={2}>
             <Grid.Col span={6}>
               <TextInput
-                id="channel_name"
-                name="channel_name"
+                id="name"
+                name="name"
                 label="Channel Name"
-                value={formik.values.channel_name}
+                value={formik.values.name}
                 onChange={formik.handleChange}
-                error={
-                  formik.errors.channel_name ? formik.touched.channel_name : ''
-                }
+                error={formik.errors.name ? formik.touched.name : ''}
               />
 
               <Grid>
@@ -312,7 +310,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 }
                 data={streamProfiles.map((option) => ({
                   value: `${option.id}`,
-                  label: option.profile_name,
+                  label: option.name,
                 }))}
               />
 

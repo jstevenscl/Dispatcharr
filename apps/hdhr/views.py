@@ -80,7 +80,7 @@ class LineupAPIView(APIView):
         lineup = [
             {
                 "GuideNumber": str(ch.channel_number),
-                "GuideName": ch.channel_name,
+                "GuideName": ch.name,
                 "URL": request.build_absolute_uri(f"/output/stream/{ch.id}")
             }
             for ch in channels
@@ -128,5 +128,5 @@ class HDHRDeviceXMLAPIView(APIView):
             <BaseURL>{base_url}</BaseURL>
             <LineupURL>{base_url}/lineup.json</LineupURL>
         </root>"""
-        
+
         return HttpResponse(xml_response, content_type="application/xml")

@@ -42,7 +42,7 @@ const StreamProfiles = () => {
     () => [
       {
         header: 'Name',
-        accessorKey: 'profile_name',
+        accessorKey: 'name',
       },
       {
         header: 'Command',

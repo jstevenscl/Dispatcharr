@@ -41,7 +41,7 @@ def stream_view(request, stream_id):
 
         # Retrieve the channel by the provided stream_id.
         channel = Channel.objects.get(channel_number=stream_id)
-        logger.debug("Channel retrieved: ID=%s, Name=%s", channel.id, channel.channel_name)
+        logger.debug("Channel retrieved: ID=%s, Name=%s", channel.id, channel.name)
 
         # Ensure the channel has at least one stream.
         if not channel.streams.exists():
@@ -65,7 +65,7 @@ def stream_view(request, stream_id):
             logger.debug("Stream M3U account ID=%s, Name=%s", m3u_account.id, m3u_account.name)
 
             # Use the custom URL if available; otherwise, use the standard URL.
-            input_url = stream.custom_url or stream.url
+            input_url = stream.url
             logger.debug("Input URL: %s", input_url)
 
             # Determine which profile we can use.
@@ -132,7 +132,7 @@ def stream_view(request, stream_id):
             logger.error("No stream profile set for channel ID=%s, using default", channel.id)
             stream_profile = StreamProfile.objects.get(id=CoreSettings.objects.get(key="default-stream-profile").value)
 
-        logger.debug("Stream profile used: %s", stream_profile.profile_name)
+        logger.debug("Stream profile used: %s", stream_profile.name)
 
         # Determine the user agent to use.
         user_agent = stream_profile.user_agent or getattr(settings, "DEFAULT_USER_AGENT", "Mozilla/5.0")

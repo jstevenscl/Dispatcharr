@@ -17,8 +17,8 @@ class EPGDataSerializer(serializers.ModelSerializer):
     channel = serializers.SerializerMethodField()
 
     def get_channel(self, obj):
-        return {"id": obj.channel.id, "name": obj.channel.channel_name} if obj.channel else None
+        return {"id": obj.channel.id, "name": obj.channel.name} if obj.channel else None
 
     class Meta:
         model = EPGData
-        fields = ['id', 'channel', 'channel_name', 'programs']
+        fields = ['id', 'channel', 'name', 'programs']

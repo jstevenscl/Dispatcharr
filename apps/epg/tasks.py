@@ -30,7 +30,7 @@ def fetch_xmltv(source):
         response = requests.get(source.url, timeout=30)
         response.raise_for_status()
         logger.debug("XMLTV data fetched successfully.")
-        
+
         # If the URL ends with '.gz', decompress the response content
         if source.url.lower().endswith('.gz'):
             logger.debug("Detected .gz file. Decompressing...")
@@ -64,7 +64,7 @@ def fetch_xmltv(source):
             # Create (or get) an EPGData record using the tvg_id.
             epg_data, created = EPGData.objects.get_or_create(
                 tvg_id=tvg_id,
-                defaults={'channel_name': tvg_id}  # Use tvg_id as a fallback name
+                defaults={'name': tvg_id}  # Use tvg_id as a fallback name
             )
             if created:
                 logger.info(f"Created new EPGData for tvg_id '{tvg_id}'.")
@@ -120,7 +120,7 @@ def fetch_schedules_direct(source):
             # Create (or get) an EPGData record using the tvg_id.
             epg_data, created = EPGData.objects.get_or_create(
                 tvg_id=tvg_id,
-                defaults={'channel_name': tvg_id}
+                defaults={'name': tvg_id}
             )
             if created:
                 logger.info(f"Created new EPGData for tvg_id '{tvg_id}'.")

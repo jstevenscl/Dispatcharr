@@ -11,14 +11,14 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
 
   const formik = useFormik({
     initialValues: {
-      profile_name: '',
+      name: '',
       command: '',
       parameters: '',
       is_active: true,
       user_agent: '',
     },
     validationSchema: Yup.object({
-      profile_name: Yup.string().required('Name is required'),
+      name: Yup.string().required('Name is required'),
       command: Yup.string().required('Command is required'),
       parameters: Yup.string().required('Parameters are is required'),
     }),
@@ -38,7 +38,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
   useEffect(() => {
     if (profile) {
       formik.setValues({
-        profile_name: profile.profile_name,
+        name: profile.name,
         command: profile.command,
         parameters: profile.parameters,
         is_active: profile.is_active,
@@ -57,12 +57,13 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
     <Modal opened={isOpen} onClose={onClose} title="Stream Profile">
       <form onSubmit={formik.handleSubmit}>
         <TextInput
-          id="profile_name"
-          name="profile_name"
+          id="name"
+          name="name"
           label="Name"
-          value={formik.values.profile_name}
+          value={formik.values.name}
           onChange={formik.handleChange}
-          error={formik.errors.profile_name}
+          error={formik.errors.name}
+          disabled={profile ? profile.locked : false}
         />
         <TextInput
           id="command"
@@ -71,6 +72,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           value={formik.values.command}
           onChange={formik.handleChange}
           error={formik.errors.command}
+          disabled={profile ? profile.locked : false}
         />
         <TextInput
           id="parameters"
@@ -79,6 +81,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           value={formik.values.parameters}
           onChange={formik.handleChange}
           error={formik.errors.parameters}
+          disabled={profile ? profile.locked : false}
         />
 
         <Select
@@ -89,7 +92,7 @@ const StreamProfile = ({ profile = null, isOpen, onClose }) => {
           onChange={formik.handleChange}
           error={formik.errors.user_agent}
           data={userAgents.map((ua) => ({
-            label: ua.user_agent_name,
+            label: ua.name,
             value: `${ua.id}`,
           }))}
         />

@@ -59,7 +59,7 @@ class Migration(migrations.Migration):
                 ('m3u_account', models.ForeignKey(help_text='The M3U account this profile belongs to.', on_delete=django.db.models.deletion.CASCADE, related_name='profiles', to='m3u.m3uaccount')),
             ],
             options={
-                'constraints': [models.UniqueConstraint(fields=('m3u_account', 'name'), name='unique_account_profile_name')],
+                'constraints': [models.UniqueConstraint(fields=('m3u_account', 'name'), name='unique_account_name')],
             },
         ),
     ]

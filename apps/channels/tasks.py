@@ -31,7 +31,7 @@ COMMON_EXTRANEOUS_WORDS = [
     "arabic", "latino", "film", "movie", "movies"
 ]
 
-def normalize_channel_name(name: str) -> str:
+def normalize_name(name: str) -> str:
     """
     A more aggressive normalization that:
       - Lowercases
@@ -90,8 +90,8 @@ def match_epg_channels():
         epg_rows.append({
             "epg_id": e.id,
             "tvg_id": e.tvg_id or "",   # e.g. "Fox News.us"
-            "raw_name": e.channel_name,
-            "norm_name": normalize_channel_name(e.channel_name),
+            "raw_name": e.name,
+            "norm_name": normalize_name(e.name),
         })
 
     # 2) Pre-encode embeddings if possible
@@ -115,16 +115,16 @@ def match_epg_channels():
                 epg_match = EPGData.objects.filter(tvg_id=chan.tvg_id).first()
                 if epg_match:
                     logger.info(
-                        f"Channel {chan.id} '{chan.channel_name}' => found EPG by tvg_id={chan.tvg_id}"
+                        f"Channel {chan.id} '{chan.name}' => found EPG by tvg_id={chan.tvg_id}"
                     )
                     continue
 
             # C) No valid tvg_id => name-based matching
-            fallback_name = chan.tvg_name.strip() if chan.tvg_name else chan.channel_name
-            norm_chan = normalize_channel_name(fallback_name)
+            fallback_name = chan.tvg_name.strip() if chan.tvg_name else chan.name
+            norm_chan = normalize_name(fallback_name)
             if not norm_chan:
                 logger.info(
-                    f"Channel {chan.id} '{chan.channel_name}' => empty after normalization, skipping"
+                    f"Channel {chan.id} '{chan.name}' => empty after normalization, skipping"
                 )
                 continue
 
