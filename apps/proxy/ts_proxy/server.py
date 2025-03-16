@@ -211,6 +211,17 @@ class ProxyServer:
                                         f"ts_proxy:events:{channel_id}",
                                         json.dumps(stop_response)
                                     )
+                                elif event_type == "client_stop":
+                                    client_id = data.get("client_id")
+                                    if client_id and channel_id:
+                                        logger.info(f"Received request to stop client {client_id} on channel {channel_id}")
+                                        
+                                        # Check if we have this client locally
+                                        if (channel_id in self.client_managers and 
+                                            client_id in self.client_managers[channel_id].clients):
+                                            # Use the existing remove_client method to properly clean up
+                                            self.client_managers[channel_id].remove_client(client_id)
+                                            logger.info(f"Stopped client {client_id} on channel {channel_id} based on event")
                     except Exception as e:
                         logger.error(f"Error processing event message: {e}")
             except Exception as e:
