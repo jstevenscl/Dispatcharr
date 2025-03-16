@@ -182,6 +182,35 @@ class ProxyServer:
                                                 f"ts_proxy:events:{channel_id}",
                                                 json.dumps(switch_result)
                                             )
+                                elif event_type == "channel_stop":
+                                    logger.info(f"Received channel stop event for channel {channel_id}")
+                                    # First mark channel as stopping in Redis
+                                    if self.redis_client:
+                                        # Set stopping state in metadata
+                                        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                        if self.redis_client.exists(metadata_key):
+                                            self.redis_client.hset(metadata_key, mapping={
+                                                "state": "stopping", 
+                                                "state_changed_at": str(time.time())
+                                            })
+                                    
+                                    # If we have local resources for this channel, clean them up
+                                    if channel_id in self.stream_buffers or channel_id in self.client_managers:
+                                        # Use existing stop_channel method
+                                        logger.info(f"Stopping local resources for channel {channel_id}")
+                                        self.stop_channel(channel_id)
+                                        
+                                    # Acknowledge stop by publishing a response
+                                    stop_response = {
+                                        "event": "channel_stopped",
+                                        "channel_id": channel_id,
+                                        "worker_id": self.worker_id,
+                                        "timestamp": time.time()
+                                    }
+                                    self.redis_client.publish(
+                                        f"ts_proxy:events:{channel_id}",
+                                        json.dumps(stop_response)
+                                    )
                     except Exception as e:
                         logger.error(f"Error processing event message: {e}")
             except Exception as e:
@@ -451,7 +480,13 @@ class ProxyServer:
         """Stop a channel with proper ownership handling"""
         try:
             logger.info(f"Stopping channel {channel_id}")
-
+            
+            # First set a stopping key that clients will check
+            if self.redis_client:
+                stop_key = f"ts_proxy:channel:{channel_id}:stopping"
+                # Set with 60 second TTL - enough time for clients to notice
+                self.redis_client.setex(stop_key, 10, "true")
+            
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
                 logger.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")

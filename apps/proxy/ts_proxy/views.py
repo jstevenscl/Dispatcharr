@@ -272,6 +272,13 @@ def stream_ts(request, channel_id):
 
                 # Main streaming loop
                 while True:
+                    # Check if channel has been stopped
+                    if proxy_server.redis_client:
+                        stop_key = f"ts_proxy:channel:{channel_id}:stopping"
+                        if proxy_server.redis_client.exists(stop_key):
+                            logger.info(f"[{client_id}] Detected channel stop signal, terminating stream")
+                            break  # Exit loop immediately
+
                     # Get chunks at client's position using improved strategy
                     chunks, next_index = buffer.get_optimized_client_data(local_index)
 
@@ -604,7 +611,7 @@ def channel_status(request, channel_id=None):
 @csrf_exempt    
 @require_http_methods(["POST", "DELETE"])
 def stop_channel(request, channel_id):
-    """Stop a channel and release all associated resources"""
+    """Stop a channel and release all associated resources using PubSub events"""
     try:
         logger.info(f"Request to stop channel {channel_id} received")
         
@@ -626,8 +633,28 @@ def stop_channel(request, channel_id):
             except Exception as e:
                 logger.error(f"Error fetching channel state: {e}")
         
-        # Stop the channel
-        result = proxy_server.stop_channel(channel_id)
+        # Broadcast stop event to all workers via PubSub
+        if proxy_server.redis_client:
+            stop_request = {
+                "event": "channel_stop",
+                "channel_id": channel_id,
+                "requester_worker_id": proxy_server.worker_id,
+                "timestamp": time.time()
+            }
+            
+            # Publish the stop event
+            proxy_server.redis_client.publish(
+                f"ts_proxy:events:{channel_id}",
+                json.dumps(stop_request)
+            )
+            
+            logger.info(f"Published channel stop event for {channel_id}")
+            
+            # Also stop locally to ensure this worker cleans up right away
+            result = proxy_server.stop_channel(channel_id)
+        else:
+            # No Redis, just stop locally
+            result = proxy_server.stop_channel(channel_id)
         
         # Release the channel in the channel model if applicable
         try:
@@ -639,17 +666,11 @@ def stop_channel(request, channel_id):
         except Exception as e:
             logger.error(f"Error releasing channel stream: {e}")
         
-        if result:
-            return JsonResponse({
-                'message': 'Channel stopped successfully',
-                'channel_id': channel_id,
-                'previous_state': channel_info
-            })
-        else:
-            return JsonResponse({
-                'error': 'Failed to stop channel',
-                'channel_id': channel_id
-            }, status=500)
+        return JsonResponse({
+            'message': 'Channel stop request sent',
+            'channel_id': channel_id,
+            'previous_state': channel_info
+        })
             
     except Exception as e:
         logger.error(f"Failed to stop channel: {e}", exc_info=True)
