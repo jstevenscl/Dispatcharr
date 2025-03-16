@@ -133,8 +133,15 @@ def stream_ts(request, channel_id):
                 if ua_bytes:
                     stream_user_agent = ua_bytes.decode('utf-8')
                 # Extract transcode setting from Redis
-                profile_str = profile_bytes.decode('utf-8')
-                use_transcode = (profile_str == PROXY_PROFILE_NAME or profile_str == 'None')
+                if profile_bytes:
+                    profile_str = profile_bytes.decode('utf-8')
+                    use_transcode = (profile_str == PROXY_PROFILE_NAME or profile_str == 'None')
+                    logger.debug(f"Using profile '{profile_str}' for channel {channel_id}, transcode={use_transcode}")
+                else:
+                    # Default settings when profile not found in Redis
+                    profile_str = 'None'  # Default profile name
+                    use_transcode = False  # Default to direct streaming without transcoding
+                    logger.debug(f"No profile found in Redis for channel {channel_id}, defaulting to transcode={use_transcode}")
 
             # Use client_user_agent as fallback if stream_user_agent is None
             success = proxy_server.initialize_channel(url, channel_id, stream_user_agent or client_user_agent, use_transcode)
@@ -593,4 +600,57 @@ def channel_status(request, channel_id=None):
 
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+@csrf_exempt    
+@require_http_methods(["POST", "DELETE"])
+def stop_channel(request, channel_id):
+    """Stop a channel and release all associated resources"""
+    try:
+        logger.info(f"Request to stop channel {channel_id} received")
+        
+        # Check if channel exists
+        channel_exists = proxy_server.check_if_channel_exists(channel_id)
+        if not channel_exists:
+            logger.warning(f"Channel {channel_id} not found in any worker or Redis")
+            return JsonResponse({'error': 'Channel not found'}, status=404)
+        
+        # Get channel state information for response
+        channel_info = None
+        if proxy_server.redis_client:
+            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            try:
+                metadata = proxy_server.redis_client.hgetall(metadata_key)
+                if metadata and b'state' in metadata:
+                    state = metadata[b'state'].decode('utf-8')
+                    channel_info = {"state": state}
+            except Exception as e:
+                logger.error(f"Error fetching channel state: {e}")
+        
+        # Stop the channel
+        result = proxy_server.stop_channel(channel_id)
+        
+        # Release the channel in the channel model if applicable
+        try:
+            channel = Channel.objects.get(uuid=channel_id)
+            channel.release_stream()
+            logger.info(f"Released channel {channel_id} stream allocation")
+        except Channel.DoesNotExist:
+            logger.warning(f"Could not find Channel model for UUID {channel_id}")
+        except Exception as e:
+            logger.error(f"Error releasing channel stream: {e}")
+        
+        if result:
+            return JsonResponse({
+                'message': 'Channel stopped successfully',
+                'channel_id': channel_id,
+                'previous_state': channel_info
+            })
+        else:
+            return JsonResponse({
+                'error': 'Failed to stop channel',
+                'channel_id': channel_id
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"Failed to stop channel: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
