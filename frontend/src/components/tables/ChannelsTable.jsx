@@ -704,7 +704,11 @@ const ChannelsTable = ({}) => {
       </Flex>
 
       {/* Paper container: contains top toolbar and table (or ghost state) */}
-      <Paper>
+      <Paper
+        style={{
+          height: 'calc(100vh - 75px)',
+        }}
+      >
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
         <Box
           style={{

@@ -23,7 +23,7 @@ class Stream(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name="streams"
+        related_name="streams",
     )
     logo_url = models.URLField(max_length=2000, blank=True, null=True)
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
@@ -37,6 +37,10 @@ class Stream(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name='streams'
+    )
+    is_custom = models.BooleanField(
+        default=False,
+        help_text="Whether this is a user-created stream or from an M3U account"
     )
 
     class Meta:
@@ -136,7 +140,10 @@ class Channel(models.Model):
             default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
             profiles = [default_profile] + [obj for obj in m3u_profiles if not obj.is_default]
 
+            logger.info('profiles')
+
             for profile in profiles:
+                logger.info(profile)
                 # Skip inactive profiles
                 if profile.is_active == False:
                     continue

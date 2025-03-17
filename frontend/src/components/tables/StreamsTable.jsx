@@ -309,6 +309,7 @@ const StreamsTable = ({}) => {
   const closeStreamForm = () => {
     setStream(null);
     setModalOpen(false);
+    fetchData();
   };
 
   const addStreamsToChannel = async () => {
@@ -538,13 +539,13 @@ const StreamsTable = ({}) => {
           <Menu.Dropdown>
             <Menu.Item
               onClick={() => editStream(row.original)}
-              disabled={row.original.m3u_account ? true : false}
+              disabled={!row.original.is_custom}
             >
               Edit
             </Menu.Item>
             <Menu.Item
               onClick={() => deleteStream(row.original.id)}
-              disabled={row.original.m3u_account ? true : false}
+              disabled={!row.original.is_custom}
             >
               Delete Stream
             </Menu.Item>
@@ -613,7 +614,11 @@ const StreamsTable = ({}) => {
         </Text>
       </Flex>
 
-      <Paper>
+      <Paper
+        style={{
+          height: 'calc(100vh - 75px)',
+        }}
+      >
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
         <Box
           style={{
