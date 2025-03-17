@@ -55,7 +55,7 @@ const StreamProfiles = () => {
         },
         Cell: ({ cell }) => (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <Check color="success" /> : <X color="error" />}
+            {cell.getValue() ? <Check color="green" /> : <X color="red" />}
           </Box>
         ),
         Filter: ({ column }) => (

@@ -86,7 +86,7 @@ const Example = () => {
         },
         Cell: ({ cell }) => (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <Check color="green.5" /> : <X color="red.9" />}
+            {cell.getValue() ? <Check color="green" /> : <X color="red" />}
           </Box>
         ),
       },

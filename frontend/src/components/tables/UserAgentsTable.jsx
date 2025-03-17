@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import API from '../../api';
-import { Check as CheckIcon, Close as CloseIcon } from '@mui/icons-material';
 import useUserAgentsStore from '../../store/userAgents';
 import UserAgentForm from '../forms/UserAgent';
 import { TableHelper } from '../../helpers';
@@ -19,7 +18,7 @@ import {
   Button,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
-import { SquareMinus, SquarePen } from 'lucide-react';
+import { SquareMinus, SquarePen, Check, X } from 'lucide-react';
 
 const UserAgentsTable = () => {
   const [userAgent, setUserAgent] = useState(null);
@@ -77,11 +76,7 @@ const UserAgentsTable = () => {
         },
         Cell: ({ cell }) => (
           <Center>
-            {cell.getValue() ? (
-              <CheckIcon color="success" />
-            ) : (
-              <CloseIcon color="error" />
-            )}
+            {cell.getValue() ? <Check color="green" /> : <X color="red" />}
           </Center>
         ),
         Filter: ({ column }) => (
