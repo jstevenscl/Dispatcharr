@@ -13,11 +13,14 @@ def lock_or_create_profiles(apps, schema_editor):
             "name": "ffmpeg",
             "command": "ffmpeg",
             "parameters": "-i {streamUrl} -c:v copy -c:a copy -f mpegts pipe:1",
+            "new_parameters": "-i {streamUrl} -user_agent {userAgent} -c:v copy -c:a copy -f mpegts pipe:1",
         },
         {
             "name": "streamlink",
             "command": "streamlink",
             "parameters": "{streamUrl} best --stdout",
+            "new_parameters": "{streamUrl} --http-header {userAgent} best --stdout",
+
         },
     ]
 
@@ -31,13 +34,14 @@ def lock_or_create_profiles(apps, schema_editor):
         if existing_profile:
             # Lock existing profile
             existing_profile.locked = True
+            existing_profile.parameters = profile_data["new_parameters"]
             existing_profile.save()
         else:
             # Create a new locked profile
             new_profile = StreamProfile.objects.create(
                 profile_name=profile_data["name"],
                 command=profile_data["command"],
-                parameters=profile_data["parameters"],
+                parameters=profile_data["new_parameters"],
                 locked=True,
             )
 
