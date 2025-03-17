@@ -14,5 +14,5 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         print("Received:", data)
 
-    async def m3u_refresh(self, event):
+    async def update(self, event):
         await self.send(text_data=json.dumps(event))

@@ -5,6 +5,7 @@ const useChannelsStore = create((set) => ({
   channels: [],
   channelGroups: [],
   channelsPageSelection: [],
+  stats: [],
   isLoading: false,
   error: null,
 
@@ -87,6 +88,11 @@ const useChannelsStore = create((set) => ({
 
   setChannelsPageSelection: (channelsPageSelection) =>
     set((state) => ({ channelsPageSelection })),
+
+  setChannelStats: (stats) =>
+    set((state) => ({
+      stats,
+    })),
 }));
 
 export default useChannelsStore;

@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import useStreamsStore from './store/streams';
 import { notifications } from '@mantine/notifications';
+import useChannelsStore from './store/channels';
 
 export const WebsocketContext = createContext(false, null, () => {});
 
@@ -15,6 +16,7 @@ export const WebsocketProvider = ({ children }) => {
   const [val, setVal] = useState(null);
 
   const { fetchStreams } = useStreamsStore();
+  const { setChannelStats } = useChannelsStore();
 
   const ws = useRef(null);
 
@@ -48,15 +50,20 @@ export const WebsocketProvider = ({ children }) => {
 
     socket.onmessage = async (event) => {
       event = JSON.parse(event.data);
-      switch (event.type) {
+      switch (event.data.type) {
         case 'm3u_refresh':
-          if (event.message?.success) {
+          if (event.data.success) {
             fetchStreams();
             notifications.show({
-              message: event.message.message,
+              message: event.data.message,
               color: 'green.5',
             });
           }
+          break;
+
+        case 'channel_stats':
+          console.log(JSON.parse(event.data.stats));
+          setChannelStats(JSON.parse(event.data.stats));
           break;
 
         default:

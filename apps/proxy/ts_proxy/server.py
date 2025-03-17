@@ -190,16 +190,16 @@ class ProxyServer:
                                         metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                                         if self.redis_client.exists(metadata_key):
                                             self.redis_client.hset(metadata_key, mapping={
-                                                "state": "stopping", 
+                                                "state": "stopping",
                                                 "state_changed_at": str(time.time())
                                             })
-                                    
+
                                     # If we have local resources for this channel, clean them up
                                     if channel_id in self.stream_buffers or channel_id in self.client_managers:
                                         # Use existing stop_channel method
                                         logger.info(f"Stopping local resources for channel {channel_id}")
                                         self.stop_channel(channel_id)
-                                        
+
                                     # Acknowledge stop by publishing a response
                                     stop_response = {
                                         "event": "channel_stopped",
@@ -215,14 +215,14 @@ class ProxyServer:
                                     client_id = data.get("client_id")
                                     if client_id and channel_id:
                                         logger.info(f"Received request to stop client {client_id} on channel {channel_id}")
-                                        
+
                                         # Both remove from client manager AND set a key for the generator to detect
                                         if channel_id in self.client_managers:
                                             client_manager = self.client_managers[channel_id]
                                             if client_id in client_manager.clients:
                                                 client_manager.remove_client(client_id)
                                                 logger.info(f"Removed client {client_id} from client manager")
-                                        
+
                                         # Set a Redis key for the generator to detect
                                         if self.redis_client:
                                             stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
@@ -497,13 +497,13 @@ class ProxyServer:
         """Stop a channel with proper ownership handling"""
         try:
             logger.info(f"Stopping channel {channel_id}")
-            
+
             # First set a stopping key that clients will check
             if self.redis_client:
                 stop_key = f"ts_proxy:channel:{channel_id}:stopping"
                 # Set with 60 second TTL - enough time for clients to notice
                 self.redis_client.setex(stop_key, 10, "true")
-            
+
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
                 logger.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")
@@ -592,17 +592,17 @@ class ProxyServer:
                 try:
                     # Refresh channel registry
                     self.refresh_channel_registry()
-                    
+
                     # Create a unified list of all channels we have locally
                     all_local_channels = set(self.stream_managers.keys()) | set(self.client_managers.keys())
-                    
+
                     # Single loop through all channels - process each exactly once
                     for channel_id in list(all_local_channels):
                         if self.am_i_owner(channel_id):
                             # === OWNER CHANNEL HANDLING ===
                             # Extend ownership lease
                             self.extend_ownership(channel_id)
-                            
+
                             # Get channel state from metadata hash
                             channel_state = "unknown"
                             if self.redis_client:
@@ -701,7 +701,7 @@ class ProxyServer:
                                     self.redis_client.delete(f"ts_proxy:channel:{channel_id}:last_client_disconnect_time")
 
                         else:
-                            # === NON-OWNER CHANNEL HANDLING === 
+                            # === NON-OWNER CHANNEL HANDLING ===
                             # For channels we don't own, check if they've been stopped/cleaned up in Redis
                             if self.redis_client:
                                 # Method 1: Check for stopping key
@@ -710,21 +710,21 @@ class ProxyServer:
                                     logger.debug(f"Non-owner cleanup: Channel {channel_id} has stopping flag in Redis, cleaning up local resources")
                                     self._cleanup_local_resources(channel_id)
                                     continue
-                                
+
                                 # Method 2: Check if owner still exists
                                 owner_key = f"ts_proxy:channel:{channel_id}:owner"
                                 if not self.redis_client.exists(owner_key):
                                     logger.debug(f"Non-owner cleanup: Channel {channel_id} has no owner in Redis, cleaning up local resources")
                                     self._cleanup_local_resources(channel_id)
                                     continue
-                                
+
                                 # Method 3: Check if metadata still exists
                                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
                                 if not self.redis_client.exists(metadata_key):
                                     logger.debug(f"Non-owner cleanup: Channel {channel_id} has no metadata in Redis, cleaning up local resources")
                                     self._cleanup_local_resources(channel_id)
                                     continue
-                            
+
                             # Check for local client count - if zero, clean up our local resources
                             if self.client_managers[channel_id].get_client_count() == 0:
                                 # We're not the owner, and we have no local clients - clean up our resources
@@ -831,6 +831,7 @@ class ProxyServer:
             self.redis_client.hset(metadata_key, "last_active", str(time.time()))
             self.redis_client.expire(metadata_key, 30)  # Reset TTL on metadata hash
             logger.debug(f"Refreshed metadata TTL for channel {channel_id}")
+
     def update_channel_state(self, channel_id, new_state, additional_fields=None):
         """Update channel state with proper history tracking and logging"""
         if not self.redis_client:
@@ -887,7 +888,7 @@ class ProxyServer:
             if channel_id in self.client_managers:
                 del self.client_managers[channel_id]
                 logger.info(f"Non-owner cleanup: Removed client manager for channel {channel_id}")
-                
+
             return True
         except Exception as e:
             logger.error(f"Error cleaning up local resources: {e}", exc_info=True)

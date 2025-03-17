@@ -79,6 +79,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       path: '/stream-profiles',
     },
     { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
+    { label: 'Stats', icon: <LayoutGrid size={20} />, path: '/stats' },
     {
       label: 'Settings',
       icon: <LucideSettings size={20} />,

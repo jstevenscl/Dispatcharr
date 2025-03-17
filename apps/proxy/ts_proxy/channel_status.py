@@ -6,7 +6,7 @@ from . import proxy_server
 logger = logging.getLogger("ts_proxy")
 
 class ChannelStatus:
-        
+
     def get_detailed_channel_info(channel_id):
         # Get channel metadata
         metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
@@ -231,7 +231,8 @@ class ChannelStatus:
                 # Efficient way - just retrieve the essentials
                 client_info = {
                     'client_id': client_id_str,
-                    'user_agent': proxy_server.redis_client.hget(client_key, 'user_agent')
+                    'user_agent': proxy_server.redis_client.hget(client_key, 'user_agent'),
+                    'ip_address': proxy_server.redis_client.hget(client_key, 'ip_address').decode('utf-8'),
                 }
 
                 if client_info['user_agent']:
@@ -251,4 +252,3 @@ class ChannelStatus:
         info['clients'] = clients
 
         return info
-

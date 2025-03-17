@@ -206,8 +206,8 @@ def refresh_single_m3u_account(account_id):
     async_to_sync(channel_layer.group_send)(
         "updates",
         {
-            "type": "m3u_refresh",
-            "message": {"success": True, "message": "M3U refresh completed successfully"}
+            "type": "update",
+            "data": {"success": True, "type": "m3u_refresh", "message": "M3U refresh completed successfully"}
         },
     )
     return f"Account {account_id} => Created {created_count}, updated {updated_count}, excluded {excluded_count} Streams."

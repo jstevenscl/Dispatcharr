@@ -113,6 +113,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     enableColumnFilters: false,
     enableBottomToolbar: false,
     enableTopToolbar: false,
+    enableTableHead: false,
     columnFilterDisplayMode: 'popover',
     enablePagination: false,
     enableRowVirtualization: true,

@@ -21,6 +21,14 @@ from rest_framework.permissions import IsAuthenticated
 logger = logging.getLogger("ts_proxy")
 
 
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
 @api_view(['GET'])
 def stream_ts(request, channel_id):
     """Stream TS data to client with immediate response and keep-alive packets during initialization"""
@@ -31,6 +39,7 @@ def stream_ts(request, channel_id):
     try:
         # Generate a unique client ID
         client_id = f"client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+        client_ip = get_client_ip(request)
         logger.info(f"[{client_id}] Requested stream for channel {channel_id}")
 
         # Extract client user agent early
@@ -156,7 +165,7 @@ def stream_ts(request, channel_id):
         # Register client
         buffer = proxy_server.stream_buffers[channel_id]
         client_manager = proxy_server.client_managers[channel_id]
-        client_manager.add_client(client_id, client_user_agent)
+        client_manager.add_client(client_id, client_ip, client_user_agent)
         logger.info(f"[{client_id}] Client registered with channel {channel_id}")
 
         # Define a single generate function

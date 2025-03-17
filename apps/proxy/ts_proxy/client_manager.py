@@ -135,7 +135,7 @@ class ClientManager:
         except Exception as e:
             logger.error(f"Error notifying owner of client activity: {e}")
 
-    def add_client(self, client_id, user_agent=None):
+    def add_client(self, client_id, client_ip, user_agent=None):
         """Add a client with duplicate prevention"""
         if client_id in self._registered_clients:
             logger.debug(f"Client {client_id} already registered, skipping")
@@ -150,6 +150,7 @@ class ClientManager:
         current_time = str(time.time())
         client_data = {
             "user_agent": user_agent or "unknown",
+            "ip_address": client_ip,
             "connected_at": current_time,
             "last_active": current_time,
             "worker_id": self.worker_id or "unknown"

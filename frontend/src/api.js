@@ -817,4 +817,43 @@ export default class API {
 
     return retval;
   }
+
+  static async getChannelStats(uuid = null) {
+    const response = await fetch(`${host}/proxy/ts/status`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async stopChannel(id) {
+    const response = await fetch(`${host}/proxy/ts/stop/${id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async stopClient(channelId, clientId) {
+    const response = await fetch(`${host}/proxy/ts/stop_client/${channelId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        body: JSON.stringify({ client_id: clientId }),
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
 }
