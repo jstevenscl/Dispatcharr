@@ -1,25 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import API from '../../api';
-import {
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  SwapVert as SwapVertIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
-import {
-  LiveTv as LiveTvIcon,
-  ContentCopy,
-  Tv as TvIcon,
-  Clear as ClearIcon,
-  IndeterminateCheckBox,
-  CompareArrows,
-  Code,
-  AddBox,
-  Hd as HdIcon,
-} from '@mui/icons-material';
 import usePlaylistsStore from '../../store/playlists';
 import M3UForm from '../forms/M3U';
 import { TableHelper } from '../../helpers';
@@ -46,6 +27,8 @@ import {
   TvMinimalPlay,
   SquarePen,
   RefreshCcw,
+  Check,
+  X,
 } from 'lucide-react';
 import {
   IconArrowDown,
@@ -103,11 +86,7 @@ const Example = () => {
         },
         Cell: ({ cell }) => (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? (
-              <CheckIcon color="success" />
-            ) : (
-              <CloseIcon color="error" />
-            )}
+            {cell.getValue() ? <Check color="green.5" /> : <X color="red.9" />}
           </Box>
         ),
       },

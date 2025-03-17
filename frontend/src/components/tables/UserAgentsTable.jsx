@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import API from '../../api';
-import {
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { Check as CheckIcon, Close as CloseIcon } from '@mui/icons-material';
 import useUserAgentsStore from '../../store/userAgents';
 import UserAgentForm from '../forms/UserAgent';
 import { TableHelper } from '../../helpers';
@@ -24,14 +18,7 @@ import {
   Box,
   Button,
 } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconDeviceDesktopSearch,
-  IconSelector,
-  IconSortAscendingNumbers,
-  IconSquarePlus,
-} from '@tabler/icons-react';
+import { IconSquarePlus } from '@tabler/icons-react';
 import { SquareMinus, SquarePen } from 'lucide-react';
 
 const UserAgentsTable = () => {

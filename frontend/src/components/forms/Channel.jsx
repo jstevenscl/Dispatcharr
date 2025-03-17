@@ -4,7 +4,6 @@ import * as Yup from 'yup';
 import useChannelsStore from '../../store/channels';
 import API from '../../api';
 import useStreamProfilesStore from '../../store/streamProfiles';
-import { Add as AddIcon, Remove as RemoveIcon } from '@mui/icons-material';
 import useStreamsStore from '../../store/streams';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import ChannelGroupForm from './ChannelGroup';

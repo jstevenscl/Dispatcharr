@@ -62,7 +62,6 @@ export const WebsocketProvider = ({ children }) => {
           break;
 
         case 'channel_stats':
-          console.log(JSON.parse(event.data.stats));
           setChannelStats(JSON.parse(event.data.stats));
           break;
 

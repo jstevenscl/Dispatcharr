@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import API from '../../api';
 import M3UProfile from './M3UProfile';
-import { Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material';
 import usePlaylistsStore from '../../store/playlists';
 import {
   Card,
@@ -13,6 +12,7 @@ import {
   ActionIcon,
   Text,
 } from '@mantine/core';
+import { SquareMinus, SquarePen } from 'lucide-react';
 
 const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
   const profiles = usePlaylistsStore((state) => state.profiles[playlist.id]);
@@ -69,14 +69,19 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
                   onChange={() => toggleActive(item)}
                   color="primary"
                 />
-                <ActionIcon onClick={() => editProfile(item)} color="yellow.5">
-                  <EditIcon />
+                <ActionIcon
+                  onClick={() => editProfile(item)}
+                  color="yellow.5"
+                  variant="transparent"
+                >
+                  <SquarePen size="18" />
                 </ActionIcon>
                 <ActionIcon
                   onClick={() => deleteProfile(item.id)}
-                  color="error"
+                  color="red.9"
+                  variant="transparent"
                 >
-                  <DeleteIcon />
+                  <SquareMinus size="18" />
                 </ActionIcon>
               </Box>
             </Card>

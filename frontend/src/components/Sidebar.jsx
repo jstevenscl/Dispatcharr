@@ -7,6 +7,8 @@ import {
   SlidersHorizontal,
   LayoutGrid,
   Settings as LucideSettings,
+  Copy,
+  ChartLine,
 } from 'lucide-react';
 import {
   Avatar,
@@ -23,7 +25,6 @@ import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
 import useSettingsStore from '../store/settings';
-import { ContentCopy } from '@mui/icons-material';
 
 const NavLink = ({ item, isActive, collapsed }) => {
   return (
@@ -79,7 +80,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       path: '/stream-profiles',
     },
     { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
-    { label: 'Stats', icon: <LayoutGrid size={20} />, path: '/stats' },
+    { label: 'Stats', icon: <ChartLine size={20} />, path: '/stats' },
     {
       label: 'Settings',
       icon: <LucideSettings size={20} />,
@@ -196,7 +197,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                   color="gray.9"
                   onClick={copyPublicIP}
                 >
-                  <ContentCopy />
+                  <Copy />
                 </ActionIcon>
               }
             />

@@ -849,8 +849,8 @@ export default class API {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${await API.getAuthToken()}`,
-        body: JSON.stringify({ client_id: clientId }),
       },
+      body: JSON.stringify({ client_id: clientId }),
     });
 
     const retval = await response.json();

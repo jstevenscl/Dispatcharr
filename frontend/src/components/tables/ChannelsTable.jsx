@@ -2,15 +2,6 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
-import {
-  Add as AddIcon,
-  LiveTv as LiveTvIcon,
-  ContentCopy,
-  IndeterminateCheckBox,
-  CompareArrows,
-  Code,
-  AddBox,
-} from '@mui/icons-material';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import { TableHelper } from '../../helpers';
@@ -29,6 +20,7 @@ import {
   Binary,
   ArrowDown01,
   SquarePlus,
+  Copy,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -641,7 +633,7 @@ const ChannelsTable = ({}) => {
                     variant="transparent"
                     color="gray.5"
                   >
-                    <ContentCopy size="18" fontSize="small" />
+                    <Copy size="18" fontSize="small" />
                   </ActionIcon>
                 </Group>
               </Popover.Dropdown>
@@ -671,7 +663,7 @@ const ChannelsTable = ({}) => {
                     variant="transparent"
                     color="gray.5"
                   >
-                    <ContentCopy size="18" fontSize="small" />
+                    <Copy size="18" fontSize="small" />
                   </ActionIcon>
                 </Group>
               </Popover.Dropdown>
@@ -702,7 +694,7 @@ const ChannelsTable = ({}) => {
                     variant="transparent"
                     color="gray.5"
                   >
-                    <ContentCopy size="18" fontSize="small" />
+                    <Copy size="18" fontSize="small" />
                   </ActionIcon>
                 </Group>
               </Popover.Dropdown>
@@ -712,25 +704,13 @@ const ChannelsTable = ({}) => {
       </Flex>
 
       {/* Paper container: contains top toolbar and table (or ghost state) */}
-      <Paper
-        style={{
-          // bgcolor: theme.palette.background.paper,
-          // borderRadius: 2,
-          // overflow: 'hidden',
-          // display: 'flex',
-          // flexDirection: 'column',
-          height: 'calc(100vh - 75px)',
-        }}
-      >
+      <Paper>
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
         <Box
           style={{
             display: 'flex',
-            // alignItems: 'center',
-            // backgroundColor: theme.palette.background.paper,
             justifyContent: 'flex-end',
             padding: 10,
-            // gap: 1,
           }}
         >
           <Flex gap={6}>

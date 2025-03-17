@@ -26,13 +26,17 @@ export default {
       size: 'xs',
     },
     mantineTableBodyRowProps: ({ isDetailPanel, row }) => {
-      if (isDetailPanel && row.getIsSelected()) {
-        return {
-          style: {
-            backgroundColor: '#163632',
-          },
-        };
-      }
+      return {
+        style: {
+          ...(isDetailPanel && {
+            border: 'none',
+          }),
+          ...(isDetailPanel &&
+            row.getIsSelected() && {
+              backgroundColor: '#163632',
+            }),
+        },
+      };
     },
     mantineTableBodyCellProps: {
       style: {
@@ -48,6 +52,9 @@ export default {
       style: {
         paddingLeft: 10,
         paddingRight: 10,
+        paddingTop: 2,
+        paddingBottom: 2,
+        fontWeight: 'normal',
         color: '#CFCFCF',
         backgroundColor: '#383A3F',
         borderColor: '#444',

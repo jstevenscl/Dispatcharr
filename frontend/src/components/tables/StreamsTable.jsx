@@ -1,22 +1,17 @@
 import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import API from '../../api';
-import { useTheme } from '@mui/material/styles';
-import {
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  MoreVert as MoreVertIcon,
-  PlaylistAdd as PlaylistAddIcon,
-  IndeterminateCheckBox,
-  AddBox,
-} from '@mui/icons-material';
 import { TableHelper } from '../../helpers';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 import useChannelsStore from '../../store/channels';
 import { useDebounce } from '../../utils';
-import { SquarePlus, ListPlus, SquareMinus } from 'lucide-react';
+import {
+  SquarePlus,
+  ListPlus,
+  SquareMinus,
+  EllipsisVertical,
+} from 'lucide-react';
 import {
   TextInput,
   ActionIcon,
@@ -49,8 +44,6 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 const StreamsTable = ({}) => {
-  const theme = useTheme();
-
   /**
    * useState
    */
@@ -538,7 +531,7 @@ const StreamsTable = ({}) => {
               variant="transparent"
               size="sm"
             >
-              <MoreVertIcon />
+              <EllipsisVertical size="18" />
             </ActionIcon>
           </Menu.Target>
 
@@ -620,25 +613,13 @@ const StreamsTable = ({}) => {
         </Text>
       </Flex>
 
-      <Paper
-        style={{
-          // bgcolor: theme.palette.background.paper,
-          // borderRadius: 2,
-          // overflow: 'hidden',
-          height: 'calc(100vh - 75px)',
-          // display: 'flex',
-          // flexDirection: 'column',
-        }}
-      >
+      <Paper>
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
         <Box
           style={{
             display: 'flex',
-            // alignItems: 'center',
-            // backgroundColor: theme.palette.background.paper,
             justifyContent: 'flex-end',
             padding: 10,
-            // gap: 1,
           }}
         >
           <Flex gap={6}>
@@ -647,6 +628,7 @@ const StreamsTable = ({}) => {
               variant="default"
               size="xs"
               onClick={deleteStreams}
+              disabled={rowSelection.length === 0}
             >
               Remove
             </Button>

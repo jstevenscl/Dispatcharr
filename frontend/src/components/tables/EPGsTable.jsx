@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import API from '../../api';
-import {
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
 import useEPGsStore from '../../store/epgs';
 import EPGForm from '../forms/EPG';
 import { TableHelper } from '../../helpers';

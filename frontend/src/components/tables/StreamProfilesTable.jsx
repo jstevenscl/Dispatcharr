@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import API from '../../api';
-import {
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
 import StreamProfileForm from '../forms/StreamProfile';
 import useStreamProfilesStore from '../../store/streamProfiles';
 import { TableHelper } from '../../helpers';
@@ -24,7 +17,7 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
-import { SquareMinus, SquarePen } from 'lucide-react';
+import { SquareMinus, SquarePen, Check, X } from 'lucide-react';
 
 const StreamProfiles = () => {
   const [profile, setProfile] = useState(null);
@@ -62,11 +55,7 @@ const StreamProfiles = () => {
         },
         Cell: ({ cell }) => (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? (
-              <CheckIcon color="success" />
-            ) : (
-              <CloseIcon color="error" />
-            )}
+            {cell.getValue() ? <Check color="success" /> : <X color="error" />}
           </Box>
         ),
         Filter: ({ column }) => (

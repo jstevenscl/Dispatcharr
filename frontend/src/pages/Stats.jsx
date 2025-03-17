@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { ActionIcon, Box, Center, Grid } from '@mantine/core';
+import { ActionIcon, Box, Center, Grid, Text } from '@mantine/core';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import { TableHelper } from '../helpers';
 import API from '../api';
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 const ChannelsPage = () => {
-  const { channels, stats: channelStats } = useChannelsStore();
+  const { channels, channelsByUUID, stats: channelStats } = useChannelsStore();
   const [activeChannels, setActiveChannels] = useState([]);
   const [clients, setClients] = useState([]);
 
@@ -106,8 +106,8 @@ const ChannelsPage = () => {
     await API.stopChannel(id);
   };
 
-  const stopClient = async (id) => {
-    await API.stopClient(id);
+  const stopClient = async (channelId, clientId) => {
+    await API.stopClient(channelId, clientId);
   };
 
   const channelsTable = useMantineReactTable({
@@ -165,6 +165,12 @@ const ChannelsPage = () => {
           header: 'Channel',
           accessorKey: 'channel.name',
           size: 100,
+          mantineTableBodyCellProps: {
+            style: {
+              whiteSpace: 'nowrap',
+              maxWidth: 100,
+            },
+          },
         },
         {
           header: 'User-Agent',
@@ -210,18 +216,20 @@ const ChannelsPage = () => {
         </Center>
       </Box>
     ),
+    mantineTableContainerProps: {
+      style: {
+        height: '100%',
+        overflowY: 'auto',
+      },
+    },
   });
 
   useEffect(() => {
     const stats = channelStats.channels.map((ch) => ({
       ...ch,
-      ...Object.values(channels).filter(
-        (channel) => channel.uuid === channelStats.channels[0].channel_id
-      )[0],
+      ...channels[channelsByUUID[ch.channel_id]],
     }));
     setActiveChannels(stats);
-
-    console.log(stats);
 
     const clientStats = stats.reduce((acc, ch) => {
       return acc.concat(
@@ -232,66 +240,47 @@ const ChannelsPage = () => {
       );
     }, []);
     setClients(clientStats);
-    console.log(clientStats);
   }, [channelStats]);
-
-  // const fetchData = useCallback(async () => {
-  //   const response = await API.getChannelStats();
-  //   const channelStats = response.channels.map((ch) => ({
-  //     ...ch,
-  //     ...Object.values(channels).filter(
-  //       (channel) => channel.uuid === response.channels[0].channel_id
-  //     )[0],
-  //   }));
-  //   setActiveChannels(channelStats);
-
-  //   console.log(channelStats);
-
-  //   const clientStats = channelStats.reduce((acc, ch) => {
-  //     return acc.concat(
-  //       ch.clients.map((client) => ({
-  //         ...client,
-  //         channel: ch,
-  //       }))
-  //     );
-  //   }, []);
-  //   setClients(clientStats);
-  //   console.log(clientStats);
-  // }, [channels]);
-
-  // useEffect(() => {
-  //   fetchData();
-  // }, [fetchData]);
 
   return (
     <Grid style={{ padding: 18 }}>
       <Grid.Col span={6}>
-        <Box
+        <Text
+          w={88}
+          h={24}
           style={{
-            height: '100vh - 20px', // Full viewport height
-            paddingTop: 0, // Top padding
-            paddingBottom: 1, // Bottom padding
-            paddingRight: 0.5,
-            paddingLeft: 0,
-            boxSizing: 'border-box', // Include padding in height calculation
-            overflow: 'hidden', // Prevent parent scrolling
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 500,
+            fontSize: '20px',
+            lineHeight: 1,
+            letterSpacing: '-0.3px',
+            color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
+            marginBottom: 0,
           }}
         >
+          Channels
+        </Text>
+        <Box style={{ paddingTop: 10 }}>
           <MantineReactTable table={channelsTable} />
         </Box>
       </Grid.Col>
       <Grid.Col span={6}>
-        <Box
+        <Text
+          w={88}
+          h={24}
           style={{
-            height: '100vh - 20px', // Full viewport height
-            paddingTop: 0, // Top padding
-            paddingBottom: 1, // Bottom padding
-            paddingRight: 0,
-            paddingLeft: 0.5,
-            boxSizing: 'border-box', // Include padding in height calculation
-            overflow: 'hidden', // Prevent parent scrolling
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 500,
+            fontSize: '20px',
+            lineHeight: 1,
+            letterSpacing: '-0.3px',
+            color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
+            marginBottom: 0,
           }}
         >
+          Clients
+        </Text>
+        <Box style={{ paddingTop: 10 }}>
           <MantineReactTable table={clientsTable} />
         </Box>
       </Grid.Col>
