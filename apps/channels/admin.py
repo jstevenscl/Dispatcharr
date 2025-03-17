@@ -20,6 +20,7 @@ class ChannelAdmin(admin.ModelAdmin):
     list_display = (
         'id',  # Primary Key
         'channel_number',
+        'uuid',
         'name',
         'channel_group',
         'tvg_name'
