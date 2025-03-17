@@ -14,12 +14,14 @@ import logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings, PROXY_PROFILE_NAME
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 
 # Configure logging properly
 logger = logging.getLogger("ts_proxy")
 
 
-@require_GET
+@api_view(['GET'])
 def stream_ts(request, channel_id):
     """Stream TS data to client with immediate response and keep-alive packets during initialization"""
     client_user_agent = None
@@ -280,7 +282,7 @@ def stream_ts(request, channel_id):
                     if channel_id not in proxy_server.client_managers:
                         logger.info(f"[{client_id}] Client manager no longer exists, terminating stream")
                         break
-                        
+
                     # Check if this specific client has been stopped
                     if proxy_server.redis_client:
                         # Channel stop check
@@ -288,13 +290,13 @@ def stream_ts(request, channel_id):
                         if proxy_server.redis_client.exists(stop_key):
                             logger.info(f"[{client_id}] Detected channel stop signal, terminating stream")
                             break
-                            
+
                         # Client stop check - NEW
                         client_stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
                         if proxy_server.redis_client.exists(client_stop_key):
                             logger.info(f"[{client_id}] Detected client stop signal, terminating stream")
                             break
-                            
+
                         # Also check if client has been removed from client_manager
                         if channel_id in proxy_server.client_managers:
                             client_manager = proxy_server.client_managers[channel_id]
@@ -448,7 +450,8 @@ def stream_ts(request, channel_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def change_stream(request, channel_id):
     """Change stream URL for existing channel with enhanced diagnostics"""
     try:
@@ -586,7 +589,8 @@ def change_stream(request, channel_id):
         logger.error(f"Failed to change stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
 
-@require_GET
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def channel_status(request, channel_id=None):
     """
     Returns status information about channels with detail level based on request:
@@ -631,19 +635,21 @@ def channel_status(request, channel_id=None):
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
-@csrf_exempt    
-@require_http_methods(["POST", "DELETE"])
+
+@csrf_exempt
+@api_view(['POST', 'DELETE'])
+@permission_classes([IsAuthenticated])
 def stop_channel(request, channel_id):
     """Stop a channel and release all associated resources using PubSub events"""
     try:
         logger.info(f"Request to stop channel {channel_id} received")
-        
+
         # Check if channel exists
         channel_exists = proxy_server.check_if_channel_exists(channel_id)
         if not channel_exists:
             logger.warning(f"Channel {channel_id} not found in any worker or Redis")
             return JsonResponse({'error': 'Channel not found'}, status=404)
-        
+
         # Get channel state information for response
         channel_info = None
         if proxy_server.redis_client:
@@ -655,7 +661,7 @@ def stop_channel(request, channel_id):
                     channel_info = {"state": state}
             except Exception as e:
                 logger.error(f"Error fetching channel state: {e}")
-        
+
         # Broadcast stop event to all workers via PubSub
         if proxy_server.redis_client:
             stop_request = {
@@ -664,21 +670,21 @@ def stop_channel(request, channel_id):
                 "requester_worker_id": proxy_server.worker_id,
                 "timestamp": time.time()
             }
-            
+
             # Publish the stop event
             proxy_server.redis_client.publish(
                 f"ts_proxy:events:{channel_id}",
                 json.dumps(stop_request)
             )
-            
+
             logger.info(f"Published channel stop event for {channel_id}")
-            
+
             # Also stop locally to ensure this worker cleans up right away
             result = proxy_server.stop_channel(channel_id)
         else:
             # No Redis, just stop locally
             result = proxy_server.stop_channel(channel_id)
-        
+
         # Release the channel in the channel model if applicable
         try:
             channel = Channel.objects.get(uuid=channel_id)
@@ -688,47 +694,48 @@ def stop_channel(request, channel_id):
             logger.warning(f"Could not find Channel model for UUID {channel_id}")
         except Exception as e:
             logger.error(f"Error releasing channel stream: {e}")
-        
+
         return JsonResponse({
             'message': 'Channel stop request sent',
             'channel_id': channel_id,
             'previous_state': channel_info
         })
-            
+
     except Exception as e:
         logger.error(f"Failed to stop channel: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
 
-@csrf_exempt    
-@require_http_methods(["POST"])
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def stop_client(request, channel_id):
     """Stop a specific client connection using existing client management"""
     try:
         # Parse request body to get client ID
         data = json.loads(request.body)
         client_id = data.get('client_id')
-        
+
         if not client_id:
             return JsonResponse({'error': 'No client_id provided'}, status=400)
-            
+
         logger.info(f"Request to stop client {client_id} on channel {channel_id}")
-        
+
         # Set a Redis key for the generator to detect regardless of whether client is local
         if proxy_server.redis_client:
             stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
             proxy_server.redis_client.setex(stop_key, 30, "true")  # 30 second TTL
             logger.info(f"Set stop key for client {client_id}")
-        
+
         # Check if channel exists
         channel_exists = proxy_server.check_if_channel_exists(channel_id)
         if not channel_exists:
             logger.warning(f"Channel {channel_id} not found")
             return JsonResponse({'error': 'Channel not found'}, status=404)
-        
-        # Two-part approach: 
+
+        # Two-part approach:
         # 1. Handle locally if client is on this worker
         # 2. Use events to inform other workers if needed
-        
+
         local_client_stopped = False
         if channel_id in proxy_server.client_managers:
             client_manager = proxy_server.client_managers[channel_id]
@@ -738,7 +745,7 @@ def stop_client(request, channel_id):
                     client_manager.remove_client(client_id)
                     local_client_stopped = True
                     logger.info(f"Client {client_id} stopped locally on channel {channel_id}")
-        
+
         # If client wasn't found locally, broadcast stop event for other workers
         if not local_client_stopped and proxy_server.redis_client:
             stop_request = {
@@ -748,20 +755,20 @@ def stop_client(request, channel_id):
                 "requester_worker_id": proxy_server.worker_id,
                 "timestamp": time.time()
             }
-            
+
             proxy_server.redis_client.publish(
-                f"ts_proxy:events:{channel_id}", 
+                f"ts_proxy:events:{channel_id}",
                 json.dumps(stop_request)
             )
             logger.info(f"Published stop request for client {client_id} on channel {channel_id}")
-        
+
         return JsonResponse({
             'message': 'Client stop request processed',
             'channel_id': channel_id,
             'client_id': client_id,
             'locally_processed': local_client_stopped
         })
-            
+
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
