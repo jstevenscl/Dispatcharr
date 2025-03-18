@@ -45,6 +45,10 @@ class StreamManager:
         self.health_check_interval = Config.HEALTH_CHECK_INTERVAL
         self.chunk_size = getattr(Config, 'CHUNK_SIZE', 8192)
 
+        # Add to your __init__ method
+        self._buffer_check_timers = []
+        self.stopping = False
+
         logger.info(f"Initialized stream manager for channel {buffer.channel_id}")
 
     def _create_session(self):
@@ -221,8 +225,23 @@ class StreamManager:
                         break
 
                     timeout = min(2 ** self.retry_count, 30)
+                    
+                    # When a connection fails and reconnect is needed:
+                    self.reconnecting = True 
+                    
+                    # Cancel all existing buffer timers during reconnect
+                    for timer in list(self._buffer_check_timers):
+                        try:
+                            if timer and timer.is_alive():
+                                timer.cancel()
+                        except Exception as e:
+                            logger.error(f"Error canceling buffer timer: {e}")
+                    self._buffer_check_timers = []
+                    
                     logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
                     time.sleep(timeout)
+                    
+                    self.reconnecting = False  # Reset flag after sleep
 
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
@@ -250,7 +269,21 @@ class StreamManager:
             logger.info(f"Stream manager stopped")
 
     def stop(self):
-        """Stop this stream"""
+        """Stop the stream manager and cancel all timers"""
+        # Add at the beginning of your stop method
+        self.stopping = True
+        
+        # Cancel all buffer check timers
+        for timer in list(self._buffer_check_timers):
+            try:
+                if timer and timer.is_alive():
+                    timer.cancel()
+            except Exception as e:
+                logger.error(f"Error canceling buffer check timer: {e}")
+        
+        self._buffer_check_timers.clear()
+        
+        # Rest of your existing stop method...
         # Set the flag first
         self.stop_requested = True
 
@@ -488,8 +521,14 @@ class StreamManager:
     def _check_buffer_and_set_state(self):
         """Check buffer size and set state to waiting_for_clients when ready"""
         try:
-            # This method will be called asynchronously to check buffer status
-            # and update state when enough chunks are available
+            # First check if we're stopping or reconnecting
+            if getattr(self, 'stopping', False) or getattr(self, 'reconnecting', False):
+                logger.debug(f"Buffer check aborted - channel {self.buffer.channel_id} is stopping or reconnecting")
+                return
+            
+            # Clean up completed timers
+            self._buffer_check_timers = [t for t in self._buffer_check_timers if t.is_alive()]
+            
             if hasattr(self.buffer, 'index') and hasattr(self.buffer, 'channel_id'):
                 current_buffer_index = self.buffer.index
                 initial_chunks_needed = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
@@ -502,13 +541,13 @@ class StreamManager:
                 else:
                     # Still waiting, log progress and schedule another check
                     logger.debug(f"Buffer filling for channel {channel_id}: {current_buffer_index}/{initial_chunks_needed} chunks")
-                    if current_buffer_index > 0 and current_buffer_index % 5 == 0:
-                        # Log less frequently to avoid spamming logs
-                        logger.info(f"Buffer filling for channel {channel_id}: {current_buffer_index}/{initial_chunks_needed} chunks")
-
-                    # Schedule another check
-                    timer = threading.Timer(0.5, self._check_buffer_and_set_state)
-                    timer.daemon = True
-                    timer.start()
+                    
+                    # Schedule another check - NOW WITH TRACKING
+                    if not getattr(self, 'stopping', False):
+                        timer = threading.Timer(0.5, self._check_buffer_and_set_state)
+                        timer.daemon = True
+                        timer.start()
+                        self._buffer_check_timers.append(timer)
         except Exception as e:
             logger.error(f"Error in buffer check: {e}")
+
