@@ -126,9 +126,19 @@ class StreamProfile(models.Model):
             "{userAgent}": user_agent,
         }
 
-        cmd = [self.command] + [replacements.get(part, part) for part in self.parameters.split()]
+        # Split the command and iterate through each part to apply replacements
+        cmd = [self.command] + [
+            self._replace_in_part(part, replacements) for part in self.parameters.split()
+        ]
 
         return cmd
+
+    def _replace_in_part(self, part, replacements):
+        # Iterate through the replacements and replace each part of the string
+        for key, value in replacements.items():
+            part = part.replace(key, value)
+        return part
+
 
 DEFAULT_USER_AGENT_KEY= slugify("Default User-Agent")
 DEFAULT_STREAM_PROFILE_KEY = slugify("Default Stream Profile")
