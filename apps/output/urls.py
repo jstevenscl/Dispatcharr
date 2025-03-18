@@ -12,5 +12,5 @@ urlpatterns = [
     re_path(r'^epg/?$', generate_epg, name='generate_epg'),
     
     # Allow both `/stream/<int:stream_id>` and `/stream/<int:stream_id>/`
-    re_path(r'^stream/(?P<stream_id>\d+)/?$', stream_view, name='stream'),
+    re_path(r'^stream/(?P<channel_uuid>[0-9a-fA-F\-]+)/?$', stream_view, name='stream'),
 ]

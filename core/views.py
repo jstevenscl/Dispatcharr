@@ -29,7 +29,7 @@ def settings_view(request):
     return render(request, 'settings.html')
 
 
-def stream_view(request, stream_id):
+def stream_view(request, channel_uuid):
     """
     Streams the first available stream for the given channel.
     It uses the channel’s assigned StreamProfile.
@@ -40,7 +40,7 @@ def stream_view(request, stream_id):
         redis_client = redis.Redis(host=settings.REDIS_HOST, port=6379, db=int(getattr(settings, "REDIS_DB", "0")))
 
         # Retrieve the channel by the provided stream_id.
-        channel = Channel.objects.get(channel_number=stream_id)
+        channel = Channel.objects.get(uuid=channel_uuid)
         logger.debug("Channel retrieved: ID=%s, Name=%s", channel.id, channel.name)
 
         # Ensure the channel has at least one stream.
