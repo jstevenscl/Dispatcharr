@@ -83,7 +83,7 @@ const App = () => {
       withNormalizeCSS
     >
       <WebsocketProvider>
-        <Notifications containerWidth={250} />
+        <Notifications containerWidth={350} />
         <Router>
           <AppShell
             header={{
