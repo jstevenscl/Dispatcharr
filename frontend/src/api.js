@@ -9,14 +9,37 @@ import useStreamProfilesStore from './store/streamProfiles';
 import useSettingsStore from './store/settings';
 
 // If needed, you can set a base host or keep it empty if relative requests
-const host = '';
+const host = import.meta.env.DEV
+  ? `http://${window.location.hostname}:5656`
+  : '';
 
 export default class API {
   /**
    * A static method so we can do:  await API.getAuthToken()
    */
   static async getAuthToken() {
-    return await useAuthStore.getState().getToken(); 
+    return await useAuthStore.getState().getToken();
+  }
+
+  static async fetchSuperUser() {
+    const response = await fetch(`${host}/api/accounts/initialize-superuser/`);
+    return await response.json();
+  }
+
+  static async createSuperUser({ username, email, password }) {
+    const response = await fetch(`${host}/api/accounts/initialize-superuser/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        email,
+      }),
+    });
+
+    return await response.json();
   }
 
   static async login(username, password) {
@@ -266,6 +289,48 @@ export default class API {
     return retval;
   }
 
+  static async queryStreams(params) {
+    const response = await fetch(
+      `${host}/api/channels/streams/?${params.toString()}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+      }
+    );
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async getAllStreamIds(params) {
+    const response = await fetch(
+      `${host}/api/channels/streams/ids/?${params.toString()}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+      }
+    );
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async getStreamGroups() {
+    const response = await fetch(`${host}/api/channels/streams/groups/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
   static async addStream(values) {
     const response = await fetch(`${host}/api/channels/streams/`, {
       method: 'POST',
@@ -414,13 +479,29 @@ export default class API {
   }
 
   static async addPlaylist(values) {
+    let body = null;
+    if (values.uploaded_file) {
+      body = new FormData();
+      for (const prop in values) {
+        body.append(prop, values[prop]);
+      }
+    } else {
+      body = { ...values };
+      delete body.uploaded_file;
+      body = JSON.stringify(body);
+    }
+
     const response = await fetch(`${host}/api/m3u/accounts/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
+        ...(values.uploaded_file
+          ? {}
+          : {
+              'Content-Type': 'application/json',
+            }),
       },
-      body: JSON.stringify(values),
+      body,
     });
 
     const retval = await response.json();
@@ -500,7 +581,7 @@ export default class API {
     return retval;
   }
 
-  // Notice there's a duplicated "refreshPlaylist" method above; 
+  // Notice there's a duplicated "refreshPlaylist" method above;
   // you might want to rename or remove one if it's not needed.
 
   static async addEPG(values) {
@@ -706,6 +787,18 @@ export default class API {
     return retval;
   }
 
+  static async getEnvironmentSettings() {
+    const response = await fetch(`${host}/api/core/settings/env/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
   static async updateSetting(values) {
     const { id, ...payload } = values;
     const response = await fetch(`${host}/api/core/settings/${id}/`, {
@@ -722,6 +815,45 @@ export default class API {
       useSettingsStore.getState().updateSetting(retval);
     }
 
+    return retval;
+  }
+
+  static async getChannelStats(uuid = null) {
+    const response = await fetch(`${host}/proxy/ts/status`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async stopChannel(id) {
+    const response = await fetch(`${host}/proxy/ts/stop/${id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async stopClient(channelId, clientId) {
+    const response = await fetch(`${host}/proxy/ts/stop_client/${channelId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+
+    const retval = await response.json();
     return retval;
   }
 }

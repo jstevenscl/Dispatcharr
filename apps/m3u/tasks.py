@@ -9,10 +9,40 @@ from django.conf import settings
 from django.core.cache import cache
 from .models import M3UAccount
 from apps.channels.models import Stream
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
 
 LOCK_EXPIRE = 120  # Lock expires after 120 seconds
+
+def parse_extinf_line(line: str) -> dict:
+    """
+    Parse an EXTINF line from an M3U file.
+    This function removes the "#EXTINF:" prefix, then splits the remaining
+    string on the first comma that is not enclosed in quotes.
+
+    Returns a dictionary with:
+      - 'attributes': a dict of attribute key/value pairs (e.g. tvg-id, tvg-logo, group-title)
+      - 'display_name': the text after the comma (the fallback display name)
+      - 'name': the value from tvg-name (if present) or the display name otherwise.
+    """
+    if not line.startswith("#EXTINF:"):
+        return None
+    content = line[len("#EXTINF:"):].strip()
+    # Split on the first comma that is not inside quotes.
+    parts = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', content, maxsplit=1)
+    if len(parts) != 2:
+        return None
+    attributes_part, display_name = parts[0], parts[1].strip()
+    attrs = dict(re.findall(r'(\w+)=["\']([^"\']+)["\']', attributes_part))
+    # Use tvg-name attribute if available; otherwise, use the display name.
+    name = attrs.get('tvg-name', display_name)
+    return {
+        'attributes': attrs,
+        'display_name': display_name,
+        'name': name
+    }
 
 def _get_group_title(extinf_line: str) -> str:
     """Extract group title from EXTINF line."""
@@ -106,7 +136,7 @@ def refresh_single_m3u_account(account_id):
         return err_msg
 
     logger.info(f"M3U has {len(lines)} lines. Now parsing for Streams.")
-    skip_exts = ('.mkv', '.mp4', '.ts', '.m4v', '.wav', '.avi', '.flv', '.m4p', '.mpg',
+    skip_exts = ('.mkv', '.mp4', '.m4v', '.wav', '.avi', '.flv', '.m4p', '.mpg',
                  '.mpeg', '.m2v', '.mp2', '.mpe', '.mpv')
 
     created_count, updated_count, excluded_count = 0, 0, 0
@@ -115,26 +145,21 @@ def refresh_single_m3u_account(account_id):
     for line in lines:
         line = line.strip()
         if line.startswith('#EXTINF'):
-            tvg_name_match = re.search(r'tvg-name="([^"]*)"', line)
-            tvg_logo_match = re.search(r'tvg-logo="([^"]*)"', line)
-            # Extract tvg-id
-            tvg_id_match = re.search(r'tvg-id="([^"]*)"', line)
-            tvg_id = tvg_id_match.group(1) if tvg_id_match else ""
-            
-            fallback_name = line.split(",", 1)[-1].strip() if "," in line else "Default Stream"
-
-            name = tvg_name_match.group(1) if tvg_name_match else fallback_name
-            logo_url = tvg_logo_match.group(1) if tvg_logo_match else ""
-            group_title = _get_group_title(line)
-
-            logger.debug(f"Parsed EXTINF: name={name}, logo_url={logo_url}, tvg_id={tvg_id}, group_title={group_title}")
+            extinf = parse_extinf_line(line)
+            if not extinf:
+                continue
+            name = extinf['name']
+            tvg_id = extinf['attributes'].get('tvg-id', '')
+            tvg_logo = extinf['attributes'].get('tvg-logo', '')
+            # Prefer group-title from attributes if available.
+            group_title = extinf['attributes'].get('group-title', _get_group_title(line))
+            logger.debug(f"Parsed EXTINF: name={name}, logo_url={tvg_logo}, tvg_id={tvg_id}, group_title={group_title}")
             current_info = {
                 "name": name,
-                "logo_url": logo_url,
+                "logo_url": tvg_logo,
                 "group_title": group_title,
-                "tvg_id": tvg_id,  # save the tvg-id here
+                "tvg_id": tvg_id,
             }
-
         elif current_info and line.startswith('http'):
             lower_line = line.lower()
             if any(lower_line.endswith(ext) for ext in skip_exts):
@@ -154,7 +179,6 @@ def refresh_single_m3u_account(account_id):
                 current_info = None
                 continue
 
-            # Include tvg_id in the defaults so it gets saved
             defaults = {
                 "logo_url": current_info["logo_url"],
                 "tvg_id": current_info["tvg_id"]
@@ -162,7 +186,7 @@ def refresh_single_m3u_account(account_id):
             try:
                 obj, created = Stream.objects.update_or_create(
                     name=current_info["name"],
-                    custom_url=line,
+                    url=line,
                     m3u_account=account,
                     group_name=current_info["group_title"],
                     defaults=defaults
@@ -178,6 +202,14 @@ def refresh_single_m3u_account(account_id):
 
     logger.info(f"Completed parsing. Created {created_count} new Streams, updated {updated_count} existing Streams, excluded {excluded_count} Streams.")
     release_lock('refresh_single_m3u_account', account_id)
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        "updates",
+        {
+            "type": "update",
+            "data": {"success": True, "type": "m3u_refresh", "message": "M3U refresh completed successfully"}
+        },
+    )
     return f"Account {account_id} => Created {created_count}, updated {updated_count}, excluded {excluded_count} Streams."
 
 def process_uploaded_m3u_file(file, account):
@@ -213,17 +245,13 @@ def parse_m3u_file(file_path, account):
     for line in lines:
         line = line.strip()
         if line.startswith('#EXTINF'):
-            tvg_name_match = re.search(r'tvg-name="([^"]*)"', line)
-            tvg_logo_match = re.search(r'tvg-logo="([^"]*)"', line)
-            fallback_name = line.split(",", 1)[-1].strip() if "," in line else "Stream"
-            tvg_id_match = re.search(r'tvg-id="([^"]*)"', line)
-            tvg_id = tvg_id_match.group(1) if tvg_id_match else ""
-
-            name = tvg_name_match.group(1) if tvg_name_match else fallback_name
-            logo_url = tvg_logo_match.group(1) if tvg_logo_match else ""
-
-            current_info = {"name": name, "logo_url": logo_url, "tvg_id": tvg_id}
-
+            extinf = parse_extinf_line(line)
+            if not extinf:
+                continue
+            name = extinf['name']
+            tvg_id = extinf['attributes'].get('tvg-id', '')
+            tvg_logo = extinf['attributes'].get('tvg-logo', '')
+            current_info = {"name": name, "logo_url": tvg_logo, "tvg_id": tvg_id}
         elif current_info and line.startswith('http'):
             lower_line = line.lower()
             if any(lower_line.endswith(ext) for ext in skip_exts):
@@ -239,7 +267,7 @@ def parse_m3u_file(file_path, account):
             try:
                 obj, created = Stream.objects.update_or_create(
                     name=current_info["name"],
-                    custom_url=line,
+                    url=line,
                     m3u_account=account,
                     defaults=defaults
                 )

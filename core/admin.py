@@ -6,26 +6,26 @@ from .models import UserAgent, StreamProfile, CoreSettings
 @admin.register(UserAgent)
 class UserAgentAdmin(admin.ModelAdmin):
     list_display = (
-        "user_agent_name",
+        "name",
         "user_agent",
         "description",
         "is_active",
         "created_at",
         "updated_at",
     )
-    search_fields = ("user_agent_name", "user_agent", "description")
+    search_fields = ("name", "user_agent", "description")
     list_filter = ("is_active",)
     readonly_fields = ("created_at", "updated_at")
 
 @admin.register(StreamProfile)
 class StreamProfileAdmin(admin.ModelAdmin):
     list_display = (
-        "profile_name",
+        "name",
         "command",
         "is_active",
         "user_agent",
     )
-    search_fields = ("profile_name", "command", "user_agent")
+    search_fields = ("name", "command", "user_agent")
     list_filter = ("is_active",)
 
 @admin.register(CoreSettings)

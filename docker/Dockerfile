@@ -7,9 +7,13 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        build-essential \
         curl \
         gcc \
         git \
+        libpcre3 \
+        libpcre3-dev \
+        python3-dev \
         wget && \
     echo "=== setting up nodejs ===" && \
     curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh && \
@@ -21,12 +25,14 @@ RUN apt-get update && \
     virtualenv /dispatcharrpy && \
     git clone https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
+    rm -rf .git && \
+    cd /app && \
     pip install --no-cache-dir -r requirements.txt && \
     python manage.py collectstatic --noinput && \
     cd /app/frontend && \
     npm install && \
     npm run build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'build' -exec rm -rf '{}' \;
+    find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
 
 FROM python:3.13-slim
 
@@ -45,6 +51,7 @@ RUN apt-get update && \
         ffmpeg \
         gnupg2 \
         gpg \
+        libpcre3 \
         libpq-dev \
         lsb-release \
         nginx \

@@ -5,7 +5,7 @@ from .api_views import (
     ChannelViewSet,
     ChannelGroupViewSet,
     BulkDeleteStreamsAPIView,
-    BulkDeleteChannelsAPIView
+    BulkDeleteChannelsAPIView,
 )
 
 app_name = 'channels'  # for DRF routing

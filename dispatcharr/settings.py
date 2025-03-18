@@ -1,11 +1,13 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'REPLACE_ME_WITH_A_REAL_SECRET'
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_DB = os.environ.get("REDIS_DB", "0")
 
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
@@ -13,14 +15,17 @@ ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
     'apps.api',
     'apps.accounts',
-    'apps.channels',
+    'apps.channels.apps.ChannelsConfig',
     'apps.dashboard',
     'apps.epg',
     'apps.hdhr',
     'apps.m3u',
     'apps.output',
+    'apps.proxy.apps.ProxyConfig',
     'core',
     'drf_yasg',
+    'daphne',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -29,6 +34,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'django_filters',
 ]
 
 
@@ -51,7 +57,7 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [
-            os.path.join(BASE_DIR, 'frontend/build'),
+            os.path.join(BASE_DIR, 'frontend/dist'),
             BASE_DIR / "templates"
         ],
         'APP_DIRS': True,
@@ -68,6 +74,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'dispatcharr.wsgi.application'
 ASGI_APPLICATION = 'dispatcharr.asgi.application'
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(REDIS_HOST, 6379, REDIS_DB)],  # Ensure Redis is running
+        },
+    },
+}
 
 if os.getenv('DB_ENGINE', None) == 'sqlite':
     DATABASES = {
@@ -100,6 +115,10 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
 }
 
 SWAGGER_SETTINGS = {
@@ -122,7 +141,7 @@ STATIC_ROOT = BASE_DIR / 'static'  # Directory where static files will be collec
 
 # Adjust STATICFILES_DIRS to include the paths to the directories that contain your static files.
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'frontend/build/static'),  # React build static files
+    os.path.join(BASE_DIR, 'frontend/dist'),  # React build static files
 ]
 
 
@@ -131,6 +150,13 @@ AUTH_USER_MODEL = 'accounts.User'
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+
+CELERY_BEAT_SCHEDULE = {
+    'fetch-channel-statuses': {
+        'task': 'apps.proxy.tasks.fetch_channel_stats',
+        'schedule': 2.0,
+    },
+}
 
 MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
@@ -146,15 +172,35 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 APPEND_SLASH = True
 
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
-}
-
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': False,  # Optional: Whether to rotate refresh tokens
     'BLACKLIST_AFTER_ROTATION': True,  # Optional: Whether to blacklist refresh tokens
+}
+
+# Redis settings for TS proxy
+REDIS_URL = 'redis://localhost:6379/0'
+
+# Proxy Settings
+PROXY_SETTINGS = {
+    'HLS': {
+        'DEFAULT_URL': '',  # Default HLS stream URL if needed
+        'BUFFER_SIZE': 1000,
+        'USER_AGENT': 'VLC/3.0.20 LibVLC/3.0.20',
+        'CHUNK_SIZE': 8192,
+        'CLIENT_POLL_INTERVAL': 0.1,
+        'MAX_RETRIES': 3,
+        'MIN_SEGMENTS': 12,
+        'MAX_SEGMENTS': 16,
+        'WINDOW_SIZE': 12,
+        'INITIAL_SEGMENTS': 3,
+    },
+    'TS': {
+        'DEFAULT_URL': '',  # Default TS stream URL if needed
+        'BUFFER_SIZE': 1000,
+        'RECONNECT_DELAY': 5,
+        'USER_AGENT': 'VLC/3.0.20 LibVLC/3.0.20',
+        'REDIS_CHUNK_TTL': 60,  # How long to keep chunks in Redis (seconds)
+    }
 }

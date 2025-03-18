@@ -11,7 +11,7 @@ class EPGSourceAdmin(admin.ModelAdmin):
 class ProgramAdmin(admin.ModelAdmin):
     list_display = ['title', 'get_epg_tvg_id', 'start_time', 'end_time']
     list_filter = ['epg__tvg_id', 'tvg_id']
-    search_fields = ['title', 'epg__channel_name']
+    search_fields = ['title', 'epg__name']
 
     def get_epg_tvg_id(self, obj):
         return obj.epg.tvg_id if obj.epg else ''

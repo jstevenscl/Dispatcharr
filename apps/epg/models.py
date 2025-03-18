@@ -17,12 +17,12 @@ class EPGSource(models.Model):
 
 class EPGData(models.Model):
     # Removed the Channel foreign key. We now just store the original tvg_id
-    # and a channel_name (which might simply be the tvg_id if no real channel exists).
+    # and a name (which might simply be the tvg_id if no real channel exists).
     tvg_id = models.CharField(max_length=255, null=True, blank=True)
-    channel_name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
 
     def __str__(self):
-        return f"EPG Data for {self.channel_name}"
+        return f"EPG Data for {self.name}"
 
 class ProgramData(models.Model):
     # Each programme is associated with an EPGData record.

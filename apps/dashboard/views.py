@@ -23,7 +23,7 @@ def dashboard_view(request):
     # Fetch active streams and related channels
     active_streams = Stream.objects.filter(current_viewers__gt=0).prefetch_related('channels')
     active_streams_list = [
-        f"Stream {i + 1}: {stream.custom_url or 'Unknown'} ({stream.current_viewers} viewers)"
+        f"Stream {i + 1}: {stream.url or 'Unknown'} ({stream.current_viewers} viewers)"
         for i, stream in enumerate(active_streams)
     ]
 
@@ -58,7 +58,7 @@ def live_dashboard_data(request):
 
         active_streams = Stream.objects.filter(current_viewers__gt=0)
         active_streams_list = [
-            f"Stream {i + 1}: {stream.custom_url or 'Unknown'} ({stream.current_viewers} viewers)"
+            f"Stream {i + 1}: {stream.url or 'Unknown'} ({stream.current_viewers} viewers)"
             for i, stream in enumerate(active_streams)
         ]
 
@@ -77,4 +77,3 @@ def live_dashboard_data(request):
             "error": str(e)
         }
     return JsonResponse(data)
-

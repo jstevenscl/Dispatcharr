@@ -4,6 +4,8 @@ from core.models import UserAgent
 import re
 from django.dispatch import receiver
 
+CUSTOM_M3U_ACCOUNT_NAME="custom"
+
 class M3UAccount(models.Model):
     """Represents an M3U Account for IPTV streams."""
     name = models.CharField(
@@ -53,6 +55,10 @@ class M3UAccount(models.Model):
         related_name='m3u_accounts',
         help_text="The User-Agent associated with this M3U account."
     )
+    locked = models.BooleanField(
+        default=False,
+        help_text="Protected - can't be deleted or modified"
+    )
 
     def __str__(self):
         return self.name
@@ -75,6 +81,10 @@ class M3UAccount(models.Model):
         for stream in self.streams.all():
             stream.is_active = True
             stream.save()
+
+    @classmethod
+    def get_custom_account(cls):
+        return cls.objects.get(name=CUSTOM_M3U_ACCOUNT_NAME, locked=True)
 
 
 class M3UFilter(models.Model):
@@ -186,7 +196,7 @@ class M3UAccountProfile(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['m3u_account', 'name'], name='unique_account_profile_name')
+            models.UniqueConstraint(fields=['m3u_account', 'name'], name='unique_account_name')
         ]
 
     def __str__(self):
@@ -210,7 +220,7 @@ def create_profile_for_m3u_account(sender, instance, created, **kwargs):
             m3u_account=instance,
             is_default=True,
         )
-        
+
 
         profile.max_streams = instance.max_streams
         profile.save()
