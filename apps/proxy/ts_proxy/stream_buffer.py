@@ -39,6 +39,10 @@ class StreamBuffer:
         self._write_buffer = bytearray()
         self.target_chunk_size = getattr(Config, 'BUFFER_CHUNK_SIZE', 188 * 5644)  # ~1MB default
 
+        # Track timers for proper cleanup
+        self.stopping = False
+        self.fill_timers = []
+
     def add_chunk(self, chunk):
         """Add data with optimized Redis storage and TS packet alignment"""
         if not chunk:
@@ -215,7 +219,26 @@ class StreamBuffer:
             return []
 
     def stop(self):
-        """Stop the buffer and flush any remaining data"""
+        """Stop the buffer and cancel all timers"""
+        # Set stopping flag first to prevent new timer creation
+        self.stopping = True
+        
+        # Cancel all pending timers
+        timers_cancelled = 0
+        for timer in list(self.fill_timers):
+            try:
+                if timer and timer.is_alive():
+                    timer.cancel()
+                    timers_cancelled += 1
+            except Exception as e:
+                logger.error(f"Error canceling timer: {e}")
+        
+        if timers_cancelled:
+            logger.info(f"Cancelled {timers_cancelled} buffer timers for channel {self.channel_id}")
+            
+        # Clear timer list
+        self.fill_timers.clear()
+
         try:
             # Flush any remaining data in the write buffer
             if hasattr(self, '_write_buffer') and len(self._write_buffer) > 0:
@@ -286,3 +309,15 @@ class StreamBuffer:
                 chunk_count += additional
 
         return chunks, client_index + chunk_count
+
+    # Add a new method to safely create timers
+    def schedule_timer(self, delay, callback, *args, **kwargs):
+        """Schedule a timer and track it for proper cleanup"""
+        if self.stopping:
+            return None
+            
+        timer = threading.Timer(delay, callback, args=args, kwargs=kwargs)
+        timer.daemon = True
+        timer.start()
+        self.fill_timers.append(timer)
+        return timer

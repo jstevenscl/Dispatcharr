@@ -497,13 +497,12 @@ class ProxyServer:
         """Stop a channel with proper ownership handling"""
         try:
             logger.info(f"Stopping channel {channel_id}")
-
+            
             # First set a stopping key that clients will check
             if self.redis_client:
                 stop_key = f"ts_proxy:channel:{channel_id}:stopping"
-                # Set with 60 second TTL - enough time for clients to notice
                 self.redis_client.setex(stop_key, 10, "true")
-
+                
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
                 logger.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")
@@ -541,22 +540,41 @@ class ProxyServer:
                 self.release_ownership(channel_id)
                 logger.info(f"Released ownership of channel {channel_id}")
 
-            # Always clean up local resources
+            # Always clean up local resources - WITH SAFE CHECKS
             if channel_id in self.stream_managers:
                 del self.stream_managers[channel_id]
                 logger.info(f"Removed stream manager for channel {channel_id}")
-
+            
+            # Stop buffer and ensure all its timers are cancelled - SAFE CHECK HERE
             if channel_id in self.stream_buffers:
-                del self.stream_buffers[channel_id]
-                logger.info(f"Removed stream buffer for channel {channel_id}")
-
+                buffer = self.stream_buffers[channel_id]
+                # Call stop on buffer to properly shut it down
+                if hasattr(buffer, 'stop'):
+                    try:
+                        buffer.stop()
+                        logger.debug(f"Buffer for channel {channel_id} properly stopped")
+                    except Exception as e:
+                        logger.error(f"Error stopping buffer: {e}")
+                
+                # Save reference and check again before deleting
+                try:
+                    if channel_id in self.stream_buffers:  # Check again to prevent race conditions
+                        del self.stream_buffers[channel_id]
+                        logger.info(f"Removed stream buffer for channel {channel_id}")
+                except KeyError:
+                    logger.debug(f"Buffer for channel {channel_id} already removed")
+            
+            # Clean up client manager - SAFE CHECK HERE TOO
             if channel_id in self.client_managers:
-                del self.client_managers[channel_id]
-                logger.info(f"Removed client manager for channel {channel_id}")
-
+                try:
+                    del self.client_managers[channel_id]
+                    logger.info(f"Removed client manager for channel {channel_id}")
+                except KeyError:
+                    logger.debug(f"Client manager for channel {channel_id} already removed")
+                
             # Clean up Redis keys
             self._clean_redis_keys(channel_id)
-
+            
             return True
         except Exception as e:
             logger.error(f"Error stopping channel {channel_id}: {e}", exc_info=True)
