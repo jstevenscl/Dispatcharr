@@ -145,7 +145,7 @@ const Example = () => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: playlists,
+    data: playlists.filter((playlist) => playlist.locked === false),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: false,

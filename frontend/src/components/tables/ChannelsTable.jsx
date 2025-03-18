@@ -281,6 +281,11 @@ const ChannelsTable = ({}) => {
         accessorKey: 'logo_url',
         enableSorting: false,
         size: 55,
+        mantineTableBodyCellProps: {
+          style: {
+            justifyContent: 'center',
+          },
+        },
         Cell: ({ cell }) => (
           <Grid
             container
