@@ -13,7 +13,7 @@ def lock_or_create_profiles(apps, schema_editor):
             "name": "ffmpeg",
             "command": "ffmpeg",
             "parameters": "-i {streamUrl} -c:v copy -c:a copy -f mpegts pipe:1",
-            "new_parameters": "-user_agent {userAgent} -i {streamUrl} -c:v copy -c:a copy -f mpegts pipe:1",
+            "new_parameters": "-user_agent {userAgent} -i {streamUrl} -c copy -f mpegts pipe:1",
         },
         {
             "name": "streamlink",
