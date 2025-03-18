@@ -36,12 +36,13 @@ class M3UAccountSerializer(serializers.ModelSerializer):
         required=True
     )
     profiles = M3UAccountProfileSerializer(many=True, read_only=True)
+    read_only_fields = ['locked']
 
     class Meta:
         model = M3UAccount
         fields = [
             'id', 'name', 'server_url', 'uploaded_file', 'server_group',
-            'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles'
+            'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked'
         ]
 
 class ServerGroupSerializer(serializers.ModelSerializer):
