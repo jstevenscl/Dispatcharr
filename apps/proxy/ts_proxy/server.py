@@ -823,7 +823,7 @@ class ProxyServer:
             return
 
         # Refresh registry entries for channels we own
-        for channel_id in self.stream_managers.keys():
+        for channel_id in list(self.stream_buffers.keys()):
             # Use standard key pattern
             metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
 
