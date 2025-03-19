@@ -12,6 +12,7 @@ from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
 from .stream_buffer import StreamBuffer
+from .utils import detect_stream_type
 
 logger = logging.getLogger("ts_proxy")
 
@@ -81,6 +82,16 @@ class StreamManager:
         self.stop_requested = False
 
         try:
+            # Check stream type before connecting
+            stream_type = detect_stream_type(self.url)
+            if self.transcode == False and stream_type == 'hls':
+                logger.info(f"Detected HLS stream: {self.url}")
+                logger.info(f"HLS streams will be handled with FFmpeg for now - future version will support HLS natively")
+                # Enable transcoding for HLS streams
+                self.transcode = True
+                # We'll override the stream profile selection with ffmpeg in the transcoding section
+                self.force_ffmpeg = True
+
             # Start health monitor thread
             health_thread = threading.Thread(target=self._monitor_health, daemon=True)
             health_thread.start()
@@ -96,7 +107,20 @@ class StreamManager:
                     # Generate transcode command
                     logger.debug(f"Building transcode command for channel {self.channel_id}")
                     channel = get_object_or_404(Channel, uuid=self.channel_id)
-                    stream_profile = channel.get_stream_profile()
+
+                    # Use FFmpeg specifically for HLS streams
+                    if hasattr(self, 'force_ffmpeg') and self.force_ffmpeg:
+                        from core.models import StreamProfile
+                        try:
+                            stream_profile = StreamProfile.objects.get(name='ffmpeg', locked=True)
+                            logger.info("Using FFmpeg stream profile for HLS content")
+                        except StreamProfile.DoesNotExist:
+                            # Fall back to channel's profile if FFmpeg not found
+                            stream_profile = channel.get_stream_profile()
+                            logger.warning("FFmpeg profile not found, using channel default profile")
+                    else:
+                        stream_profile = channel.get_stream_profile()
+
                     self.transcode_cmd = stream_profile.build_command(self.url, self.user_agent)
                     # Start command process for transcoding
                     logger.debug(f"Starting transcode process: {self.transcode_cmd}")
@@ -225,10 +249,10 @@ class StreamManager:
                         break
 
                     timeout = min(2 ** self.retry_count, 30)
-                    
+
                     # When a connection fails and reconnect is needed:
-                    self.reconnecting = True 
-                    
+                    self.reconnecting = True
+
                     # Cancel all existing buffer timers during reconnect
                     for timer in list(self._buffer_check_timers):
                         try:
@@ -237,10 +261,10 @@ class StreamManager:
                         except Exception as e:
                             logger.error(f"Error canceling buffer timer: {e}")
                     self._buffer_check_timers = []
-                    
+
                     logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count})")
                     time.sleep(timeout)
-                    
+
                     self.reconnecting = False  # Reset flag after sleep
 
         except Exception as e:
@@ -272,7 +296,7 @@ class StreamManager:
         """Stop the stream manager and cancel all timers"""
         # Add at the beginning of your stop method
         self.stopping = True
-        
+
         # Cancel all buffer check timers
         for timer in list(self._buffer_check_timers):
             try:
@@ -280,9 +304,9 @@ class StreamManager:
                     timer.cancel()
             except Exception as e:
                 logger.error(f"Error canceling buffer check timer: {e}")
-        
+
         self._buffer_check_timers.clear()
-        
+
         # Rest of your existing stop method...
         # Set the flag first
         self.stop_requested = True
@@ -525,10 +549,10 @@ class StreamManager:
             if getattr(self, 'stopping', False) or getattr(self, 'reconnecting', False):
                 logger.debug(f"Buffer check aborted - channel {self.buffer.channel_id} is stopping or reconnecting")
                 return
-            
+
             # Clean up completed timers
             self._buffer_check_timers = [t for t in self._buffer_check_timers if t.is_alive()]
-            
+
             if hasattr(self.buffer, 'index') and hasattr(self.buffer, 'channel_id'):
                 current_buffer_index = self.buffer.index
                 initial_chunks_needed = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
@@ -541,7 +565,7 @@ class StreamManager:
                 else:
                     # Still waiting, log progress and schedule another check
                     logger.debug(f"Buffer filling for channel {channel_id}: {current_buffer_index}/{initial_chunks_needed} chunks")
-                    
+
                     # Schedule another check - NOW WITH TRACKING
                     if not getattr(self, 'stopping', False):
                         timer = threading.Timer(0.5, self._check_buffer_and_set_state)

@@ -1,5 +1,4 @@
 .DS_Store
-__pycache__/
 **/__pycache__/
 **/.vscode/
 *.pyc
@@ -9,8 +8,6 @@ staticfiles/
 docker/DockerfileAIO
 docker/Dockerfile DEV
 static/
-docker/DockerfileAIO
-docker/Dockerfile DEV
 data/
 .next
 next-env.d.ts
