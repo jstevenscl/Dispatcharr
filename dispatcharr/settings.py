@@ -151,6 +151,19 @@ AUTH_USER_MODEL = 'accounts.User'
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 
+# Configure Redis key prefix
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    'prefix': 'celery-task:',  # Set the Redis key prefix for Celery
+}
+
+# Set TTL (Time-to-Live) for task results (in seconds)
+CELERY_RESULT_EXPIRES = 3600  # 1 hour TTL for task results
+
+# Optionally, set visibility timeout for task retries (if using Redis)
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'visibility_timeout': 3600,  # Time in seconds that a task remains invisible during retries
+}
+
 CELERY_BEAT_SCHEDULE = {
     'fetch-channel-statuses': {
         'task': 'apps.proxy.tasks.fetch_channel_stats',

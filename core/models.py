@@ -142,6 +142,7 @@ class StreamProfile(models.Model):
 
 DEFAULT_USER_AGENT_KEY= slugify("Default User-Agent")
 DEFAULT_STREAM_PROFILE_KEY = slugify("Default Stream Profile")
+STREAM_HASH_KEY = slugify("M3U Hash Key")
 
 class CoreSettings(models.Model):
     key = models.CharField(
@@ -166,3 +167,7 @@ class CoreSettings(models.Model):
     @classmethod
     def get_default_stream_profile_id(cls):
         return cls.objects.get(key=DEFAULT_STREAM_PROFILE_KEY).value
+
+    @classmethod
+    def get_m3u_hash_key(cls):
+        return cls.objects.get(key=STREAM_HASH_KEY).value

@@ -8,9 +8,10 @@ from celery import shared_task, current_app
 from django.conf import settings
 from django.core.cache import cache
 from .models import M3UAccount
-from apps.channels.models import Stream
+from apps.channels.models import Stream, ChannelGroup, ChannelGroupM3UAccount
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -184,13 +185,23 @@ def refresh_single_m3u_account(account_id):
                 "tvg_id": current_info["tvg_id"]
             }
             try:
-                obj, created = Stream.objects.update_or_create(
-                    name=current_info["name"],
-                    url=line,
+                channel_group, created = ChannelGroup.objects.get_or_create(name=current_info["group_title"])
+                ChannelGroupM3UAccount.objects.get_or_create(
+                    channel_group=channel_group,
                     m3u_account=account,
-                    group_name=current_info["group_title"],
-                    defaults=defaults
                 )
+
+                stream_props = defaults | {
+                    "name": current_info["name"],
+                    "url": line,
+                    "m3u_account": account,
+                    "channel_group": channel_group,
+                    "last_seen": timezone.now(),
+                }
+
+                stream_hash = Stream.generate_hash_key(stream_props)
+                obj, created = Stream.update_or_create_by_hash(stream_hash, **stream_props)
+
                 if created:
                     created_count += 1
                 else:

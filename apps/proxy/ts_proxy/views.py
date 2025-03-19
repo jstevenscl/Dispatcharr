@@ -101,7 +101,7 @@ def stream_ts(request, channel_id):
             success = proxy_server.initialize_channel(stream_url, channel_id, stream_user_agent, transcode)
             if proxy_server.redis_client:
                 metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-                profile_value = str(stream_profile)
+                profile_value = stream_profile.id
                 proxy_server.redis_client.hset(metadata_key, "profile", profile_value)
             if not success:
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)

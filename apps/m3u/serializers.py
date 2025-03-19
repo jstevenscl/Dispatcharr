@@ -1,13 +1,16 @@
 from rest_framework import serializers
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
+from apps.channels.models import ChannelGroup
+from apps.channels.serializers import ChannelGroupM3UAccountSerializer
 
 class M3UFilterSerializer(serializers.ModelSerializer):
     """Serializer for M3U Filters"""
+    channel_groups = ChannelGroupM3UAccountSerializer(source='m3u_account', many=True)
 
     class Meta:
         model = M3UFilter
-        fields = ['id', 'filter_type', 'regex_pattern', 'exclude']
+        fields = ['id', 'filter_type', 'regex_pattern', 'exclude', 'channel_groups']
 
 from rest_framework import serializers
 from .models import M3UAccountProfile

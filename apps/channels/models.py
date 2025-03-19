@@ -6,11 +6,24 @@ from core.models import StreamProfile, CoreSettings
 from core.utils import redis_client
 import logging
 import uuid
+from datetime import datetime
+import hashlib
+import json
 
 logger = logging.getLogger(__name__)
 
 # If you have an M3UAccount model in apps.m3u, you can still import it:
 from apps.m3u.models import M3UAccount
+
+class ChannelGroup(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    def related_channels(self):
+        # local import if needed to avoid cyc. Usually fine in a single file though
+        return Channel.objects.filter(channel_group=self)
+
+    def __str__(self):
+        return self.name
 
 class Stream(models.Model):
     """
@@ -30,7 +43,13 @@ class Stream(models.Model):
     local_file = models.FileField(upload_to='uploads/', blank=True, null=True)
     current_viewers = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
-    group_name = models.CharField(max_length=255, blank=True, null=True)
+    channel_group = models.ForeignKey(
+        ChannelGroup,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='streams'
+    )
     stream_profile = models.ForeignKey(
         StreamProfile,
         null=True,
@@ -42,6 +61,13 @@ class Stream(models.Model):
         default=False,
         help_text="Whether this is a user-created stream or from an M3U account"
     )
+    stream_hash = models.CharField(
+        max_length=255,
+        null=True,
+        unique=True,
+        help_text="Unique hash for this stream from the M3U account"
+    )
+    last_seen = models.DateTimeField(db_index=True, default=datetime.now)
 
     class Meta:
         # If you use m3u_account, you might do unique_together = ('name','url','m3u_account')
@@ -52,6 +78,43 @@ class Stream(models.Model):
     def __str__(self):
         return self.name or self.url or f"Stream ID {self.id}"
 
+    @classmethod
+    def generate_hash_key(cls, stream):
+        # Check if the passed object is an instance or a dictionary
+        if isinstance(stream, dict):
+            # Handle dictionary case (e.g., when the input is a dict of stream data)
+            hash_parts = {key: stream[key] for key in CoreSettings.get_m3u_hash_key().split(",") if key in stream}
+            if 'm3u_account_id' in stream:
+                hash_parts['m3u_account_id'] = stream['m3u_account_id']
+        elif isinstance(stream, Stream):
+            # Handle the case where the input is a Stream instance
+            key_parts = CoreSettings.get_m3u_hash_key().split(",")
+            hash_parts = {key: getattr(stream, key) for key in key_parts if hasattr(stream, key)}
+            if stream.m3u_account:
+                hash_parts['m3u_account_id'] = stream.m3u_account.id
+        else:
+            raise ValueError("stream must be either a dictionary or a Stream instance")
+
+        # Serialize and hash the dictionary
+        serialized_obj = json.dumps(hash_parts, sort_keys=True)  # sort_keys ensures consistent ordering
+        hash_object = hashlib.sha256(serialized_obj.encode())
+        return hash_object.hexdigest()
+
+    @classmethod
+    def update_or_create_by_hash(cls, hash_value, **fields_to_update):
+        try:
+            # Try to find the Stream object with the given hash
+            stream = cls.objects.get(stream_hash=hash_value)
+            # If it exists, update the fields
+            for field, value in fields_to_update.items():
+                setattr(stream, field, value)
+            stream.save()  # Save the updated object
+            return stream, False  # False means it was updated, not created
+        except cls.DoesNotExist:
+            # If it doesn't exist, create a new object with the given hash
+            fields_to_update['stream_hash'] = hash_value  # Make sure the hash field is set
+            stream = cls.objects.create(**fields_to_update)
+            return stream, True  # True means it was created
 
 class ChannelManager(models.Manager):
     def active(self):
@@ -95,7 +158,7 @@ class Channel(models.Model):
         related_name='channels'
     )
 
-    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
 
     def clean(self):
         # Enforce unique channel_number within a given group
@@ -198,16 +261,6 @@ class Channel(models.Model):
         if current_count > 0:
             redis_client.decr(profile_connections_key)
 
-class ChannelGroup(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-
-    def related_channels(self):
-        # local import if needed to avoid cyc. Usually fine in a single file though
-        return Channel.objects.filter(channel_group=self)
-
-    def __str__(self):
-        return self.name
-
 class ChannelStream(models.Model):
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE)
     stream = models.ForeignKey(Stream, on_delete=models.CASCADE)
@@ -215,3 +268,22 @@ class ChannelStream(models.Model):
 
     class Meta:
         ordering = ['order']  # Ensure streams are retrieved in order
+
+class ChannelGroupM3UAccount(models.Model):
+    channel_group = models.ForeignKey(
+        ChannelGroup,
+        on_delete=models.CASCADE,
+        related_name='m3u_account'
+    )
+    m3u_account = models.ForeignKey(
+        M3UAccount,
+        on_delete=models.CASCADE,
+        related_name='channel_group'
+    )
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('channel_group', 'm3u_account')
+
+    def __str__(self):
+        return f"{self.channel_group.name} - {self.m3u_account.name} (Enabled: {self.enabled})"
