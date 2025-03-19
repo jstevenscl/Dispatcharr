@@ -856,4 +856,24 @@ export default class API {
     const retval = await response.json();
     return retval;
   }
+
+  static async matchEpg() {
+    try {
+      const response = await fetch(`${host}/api/channels/channels/match-epg/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to start EPG matching: ${errorText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      throw new Error(`Error starting EPG matching: ${error.message}`);
+    }
+  }
+
 }

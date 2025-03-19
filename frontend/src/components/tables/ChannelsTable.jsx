@@ -370,30 +370,15 @@ const ChannelsTable = ({}) => {
     }
   };
 
-  // ─────────────────────────────────────────────────────────
-  // The new "Match EPG" button logic
-  // ─────────────────────────────────────────────────────────
   const matchEpg = async () => {
     try {
-      // Hit our new endpoint that triggers the fuzzy matching Celery task
-      const resp = await fetch('/api/channels/channels/match-epg/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-        },
-      });
-
-      if (resp.ok) {
-        showAlert('EPG matching task started!');
-      } else {
-        const text = await resp.text();
-        showAlert(`Failed to start EPG matching: ${text}`);
-      }
+      await API.matchEpg();
+      showAlert('EPG matching task started!');
     } catch (err) {
-      showAlert(`Error: ${err.message}`);
+      showAlert(err.message);
     }
   };
+
 
   const closeChannelForm = () => {
     setChannel(null);
