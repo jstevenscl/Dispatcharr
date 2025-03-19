@@ -84,7 +84,7 @@ class StreamManager:
         try:
             # Check stream type before connecting
             stream_type = detect_stream_type(self.url)
-            if stream_type == 'hls':
+            if self.transcode == False and stream_type == 'hls':
                 logger.info(f"Detected HLS stream: {self.url}")
                 logger.info(f"HLS streams will be handled with FFmpeg for now - future version will support HLS natively")
                 # Enable transcoding for HLS streams
