@@ -35,3 +35,15 @@ def detect_stream_type(url):
 
     # Default to TS
     return 'ts'
+
+def get_client_ip(request):
+    """
+    Extract client IP address from request.
+    Handles cases where request is behind a proxy by checking X-Forwarded-For.
+    """
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip

@@ -10,6 +10,7 @@ from apps.proxy.config import TSConfig as Config
 from . import proxy_server
 from .channel_status import ChannelStatus
 from .stream_generator import create_stream_generator
+from .utils import get_client_ip
 import logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
@@ -20,14 +21,6 @@ from rest_framework.permissions import IsAuthenticated
 # Configure logging properly
 logger = logging.getLogger("ts_proxy")
 
-
-def get_client_ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
 
 @api_view(['GET'])
 def stream_ts(request, channel_id):
