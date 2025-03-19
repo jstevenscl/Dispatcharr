@@ -376,22 +376,14 @@ const ChannelsTable = ({}) => {
   const matchEpg = async () => {
     try {
       // Hit our new endpoint that triggers the fuzzy matching Celery task
-      const resp = await fetch('/api/channels/channels/match-epg/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-        },
-      });
+      await API.matchEpg();
 
-      if (resp.ok) {
-        showAlert('EPG matching task started!');
-      } else {
-        const text = await resp.text();
-        showAlert(`Failed to start EPG matching: ${text}`);
-      }
+      notifications.show({
+        title: 'EPG matching task started!',
+        // style: { width: '200px', left: '200px' },
+      });
     } catch (err) {
-      showAlert(`Error: ${err.message}`);
+      notifications.show(`Error: ${err.message}`);
     }
   };
 
