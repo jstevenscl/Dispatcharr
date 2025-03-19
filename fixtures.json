@@ -77,7 +77,7 @@
       "name": "Preferred Region",
       "value": "us"
     }
-  }
+  },
   {
   "model": "core.coresettings",
   "fields": {
