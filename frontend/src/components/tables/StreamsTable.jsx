@@ -107,7 +107,7 @@ const StreamsTable = ({}) => {
         header: 'Name',
         accessorKey: 'name',
         mantineTableHeadCellProps: {
-          style: { textAlign: 'center' }, // Center-align the header
+          style: { textAlign: 'center', backgroundColor: 'rgb(56, 58, 63)' }, // Center-align the header
         },
         Header: ({ column }) => (
           <TextInput
