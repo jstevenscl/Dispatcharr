@@ -71,12 +71,13 @@
   },
   {
     "model": "core.coresettings",
+    "pk": 3,
     "fields": {
       "key": "preferred-region",
       "name": "Preferred Region",
       "value": "us"
     }
-  },
+  }
   {
   "model": "core.coresettings",
   "fields": {
