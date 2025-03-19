@@ -46,7 +46,7 @@ const useAuthStore = create((set, get) => ({
     const tokenExpiration = localStorage.getItem('tokenExpiration');
     let accessToken = null;
     if (isTokenExpired(tokenExpiration)) {
-      accessToken = await get().refreshToken();
+      accessToken = await get().getRefreshToken();
     } else {
       accessToken = localStorage.getItem('accessToken');
     }
@@ -77,7 +77,7 @@ const useAuthStore = create((set, get) => ({
   },
 
   // Action to refresh the token
-  refreshToken: async () => {
+  getRefreshToken: async () => {
     const refreshToken = localStorage.getItem('refreshToken');
     if (!refreshToken) return;
 
@@ -92,7 +92,7 @@ const useAuthStore = create((set, get) => ({
         localStorage.setItem('accessToken', data.access);
         localStorage.setItem('tokenExpiration', decodeToken(data.access));
 
-        return true;
+        return data.access;
       }
     } catch (error) {
       console.error('Token refresh failed:', error);

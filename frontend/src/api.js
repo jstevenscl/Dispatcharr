@@ -856,4 +856,17 @@ export default class API {
     const retval = await response.json();
     return retval;
   }
+
+  static async matchEpg() {
+    const response = await fetch(`${host}/api/channels/channels/match-epg/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
 }

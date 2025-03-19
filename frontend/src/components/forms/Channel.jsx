@@ -60,7 +60,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       name: '',
       channel_number: '',
       channel_group_id: '',
-      stream_profile_id: '0',
+      stream_profile_id: null,
       tvg_id: '',
       tvg_name: '',
     },
@@ -104,7 +104,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         name: channel.name,
         channel_number: channel.channel_number,
         channel_group_id: channel.channel_group?.id,
-        stream_profile_id: channel.stream_profile_id || '0',
+        stream_profile_id: channel.stream_profile_id,
         tvg_id: channel.tvg_id,
         tvg_name: channel.tvg_name,
       });
@@ -307,10 +307,12 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     ? formik.touched.stream_profile_id
                     : ''
                 }
-                data={streamProfiles.map((option) => ({
-                  value: `${option.id}`,
-                  label: option.name,
-                }))}
+                data={[{ value: null, label: '(use default)' }].concat(
+                  streamProfiles.map((option) => ({
+                    value: `${option.id}`,
+                    label: option.name,
+                  }))
+                )}
               />
 
               <TextInput
