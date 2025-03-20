@@ -8,6 +8,7 @@ import React, {
 import useStreamsStore from './store/streams';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from './store/channels';
+import usePlaylistsStore from './store/playlists';
 
 export const WebsocketContext = createContext(false, null, () => {});
 
@@ -17,6 +18,7 @@ export const WebsocketProvider = ({ children }) => {
 
   const { fetchStreams } = useStreamsStore();
   const { setChannelStats } = useChannelsStore();
+  const { setRefreshProgress } = usePlaylistsStore();
 
   const ws = useRef(null);
 
@@ -52,12 +54,16 @@ export const WebsocketProvider = ({ children }) => {
       event = JSON.parse(event.data);
       switch (event.data.type) {
         case 'm3u_refresh':
+          console.log('inside m3u_refresh event');
           if (event.data.success) {
             fetchStreams();
             notifications.show({
               message: event.data.message,
               color: 'green.5',
             });
+          } else if (event.data.progress) {
+            console.log('calling set progress');
+            setRefreshProgress(event.data.account, event.data.progress);
           }
           break;
 

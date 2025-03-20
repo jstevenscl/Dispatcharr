@@ -4,7 +4,8 @@ import re
 import requests
 import os
 from celery.app.control import Inspect
-from celery import shared_task, current_app
+from celery.result import AsyncResult
+from celery import shared_task, current_app, group
 from django.conf import settings
 from django.core.cache import cache
 from .models import M3UAccount
@@ -12,10 +13,44 @@ from apps.channels.models import Stream, ChannelGroup, ChannelGroupM3UAccount
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.utils import timezone
+import time
+from channels.layers import get_channel_layer
+import json
+from core.utils import redis_client
+from core.models import CoreSettings
+from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
 
-LOCK_EXPIRE = 120  # Lock expires after 120 seconds
+LOCK_EXPIRE = 300
+BATCH_SIZE = 10000
+SKIP_EXTS = {}
+
+def fetch_m3u_lines(account):
+    """Fetch M3U file lines efficiently."""
+    if account.server_url:
+        headers = {"User-Agent": account.user_agent.user_agent}
+        logger.info(f"Fetching from URL {account.server_url}")
+        try:
+            # Perform the HTTP request with stream and handle any potential issues
+            with requests.get(account.server_url, timeout=60, headers=headers, stream=True) as response:
+                response.raise_for_status()  # This will raise an HTTPError if the status is not 200
+                # Return an iterator for the lines
+                return response.iter_lines(decode_unicode=True)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
+            return []  # Return an empty list in case of error
+    elif account.uploaded_file:
+        try:
+            # Open the file and return the lines as a list or iterator
+            with open(account.uploaded_file.path, 'r', encoding='utf-8') as f:
+                return f.readlines()  # Ensure you return lines from the file, not the file object
+        except IOError as e:
+            logger.error(f"Error opening file {account.uploaded_file.path}: {e}")
+            return []  # Return an empty list in case of error
+
+    # Return an empty list if neither server_url nor uploaded_file is available
+    return []
 
 def parse_extinf_line(line: str) -> dict:
     """
@@ -36,7 +71,7 @@ def parse_extinf_line(line: str) -> dict:
     if len(parts) != 2:
         return None
     attributes_part, display_name = parts[0], parts[1].strip()
-    attrs = dict(re.findall(r'(\w+)=["\']([^"\']+)["\']', attributes_part))
+    attrs = dict(re.findall(r'([^\s]+)=["\']([^"\']+)["\']', attributes_part))
     # Use tvg-name attribute if available; otherwise, use the display name.
     name = attrs.get('tvg-name', display_name)
     return {
@@ -45,20 +80,18 @@ def parse_extinf_line(line: str) -> dict:
         'name': name
     }
 
-def _get_group_title(extinf_line: str) -> str:
-    """Extract group title from EXTINF line."""
-    match = re.search(r'group-title="([^"]*)"', extinf_line)
-    return match.group(1) if match else "Default Group"
+import re
+import logging
 
-def _matches_filters(stream_name: str, group_name: str, filters) -> bool:
-    logger.info("Testing filter")
-    for f in filters:
-        pattern = f.regex_pattern
+logger = logging.getLogger(__name__)
+
+def _matches_filters(stream_name: str, group_name: str, filters):
+    """Check if a stream or group name matches a precompiled regex filter."""
+    compiled_filters = [(re.compile(f.regex_pattern, re.IGNORECASE), f.exclude) for f in filters]
+    for pattern, exclude in compiled_filters:
         target = group_name if f.filter_type == 'group' else stream_name
-        logger.info(f"Testing {pattern} on: {target}")
-        if re.search(pattern, target or '', re.IGNORECASE):
-            logger.debug(f"Filter matched: {pattern} on {target}. Exclude={f.exclude}")
-            return f.exclude
+        if pattern.search(target or ''):
+            return exclude
     return False
 
 def acquire_lock(task_name, account_id):
@@ -87,138 +120,254 @@ def refresh_m3u_accounts():
     logger.info(msg)
     return msg
 
+def check_field_lengths(streams_to_create):
+    for stream in streams_to_create:
+        for field, value in stream.__dict__.items():
+            if isinstance(value, str) and len(value) > 255:
+                print(f"{field} --- {value}")
+
+        print("")
+        print("")
+
+@shared_task
+def process_groups(account, group_names):
+    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(name__in=group_names)}
+    logger.info(f"Currently {len(existing_groups)} existing groups")
+
+    groups = []
+    groups_to_create = []
+    for group_name in group_names:
+        if group_name in existing_groups:
+            groups.append(existing_groups[group_name])
+        else:
+            groups_to_create.append(ChannelGroup(
+                name=group_name,
+            ))
+
+    if groups_to_create:
+        logger.info(f"Creating {len(groups_to_create)} groups")
+        created = ChannelGroup.bulk_create_and_fetch(groups_to_create)
+        logger.info(f"Created {len(created)} groups")
+        groups.extend(created)
+
+    relations = []
+    for group in groups:
+        relations.append(ChannelGroupM3UAccount(
+            channel_group=group,
+            m3u_account=account,
+        ))
+
+    ChannelGroupM3UAccount.objects.bulk_create(
+        relations,
+        ignore_conflicts=True
+    )
+
+@shared_task
+def process_m3u_batch(account_id, batch, group_names, hash_keys):
+    """Processes a batch of M3U streams using bulk operations."""
+    account = M3UAccount.objects.get(id=account_id)
+    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(name__in=group_names)}
+
+    streams_to_create = []
+    streams_to_update = []
+    stream_hashes = {}
+
+    # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
+
+    logger.info(f"Processing batch of {len(batch)}")
+    for stream_info in batch:
+        name, url = stream_info["name"], stream_info["url"]
+        tvg_id, tvg_logo = stream_info["attributes"].get("tvg-id", ""), stream_info["attributes"].get("tvg-logo", "")
+        group_title = stream_info["attributes"].get("group-title", "Default Group")
+
+        # if any(url.lower().endswith(ext) for ext in SKIP_EXTS) or len(url) > 2000:
+        #     continue
+
+        # if _matches_filters(name, group_title, account.filters.all()):
+        #     continue
+
+        # if any(compiled_pattern.search(current_info['name']) for ftype, compiled_pattern in compiled_filters if ftype == 'name'):
+        #     excluded_count += 1
+        #     current_info = None
+        #     continue
+
+        try:
+            stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
+            if redis_client.exists(f"m3u_refresh:{stream_hash}"):
+                # duplicate already processed by another batch
+                continue
+
+            redis_client.set(f"m3u_refresh:{stream_hash}", "true")
+            stream_props = {
+                "name": name,
+                "url": url,
+                "logo_url": tvg_logo,
+                "tvg_id": tvg_id,
+                "m3u_account": account,
+                "channel_group": existing_groups[group_title],
+                "stream_hash": stream_hash,
+            }
+
+            if stream_hash not in stream_hashes:
+                stream_hashes[stream_hash] = stream_props
+        except Exception as e:
+            logger.error(f"Failed to process stream {name}: {e}")
+            logger.error(json.dumps(stream_info))
+
+    existing_streams = {s.stream_hash: s for s in Stream.objects.filter(stream_hash__in=stream_hashes.keys())}
+    logger.info(f"Hashed {len(stream_hashes.keys())} unique streams")
+
+    for stream_hash, stream_props in stream_hashes.items():
+        if stream_hash in existing_streams:
+            obj = existing_streams[stream_hash]
+            changed = False
+            for key, value in stream_props.items():
+                if getattr(obj, key) == value:
+                    continue
+                changed = True
+                setattr(obj, key, value)
+
+            obj.last_seen = timezone.now()
+            if changed:
+                streams_to_update.append(obj)
+                del existig_streams[stream_hash]
+            else:
+                existing_streams[stream_hash] = obj
+        else:
+            streams_to_create.append(Stream(**stream_props))
+
+    try:
+        if streams_to_create:
+            Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
+        if streams_to_update:
+            Stream.objects.bulk_update(streams_to_update, stream_props.keys())
+        if len(existing_streams.keys()) > 0:
+            Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
+    except Exception as e:
+        logger.error(f"Bulk create failed: {str(e)}")
+        check_field_lengths(streams_to_create)
+        # check_field_lengths(streams_to_update)
+
+
+    return f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
+
 @shared_task
 def refresh_single_m3u_account(account_id):
-    logger.info(f"Task {refresh_single_m3u_account.request.id}: Starting refresh for account_id={account_id}")
-
+    """Splits M3U processing into chunks and dispatches them as parallel tasks."""
     if not acquire_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
+
+    # Record start time
+    start_time = time.time()
+    send_progress_update(0, account_id)
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
         filters = list(account.filters.all())
-        logger.info(f"Found active M3UAccount (id={account.id}, name={account.name}).")
     except M3UAccount.DoesNotExist:
-        msg = f"M3UAccount with ID={account_id} not found or inactive."
-        logger.warning(msg)
         release_lock('refresh_single_m3u_account', account_id)
-        return msg
-    except Exception as e:
-        logger.error(f"Error fetching M3UAccount {account_id}: {e}")
-        release_lock('refresh_single_m3u_account', account_id)
-        return str(e)
+        return f"M3UAccount with ID={account_id} not found or inactive."
 
-    try:
-        lines = []
-        if account.server_url:
-            if not account.user_agent:
-                err_msg = f"User-Agent not provided for account id {account_id}."
-                logger.error(err_msg)
-                release_lock('refresh_single_m3u_account', account_id)
-                return err_msg
+    # Fetch M3U lines and handle potential issues
+    # lines = fetch_m3u_lines(account)  # Extracted fetch logic into separate function
 
-            headers = {"User-Agent": account.user_agent.user_agent}
-            response = requests.get(account.server_url, timeout=60, headers=headers)
-            response.raise_for_status()
-            lines = response.text.splitlines()
-        elif account.uploaded_file:
-            file_path = account.uploaded_file.path
-            with open(file_path, 'r', encoding='utf-8') as f:
-                lines = f.read().splitlines()
-        else:
-            err_msg = f"No server_url or uploaded_file provided for account_id={account_id}."
+    lines = []
+    if account.server_url:
+        if not account.user_agent:
+            err_msg = f"User-Agent not provided for account id {account_id}."
             logger.error(err_msg)
             release_lock('refresh_single_m3u_account', account_id)
             return err_msg
-    except Exception as e:
-        err_msg = f"Failed fetching M3U: {e}"
-        logger.error(err_msg)
-        release_lock('refresh_single_m3u_account', account_id)
-        return err_msg
 
-    logger.info(f"M3U has {len(lines)} lines. Now parsing for Streams.")
-    skip_exts = ('.mkv', '.mp4', '.m4v', '.wav', '.avi', '.flv', '.m4p', '.mpg',
-                 '.mpeg', '.m2v', '.mp2', '.mpe', '.mpv')
+        headers = {"User-Agent": account.user_agent.user_agent}
+        response = requests.get(account.server_url, timeout=60, headers=headers)
+        response.raise_for_status()
+        lines = response.text.splitlines()
+    elif account.uploaded_file:
+        file_path = account.uploaded_file.path
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.read().splitlines()
 
-    created_count, updated_count, excluded_count = 0, 0, 0
-    current_info = None
+    extinf_data = []
+    stream_hashes = []
+    groups = set("Default Group")
 
     for line in lines:
         line = line.strip()
-        if line.startswith('#EXTINF'):
-            extinf = parse_extinf_line(line)
-            if not extinf:
-                continue
-            name = extinf['name']
-            tvg_id = extinf['attributes'].get('tvg-id', '')
-            tvg_logo = extinf['attributes'].get('tvg-logo', '')
-            # Prefer group-title from attributes if available.
-            group_title = extinf['attributes'].get('group-title', _get_group_title(line))
-            logger.debug(f"Parsed EXTINF: name={name}, logo_url={tvg_logo}, tvg_id={tvg_id}, group_title={group_title}")
-            current_info = {
-                "name": name,
-                "logo_url": tvg_logo,
-                "group_title": group_title,
-                "tvg_id": tvg_id,
-            }
-        elif current_info and line.startswith('http'):
-            lower_line = line.lower()
-            if any(lower_line.endswith(ext) for ext in skip_exts):
-                logger.debug(f"Skipping file with unsupported extension: {line}")
-                current_info = None
-                continue
+        if line.startswith("#EXTINF"):
+            parsed = parse_extinf_line(line)
+            if parsed:
+                groups.add(parsed["attributes"].get("group-title", "Default Group"))
+                extinf_data.append(parsed)
+        elif extinf_data and line.startswith("http"):
+            # Associate URL with the last EXTINF line
+            extinf_data[-1]["url"] = line
 
-            if len(line) > 2000:
-                logger.warning(f"Stream URL too long, skipping: {line}")
-                excluded_count += 1
-                current_info = None
-                continue
+    if not extinf_data:
+        release_lock('refresh_single_m3u_account', account_id)
+        return "No valid EXTINF data found."
 
-            if _matches_filters(current_info['name'], current_info['group_title'], filters):
-                logger.info(f"Stream excluded by filter: {current_info['name']} in group {current_info['group_title']}")
-                excluded_count += 1
-                current_info = None
-                continue
+    groups = list(groups)
+    # Retrieve all unique groups so we can create / associate them before
+    # processing the streams themselves
+    process_groups(account, groups)
 
-            defaults = {
-                "logo_url": current_info["logo_url"],
-                "tvg_id": current_info["tvg_id"]
-            }
-            try:
-                channel_group, created = ChannelGroup.objects.get_or_create(name=current_info["group_title"])
-                ChannelGroupM3UAccount.objects.get_or_create(
-                    channel_group=channel_group,
-                    m3u_account=account,
-                )
+    hash_keys = CoreSettings.get_m3u_hash_key().split(",")
 
-                stream_props = defaults | {
-                    "name": current_info["name"],
-                    "url": line,
-                    "m3u_account": account,
-                    "channel_group": channel_group,
-                    "last_seen": timezone.now(),
-                }
+    # Break into batches and process in parallel
+    batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
+    task_group = group(process_m3u_batch.s(account_id, batch, groups, hash_keys) for batch in batches)
 
-                stream_hash = Stream.generate_hash_key(stream_props)
-                obj, created = Stream.update_or_create_by_hash(stream_hash, **stream_props)
+    total_batches = len(batches)
+    completed_batches = 0
+    logger.debug(f"Dispatched {len(batches)} parallel tasks for account_id={account_id}.")
 
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
-            except Exception as e:
-                logger.error(f"Failed to update/create stream {current_info['name']}: {e}")
-            finally:
-                current_info = None
+    # result = task_group.apply_async()
+    result = task_group.apply_async()
 
-    logger.info(f"Completed parsing. Created {created_count} new Streams, updated {updated_count} existing Streams, excluded {excluded_count} Streams.")
+    while completed_batches < total_batches:
+        for async_result in result:
+            if async_result.ready():  # If the task has completed
+                task_result = async_result.result  # The result of the task
+                logger.debug(f"Task completed with result: {task_result}")
+                completed_batches += 1
+
+                # Calculate progress
+                progress = int((completed_batches / total_batches) * 100)
+
+                # Send progress update via Channels
+                send_progress_update(progress, account_id)
+
+                # Optionally remove completed task from the group to prevent processing it again
+                result.remove(async_result)
+            else:
+                logger.debug(f"Task is still running.")
+
+    end_time = time.time()
+
+    # Calculate elapsed time
+    elapsed_time = end_time - start_time
+
+    print(f"Function took {elapsed_time} seconds to execute.")
+
     release_lock('refresh_single_m3u_account', account_id)
+
+    cursor = 0
+    while True:
+        cursor, keys = redis_client.scan(cursor, match=f"m3u_refresh:*", count=BATCH_SIZE)
+        if keys:
+            redis_client.delete(*keys)  # Delete the matching keys
+        if cursor == 0:
+            break
+
+    return f"Dispatched jobs complete."
+
+def send_progress_update(progress, account_id):
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
-        "updates",
+        'updates',
         {
-            "type": "update",
-            "data": {"success": True, "type": "m3u_refresh", "message": "M3U refresh completed successfully"}
-        },
+            'type': 'update',
+            "data": {"progress": progress, "type": "m3u_refresh", "account": account_id}
+        }
     )
-    return f"Account {account_id} => Created {created_count}, updated {updated_count}, excluded {excluded_count} Streams."

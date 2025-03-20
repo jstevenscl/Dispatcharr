@@ -25,6 +25,16 @@ class ChannelGroup(models.Model):
     def __str__(self):
         return self.name
 
+    @classmethod
+    def bulk_create_and_fetch(cls, objects):
+        # Perform the bulk create operation
+        cls.objects.bulk_create(objects)
+
+        # Use a unique field to fetch the created objects (assuming 'name' is unique)
+        created_objects = cls.objects.filter(name__in=[obj.name for obj in objects])
+
+        return created_objects
+
 class Stream(models.Model):
     """
     Represents a single stream (e.g. from an M3U source or custom URL).
@@ -38,7 +48,7 @@ class Stream(models.Model):
         blank=True,
         related_name="streams",
     )
-    logo_url = models.URLField(max_length=2000, blank=True, null=True)
+    logo_url = models.TextField(blank=True, null=True)
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
     local_file = models.FileField(upload_to='uploads/', blank=True, null=True)
     current_viewers = models.PositiveIntegerField(default=0)
@@ -65,7 +75,8 @@ class Stream(models.Model):
         max_length=255,
         null=True,
         unique=True,
-        help_text="Unique hash for this stream from the M3U account"
+        help_text="Unique hash for this stream from the M3U account",
+        db_index=True,
     )
     last_seen = models.DateTimeField(db_index=True, default=datetime.now)
 
@@ -79,21 +90,15 @@ class Stream(models.Model):
         return self.name or self.url or f"Stream ID {self.id}"
 
     @classmethod
-    def generate_hash_key(cls, stream):
-        # Check if the passed object is an instance or a dictionary
-        if isinstance(stream, dict):
-            # Handle dictionary case (e.g., when the input is a dict of stream data)
-            hash_parts = {key: stream[key] for key in CoreSettings.get_m3u_hash_key().split(",") if key in stream}
-            if 'm3u_account_id' in stream:
-                hash_parts['m3u_account_id'] = stream['m3u_account_id']
-        elif isinstance(stream, Stream):
-            # Handle the case where the input is a Stream instance
-            key_parts = CoreSettings.get_m3u_hash_key().split(",")
-            hash_parts = {key: getattr(stream, key) for key in key_parts if hasattr(stream, key)}
-            if stream.m3u_account:
-                hash_parts['m3u_account_id'] = stream.m3u_account.id
-        else:
-            raise ValueError("stream must be either a dictionary or a Stream instance")
+    def generate_hash_key(cls, name, url, tvg_id, keys=None):
+        if keys is None:
+            keys = CoreSettings.get_m3u_hash_key().split(",")
+
+        stream_parts = {
+            "name": name, "url": url, "tvg_id": tvg_id
+        }
+
+        hash_parts = {key: stream_parts[key] for key in keys if key in stream_parts}
 
         # Serialize and hash the dictionary
         serialized_obj = json.dumps(hash_parts, sort_keys=True)  # sort_keys ensures consistent ordering

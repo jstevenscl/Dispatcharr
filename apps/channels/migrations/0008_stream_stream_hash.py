@@ -13,6 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='stream',
             name='stream_hash',
-            field=models.CharField(help_text='Unique hash for this stream from the M3U account', max_length=255, null=True, unique=True),
+            field=models.CharField(db_index=True, help_text='Unique hash for this stream from the M3U account', max_length=255, null=True, unique=True),
+        ),
+        migrations.AlterField(
+            model_name='stream',
+            name='logo_url',
+            field=models.TextField(blank=True, null=True),
         ),
     ]
