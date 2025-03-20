@@ -123,15 +123,7 @@ class StreamManager:
         max_stream_switches = ConfigHelper.max_stream_switches()  # Prevent infinite switching loops
 
         try:
-            # Check stream type before connecting
-            stream_type = detect_stream_type(self.url)
-            if self.transcode == False and stream_type == StreamType.HLS:
-                logger.info(f"Detected HLS stream: {self.url}")
-                logger.info(f"HLS streams will be handled with FFmpeg for now - future version will support HLS natively")
-                # Enable transcoding for HLS streams
-                self.transcode = True
-                # We'll override the stream profile selection with ffmpeg in the transcoding section
-                self.force_ffmpeg = True
+
 
             # Start health monitor thread
             health_thread = threading.Thread(target=self._monitor_health, daemon=True)
@@ -141,6 +133,15 @@ class StreamManager:
 
             # Main stream switching loop - we'll try different streams if needed
             while self.running and stream_switch_attempts <= max_stream_switches:
+                # Check stream type before connecting
+                stream_type = detect_stream_type(self.url)
+                if self.transcode == False and stream_type == StreamType.HLS:
+                    logger.info(f"Detected HLS stream: {self.url}")
+                    logger.info(f"HLS streams will be handled with FFmpeg for now - future version will support HLS natively")
+                    # Enable transcoding for HLS streams
+                    self.transcode = True
+                    # We'll override the stream profile selection with ffmpeg in the transcoding section
+                    self.force_ffmpeg = True
                 # Reset connection retry count for this specific URL
                 self.retry_count = 0
                 url_failed = False
