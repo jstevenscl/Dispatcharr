@@ -11,6 +11,7 @@ from . import proxy_server
 from .channel_status import ChannelStatus
 from .stream_generator import create_stream_generator
 from .utils import get_client_ip
+from .redis_keys import RedisKeys
 import logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
@@ -93,7 +94,7 @@ def stream_ts(request, channel_id):
             # Initialize channel with the stream's user agent (not the client's)
             success = proxy_server.initialize_channel(stream_url, channel_id, stream_user_agent, transcode)
             if proxy_server.redis_client:
-                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                metadata_key = RedisKeys.channel_metadata(channel_id)
                 profile_value = str(stream_profile)
                 proxy_server.redis_client.hset(metadata_key, "profile", profile_value)
             if not success:
@@ -127,7 +128,7 @@ def stream_ts(request, channel_id):
             stream_user_agent = None  # Initialize the variable
 
             if proxy_server.redis_client:
-                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                metadata_key = RedisKeys.channel_metadata(channel_id)
                 url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
                 ua_bytes = proxy_server.redis_client.hget(metadata_key, "user_agent")
                 profile_bytes = proxy_server.redis_client.hget(metadata_key, "profile")
@@ -236,7 +237,7 @@ def change_stream(request, channel_id):
         # even if the owner worker is handling another request
         if proxy_server.redis_client:
             try:
-                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                metadata_key = RedisKeys.channel_metadata(channel_id)
 
                 # First check if the key exists and what type it is
                 key_type = proxy_server.redis_client.type(metadata_key).decode('utf-8')
@@ -262,7 +263,7 @@ def change_stream(request, channel_id):
                     proxy_server.redis_client.hset(metadata_key, mapping=metadata)
 
                 # Set switch request flag to ensure all workers see it
-                switch_key = f"ts_proxy:channel:{channel_id}:switch_request"
+                switch_key = RedisKeys.switch_request(channel_id)
                 proxy_server.redis_client.setex(switch_key, 30, new_url)  # 30 second TTL
 
                 logger.info(f"Updated metadata for channel {channel_id} in Redis")
@@ -300,7 +301,7 @@ def change_stream(request, channel_id):
             }
 
             proxy_server.redis_client.publish(
-                f"ts_proxy:events:{channel_id}",
+                RedisKeys.events_channel(channel_id),
                 json.dumps(switch_request)
             )
 
@@ -382,7 +383,7 @@ def stop_channel(request, channel_id):
         # Get channel state information for response
         channel_info = None
         if proxy_server.redis_client:
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            metadata_key = RedisKeys.channel_metadata(channel_id)
             try:
                 metadata = proxy_server.redis_client.hgetall(metadata_key)
                 if metadata and b'state' in metadata:
@@ -402,7 +403,7 @@ def stop_channel(request, channel_id):
 
             # Publish the stop event
             proxy_server.redis_client.publish(
-                f"ts_proxy:events:{channel_id}",
+                RedisKeys.events_channel(channel_id),
                 json.dumps(stop_request)
             )
 
@@ -451,7 +452,7 @@ def stop_client(request, channel_id):
 
         # Set a Redis key for the generator to detect regardless of whether client is local
         if proxy_server.redis_client:
-            stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
+            stop_key = RedisKeys.client_stop(channel_id, client_id)
             proxy_server.redis_client.setex(stop_key, 30, "true")  # 30 second TTL
             logger.info(f"Set stop key for client {client_id}")
 
@@ -486,7 +487,7 @@ def stop_client(request, channel_id):
             }
 
             proxy_server.redis_client.publish(
-                f"ts_proxy:events:{channel_id}",
+                RedisKeys.events_channel(channel_id),
                 json.dumps(stop_request)
             )
             logger.info(f"Published stop request for client {client_id} on channel {channel_id}")

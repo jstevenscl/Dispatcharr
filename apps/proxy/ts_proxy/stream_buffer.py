@@ -7,6 +7,7 @@ from collections import deque
 from typing import Optional, Deque
 import random
 from apps.proxy.config import TSConfig as Config
+from .redis_keys import RedisKeys
 
 logger = logging.getLogger("ts_proxy")
 
@@ -20,9 +21,9 @@ class StreamBuffer:
         self.index = 0
         self.TS_PACKET_SIZE = 188
 
-        # STANDARDIZED KEYS: Move buffer keys under channel namespace
-        self.buffer_index_key = f"ts_proxy:channel:{channel_id}:buffer:index"
-        self.buffer_prefix = f"ts_proxy:channel:{channel_id}:buffer:chunk:"
+        # STANDARDIZED KEYS: Use RedisKeys class instead of hardcoded patterns
+        self.buffer_index_key = RedisKeys.buffer_index(channel_id) if channel_id else ""
+        self.buffer_prefix = RedisKeys.buffer_chunk_prefix(channel_id) if channel_id else ""
 
         self.chunk_ttl = getattr(Config, 'REDIS_CHUNK_TTL', 60)
 
@@ -82,7 +83,7 @@ class StreamBuffer:
                     # Write optimized chunk to Redis
                     if self.redis_client:
                         chunk_index = self.redis_client.incr(self.buffer_index_key)
-                        chunk_key = f"{self.buffer_prefix}{chunk_index}"
+                        chunk_key = RedisKeys.buffer_chunk(self.channel_id, chunk_index)
                         self.redis_client.setex(chunk_key, self.chunk_ttl, bytes(chunk_data))
 
                         # Update local tracking
@@ -146,7 +147,7 @@ class StreamBuffer:
             # Directly fetch from Redis using pipeline for efficiency
             pipe = self.redis_client.pipeline()
             for idx in range(start_id, end_id):
-                chunk_key = f"{self.buffer_prefix}{idx}"
+                chunk_key = RedisKeys.buffer_chunk(self.channel_id, idx)
                 pipe.get(chunk_key)
 
             results = pipe.execute()
@@ -200,7 +201,7 @@ class StreamBuffer:
             # Directly fetch from Redis using pipeline
             pipe = self.redis_client.pipeline()
             for idx in range(start_id, end_id):
-                chunk_key = f"{self.buffer_prefix}{idx}"
+                chunk_key = RedisKeys.buffer_chunk(self.channel_id, idx)
                 pipe.get(chunk_key)
 
             results = pipe.execute()
@@ -222,7 +223,7 @@ class StreamBuffer:
         """Stop the buffer and cancel all timers"""
         # Set stopping flag first to prevent new timer creation
         self.stopping = True
-        
+
         # Cancel all pending timers
         timers_cancelled = 0
         for timer in list(self.fill_timers):
@@ -232,10 +233,10 @@ class StreamBuffer:
                     timers_cancelled += 1
             except Exception as e:
                 logger.error(f"Error canceling timer: {e}")
-        
+
         if timers_cancelled:
             logger.info(f"Cancelled {timers_cancelled} buffer timers for channel {self.channel_id}")
-            
+
         # Clear timer list
         self.fill_timers.clear()
 
@@ -315,7 +316,7 @@ class StreamBuffer:
         """Schedule a timer and track it for proper cleanup"""
         if self.stopping:
             return None
-            
+
         timer = threading.Timer(delay, callback, args=args, kwargs=kwargs)
         timer.daemon = True
         timer.start()

@@ -47,3 +47,34 @@ def get_client_ip(request):
     else:
         ip = request.META.get('REMOTE_ADDR')
     return ip
+
+def create_ts_packet(packet_type='null', message=None):
+    """
+    Create a Transport Stream (TS) packet for various purposes.
+
+    Args:
+        packet_type (str): Type of packet - 'null', 'error', 'keepalive', etc.
+        message (str): Optional message to include in packet payload
+
+    Returns:
+        bytes: A properly formatted 188-byte TS packet
+    """
+    packet = bytearray(188)
+
+    # TS packet header
+    packet[0] = 0x47  # Sync byte
+
+    # PID - Use different PIDs based on packet type
+    if packet_type == 'error':
+        packet[1] = 0x1F  # PID high bits
+        packet[2] = 0xFF  # PID low bits
+    else:  # null/keepalive packets
+        packet[1] = 0x1F  # PID high bits (null packet)
+        packet[2] = 0xFF  # PID low bits (null packet)
+
+    # Add message to payload if provided
+    if message:
+        msg_bytes = message.encode('utf-8')
+        packet[4:4+min(len(msg_bytes), 180)] = msg_bytes[:180]
+
+    return bytes(packet)

@@ -21,6 +21,7 @@ from apps.channels.models import Channel
 from .stream_manager import StreamManager
 from .stream_buffer import StreamBuffer
 from .client_manager import ClientManager
+from .redis_keys import RedisKeys
 
 logger = logging.getLogger("ts_proxy")
 
@@ -91,7 +92,7 @@ class ProxyServer:
                                     logger.debug(f"Owner received client_connected event for channel {channel_id}")
                                     # Reset any disconnect timer
                                     # RENAMED: no_clients_since → last_client_disconnect_time
-                                    disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                    disconnect_key = RedisKeys.last_client_disconnect(channel_id)
                                     self.redis_client.delete(disconnect_key)
 
                                 elif event_type == "client_disconnected":
@@ -99,13 +100,13 @@ class ProxyServer:
                                     # Check if any clients remain
                                     if channel_id in self.client_managers:
                                         # VERIFY REDIS CLIENT COUNT DIRECTLY
-                                        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+                                        client_set_key = RedisKeys.clients(channel_id)
                                         total = self.redis_client.scard(client_set_key) or 0
 
                                         if total == 0:
                                             logger.debug(f"No clients left after disconnect event - stopping channel {channel_id}")
                                             # Set the disconnect timer for other workers to see
-                                            disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                            disconnect_key = RedisKeys.last_client_disconnect(channel_id)
                                             self.redis_client.setex(disconnect_key, 60, str(time.time()))
 
                                             # Get configured shutdown delay or default
@@ -135,13 +136,13 @@ class ProxyServer:
                                     if new_url and channel_id in self.stream_managers:
                                         # Update metadata in Redis
                                         if self.redis_client:
-                                            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                            metadata_key = RedisKeys.channel_metadata(channel_id)
                                             self.redis_client.hset(metadata_key, "url", new_url)
                                             if user_agent:
                                                 self.redis_client.hset(metadata_key, "user_agent", user_agent)
 
                                             # Set switch status
-                                            status_key = f"ts_proxy:channel:{channel_id}:switch_status"
+                                            status_key = RedisKeys.switch_status(channel_id)
                                             self.redis_client.set(status_key, "switching")
 
                                         # Perform the stream switch
@@ -187,7 +188,7 @@ class ProxyServer:
                                     # First mark channel as stopping in Redis
                                     if self.redis_client:
                                         # Set stopping state in metadata
-                                        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                        metadata_key = RedisKeys.channel_metadata(channel_id)
                                         if self.redis_client.exists(metadata_key):
                                             self.redis_client.hset(metadata_key, mapping={
                                                 "state": "stopping",
@@ -225,7 +226,7 @@ class ProxyServer:
 
                                         # Set a Redis key for the generator to detect
                                         if self.redis_client:
-                                            stop_key = f"ts_proxy:channel:{channel_id}:client:{client_id}:stop"
+                                            stop_key = RedisKeys.client_stop(channel_id, client_id)
                                             self.redis_client.setex(stop_key, 30, "true")  # 30 second TTL
                                             logger.info(f"Set stop key for client {client_id}")
                     except Exception as e:
@@ -246,7 +247,7 @@ class ProxyServer:
             return None
 
         try:
-            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            lock_key = RedisKeys.channel_owner(channel_id)
             owner = self.redis_client.get(lock_key)
             if owner:
                 return owner.decode('utf-8')
@@ -267,7 +268,7 @@ class ProxyServer:
 
         try:
             # Create a lock key with proper namespace
-            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            lock_key = RedisKeys.channel_owner(channel_id)
 
             # Use Redis SETNX for atomic locking - only succeeds if the key doesn't exist
             acquired = self.redis_client.setnx(lock_key, self.worker_id)
@@ -299,7 +300,7 @@ class ProxyServer:
             return
 
         try:
-            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            lock_key = RedisKeys.channel_owner(channel_id)
 
             # Only delete if we're the current owner to prevent race conditions
             current = self.redis_client.get(lock_key)
@@ -315,7 +316,7 @@ class ProxyServer:
             return False
 
         try:
-            lock_key = f"ts_proxy:channel:{channel_id}:owner"
+            lock_key = RedisKeys.channel_owner(channel_id)
             current = self.redis_client.get(lock_key)
 
             # Only extend if we're still the owner
@@ -348,7 +349,7 @@ class ProxyServer:
 
             # First check if channel metadata already exists
             existing_metadata = None
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            metadata_key = RedisKeys.channel_metadata(channel_id)
 
             if self.redis_client:
                 existing_metadata = self.redis_client.hgetall(metadata_key)
@@ -474,7 +475,7 @@ class ProxyServer:
         # Check Redis using the standard key pattern
         if self.redis_client:
             # Primary check - look for channel metadata
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            metadata_key = RedisKeys.channel_metadata(channel_id)
 
             # If metadata exists, return true
             if self.redis_client.exists(metadata_key):
@@ -482,9 +483,9 @@ class ProxyServer:
 
             # Additional checks if metadata doesn't exist
             additional_keys = [
-                f"ts_proxy:channel:{channel_id}:clients",
-                f"ts_proxy:channel:{channel_id}:buffer:index",
-                f"ts_proxy:channel:{channel_id}:owner"
+                RedisKeys.clients(channel_id),
+                RedisKeys.buffer_index(channel_id),
+                RedisKeys.channel_owner(channel_id)
             ]
 
             for key in additional_keys:
@@ -497,12 +498,12 @@ class ProxyServer:
         """Stop a channel with proper ownership handling"""
         try:
             logger.info(f"Stopping channel {channel_id}")
-            
+
             # First set a stopping key that clients will check
             if self.redis_client:
-                stop_key = f"ts_proxy:channel:{channel_id}:stopping"
+                stop_key = RedisKeys.channel_stopping(channel_id)
                 self.redis_client.setex(stop_key, 10, "true")
-                
+
             # Only stop the actual stream manager if we're the owner
             if self.am_i_owner(channel_id):
                 logger.info(f"This worker ({self.worker_id}) is the owner - closing provider connection")
@@ -544,7 +545,7 @@ class ProxyServer:
             if channel_id in self.stream_managers:
                 del self.stream_managers[channel_id]
                 logger.info(f"Removed stream manager for channel {channel_id}")
-            
+
             # Stop buffer and ensure all its timers are cancelled - SAFE CHECK HERE
             if channel_id in self.stream_buffers:
                 buffer = self.stream_buffers[channel_id]
@@ -555,7 +556,7 @@ class ProxyServer:
                         logger.debug(f"Buffer for channel {channel_id} properly stopped")
                     except Exception as e:
                         logger.error(f"Error stopping buffer: {e}")
-                
+
                 # Save reference and check again before deleting
                 try:
                     if channel_id in self.stream_buffers:  # Check again to prevent race conditions
@@ -563,7 +564,7 @@ class ProxyServer:
                         logger.info(f"Removed stream buffer for channel {channel_id}")
                 except KeyError:
                     logger.debug(f"Buffer for channel {channel_id} already removed")
-            
+
             # Clean up client manager - SAFE CHECK HERE TOO
             if channel_id in self.client_managers:
                 try:
@@ -571,10 +572,10 @@ class ProxyServer:
                     logger.info(f"Removed client manager for channel {channel_id}")
                 except KeyError:
                     logger.debug(f"Client manager for channel {channel_id} already removed")
-                
+
             # Clean up Redis keys
             self._clean_redis_keys(channel_id)
-            
+
             return True
         except Exception as e:
             logger.error(f"Error stopping channel {channel_id}: {e}", exc_info=True)
@@ -624,7 +625,7 @@ class ProxyServer:
                             # Get channel state from metadata hash
                             channel_state = "unknown"
                             if self.redis_client:
-                                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                metadata_key = RedisKeys.channel_metadata(channel_id)
                                 metadata = self.redis_client.hgetall(metadata_key)
                                 if metadata and b'state' in metadata:
                                     channel_state = metadata[b'state'].decode('utf-8')
@@ -686,7 +687,7 @@ class ProxyServer:
                             # If active and no clients, start normal shutdown procedure
                             elif channel_state not in ["connecting", "waiting_for_clients"] and total_clients == 0:
                                 # Check if there's a pending no-clients timeout
-                                disconnect_key = f"ts_proxy:channel:{channel_id}:last_client_disconnect_time"
+                                disconnect_key = RedisKeys.last_client_disconnect(channel_id)
                                 disconnect_time = None
 
                                 if self.redis_client:
@@ -723,21 +724,21 @@ class ProxyServer:
                             # For channels we don't own, check if they've been stopped/cleaned up in Redis
                             if self.redis_client:
                                 # Method 1: Check for stopping key
-                                stop_key = f"ts_proxy:channel:{channel_id}:stopping"
+                                stop_key = RedisKeys.channel_stopping(channel_id)
                                 if self.redis_client.exists(stop_key):
                                     logger.debug(f"Non-owner cleanup: Channel {channel_id} has stopping flag in Redis, cleaning up local resources")
                                     self._cleanup_local_resources(channel_id)
                                     continue
 
                                 # Method 2: Check if owner still exists
-                                owner_key = f"ts_proxy:channel:{channel_id}:owner"
+                                owner_key = RedisKeys.channel_owner(channel_id)
                                 if not self.redis_client.exists(owner_key):
                                     logger.debug(f"Non-owner cleanup: Channel {channel_id} has no owner in Redis, cleaning up local resources")
                                     self._cleanup_local_resources(channel_id)
                                     continue
 
                                 # Method 3: Check if metadata still exists
-                                metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                                metadata_key = RedisKeys.channel_metadata(channel_id)
                                 if not self.redis_client.exists(metadata_key):
                                     logger.debug(f"Non-owner cleanup: Channel {channel_id} has no metadata in Redis, cleaning up local resources")
                                     self._cleanup_local_resources(channel_id)
@@ -782,7 +783,7 @@ class ProxyServer:
 
                     if not owner:
                         # Check if there are any clients
-                        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+                        client_set_key = RedisKeys.clients(channel_id)
                         client_count = self.redis_client.scard(client_set_key) or 0
 
                         if client_count > 0:
@@ -811,7 +812,7 @@ class ProxyServer:
             # Define key patterns to scan for
             patterns = [
                 f"ts_proxy:channel:{channel_id}:*",  # All channel keys
-                f"ts_proxy:events:{channel_id}"      # Event channel
+                RedisKeys.events_channel(channel_id)  # Event channel
             ]
 
             total_deleted = 0
@@ -843,7 +844,7 @@ class ProxyServer:
         # Refresh registry entries for channels we own
         for channel_id in list(self.stream_buffers.keys()):
             # Use standard key pattern
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            metadata_key = RedisKeys.channel_metadata(channel_id)
 
             # Update activity timestamp in metadata only
             self.redis_client.hset(metadata_key, "last_active", str(time.time()))
@@ -856,7 +857,7 @@ class ProxyServer:
             return False
 
         try:
-            metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+            metadata_key = RedisKeys.channel_metadata(channel_id)
 
             # Get current state for logging
             current_state = None

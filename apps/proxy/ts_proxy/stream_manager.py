@@ -13,6 +13,7 @@ from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
 from .stream_buffer import StreamBuffer
 from .utils import detect_stream_type
+from .redis_keys import RedisKeys
 
 logger = logging.getLogger("ts_proxy")
 
@@ -192,7 +193,7 @@ class StreamManager:
 
                                             # Update last data timestamp in Redis
                                             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                                                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                                                last_data_key = RedisKeys.last_data(self.buffer.channel_id)
                                                 self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
                             except (AttributeError, ConnectionError) as e:
                                 if self.stop_requested:
@@ -466,7 +467,7 @@ class StreamManager:
 
             # Update last data timestamp in Redis if successful
             if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                last_data_key = RedisKeys.last_data(self.buffer.channel_id)
                 self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
 
             return True
@@ -491,7 +492,7 @@ class StreamManager:
 
                 if channel_id and redis_client:
                     current_time = str(time.time())
-                    metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                    metadata_key = RedisKeys.channel_metadata(channel_id)
 
                     # Check current state first
                     current_state = None
