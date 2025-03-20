@@ -2,6 +2,8 @@ import logging
 import time
 import re
 from . import proxy_server
+from .redis_keys import RedisKeys
+from .constants import TS_PACKET_SIZE
 
 logger = logging.getLogger("ts_proxy")
 
@@ -9,22 +11,15 @@ class ChannelStatus:
 
     def get_detailed_channel_info(channel_id):
         # Get channel metadata
-        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
-        metadata = proxy_server.redis_client.hgetall(metadata_key)
-
-        if not metadata:
-            return None
-
-        # Get detailed info - existing implementation
-        # Get channel metadata
-        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+        metadata_key = RedisKeys.channel_metadata(channel_id)
         metadata = proxy_server.redis_client.hgetall(metadata_key)
 
         if not metadata:
             return None
 
         # Basic channel info
-        buffer_index_value = proxy_server.redis_client.get(f"ts_proxy:channel:{channel_id}:buffer:index")
+        buffer_index_key = RedisKeys.buffer_index(channel_id)
+        buffer_index_value = proxy_server.redis_client.get(buffer_index_key)
 
         info = {
             'channel_id': channel_id,
@@ -33,8 +28,6 @@ class ChannelStatus:
             'profile': metadata.get(b'profile', b'unknown').decode('utf-8'),
             'started_at': metadata.get(b'init_time', b'0').decode('utf-8'),
             'owner': metadata.get(b'owner', b'unknown').decode('utf-8'),
-
-            # Properly decode the buffer index value
             'buffer_index': int(buffer_index_value.decode('utf-8')) if buffer_index_value else 0,
         }
 
@@ -50,7 +43,7 @@ class ChannelStatus:
             info['uptime'] = time.time() - created_at
 
         # Get client information
-        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+        client_set_key = RedisKeys.clients(channel_id)
         client_ids = proxy_server.redis_client.smembers(client_set_key)
         clients = []
 
@@ -97,7 +90,7 @@ class ChannelStatus:
 
                 # Check if the keys exist before getting
                 for i in range(info['buffer_index']-sample_chunks+1, info['buffer_index']+1):
-                    chunk_key = f"ts_proxy:channel:{channel_id}:buffer:chunk:{i}"
+                    chunk_key = RedisKeys.buffer_chunk(channel_id, i)
 
                     # Check if key exists first
                     if proxy_server.redis_client.exists(chunk_key):
@@ -135,9 +128,9 @@ class ChannelStatus:
                     buffer_stats['total_sample_bytes'] = total_data
 
                     # Add TS packet analysis
-                    total_ts_packets = total_data // 188
+                    total_ts_packets = total_data // TS_PACKET_SIZE
                     buffer_stats['estimated_ts_packets'] = total_ts_packets
-                    buffer_stats['is_ts_aligned'] = all(size % 188 == 0 for size in chunk_sizes)
+                    buffer_stats['is_ts_aligned'] = all(size % TS_PACKET_SIZE == 0 for size in chunk_sizes)
                 else:
                     # If no chunks found, scan for keys to help debug
                     all_buffer_keys = []
@@ -161,7 +154,7 @@ class ChannelStatus:
                 buffer_stats['diagnostics']['exception'] = str(e)
 
         # Add TTL information to see if chunks are expiring
-        chunk_ttl_key = f"ts_proxy:channel:{channel_id}:buffer:chunk:{info['buffer_index']}"
+        chunk_ttl_key = RedisKeys.buffer_chunk(channel_id, info['buffer_index'])
         chunk_ttl = proxy_server.redis_client.ttl(chunk_ttl_key)
         buffer_stats['latest_chunk_ttl'] = chunk_ttl
 
@@ -182,17 +175,18 @@ class ChannelStatus:
     # Function for basic channel info (used for all channels summary)
     def get_basic_channel_info(channel_id):
         # Get channel metadata
-        metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+        metadata_key = RedisKeys.channel_metadata(channel_id)
         metadata = proxy_server.redis_client.hgetall(metadata_key)
 
         if not metadata:
             return None
 
         # Basic channel info only - omit diagnostics and details
-        buffer_index_value = proxy_server.redis_client.get(f"ts_proxy:channel:{channel_id}:buffer:index")
+        buffer_index_key = RedisKeys.buffer_index(channel_id)
+        buffer_index_value = proxy_server.redis_client.get(buffer_index_key)
 
         # Count clients (using efficient count method)
-        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
+        client_set_key = RedisKeys.clients(channel_id)
         client_count = proxy_server.redis_client.scard(client_set_key) or 0
 
         # Calculate uptime
@@ -218,7 +212,6 @@ class ChannelStatus:
 
         # Get concise client information
         clients = []
-        client_set_key = f"ts_proxy:channel:{channel_id}:clients"
         client_ids = proxy_server.redis_client.smembers(client_set_key)
 
         # Process only if we have clients and keep it limited

@@ -3,6 +3,7 @@
 import threading
 import logging
 import time
+import socket
 import requests
 import subprocess
 from typing import Optional, List
@@ -13,6 +14,9 @@ from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
 from .stream_buffer import StreamBuffer
 from .utils import detect_stream_type
+from .redis_keys import RedisKeys
+from .constants import ChannelState, EventType, StreamType, TS_PACKET_SIZE
+from .config_helper import ConfigHelper
 
 logger = logging.getLogger("ts_proxy")
 
@@ -27,7 +31,7 @@ class StreamManager:
         self.running = True
         self.connected = False
         self.retry_count = 0
-        self.max_retries = Config.MAX_RETRIES
+        self.max_retries = ConfigHelper.max_retries()
         self.current_response = None
         self.current_session = None
         self.url_switching = False
@@ -43,8 +47,8 @@ class StreamManager:
         # Stream health monitoring
         self.last_data_time = time.time()
         self.healthy = True
-        self.health_check_interval = Config.HEALTH_CHECK_INTERVAL
-        self.chunk_size = getattr(Config, 'CHUNK_SIZE', 8192)
+        self.health_check_interval = ConfigHelper.get('HEALTH_CHECK_INTERVAL', 5)
+        self.chunk_size = ConfigHelper.chunk_size()
 
         # Add to your __init__ method
         self._buffer_check_timers = []
@@ -84,7 +88,7 @@ class StreamManager:
         try:
             # Check stream type before connecting
             stream_type = detect_stream_type(self.url)
-            if self.transcode == False and stream_type == 'hls':
+            if self.transcode == False and stream_type == StreamType.HLS:
                 logger.info(f"Detected HLS stream: {self.url}")
                 logger.info(f"HLS streams will be handled with FFmpeg for now - future version will support HLS natively")
                 # Enable transcoding for HLS streams
@@ -192,7 +196,7 @@ class StreamManager:
 
                                             # Update last data timestamp in Redis
                                             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                                                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                                                last_data_key = RedisKeys.last_data(self.buffer.channel_id)
                                                 self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
                             except (AttributeError, ConnectionError) as e:
                                 if self.stop_requested:
@@ -411,16 +415,19 @@ class StreamManager:
                 logger.debug(f"Error closing session: {e}")
             self.current_session = None
 
-    # Keep backward compatibility - let's create an alias to the new method
     def _close_socket(self):
-        """Backward compatibility wrapper for _close_connection"""
-        if self.current_response:
-            return self._close_connection()
+        """Close socket and transcode resources as needed"""
+        # First try to use _close_connection for HTTP resources
+        if self.current_response or self.current_session:
+            self._close_connection()
+            return
+
+        # Otherwise handle socket and transcode resources
         if self.socket:
             try:
                 self.socket.close()
             except Exception as e:
-                logging.debug(f"Error closing socket: {e}")
+                logger.debug(f"Error closing socket: {e}")
                 pass
 
             self.socket = None
@@ -431,7 +438,7 @@ class StreamManager:
                 self.transcode_process.terminate()
                 self.transcode_process.wait()
             except Exception as e:
-                logging.debug(f"Error terminating transcode process: {e}")
+                logger.debug(f"Error terminating transcode process: {e}")
                 pass
 
             self.transcode_process = None
@@ -466,7 +473,7 @@ class StreamManager:
 
             # Update last data timestamp in Redis if successful
             if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
-                last_data_key = f"ts_proxy:channel:{self.buffer.channel_id}:last_data"
+                last_data_key = RedisKeys.last_data(self.buffer.channel_id)
                 self.buffer.redis_client.set(last_data_key, str(time.time()), ex=60)
 
             return True
@@ -491,7 +498,7 @@ class StreamManager:
 
                 if channel_id and redis_client:
                     current_time = str(time.time())
-                    metadata_key = f"ts_proxy:channel:{channel_id}:metadata"
+                    metadata_key = RedisKeys.channel_metadata(channel_id)
 
                     # Check current state first
                     current_state = None
@@ -503,16 +510,16 @@ class StreamManager:
                         logger.error(f"Error checking current state: {e}")
 
                     # Only update if not already past connecting
-                    if not current_state or current_state in ["initializing", "connecting"]:
+                    if not current_state or current_state in [ChannelState.INITIALIZING, ChannelState.CONNECTING]:
                         # NEW CODE: Check if buffer has enough chunks
                         current_buffer_index = getattr(self.buffer, 'index', 0)
-                        initial_chunks_needed = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
+                        initial_chunks_needed = ConfigHelper.initial_behind_chunks()
 
                         if current_buffer_index < initial_chunks_needed:
                             # Not enough buffer yet - set to connecting state if not already
-                            if current_state != "connecting":
+                            if current_state != ChannelState.CONNECTING:
                                 update_data = {
-                                    "state": "connecting",
+                                    "state": ChannelState.CONNECTING,
                                     "state_changed_at": current_time
                                 }
                                 redis_client.hset(metadata_key, mapping=update_data)
@@ -526,7 +533,7 @@ class StreamManager:
 
                         # We have enough buffer, proceed with state change
                         update_data = {
-                            "state": "waiting_for_clients",
+                            "state": ChannelState.WAITING_FOR_CLIENTS,
                             "connection_ready_time": current_time,
                             "state_changed_at": current_time,
                             "buffer_chunks": str(current_buffer_index)
@@ -534,8 +541,8 @@ class StreamManager:
                         redis_client.hset(metadata_key, mapping=update_data)
 
                         # Get configured grace period or default
-                        grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
-                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → waiting_for_clients with {current_buffer_index} buffer chunks")
+                        grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
+                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → {ChannelState.WAITING_FOR_CLIENTS} with {current_buffer_index} buffer chunks")
                         logger.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
                     else:
                         logger.debug(f"Not changing state: channel {channel_id} already in {current_state} state")
