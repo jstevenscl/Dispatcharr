@@ -262,7 +262,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 errors.append({"item": item, "error": str(e)})
                 continue
 
-            channel_group, _ = ChannelGroup.objects.get_or_create(name=stream.group_name)
+            channel_group = stream.channel_group
 
             # Determine channel number: if provided, use it (if free); else auto assign.
             provided_number = item.get('channel_number')

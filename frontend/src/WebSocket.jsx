@@ -17,7 +17,7 @@ export const WebsocketProvider = ({ children }) => {
   const [val, setVal] = useState(null);
 
   const { fetchStreams } = useStreamsStore();
-  const { setChannelStats } = useChannelsStore();
+  const { setChannelStats, fetchChannelGroups } = useChannelsStore();
   const { setRefreshProgress } = usePlaylistsStore();
 
   const ws = useRef(null);
@@ -62,7 +62,10 @@ export const WebsocketProvider = ({ children }) => {
               color: 'green.5',
             });
           } else if (event.data.progress) {
-            console.log('calling set progress');
+            if (event.data.progress == 100) {
+              fetchStreams();
+              fetchChannelGroups();
+            }
             setRefreshProgress(event.data.account, event.data.progress);
           }
           break;
