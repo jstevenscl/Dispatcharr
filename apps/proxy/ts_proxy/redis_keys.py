@@ -73,3 +73,8 @@ class RedisKeys:
     def switch_status(channel_id):
         """Key for stream switch status"""
         return f"ts_proxy:channel:{channel_id}:switch_status"
+
+    @staticmethod
+    def worker_heartbeat(worker_id):
+        """Key for worker heartbeat"""
+        return f"ts_proxy:worker:{worker_id}:heartbeat"
