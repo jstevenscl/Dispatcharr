@@ -3,6 +3,7 @@
 import threading
 import logging
 import time
+import socket
 import requests
 import subprocess
 from typing import Optional, List
@@ -414,16 +415,19 @@ class StreamManager:
                 logger.debug(f"Error closing session: {e}")
             self.current_session = None
 
-    # Keep backward compatibility - let's create an alias to the new method
     def _close_socket(self):
-        """Backward compatibility wrapper for _close_connection"""
-        if self.current_response:
-            return self._close_connection()
+        """Close socket and transcode resources as needed"""
+        # First try to use _close_connection for HTTP resources
+        if self.current_response or self.current_session:
+            self._close_connection()
+            return
+
+        # Otherwise handle socket and transcode resources
         if self.socket:
             try:
                 self.socket.close()
             except Exception as e:
-                logging.debug(f"Error closing socket: {e}")
+                logger.debug(f"Error closing socket: {e}")
                 pass
 
             self.socket = None
@@ -434,7 +438,7 @@ class StreamManager:
                 self.transcode_process.terminate()
                 self.transcode_process.wait()
             except Exception as e:
-                logging.debug(f"Error terminating transcode process: {e}")
+                logger.debug(f"Error terminating transcode process: {e}")
                 pass
 
             self.transcode_process = None

@@ -596,8 +596,8 @@ class ProxyServer:
 
     def _cleanup_channel(self, channel_id: str) -> None:
         """Remove channel resources"""
-        for collection in [self.stream_managers, self.stream_buffers,
-                         self.client_managers, self.fetch_threads]:
+        # Removed reference to non-existent fetch_threads collection
+        for collection in [self.stream_managers, self.stream_buffers, self.client_managers]:
             collection.pop(channel_id, None)
 
     def shutdown(self) -> None:

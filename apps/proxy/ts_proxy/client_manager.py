@@ -146,7 +146,7 @@ class ClientManager:
 
         self._registered_clients.add(client_id)
 
-        # FIX: Consistent key naming - note the 's' in 'clients'
+        # Use a function to get the client key
         client_key = f"ts_proxy:channel:{self.channel_id}:clients:{client_id}"
 
         # Prepare client data
@@ -175,7 +175,8 @@ class ClientManager:
                     self.redis_client.expire(self.client_set_key, self.client_ttl)
 
                     # Clear any initialization timer
-                    self.redis_client.delete(f"ts_proxy:channel:{self.channel_id}:init_time")
+                    init_key = f"ts_proxy:channel:{self.channel_id}:init_time"
+                    self.redis_client.delete(init_key)
 
                     self._notify_owner_of_activity()
 
@@ -195,7 +196,7 @@ class ClientManager:
                         logger.debug(f"No user agent provided for client {client_id}")
 
                     self.redis_client.publish(
-                        f"ts_proxy:events:{self.channel_id}",
+                        RedisKeys.events_channel(self.channel_id),  # Use RedisKeys instead of string
                         json.dumps(event_data)
                     )
 
@@ -236,7 +237,7 @@ class ClientManager:
                     logger.warning(f"Last client removed: {client_id} - channel may shut down soon")
 
                     # Trigger disconnect time tracking even if we're not the owner
-                    disconnect_key = f"ts_proxy:channel:{self.channel_id}:last_client_disconnect_time"
+                    disconnect_key = RedisKeys.last_client_disconnect(self.channel_id)
                     self.redis_client.setex(disconnect_key, 60, str(time.time()))
 
                 self._notify_owner_of_activity()
@@ -250,7 +251,7 @@ class ClientManager:
                     "timestamp": time.time(),
                     "remaining_clients": remaining
                 })
-                self.redis_client.publish(f"ts_proxy:events:{self.channel_id}", event_data)
+                self.redis_client.publish(RedisKeys.events_channel(self.channel_id), event_data)
 
             total_clients = self.get_total_client_count()
             logger.info(f"Client disconnected: {client_id} (local: {len(self.clients)}, total: {total_clients})")

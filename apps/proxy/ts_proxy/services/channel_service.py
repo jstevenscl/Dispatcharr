@@ -11,6 +11,7 @@ from apps.channels.models import Channel
 from apps.proxy.config import TSConfig as Config
 from .. import proxy_server
 from ..redis_keys import RedisKeys
+from ..constants import EventType
 
 logger = logging.getLogger("ts_proxy")
 
@@ -317,7 +318,7 @@ class ChannelService:
             return False
 
         switch_request = {
-            "event": "stream_switch",
+            "event": EventType.STREAM_SWITCH,  # Use constant instead of string
             "channel_id": channel_id,
             "url": new_url,
             "user_agent": user_agent,
@@ -338,7 +339,7 @@ class ChannelService:
             return False
 
         stop_request = {
-            "event": "channel_stop",
+            "event": EventType.CHANNEL_STOP,  # Use constant instead of string
             "channel_id": channel_id,
             "requester_worker_id": proxy_server.worker_id,
             "timestamp": time.time()
@@ -359,7 +360,7 @@ class ChannelService:
             return False
 
         stop_request = {
-            "event": "client_stop",
+            "event": EventType.CLIENT_STOP,  # Use constant instead of string
             "channel_id": channel_id,
             "client_id": client_id,
             "requester_worker_id": proxy_server.worker_id,
