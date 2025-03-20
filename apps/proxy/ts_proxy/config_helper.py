@@ -68,3 +68,8 @@ class ConfigHelper:
     def max_retries():
         """Get maximum retry attempts"""
         return ConfigHelper.get('MAX_RETRIES', 3)
+
+    @staticmethod
+    def max_stream_switches():
+        """Get maximum number of stream switch attempts"""
+        return ConfigHelper.get('MAX_STREAM_SWITCHES', 10)

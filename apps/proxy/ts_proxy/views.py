@@ -21,6 +21,7 @@ from rest_framework.permissions import IsAuthenticated
 from .constants import ChannelState, EventType, StreamType
 from .config_helper import ConfigHelper
 from .services.channel_service import ChannelService
+from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch
 
 # Configure logging properly
 logger = logging.getLogger("ts_proxy")
@@ -46,58 +47,58 @@ def stream_ts(request, channel_id):
                 logger.debug(f"[{client_id}] Client connected with user agent: {client_user_agent}")
                 break
 
+        # Check if we need to reinitialize the channel
+        needs_initialization = True
+        channel_state = None
+
+        # Get current channel state from Redis if available
+        if proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if proxy_server.redis_client.exists(metadata_key):
+                metadata = proxy_server.redis_client.hgetall(metadata_key)
+                if b'state' in metadata:
+                    channel_state = metadata[b'state'].decode('utf-8')
+
+                    # Only skip initialization if channel is in a healthy state
+                    valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS]
+                    if channel_state in valid_states:
+                        # Verify the owner is still active
+                        if b'owner' in metadata:
+                            owner = metadata[b'owner'].decode('utf-8')
+                            owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
+                            if proxy_server.redis_client.exists(owner_heartbeat_key):
+                                # Owner is active and channel is in good state
+                                needs_initialization = False
+                                logger.info(f"[{client_id}] Channel {channel_id} in state {channel_state} with active owner {owner}")
+
         # Start initialization if needed
         channel_initializing = False
-        if not proxy_server.check_if_channel_exists(channel_id):
+        if needs_initialization or not proxy_server.check_if_channel_exists(channel_id):
+            # Force cleanup of any previous instance
+            if channel_state in [ChannelState.ERROR, ChannelState.STOPPING, ChannelState.STOPPED]:
+                logger.warning(f"[{client_id}] Channel {channel_id} in state {channel_state}, forcing cleanup")
+                proxy_server.stop_channel(channel_id)
+
             # Initialize the channel (but don't wait for completion)
             logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
 
-            # Get stream details from channel model
-            stream_id, profile_id = channel.get_stream()
-            if stream_id is None or profile_id is None:
+            # Use the utility function to get stream URL and settings
+            stream_url, stream_user_agent, transcode, profile_value = generate_stream_url(channel_id)
+            if stream_url is None:
                 return JsonResponse({'error': 'Channel not available'}, status=404)
 
-            # Load in necessary objects for the stream
-            logger.info(f"Fetching stream ID {stream_id}")
-            stream = get_object_or_404(Stream, pk=stream_id)
-            logger.info(f"Fetching profile ID {profile_id}")
-            profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
-
-            # Load in the user-agent for the STREAM connection (not client)
-            m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
-            stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
-            if stream_user_agent is None:
-                stream_user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
-                logger.debug(f"No user agent found for account, using default: {stream_user_agent}")
-            else:
-                logger.debug(f"User agent found for account: {stream_user_agent}")
-
-            # Generate stream URL based on the selected profile
-            input_url = stream.url
-            logger.debug("Executing the following pattern replacement:")
-            logger.debug(f"  search: {profile.search_pattern}")
-            safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', profile.replace_pattern)
-            logger.debug(f"  replace: {profile.replace_pattern}")
-            logger.debug(f"  safe replace: {safe_replace_pattern}")
-            stream_url = re.sub(profile.search_pattern, safe_replace_pattern, input_url)
-            logger.debug(f"Generated stream url: {stream_url}")
+            # Get the stream ID from the channel
+            stream_id, profile_id = channel.get_stream()
+            logger.info(f"Channel {channel_id} using stream ID {stream_id}, profile ID {profile_id}")
 
             # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
             if stream_profile.is_redirect():
                 return HttpResponseRedirect(stream_url)
 
-            # Need to check if profile is transcoded
-            logger.debug(f"Using profile {stream_profile} for stream {stream_id}")
-            if stream_profile.is_proxy() or stream_profile is None:
-                transcode = False
-            else:
-                transcode = True
-
-            # Initialize channel using the service
-            profile_value = str(stream_profile)
+            # Initialize channel with the stream's user agent (not the client's)
             success = ChannelService.initialize_channel(
-                channel_id, stream_url, stream_user_agent, transcode, profile_value
+                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id
             )
 
             if not success:

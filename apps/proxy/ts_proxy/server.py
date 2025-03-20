@@ -329,7 +329,7 @@ class ProxyServer:
             logger.error(f"Error extending ownership: {e}")
             return False
 
-    def initialize_channel(self, url, channel_id, user_agent=None, transcode=False):
+    def initialize_channel(self, url, channel_id, user_agent=None, transcode=False, stream_id=None):
         """Initialize a channel without redundant active key"""
         try:
             # Create buffer and client manager instances
@@ -347,6 +347,7 @@ class ProxyServer:
             # Get channel URL from Redis if available
             channel_url = url
             channel_user_agent = user_agent
+            channel_stream_id = stream_id  # Store the stream ID
 
             # First check if channel metadata already exists
             existing_metadata = None
@@ -364,6 +365,14 @@ class ProxyServer:
                     ua_bytes = existing_metadata.get(b'user_agent')
                     if ua_bytes:
                         channel_user_agent = ua_bytes.decode('utf-8')
+
+                # Get stream ID from metadata if not provided
+                if not channel_stream_id and b'stream_id' in existing_metadata:
+                    try:
+                        channel_stream_id = int(existing_metadata[b'stream_id'].decode('utf-8'))
+                        logger.debug(f"Found stream_id {channel_stream_id} in metadata for channel {channel_id}")
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Could not parse stream_id from metadata: {e}")
 
             # Check if channel is already owned
             current_owner = self.get_channel_owner(channel_id)
@@ -419,9 +428,23 @@ class ProxyServer:
                 if channel_user_agent:
                     metadata["user_agent"] = channel_user_agent
 
-                # Set channel metadata
+                # CRITICAL FIX: Make sure stream_id is always set in metadata and properly logged
+                if channel_stream_id:
+                    metadata["stream_id"] = str(channel_stream_id)
+                    logger.info(f"Storing stream_id {channel_stream_id} in metadata for channel {channel_id}")
+                else:
+                    logger.warning(f"No stream_id provided for channel {channel_id} during initialization")
+
+                # Set channel metadata BEFORE creating the StreamManager
                 self.redis_client.hset(metadata_key, mapping=metadata)
-                self.redis_client.expire(metadata_key, 30)  # 1 hour TTL
+                self.redis_client.expire(metadata_key, 3600)  # Increased TTL from 30 seconds to 1 hour
+
+                # Verify the stream_id was set correctly in Redis
+                stream_id_value = self.redis_client.hget(metadata_key, "stream_id")
+                if stream_id_value:
+                    logger.info(f"Verified stream_id {stream_id_value.decode('utf-8')} is set in Redis for channel {channel_id}")
+                else:
+                    logger.warning(f"Failed to set stream_id in Redis for channel {channel_id}")
 
             # Create stream buffer
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
@@ -429,8 +452,15 @@ class ProxyServer:
             self.stream_buffers[channel_id] = buffer
 
             # Only the owner worker creates the actual stream manager
-            stream_manager = StreamManager(channel_id, channel_url, buffer, user_agent=channel_user_agent, transcode=transcode)
-            logger.debug(f"Created StreamManager for channel {channel_id}")
+            stream_manager = StreamManager(
+                channel_id,
+                channel_url,
+                buffer,
+                user_agent=channel_user_agent,
+                transcode=transcode,
+                stream_id=channel_stream_id  # Pass stream ID to the manager
+            )
+            logger.info(f"Created StreamManager for channel {channel_id} with stream ID {channel_stream_id}")
             self.stream_managers[channel_id] = stream_manager
 
             # Create client manager with channel_id, redis_client AND worker_id
@@ -468,7 +498,10 @@ class ProxyServer:
             return False
 
     def check_if_channel_exists(self, channel_id):
-        """Check if a channel exists using standardized key structure"""
+        """
+        Check if a channel exists and is in a valid state.
+        Enhanced to detect zombie channels after server restarts.
+        """
         # Check local memory first
         if channel_id in self.stream_managers or channel_id in self.stream_buffers:
             return True
@@ -478,9 +511,48 @@ class ProxyServer:
             # Primary check - look for channel metadata
             metadata_key = RedisKeys.channel_metadata(channel_id)
 
-            # If metadata exists, return true
+            # If metadata exists, validate it's in a healthy state
             if self.redis_client.exists(metadata_key):
-                return True
+                metadata = self.redis_client.hgetall(metadata_key)
+
+                # Get channel state and owner
+                state = metadata.get(b'state', b'unknown').decode('utf-8')
+                owner = metadata.get(b'owner', b'').decode('utf-8')
+
+                # States that indicate the channel is running properly
+                valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS, ChannelState.CONNECTING]
+
+                # If the channel is in a valid state, check if the owner is still active
+                if state in valid_states:
+                    # Check if owner still exists by checking heartbeat
+                    owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
+                    owner_alive = self.redis_client.exists(owner_heartbeat_key)
+
+                    if owner_alive:
+                        return True
+                    else:
+                        # This is a zombie channel - owner is gone but metadata still exists
+                        logger.warning(f"Detected zombie channel {channel_id} - owner {owner} is no longer active")
+                        self._clean_zombie_channel(channel_id, metadata)
+                        return False
+                elif state in [ChannelState.STOPPING, ChannelState.STOPPED, ChannelState.ERROR]:
+                    # These states indicate the channel should be reinitialized
+                    logger.info(f"Channel {channel_id} exists but in terminal state: {state}")
+                    return False
+                else:
+                    # Unknown or initializing state, check how long it's been in this state
+                    if b'state_changed_at' in metadata:
+                        state_changed_at = float(metadata[b'state_changed_at'].decode('utf-8'))
+                        state_age = time.time() - state_changed_at
+
+                        # If in initializing state for too long, consider it stale
+                        if state_age > 60:  # 60 seconds threshold
+                            logger.warning(f"Channel {channel_id} stuck in {state} state for {state_age:.1f}s - treating as zombie")
+                            self._clean_zombie_channel(channel_id, metadata)
+                            return False
+
+                    # Otherwise assume it's still in progress
+                    return True
 
             # Additional checks if metadata doesn't exist
             additional_keys = [
@@ -491,9 +563,40 @@ class ProxyServer:
 
             for key in additional_keys:
                 if self.redis_client.exists(key):
-                    return True
+                    # Found orphaned keys without metadata - clean them up
+                    logger.warning(f"Found orphaned keys for channel {channel_id} without metadata - cleaning up")
+                    self._clean_redis_keys(channel_id)
+                    return False
 
         return False
+
+    def _clean_zombie_channel(self, channel_id, metadata=None):
+        """Clean up a zombie channel (channel with Redis keys but no active owner)"""
+        try:
+            logger.info(f"Cleaning up zombie channel {channel_id}")
+
+            # If we have metadata, log details for debugging
+            if metadata:
+                state = metadata.get(b'state', b'unknown').decode('utf-8')
+                owner = metadata.get(b'owner', b'unknown').decode('utf-8')
+                logger.info(f"Zombie channel details - state: {state}, owner: {owner}")
+
+            # Clean up Redis keys
+            self._clean_redis_keys(channel_id)
+
+            # Force release resources in the Channel model
+            try:
+                from apps.channels.models import Channel
+                channel = Channel.objects.get(uuid=channel_id)
+                channel.release_stream()
+                logger.info(f"Released stream allocation for zombie channel {channel_id}")
+            except Exception as e:
+                logger.error(f"Error releasing stream for zombie channel {channel_id}: {e}")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error cleaning zombie channel {channel_id}: {e}", exc_info=True)
+            return False
 
     def stop_channel(self, channel_id):
         """Stop a channel with proper ownership handling"""
@@ -610,6 +713,11 @@ class ProxyServer:
         def cleanup_task():
             while True:
                 try:
+                    # Send worker heartbeat first
+                    if self.redis_client:
+                        worker_heartbeat_key = f"ts_proxy:worker:{self.worker_id}:heartbeat"
+                        self.redis_client.setex(worker_heartbeat_key, 30, str(time.time()))
+
                     # Refresh channel registry
                     self.refresh_channel_registry()
 

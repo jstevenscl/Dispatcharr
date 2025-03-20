@@ -11,7 +11,8 @@ from apps.channels.models import Channel
 from apps.proxy.config import TSConfig as Config
 from .. import proxy_server
 from ..redis_keys import RedisKeys
-from ..constants import EventType
+from ..constants import EventType, ChannelState
+from ..url_utils import get_stream_info_for_switch
 
 logger = logging.getLogger("ts_proxy")
 
@@ -19,7 +20,7 @@ class ChannelService:
     """Service class for channel operations"""
 
     @staticmethod
-    def initialize_channel(channel_id, stream_url, user_agent, transcode=False, profile_value=None):
+    def initialize_channel(channel_id, stream_url, user_agent, transcode=False, profile_value=None, stream_id=None):
         """
         Initialize a channel with the given parameters.
 
@@ -29,32 +30,78 @@ class ChannelService:
             user_agent: User agent for the stream connection
             transcode: Whether to transcode the stream
             profile_value: Stream profile value to store in metadata
+            stream_id: ID of the stream being used
 
         Returns:
             bool: Success status
         """
-        success = proxy_server.initialize_channel(stream_url, channel_id, user_agent, transcode)
+        # FIXED: First, ensure that Redis metadata including stream_id is set BEFORE channel initialization
+        # This ensures the stream ID is available when the StreamManager looks it up
+        if stream_id and proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            # Check if metadata already exists
+            if proxy_server.redis_client.exists(metadata_key):
+                # Just update the existing metadata with stream_id
+                proxy_server.redis_client.hset(metadata_key, "stream_id", str(stream_id))
+                logger.info(f"Pre-set stream ID {stream_id} in Redis for channel {channel_id}")
+            else:
+                # Create initial metadata with essential values
+                initial_metadata = {
+                    "stream_id": str(stream_id),
+                    "temp_init": str(time.time())
+                }
+                proxy_server.redis_client.hset(metadata_key, mapping=initial_metadata)
+                logger.info(f"Created initial metadata with stream_id {stream_id} for channel {channel_id}")
+
+            # Verify the stream_id was set
+            stream_id_value = proxy_server.redis_client.hget(metadata_key, "stream_id")
+            if stream_id_value:
+                logger.info(f"Verified stream_id {stream_id_value.decode('utf-8')} is now set in Redis")
+            else:
+                logger.error(f"Failed to set stream_id {stream_id} in Redis before initialization")
+
+        # Now proceed with channel initialization
+        success = proxy_server.initialize_channel(stream_url, channel_id, user_agent, transcode, stream_id)
 
         # Store additional metadata if initialization was successful
-        if success and proxy_server.redis_client and profile_value:
+        if success and proxy_server.redis_client:
             metadata_key = RedisKeys.channel_metadata(channel_id)
-            proxy_server.redis_client.hset(metadata_key, "profile", profile_value)
+            update_data = {}
+            if profile_value:
+                update_data["profile"] = profile_value
+            if stream_id:
+                update_data["stream_id"] = str(stream_id)
+
+            if update_data:
+                proxy_server.redis_client.hset(metadata_key, mapping=update_data)
 
         return success
 
     @staticmethod
-    def change_stream_url(channel_id, new_url, user_agent=None):
+    def change_stream_url(channel_id, new_url=None, user_agent=None, target_stream_id=None):
         """
         Change the URL of an existing stream.
 
         Args:
             channel_id: UUID of the channel
-            new_url: New stream URL
+            new_url: New stream URL (optional if target_stream_id is provided)
             user_agent: Optional user agent to update
+            target_stream_id: Optional target stream ID to switch to
 
         Returns:
             dict: Result information including success status and diagnostics
         """
+        # If no direct URL is provided but a target stream is, get URL from target stream
+        if not new_url and target_stream_id:
+            stream_info = get_stream_info_for_switch(channel_id, target_stream_id)
+            if 'error' in stream_info:
+                return {
+                    'status': 'error',
+                    'message': stream_info['error']
+                }
+            new_url = stream_info['url']
+            user_agent = stream_info['user_agent']
+
         # Check if channel exists
         in_local_managers = channel_id in proxy_server.stream_managers
         in_local_buffers = channel_id in proxy_server.stream_buffers
@@ -270,6 +317,69 @@ class ChannelService:
             'stop_key_set': key_set,
             'event_published': event_published
         }
+
+    @staticmethod
+    def validate_channel_state(channel_id):
+        """
+        Validate if a channel is in a healthy state and has an active owner.
+
+        Args:
+            channel_id: UUID of the channel
+
+        Returns:
+            tuple: (valid, state, owner, details) - validity status, current state, owner, and diagnostic info
+        """
+        if not proxy_server.redis_client:
+            return False, None, None, {"error": "Redis not available"}
+
+        try:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if not proxy_server.redis_client.exists(metadata_key):
+                return False, None, None, {"error": "No channel metadata"}
+
+            metadata = proxy_server.redis_client.hgetall(metadata_key)
+
+            # Extract state and owner
+            state = metadata.get(b'state', b'unknown').decode('utf-8')
+            owner = metadata.get(b'owner', b'unknown').decode('utf-8')
+
+            # Valid states indicate channel is running properly
+            valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS, ChannelState.CONNECTING]
+
+            if state not in valid_states:
+                return False, state, owner, {"error": f"Invalid state: {state}"}
+
+            # Check if owner is still active
+            owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
+            owner_alive = proxy_server.redis_client.exists(owner_heartbeat_key)
+
+            if not owner_alive:
+                return False, state, owner, {"error": "Owner not active"}
+
+            # Check for recent activity
+            last_data_key = RedisKeys.last_data(channel_id)
+            last_data = proxy_server.redis_client.get(last_data_key)
+
+            details = {
+                "state": state,
+                "owner": owner,
+                "owner_alive": owner_alive
+            }
+
+            if last_data:
+                last_data_time = float(last_data.decode('utf-8'))
+                data_age = time.time() - last_data_time
+                details["last_data_age"] = data_age
+
+                # If no data for too long, consider invalid
+                if data_age > 30:  # 30 seconds threshold
+                    return False, state, owner, {"error": f"No data for {data_age:.1f}s", **details}
+
+            return True, state, owner, details
+
+        except Exception as e:
+            logger.error(f"Error validating channel state: {e}", exc_info=True)
+            return False, None, None, {"error": f"Exception: {str(e)}"}
 
     # Helper methods for Redis operations
 
