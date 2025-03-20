@@ -11,6 +11,7 @@ class EPGSource(models.Model):
     url = models.URLField(blank=True, null=True)  # For XMLTV
     api_key = models.CharField(max_length=255, blank=True, null=True)  # For Schedules Direct
     is_active = models.BooleanField(default=True)
+    file_path = models.CharField(max_length=1024, blank=True, null=True)
 
     def __str__(self):
         return self.name
