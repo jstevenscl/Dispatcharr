@@ -4,7 +4,7 @@ Utilities for handling stream URLs and transformations.
 
 import logging
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from django.shortcuts import get_object_or_404
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
@@ -100,30 +100,147 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
     Returns:
         dict: Stream information including URL, user agent and transcode flag
     """
-    channel = get_object_or_404(Channel, uuid=channel_id)
+    try:
+        channel = get_object_or_404(Channel, uuid=channel_id)
 
-    # Use the target stream if specified, otherwise use current stream
-    if target_stream_id:
-        stream_id = target_stream_id
-        # Find a compatible profile for this stream
-        profiles = M3UAccountProfile.objects.filter(stream=stream_id)
-        if not profiles.exists():
-            logger.error(f"No profile found for stream {stream_id}")
-            return {'error': 'No profile found for stream'}
-        profile_id = profiles.first().id
-    else:
-        stream_id, profile_id = channel.get_stream()
-        if stream_id is None or profile_id is None:
-            return {'error': 'No stream assigned to channel'}
+        # Use the target stream if specified, otherwise use current stream
+        if target_stream_id:
+            stream_id = target_stream_id
 
-    # Generate the URL using our utility
-    stream_url, user_agent, transcode, profile_value = generate_stream_url(channel_id)
+            # Get the stream object
+            stream = get_object_or_404(Stream, pk=stream_id)
 
-    return {
-        'url': stream_url,
-        'user_agent': user_agent,
-        'transcode': transcode,
-        'profile': profile_value,
-        'stream_id': stream_id,
-        'profile_id': profile_id
-    }
+            # Find compatible profile for this stream
+            profiles = M3UAccountProfile.objects.filter(m3u_account=stream.m3u_account)
+
+            if not profiles.exists():
+                # Try to get default profile
+                default_profile = M3UAccountProfile.objects.filter(
+                    m3u_account=stream.m3u_account,
+                    is_default=True
+                ).first()
+
+                if default_profile:
+                    profile_id = default_profile.id
+                else:
+                    logger.error(f"No profile found for stream {stream_id}")
+                    return {'error': 'No profile found for stream'}
+            else:
+                # Use first available profile
+                profile_id = profiles.first().id
+        else:
+            stream_id, profile_id = channel.get_stream()
+            if stream_id is None or profile_id is None:
+                return {'error': 'No stream assigned to channel'}
+
+        # Get the stream and profile objects directly
+        stream = get_object_or_404(Stream, pk=stream_id)
+        profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
+
+        # Get the user agent from the M3U account
+        m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
+        user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
+        if not user_agent:
+            user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id()).user_agent
+
+        # Generate URL using the transform function directly
+        stream_url = transform_url(stream.url, profile.search_pattern, profile.replace_pattern)
+
+        # Get transcode info from the channel's stream profile
+        stream_profile = channel.get_stream_profile()
+        transcode = not (stream_profile.is_proxy() or stream_profile is None)
+        profile_value = str(stream_profile)
+
+        return {
+            'url': stream_url,
+            'user_agent': user_agent,
+            'transcode': transcode,
+            'profile': profile_value,
+            'stream_id': stream_id,
+            'profile_id': profile_id
+        }
+    except Exception as e:
+        logger.error(f"Error getting stream info for switch: {e}", exc_info=True)
+        return {'error': f'Error: {str(e)}'}
+
+def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = None) -> List[dict]:
+    """
+    Get alternative streams for a channel when the current stream fails.
+
+    Args:
+        channel_id: The UUID of the channel
+        current_stream_id: The currently failing stream ID to exclude
+
+    Returns:
+        List[dict]: List of stream information dictionaries with stream_id and profile_id
+    """
+    try:
+        # Get channel object
+        channel = get_object_or_404(Channel, uuid=channel_id)
+        logger.debug(f"Looking for alternate streams for channel {channel_id}, current stream ID: {current_stream_id}")
+
+        # Get all assigned streams for this channel
+        streams = channel.streams.all()
+        logger.debug(f"Channel {channel_id} has {streams.count()} total assigned streams")
+
+        if not streams.exists():
+            logger.warning(f"No streams assigned to channel {channel_id}")
+            return []
+
+        alternate_streams = []
+
+        # Process each stream
+        for stream in streams:
+            # Log each stream we're checking
+            logger.debug(f"Checking stream ID {stream.id} ({stream.name}) for channel {channel_id}")
+
+            # Skip the current failing stream
+            if current_stream_id and stream.id == current_stream_id:
+                logger.debug(f"Skipping current stream ID {current_stream_id}")
+                continue
+
+            # Find compatible profiles for this stream
+            # FIX: Looking at the error message, M3UAccountProfile doesn't have a 'stream' field
+            # We need to find which field relates M3UAccountProfile to Stream
+            try:
+                # Check if we can find profiles via m3u_account
+                profiles = M3UAccountProfile.objects.filter(m3u_account=stream.m3u_account)
+                if not profiles.exists():
+                    logger.debug(f"No profiles found via m3u_account for stream {stream.id}")
+                    # Fallback to the default profile of the account
+                    default_profile = M3UAccountProfile.objects.filter(
+                        m3u_account=stream.m3u_account,
+                        is_default=True
+                    ).first()
+                    if default_profile:
+                        profiles = [default_profile]
+                    else:
+                        logger.warning(f"No default profile found for m3u_account {stream.m3u_account.id}")
+                        continue
+
+                # Get first compatible profile
+                profile = profiles.first()
+                if profile:
+                    logger.debug(f"Found compatible profile ID {profile.id} for stream ID {stream.id}")
+
+                    alternate_streams.append({
+                        'stream_id': stream.id,
+                        'profile_id': profile.id,
+                        'name': stream.name
+                    })
+                else:
+                    logger.debug(f"No compatible profile found for stream ID {stream.id}")
+            except Exception as inner_e:
+                logger.error(f"Error finding profiles for stream {stream.id}: {inner_e}")
+                continue
+
+        if alternate_streams:
+            stream_ids = ', '.join([str(s['stream_id']) for s in alternate_streams])
+            logger.info(f"Found {len(alternate_streams)} alternate streams for channel {channel_id}: [{stream_ids}]")
+        else:
+            logger.warning(f"No alternate streams found for channel {channel_id}")
+
+        return alternate_streams
+    except Exception as e:
+        logger.error(f"Error getting alternate streams for channel {channel_id}: {e}", exc_info=True)
+        return []

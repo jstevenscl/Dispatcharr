@@ -20,7 +20,7 @@ class ChannelService:
     """Service class for channel operations"""
 
     @staticmethod
-    def initialize_channel(channel_id, stream_url, user_agent, transcode=False, profile_value=None):
+    def initialize_channel(channel_id, stream_url, user_agent, transcode=False, profile_value=None, stream_id=None):
         """
         Initialize a channel with the given parameters.
 
@@ -30,16 +30,50 @@ class ChannelService:
             user_agent: User agent for the stream connection
             transcode: Whether to transcode the stream
             profile_value: Stream profile value to store in metadata
+            stream_id: ID of the stream being used
 
         Returns:
             bool: Success status
         """
-        success = proxy_server.initialize_channel(stream_url, channel_id, user_agent, transcode)
+        # FIXED: First, ensure that Redis metadata including stream_id is set BEFORE channel initialization
+        # This ensures the stream ID is available when the StreamManager looks it up
+        if stream_id and proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            # Check if metadata already exists
+            if proxy_server.redis_client.exists(metadata_key):
+                # Just update the existing metadata with stream_id
+                proxy_server.redis_client.hset(metadata_key, "stream_id", str(stream_id))
+                logger.info(f"Pre-set stream ID {stream_id} in Redis for channel {channel_id}")
+            else:
+                # Create initial metadata with essential values
+                initial_metadata = {
+                    "stream_id": str(stream_id),
+                    "temp_init": str(time.time())
+                }
+                proxy_server.redis_client.hset(metadata_key, mapping=initial_metadata)
+                logger.info(f"Created initial metadata with stream_id {stream_id} for channel {channel_id}")
+
+            # Verify the stream_id was set
+            stream_id_value = proxy_server.redis_client.hget(metadata_key, "stream_id")
+            if stream_id_value:
+                logger.info(f"Verified stream_id {stream_id_value.decode('utf-8')} is now set in Redis")
+            else:
+                logger.error(f"Failed to set stream_id {stream_id} in Redis before initialization")
+
+        # Now proceed with channel initialization
+        success = proxy_server.initialize_channel(stream_url, channel_id, user_agent, transcode, stream_id)
 
         # Store additional metadata if initialization was successful
-        if success and proxy_server.redis_client and profile_value:
+        if success and proxy_server.redis_client:
             metadata_key = RedisKeys.channel_metadata(channel_id)
-            proxy_server.redis_client.hset(metadata_key, "profile", profile_value)
+            update_data = {}
+            if profile_value:
+                update_data["profile"] = profile_value
+            if stream_id:
+                update_data["stream_id"] = str(stream_id)
+
+            if update_data:
+                proxy_server.redis_client.hset(metadata_key, mapping=update_data)
 
         return success
 

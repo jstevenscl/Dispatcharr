@@ -329,7 +329,7 @@ class ProxyServer:
             logger.error(f"Error extending ownership: {e}")
             return False
 
-    def initialize_channel(self, url, channel_id, user_agent=None, transcode=False):
+    def initialize_channel(self, url, channel_id, user_agent=None, transcode=False, stream_id=None):
         """Initialize a channel without redundant active key"""
         try:
             # Create buffer and client manager instances
@@ -347,6 +347,7 @@ class ProxyServer:
             # Get channel URL from Redis if available
             channel_url = url
             channel_user_agent = user_agent
+            channel_stream_id = stream_id  # Store the stream ID
 
             # First check if channel metadata already exists
             existing_metadata = None
@@ -364,6 +365,14 @@ class ProxyServer:
                     ua_bytes = existing_metadata.get(b'user_agent')
                     if ua_bytes:
                         channel_user_agent = ua_bytes.decode('utf-8')
+
+                # Get stream ID from metadata if not provided
+                if not channel_stream_id and b'stream_id' in existing_metadata:
+                    try:
+                        channel_stream_id = int(existing_metadata[b'stream_id'].decode('utf-8'))
+                        logger.debug(f"Found stream_id {channel_stream_id} in metadata for channel {channel_id}")
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Could not parse stream_id from metadata: {e}")
 
             # Check if channel is already owned
             current_owner = self.get_channel_owner(channel_id)
@@ -419,9 +428,23 @@ class ProxyServer:
                 if channel_user_agent:
                     metadata["user_agent"] = channel_user_agent
 
-                # Set channel metadata
+                # CRITICAL FIX: Make sure stream_id is always set in metadata and properly logged
+                if channel_stream_id:
+                    metadata["stream_id"] = str(channel_stream_id)
+                    logger.info(f"Storing stream_id {channel_stream_id} in metadata for channel {channel_id}")
+                else:
+                    logger.warning(f"No stream_id provided for channel {channel_id} during initialization")
+
+                # Set channel metadata BEFORE creating the StreamManager
                 self.redis_client.hset(metadata_key, mapping=metadata)
-                self.redis_client.expire(metadata_key, 30)  # 1 hour TTL
+                self.redis_client.expire(metadata_key, 3600)  # Increased TTL from 30 seconds to 1 hour
+
+                # Verify the stream_id was set correctly in Redis
+                stream_id_value = self.redis_client.hget(metadata_key, "stream_id")
+                if stream_id_value:
+                    logger.info(f"Verified stream_id {stream_id_value.decode('utf-8')} is set in Redis for channel {channel_id}")
+                else:
+                    logger.warning(f"Failed to set stream_id in Redis for channel {channel_id}")
 
             # Create stream buffer
             buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
@@ -429,8 +452,15 @@ class ProxyServer:
             self.stream_buffers[channel_id] = buffer
 
             # Only the owner worker creates the actual stream manager
-            stream_manager = StreamManager(channel_id, channel_url, buffer, user_agent=channel_user_agent, transcode=transcode)
-            logger.debug(f"Created StreamManager for channel {channel_id}")
+            stream_manager = StreamManager(
+                channel_id,
+                channel_url,
+                buffer,
+                user_agent=channel_user_agent,
+                transcode=transcode,
+                stream_id=channel_stream_id  # Pass stream ID to the manager
+            )
+            logger.info(f"Created StreamManager for channel {channel_id} with stream ID {channel_stream_id}")
             self.stream_managers[channel_id] = stream_manager
 
             # Create client manager with channel_id, redis_client AND worker_id
