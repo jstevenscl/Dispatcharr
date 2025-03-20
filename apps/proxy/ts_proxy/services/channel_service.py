@@ -12,6 +12,7 @@ from apps.proxy.config import TSConfig as Config
 from .. import proxy_server
 from ..redis_keys import RedisKeys
 from ..constants import EventType
+from ..url_utils import get_stream_info_for_switch
 
 logger = logging.getLogger("ts_proxy")
 
@@ -43,18 +44,30 @@ class ChannelService:
         return success
 
     @staticmethod
-    def change_stream_url(channel_id, new_url, user_agent=None):
+    def change_stream_url(channel_id, new_url=None, user_agent=None, target_stream_id=None):
         """
         Change the URL of an existing stream.
 
         Args:
             channel_id: UUID of the channel
-            new_url: New stream URL
+            new_url: New stream URL (optional if target_stream_id is provided)
             user_agent: Optional user agent to update
+            target_stream_id: Optional target stream ID to switch to
 
         Returns:
             dict: Result information including success status and diagnostics
         """
+        # If no direct URL is provided but a target stream is, get URL from target stream
+        if not new_url and target_stream_id:
+            stream_info = get_stream_info_for_switch(channel_id, target_stream_id)
+            if 'error' in stream_info:
+                return {
+                    'status': 'error',
+                    'message': stream_info['error']
+                }
+            new_url = stream_info['url']
+            user_agent = stream_info['user_agent']
+
         # Check if channel exists
         in_local_managers = channel_id in proxy_server.stream_managers
         in_local_buffers = channel_id in proxy_server.stream_buffers
