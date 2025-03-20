@@ -142,6 +142,8 @@ class StreamProfile(models.Model):
 
 DEFAULT_USER_AGENT_KEY= slugify("Default User-Agent")
 DEFAULT_STREAM_PROFILE_KEY = slugify("Default Stream Profile")
+PREFERRED_REGION_KEY = slugify("Preferred Region")
+
 
 class CoreSettings(models.Model):
     key = models.CharField(
@@ -166,3 +168,12 @@ class CoreSettings(models.Model):
     @classmethod
     def get_default_stream_profile_id(cls):
         return cls.objects.get(key=DEFAULT_STREAM_PROFILE_KEY).value
+
+    @classmethod
+    def get_preferred_region(cls):
+        """Retrieve the preferred region setting (or return None if not found)."""
+        try:
+            return cls.objects.get(key=PREFERRED_REGION_KEY).value
+        except cls.DoesNotExist:
+            return None
+

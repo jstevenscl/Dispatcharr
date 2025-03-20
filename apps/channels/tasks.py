@@ -1,34 +1,45 @@
 # apps/channels/tasks.py
-
 import logging
+import os
 import re
 
 from celery import shared_task
 from rapidfuzz import fuzz
 from sentence_transformers import SentenceTransformer, util
+from django.conf import settings
 from django.db import transaction
 
 from apps.channels.models import Channel
-from apps.epg.models import EPGData
-from core.models import CoreSettings  # to retrieve "preferred-region" setting
+from apps.epg.models import EPGData, EPGSource
+from core.models import CoreSettings
+from apps.epg.tasks import parse_programs_for_tvg_id  # <-- we import our new helper
 
 logger = logging.getLogger(__name__)
 
-# Load the model once at module level
+# Load the sentence-transformers model once at the module level
 SENTENCE_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-st_model = SentenceTransformer(SENTENCE_MODEL_NAME)
+MODEL_PATH = os.path.join(settings.MEDIA_ROOT, "models", "all-MiniLM-L6-v2")
+os.makedirs(MODEL_PATH, exist_ok=True)
 
-# Threshold constants
-BEST_FUZZY_THRESHOLD = 70
+# If not present locally, download:
+if not os.path.exists(os.path.join(MODEL_PATH, "config.json")):
+    logger.info(f"Local model not found in {MODEL_PATH}; downloading from {SENTENCE_MODEL_NAME}...")
+    st_model = SentenceTransformer(SENTENCE_MODEL_NAME, cache_folder=MODEL_PATH)
+else:
+    logger.info(f"Loading local model from {MODEL_PATH}")
+    st_model = SentenceTransformer(MODEL_PATH)
+
+# Thresholds
+BEST_FUZZY_THRESHOLD = 85
 LOWER_FUZZY_THRESHOLD = 40
 EMBED_SIM_THRESHOLD = 0.65
 
-# Common extraneous words
+# Words we remove to help with fuzzy + embedding matching
 COMMON_EXTRANEOUS_WORDS = [
     "tv", "channel", "network", "television",
-    "east", "west", "hd", "uhd", "us", "usa", "not", "24/7",
+    "east", "west", "hd", "uhd", "24/7",
     "1080p", "720p", "540p", "480p",
-    "arabic", "latino", "film", "movie", "movies"
+    "film", "movie", "movies"
 ]
 
 def normalize_name(name: str) -> str:
@@ -43,21 +54,12 @@ def normalize_name(name: str) -> str:
     if not name:
         return ""
 
-    # Lowercase
     norm = name.lower()
-
-    # Remove bracketed text
     norm = re.sub(r"\[.*?\]", "", norm)
     norm = re.sub(r"\(.*?\)", "", norm)
-
-    # Remove punctuation except word chars/spaces
     norm = re.sub(r"[^\w\s]", "", norm)
-
-    # Remove extraneous tokens
     tokens = norm.split()
     tokens = [t for t in tokens if t not in COMMON_EXTRANEOUS_WORDS]
-
-    # Rejoin
     norm = " ".join(tokens).strip()
     return norm
 
@@ -65,36 +67,33 @@ def normalize_name(name: str) -> str:
 def match_epg_channels():
     """
     Goes through all Channels and tries to find a matching EPGData row by:
-      1) If channel.tvg_id is valid in EPGData, skip
-      2) If channel has a tvg_id but not found in EPGData, attempt direct EPGData lookup
-      3) Otherwise do name-based fuzzy ratio pass:
-         - add region-based bonus if region code is found in the EPG row
-         - if fuzzy >= BEST_FUZZY_THRESHOLD => accept
-         - if fuzzy in [LOWER_FUZZY_THRESHOLD..BEST_FUZZY_THRESHOLD) => do embedding check
-         - else skip
-    4) Log summary
+      1) If channel.tvg_id is valid in EPGData, skip.
+      2) If channel has a tvg_id but not found in EPGData, attempt direct EPGData lookup.
+      3) Otherwise, perform name-based fuzzy matching with optional region-based bonus.
+      4) If a match is found, we set channel.tvg_id and also parse its programs
+         from the cached EPG file (parse_programs_for_tvg_id).
+      5) Summarize and log results.
     """
     logger.info("Starting EPG matching logic...")
 
-    # Try to get user's preferred region from CoreSettings
+    # Attempt to retrieve a "preferred-region" if configured
     try:
         region_obj = CoreSettings.objects.get(key="preferred-region")
-        region_code = region_obj.value.strip().lower()  # e.g. "us"
+        region_code = region_obj.value.strip().lower()
     except CoreSettings.DoesNotExist:
         region_code = None
 
-    # 1) Gather EPG rows
+    # Gather EPGData rows so we can do fuzzy matching in memory
     all_epg = list(EPGData.objects.all())
     epg_rows = []
     for e in all_epg:
         epg_rows.append({
             "epg_id": e.id,
-            "tvg_id": e.tvg_id or "",   # e.g. "Fox News.us"
+            "tvg_id": e.tvg_id or "",
             "raw_name": e.name,
             "norm_name": normalize_name(e.name),
         })
 
-    # 2) Pre-encode embeddings if possible
     epg_embeddings = None
     if any(row["norm_name"] for row in epg_rows):
         epg_embeddings = st_model.encode(
@@ -104,80 +103,97 @@ def match_epg_channels():
 
     matched_channels = []
 
+    source = EPGSource.objects.filter(is_active=True).first()
+    epg_file_path = getattr(source, 'file_path', None) if source else None
+
     with transaction.atomic():
         for chan in Channel.objects.all():
-            # A) Skip if channel.tvg_id is valid
+
+            # A) Skip if channel.tvg_id is already valid
             if chan.tvg_id and EPGData.objects.filter(tvg_id=chan.tvg_id).exists():
                 continue
 
-            # B) If channel has a tvg_id but not in EPG, do direct lookup
+            # B) If channel has a tvg_id that doesn't exist in EPGData, do direct check
             if chan.tvg_id:
                 epg_match = EPGData.objects.filter(tvg_id=chan.tvg_id).first()
                 if epg_match:
-                    logger.info(
-                        f"Channel {chan.id} '{chan.name}' => found EPG by tvg_id={chan.tvg_id}"
-                    )
+                    logger.info(f"Channel {chan.id} '{chan.name}' => EPG found by tvg_id={chan.tvg_id}")
                     continue
 
-            # C) No valid tvg_id => name-based matching
+            # C) Perform name-based fuzzy matching
             fallback_name = chan.tvg_name.strip() if chan.tvg_name else chan.name
             norm_chan = normalize_name(fallback_name)
             if not norm_chan:
-                logger.info(
-                    f"Channel {chan.id} '{chan.name}' => empty after normalization, skipping"
-                )
+                logger.info(f"Channel {chan.id} '{chan.name}' => empty after normalization, skipping")
                 continue
 
             best_score = 0
             best_epg = None
-
             for row in epg_rows:
                 if not row["norm_name"]:
                     continue
-                # Base fuzzy ratio
                 base_score = fuzz.ratio(norm_chan, row["norm_name"])
-
-                # If we have a region_code, add a small bonus if the epg row has that region
-                # e.g. tvg_id or raw_name might contain ".us" or "us"
                 bonus = 0
+                # Region-based bonus/penalty
+                combined_text = row["tvg_id"].lower() + " " + row["raw_name"].lower()
+                dot_regions = re.findall(r'\.([a-z]{2})', combined_text)
                 if region_code:
-                    # example: if region_code is "us" and row["tvg_id"] ends with ".us"
-                    # or row["raw_name"] has "us" in it, etc.
-                    # We'll do a naive check:
-                    combined_text = row["tvg_id"].lower() + " " + row["raw_name"].lower()
-                    if region_code in combined_text:
-                        bonus = 15  # pick a small bonus
-
+                    if dot_regions:
+                        if region_code in dot_regions:
+                            bonus = 30  # bigger bonus if .us or .ca matches
+                        else:
+                            bonus = -15
+                    elif region_code in combined_text:
+                        bonus = 15
                 score = base_score + bonus
+
+                logger.debug(
+                    f"Channel {chan.id} '{fallback_name}' => EPG row {row['epg_id']}: "
+                    f"raw_name='{row['raw_name']}', norm_name='{row['norm_name']}', "
+                    f"combined_text='{combined_text}', dot_regions={dot_regions}, "
+                    f"base_score={base_score}, bonus={bonus}, total_score={score}"
+                )
 
                 if score > best_score:
                     best_score = score
                     best_epg = row
 
+            # If no best match was found, skip
             if not best_epg:
                 logger.info(f"Channel {chan.id} '{fallback_name}' => no EPG match at all.")
                 continue
 
-            # E) Decide acceptance
+            # If best_score is above BEST_FUZZY_THRESHOLD => direct accept
             if best_score >= BEST_FUZZY_THRESHOLD:
-                # Accept
                 chan.tvg_id = best_epg["tvg_id"]
                 chan.save()
+
+                # Attempt to parse program data for this channel
+                if epg_file_path:
+                    parse_programs_for_tvg_id(epg_file_path, best_epg["tvg_id"])
+                    logger.info(f"Loaded program data for tvg_id={best_epg['tvg_id']}")
+
                 matched_channels.append((chan.id, fallback_name, best_epg["tvg_id"]))
                 logger.info(
-                    f"Channel {chan.id} '{fallback_name}' => matched tvg_id={best_epg['tvg_id']} (score={best_score})"
+                    f"Channel {chan.id} '{fallback_name}' => matched tvg_id={best_epg['tvg_id']} "
+                    f"(score={best_score})"
                 )
+
+            # If best_score is in the “middle range,” do embedding check
             elif best_score >= LOWER_FUZZY_THRESHOLD and epg_embeddings is not None:
-                # borderline => do embedding
                 chan_embedding = st_model.encode(norm_chan, convert_to_tensor=True)
                 sim_scores = util.cos_sim(chan_embedding, epg_embeddings)[0]
                 top_index = int(sim_scores.argmax())
                 top_value = float(sim_scores[top_index])
-
                 if top_value >= EMBED_SIM_THRESHOLD:
                     matched_epg = epg_rows[top_index]
                     chan.tvg_id = matched_epg["tvg_id"]
                     chan.save()
+
+                    if epg_file_path:
+                        parse_programs_for_tvg_id(epg_file_path, matched_epg["tvg_id"])
+                        logger.info(f"Loaded program data for tvg_id={matched_epg['tvg_id']}")
+
                     matched_channels.append((chan.id, fallback_name, matched_epg["tvg_id"]))
                     logger.info(
                         f"Channel {chan.id} '{fallback_name}' => matched EPG tvg_id={matched_epg['tvg_id']} "
@@ -189,12 +205,11 @@ def match_epg_channels():
                         f"cos-sim={top_value:.2f} < {EMBED_SIM_THRESHOLD}, skipping"
                     )
             else:
-                # no match
                 logger.info(
-                    f"Channel {chan.id} '{fallback_name}' => fuzzy={best_score} < {LOWER_FUZZY_THRESHOLD}, skipping"
+                    f"Channel {chan.id} '{fallback_name}' => fuzzy={best_score} < "
+                    f"{LOWER_FUZZY_THRESHOLD}, skipping"
                 )
 
-    # Final summary
     total_matched = len(matched_channels)
     if total_matched:
         logger.info(f"Match Summary: {total_matched} channel(s) matched.")
