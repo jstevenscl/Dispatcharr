@@ -14,6 +14,8 @@ from core.models import UserAgent, CoreSettings
 from .stream_buffer import StreamBuffer
 from .utils import detect_stream_type
 from .redis_keys import RedisKeys
+from .constants import ChannelState, EventType, StreamType, TS_PACKET_SIZE
+from .config_helper import ConfigHelper
 
 logger = logging.getLogger("ts_proxy")
 
@@ -28,7 +30,7 @@ class StreamManager:
         self.running = True
         self.connected = False
         self.retry_count = 0
-        self.max_retries = Config.MAX_RETRIES
+        self.max_retries = ConfigHelper.max_retries()
         self.current_response = None
         self.current_session = None
         self.url_switching = False
@@ -44,8 +46,8 @@ class StreamManager:
         # Stream health monitoring
         self.last_data_time = time.time()
         self.healthy = True
-        self.health_check_interval = Config.HEALTH_CHECK_INTERVAL
-        self.chunk_size = getattr(Config, 'CHUNK_SIZE', 8192)
+        self.health_check_interval = ConfigHelper.get('HEALTH_CHECK_INTERVAL', 5)
+        self.chunk_size = ConfigHelper.chunk_size()
 
         # Add to your __init__ method
         self._buffer_check_timers = []
@@ -85,7 +87,7 @@ class StreamManager:
         try:
             # Check stream type before connecting
             stream_type = detect_stream_type(self.url)
-            if self.transcode == False and stream_type == 'hls':
+            if self.transcode == False and stream_type == StreamType.HLS:
                 logger.info(f"Detected HLS stream: {self.url}")
                 logger.info(f"HLS streams will be handled with FFmpeg for now - future version will support HLS natively")
                 # Enable transcoding for HLS streams
@@ -504,16 +506,16 @@ class StreamManager:
                         logger.error(f"Error checking current state: {e}")
 
                     # Only update if not already past connecting
-                    if not current_state or current_state in ["initializing", "connecting"]:
+                    if not current_state or current_state in [ChannelState.INITIALIZING, ChannelState.CONNECTING]:
                         # NEW CODE: Check if buffer has enough chunks
                         current_buffer_index = getattr(self.buffer, 'index', 0)
-                        initial_chunks_needed = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
+                        initial_chunks_needed = ConfigHelper.initial_behind_chunks()
 
                         if current_buffer_index < initial_chunks_needed:
                             # Not enough buffer yet - set to connecting state if not already
-                            if current_state != "connecting":
+                            if current_state != ChannelState.CONNECTING:
                                 update_data = {
-                                    "state": "connecting",
+                                    "state": ChannelState.CONNECTING,
                                     "state_changed_at": current_time
                                 }
                                 redis_client.hset(metadata_key, mapping=update_data)
@@ -527,7 +529,7 @@ class StreamManager:
 
                         # We have enough buffer, proceed with state change
                         update_data = {
-                            "state": "waiting_for_clients",
+                            "state": ChannelState.WAITING_FOR_CLIENTS,
                             "connection_ready_time": current_time,
                             "state_changed_at": current_time,
                             "buffer_chunks": str(current_buffer_index)
@@ -535,8 +537,8 @@ class StreamManager:
                         redis_client.hset(metadata_key, mapping=update_data)
 
                         # Get configured grace period or default
-                        grace_period = getattr(Config, 'CHANNEL_INIT_GRACE_PERIOD', 20)
-                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → waiting_for_clients with {current_buffer_index} buffer chunks")
+                        grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
+                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → {ChannelState.WAITING_FOR_CLIENTS} with {current_buffer_index} buffer chunks")
                         logger.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
                     else:
                         logger.debug(f"Not changing state: channel {channel_id} already in {current_state} state")

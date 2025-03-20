@@ -8,6 +8,8 @@ from typing import Optional, Deque
 import random
 from apps.proxy.config import TSConfig as Config
 from .redis_keys import RedisKeys
+from .config_helper import ConfigHelper
+from .constants import TS_PACKET_SIZE
 
 logger = logging.getLogger("ts_proxy")
 
@@ -19,13 +21,13 @@ class StreamBuffer:
         self.redis_client = redis_client
         self.lock = threading.Lock()
         self.index = 0
-        self.TS_PACKET_SIZE = 188
+        self.TS_PACKET_SIZE = TS_PACKET_SIZE
 
         # STANDARDIZED KEYS: Use RedisKeys class instead of hardcoded patterns
         self.buffer_index_key = RedisKeys.buffer_index(channel_id) if channel_id else ""
         self.buffer_prefix = RedisKeys.buffer_chunk_prefix(channel_id) if channel_id else ""
 
-        self.chunk_ttl = getattr(Config, 'REDIS_CHUNK_TTL', 60)
+        self.chunk_ttl = ConfigHelper.redis_chunk_ttl()
 
         # Initialize from Redis if available
         if self.redis_client and channel_id:
@@ -38,7 +40,7 @@ class StreamBuffer:
                 logger.error(f"Error initializing buffer from Redis: {e}")
 
         self._write_buffer = bytearray()
-        self.target_chunk_size = getattr(Config, 'BUFFER_CHUNK_SIZE', 188 * 5644)  # ~1MB default
+        self.target_chunk_size = ConfigHelper.get('BUFFER_CHUNK_SIZE', TS_PACKET_SIZE * 5644)  # ~1MB default
 
         # Track timers for proper cleanup
         self.stopping = False
@@ -58,7 +60,7 @@ class StreamBuffer:
             combined_data = bytearray(self._partial_packet) + bytearray(chunk)
 
             # Calculate complete packets
-            complete_packets_size = (len(combined_data) // 188) * 188
+            complete_packets_size = (len(combined_data) // self.TS_PACKET_SIZE) * self.TS_PACKET_SIZE
 
             if complete_packets_size == 0:
                 # Not enough data for a complete packet

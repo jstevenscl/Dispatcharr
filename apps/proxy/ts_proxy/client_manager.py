@@ -6,6 +6,9 @@ import time
 import json
 from typing import Set, Optional
 from apps.proxy.config import TSConfig as Config
+from .constants import EventType
+from .config_helper import ConfigHelper
+from .redis_keys import RedisKeys
 
 logger = logging.getLogger("ts_proxy")
 
@@ -21,9 +24,9 @@ class ClientManager:
         self.worker_id = worker_id  # Store worker ID as instance variable
 
         # STANDARDIZED KEYS: Move client set under channel namespace
-        self.client_set_key = f"ts_proxy:channel:{channel_id}:clients"
-        self.client_ttl = getattr(Config, 'CLIENT_RECORD_TTL', 60)
-        self.heartbeat_interval = getattr(Config, 'CLIENT_HEARTBEAT_INTERVAL', 10)
+        self.client_set_key = RedisKeys.clients(channel_id)
+        self.client_ttl = ConfigHelper.get('CLIENT_RECORD_TTL', 60)
+        self.heartbeat_interval = ConfigHelper.get('CLIENT_HEARTBEAT_INTERVAL', 10)
         self.last_heartbeat_time = {}
 
         # Start heartbeat thread for local clients
@@ -178,7 +181,7 @@ class ClientManager:
 
                     # Publish client connected event with user agent
                     event_data = {
-                        "event": "client_connected",
+                        "event": EventType.CLIENT_CONNECTED,  # Use constant instead of string
                         "channel_id": self.channel_id,
                         "client_id": client_id,
                         "worker_id": self.worker_id or "unknown",
@@ -240,7 +243,7 @@ class ClientManager:
 
                 # Publish client disconnected event
                 event_data = json.dumps({
-                    "event": "client_disconnected",
+                    "event": EventType.CLIENT_DISCONNECTED,  # Use constant instead of string
                     "channel_id": self.channel_id,
                     "client_id": client_id,
                     "worker_id": self.worker_id or "unknown",

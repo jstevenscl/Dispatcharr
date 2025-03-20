@@ -18,6 +18,9 @@ from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings, PROXY_PROFILE_NAME
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from .constants import ChannelState, EventType, StreamType
+from .config_helper import ConfigHelper
+from .services.channel_service import ChannelService
 
 # Configure logging properly
 logger = logging.getLogger("ts_proxy")
@@ -91,12 +94,12 @@ def stream_ts(request, channel_id):
             else:
                 transcode = True
 
-            # Initialize channel with the stream's user agent (not the client's)
-            success = proxy_server.initialize_channel(stream_url, channel_id, stream_user_agent, transcode)
-            if proxy_server.redis_client:
-                metadata_key = RedisKeys.channel_metadata(channel_id)
-                profile_value = str(stream_profile)
-                proxy_server.redis_client.hset(metadata_key, "profile", profile_value)
+            # Initialize channel using the service
+            profile_value = str(stream_profile)
+            success = ChannelService.initialize_channel(
+                channel_id, stream_url, stream_user_agent, transcode, profile_value
+            )
+
             if not success:
                 return JsonResponse({'error': 'Failed to initialize channel'}, status=500)
 
@@ -105,8 +108,9 @@ def stream_ts(request, channel_id):
                 manager = proxy_server.stream_managers.get(channel_id)
                 if manager:
                     wait_start = time.time()
+                    timeout = ConfigHelper.connection_timeout()
                     while not manager.connected:
-                        if time.time() - wait_start > Config.CONNECTION_TIMEOUT:
+                        if time.time() - wait_start > timeout:
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Connection timeout'}, status=504)
                         if not manager.should_retry():
@@ -194,91 +198,17 @@ def change_stream(request, channel_id):
 
         logger.info(f"Attempting to change stream URL for channel {channel_id} to {new_url}")
 
-        # Enhanced channel detection
-        in_local_managers = channel_id in proxy_server.stream_managers
-        in_local_buffers = channel_id in proxy_server.stream_buffers
+        # Use the service layer instead of direct implementation
+        result = ChannelService.change_stream_url(channel_id, new_url, user_agent)
 
-        # First check Redis directly before using our wrapper method
-        redis_keys = None
-        if proxy_server.redis_client:
-            try:
-                redis_keys = proxy_server.redis_client.keys(f"ts_proxy:*:{channel_id}*")
-                redis_keys = [k.decode('utf-8') for k in redis_keys] if redis_keys else []
-            except Exception as e:
-                logger.error(f"Error checking Redis keys: {e}")
+        if result.get('status') == 'error':
+            return JsonResponse({
+                'error': result.get('message', 'Unknown error'),
+                'diagnostics': result.get('diagnostics', {})
+            }, status=404)
 
-        # Now use our standard check
-        channel_exists = proxy_server.check_if_channel_exists(channel_id)
-
-        # Log detailed diagnostics
-        logger.info(f"Channel {channel_id} diagnostics: "
-                   f"in_local_managers={in_local_managers}, "
-                   f"in_local_buffers={in_local_buffers}, "
-                   f"redis_keys_count={len(redis_keys) if redis_keys else 0}, "
-                   f"channel_exists={channel_exists}")
-
-        if not channel_exists:
-            # If channel doesn't exist but we found Redis keys, force initialize it
-            if redis_keys:
-                logger.warning(f"Channel {channel_id} not detected by check_if_channel_exists but Redis keys exist. Forcing initialization.")
-                proxy_server.initialize_channel(new_url, channel_id, user_agent)
-            else:
-                logger.error(f"Channel {channel_id} not found in any worker or Redis")
-                return JsonResponse({
-                    'error': 'Channel not found',
-                    'diagnostics': {
-                        'in_local_managers': in_local_managers,
-                        'in_local_buffers': in_local_buffers,
-                        'redis_keys': redis_keys,
-                    }
-                }, status=404)
-
-        # Update metadata in Redis regardless of ownership - this ensures URL is updated
-        # even if the owner worker is handling another request
-        if proxy_server.redis_client:
-            try:
-                metadata_key = RedisKeys.channel_metadata(channel_id)
-
-                # First check if the key exists and what type it is
-                key_type = proxy_server.redis_client.type(metadata_key).decode('utf-8')
-                logger.debug(f"Redis key {metadata_key} is of type: {key_type}")
-
-                # Use the appropriate method based on the key type
-                if key_type == 'hash':
-                    proxy_server.redis_client.hset(metadata_key, "url", new_url)
-                    if user_agent:
-                        proxy_server.redis_client.hset(metadata_key, "user_agent", user_agent)
-                elif key_type == 'none':  # Key doesn't exist yet
-                    # Create new hash with all required fields
-                    metadata = {"url": new_url}
-                    if user_agent:
-                        metadata["user_agent"] = user_agent
-                    proxy_server.redis_client.hset(metadata_key, mapping=metadata)
-                else:
-                    # If key exists with wrong type, delete it and recreate
-                    proxy_server.redis_client.delete(metadata_key)
-                    metadata = {"url": new_url}
-                    if user_agent:
-                        metadata["user_agent"] = user_agent
-                    proxy_server.redis_client.hset(metadata_key, mapping=metadata)
-
-                # Set switch request flag to ensure all workers see it
-                switch_key = RedisKeys.switch_request(channel_id)
-                proxy_server.redis_client.setex(switch_key, 30, new_url)  # 30 second TTL
-
-                logger.info(f"Updated metadata for channel {channel_id} in Redis")
-            except Exception as e:
-                logger.error(f"Error updating Redis metadata: {e}", exc_info=True)
-
-        # If we're the owner, update directly
-        if proxy_server.am_i_owner(channel_id) and channel_id in proxy_server.stream_managers:
-            logger.info(f"This worker is the owner, changing stream URL for channel {channel_id}")
-            manager = proxy_server.stream_managers[channel_id]
-            old_url = manager.url
-
-            # Update the stream
-            result = manager.update_url(new_url)
-            logger.info(f"Stream URL changed from {old_url} to {new_url}, result: {result}")
+        # Format response based on whether it was a direct update or event-based
+        if result.get('direct_update'):
             return JsonResponse({
                 'message': 'Stream URL updated',
                 'channel': channel_id,
@@ -286,25 +216,7 @@ def change_stream(request, channel_id):
                 'owner': True,
                 'worker_id': proxy_server.worker_id
             })
-
-        # If we're not the owner, publish an event for the owner to pick up
         else:
-            logger.info(f"This worker is not the owner, requesting URL change via Redis PubSub")
-            # Publish switch request event
-            switch_request = {
-                "event": "stream_switch",
-                "channel_id": channel_id,
-                "url": new_url,
-                "user_agent": user_agent,
-                "requester": proxy_server.worker_id,
-                "timestamp": time.time()
-            }
-
-            proxy_server.redis_client.publish(
-                RedisKeys.events_channel(channel_id),
-                json.dumps(switch_request)
-            )
-
             return JsonResponse({
                 'message': 'Stream URL change requested',
                 'channel': channel_id,
@@ -374,61 +286,16 @@ def stop_channel(request, channel_id):
     try:
         logger.info(f"Request to stop channel {channel_id} received")
 
-        # Check if channel exists
-        channel_exists = proxy_server.check_if_channel_exists(channel_id)
-        if not channel_exists:
-            logger.warning(f"Channel {channel_id} not found in any worker or Redis")
-            return JsonResponse({'error': 'Channel not found'}, status=404)
+        # Use the service layer instead of direct implementation
+        result = ChannelService.stop_channel(channel_id)
 
-        # Get channel state information for response
-        channel_info = None
-        if proxy_server.redis_client:
-            metadata_key = RedisKeys.channel_metadata(channel_id)
-            try:
-                metadata = proxy_server.redis_client.hgetall(metadata_key)
-                if metadata and b'state' in metadata:
-                    state = metadata[b'state'].decode('utf-8')
-                    channel_info = {"state": state}
-            except Exception as e:
-                logger.error(f"Error fetching channel state: {e}")
-
-        # Broadcast stop event to all workers via PubSub
-        if proxy_server.redis_client:
-            stop_request = {
-                "event": "channel_stop",
-                "channel_id": channel_id,
-                "requester_worker_id": proxy_server.worker_id,
-                "timestamp": time.time()
-            }
-
-            # Publish the stop event
-            proxy_server.redis_client.publish(
-                RedisKeys.events_channel(channel_id),
-                json.dumps(stop_request)
-            )
-
-            logger.info(f"Published channel stop event for {channel_id}")
-
-            # Also stop locally to ensure this worker cleans up right away
-            result = proxy_server.stop_channel(channel_id)
-        else:
-            # No Redis, just stop locally
-            result = proxy_server.stop_channel(channel_id)
-
-        # Release the channel in the channel model if applicable
-        try:
-            channel = Channel.objects.get(uuid=channel_id)
-            channel.release_stream()
-            logger.info(f"Released channel {channel_id} stream allocation")
-        except Channel.DoesNotExist:
-            logger.warning(f"Could not find Channel model for UUID {channel_id}")
-        except Exception as e:
-            logger.error(f"Error releasing channel stream: {e}")
+        if result.get('status') == 'error':
+            return JsonResponse({'error': result.get('message', 'Unknown error')}, status=404)
 
         return JsonResponse({
             'message': 'Channel stop request sent',
             'channel_id': channel_id,
-            'previous_state': channel_info
+            'previous_state': result.get('previous_state')
         })
 
     except Exception as e:
@@ -448,55 +315,17 @@ def stop_client(request, channel_id):
         if not client_id:
             return JsonResponse({'error': 'No client_id provided'}, status=400)
 
-        logger.info(f"Request to stop client {client_id} on channel {channel_id}")
+        # Use the service layer instead of direct implementation
+        result = ChannelService.stop_client(channel_id, client_id)
 
-        # Set a Redis key for the generator to detect regardless of whether client is local
-        if proxy_server.redis_client:
-            stop_key = RedisKeys.client_stop(channel_id, client_id)
-            proxy_server.redis_client.setex(stop_key, 30, "true")  # 30 second TTL
-            logger.info(f"Set stop key for client {client_id}")
-
-        # Check if channel exists
-        channel_exists = proxy_server.check_if_channel_exists(channel_id)
-        if not channel_exists:
-            logger.warning(f"Channel {channel_id} not found")
-            return JsonResponse({'error': 'Channel not found'}, status=404)
-
-        # Two-part approach:
-        # 1. Handle locally if client is on this worker
-        # 2. Use events to inform other workers if needed
-
-        local_client_stopped = False
-        if channel_id in proxy_server.client_managers:
-            client_manager = proxy_server.client_managers[channel_id]
-            # Use the existing remove_client method directly
-            with client_manager.lock:
-                if client_id in client_manager.clients:
-                    client_manager.remove_client(client_id)
-                    local_client_stopped = True
-                    logger.info(f"Client {client_id} stopped locally on channel {channel_id}")
-
-        # If client wasn't found locally, broadcast stop event for other workers
-        if not local_client_stopped and proxy_server.redis_client:
-            stop_request = {
-                "event": "client_stop",
-                "channel_id": channel_id,
-                "client_id": client_id,
-                "requester_worker_id": proxy_server.worker_id,
-                "timestamp": time.time()
-            }
-
-            proxy_server.redis_client.publish(
-                RedisKeys.events_channel(channel_id),
-                json.dumps(stop_request)
-            )
-            logger.info(f"Published stop request for client {client_id} on channel {channel_id}")
+        if result.get('status') == 'error':
+            return JsonResponse({'error': result.get('message')}, status=404)
 
         return JsonResponse({
             'message': 'Client stop request processed',
             'channel_id': channel_id,
             'client_id': client_id,
-            'locally_processed': local_client_stopped
+            'locally_processed': result.get('locally_processed', False)
         })
 
     except json.JSONDecodeError:
