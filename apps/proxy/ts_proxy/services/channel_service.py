@@ -11,7 +11,7 @@ from apps.channels.models import Channel
 from apps.proxy.config import TSConfig as Config
 from .. import proxy_server
 from ..redis_keys import RedisKeys
-from ..constants import EventType
+from ..constants import EventType, ChannelState
 from ..url_utils import get_stream_info_for_switch
 
 logger = logging.getLogger("ts_proxy")
@@ -317,6 +317,69 @@ class ChannelService:
             'stop_key_set': key_set,
             'event_published': event_published
         }
+
+    @staticmethod
+    def validate_channel_state(channel_id):
+        """
+        Validate if a channel is in a healthy state and has an active owner.
+
+        Args:
+            channel_id: UUID of the channel
+
+        Returns:
+            tuple: (valid, state, owner, details) - validity status, current state, owner, and diagnostic info
+        """
+        if not proxy_server.redis_client:
+            return False, None, None, {"error": "Redis not available"}
+
+        try:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if not proxy_server.redis_client.exists(metadata_key):
+                return False, None, None, {"error": "No channel metadata"}
+
+            metadata = proxy_server.redis_client.hgetall(metadata_key)
+
+            # Extract state and owner
+            state = metadata.get(b'state', b'unknown').decode('utf-8')
+            owner = metadata.get(b'owner', b'unknown').decode('utf-8')
+
+            # Valid states indicate channel is running properly
+            valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS, ChannelState.CONNECTING]
+
+            if state not in valid_states:
+                return False, state, owner, {"error": f"Invalid state: {state}"}
+
+            # Check if owner is still active
+            owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
+            owner_alive = proxy_server.redis_client.exists(owner_heartbeat_key)
+
+            if not owner_alive:
+                return False, state, owner, {"error": "Owner not active"}
+
+            # Check for recent activity
+            last_data_key = RedisKeys.last_data(channel_id)
+            last_data = proxy_server.redis_client.get(last_data_key)
+
+            details = {
+                "state": state,
+                "owner": owner,
+                "owner_alive": owner_alive
+            }
+
+            if last_data:
+                last_data_time = float(last_data.decode('utf-8'))
+                data_age = time.time() - last_data_time
+                details["last_data_age"] = data_age
+
+                # If no data for too long, consider invalid
+                if data_age > 30:  # 30 seconds threshold
+                    return False, state, owner, {"error": f"No data for {data_age:.1f}s", **details}
+
+            return True, state, owner, details
+
+        except Exception as e:
+            logger.error(f"Error validating channel state: {e}", exc_info=True)
+            return False, None, None, {"error": f"Exception: {str(e)}"}
 
     # Helper methods for Redis operations
 

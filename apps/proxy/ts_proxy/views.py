@@ -47,9 +47,38 @@ def stream_ts(request, channel_id):
                 logger.debug(f"[{client_id}] Client connected with user agent: {client_user_agent}")
                 break
 
+        # Check if we need to reinitialize the channel
+        needs_initialization = True
+        channel_state = None
+
+        # Get current channel state from Redis if available
+        if proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if proxy_server.redis_client.exists(metadata_key):
+                metadata = proxy_server.redis_client.hgetall(metadata_key)
+                if b'state' in metadata:
+                    channel_state = metadata[b'state'].decode('utf-8')
+
+                    # Only skip initialization if channel is in a healthy state
+                    valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS]
+                    if channel_state in valid_states:
+                        # Verify the owner is still active
+                        if b'owner' in metadata:
+                            owner = metadata[b'owner'].decode('utf-8')
+                            owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
+                            if proxy_server.redis_client.exists(owner_heartbeat_key):
+                                # Owner is active and channel is in good state
+                                needs_initialization = False
+                                logger.info(f"[{client_id}] Channel {channel_id} in state {channel_state} with active owner {owner}")
+
         # Start initialization if needed
         channel_initializing = False
-        if not proxy_server.check_if_channel_exists(channel_id):
+        if needs_initialization or not proxy_server.check_if_channel_exists(channel_id):
+            # Force cleanup of any previous instance
+            if channel_state in [ChannelState.ERROR, ChannelState.STOPPING, ChannelState.STOPPED]:
+                logger.warning(f"[{client_id}] Channel {channel_id} in state {channel_state}, forcing cleanup")
+                proxy_server.stop_channel(channel_id)
+
             # Initialize the channel (but don't wait for completion)
             logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
 
