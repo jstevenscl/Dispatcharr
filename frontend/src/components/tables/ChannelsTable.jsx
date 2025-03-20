@@ -370,9 +370,6 @@ const ChannelsTable = ({}) => {
     }
   };
 
-  // ─────────────────────────────────────────────────────────
-  // The new "Match EPG" button logic
-  // ─────────────────────────────────────────────────────────
   const matchEpg = async () => {
     try {
       // Hit our new endpoint that triggers the fuzzy matching Celery task
@@ -386,6 +383,7 @@ const ChannelsTable = ({}) => {
       notifications.show(`Error: ${err.message}`);
     }
   };
+
 
   const closeChannelForm = () => {
     setChannel(null);
