@@ -45,7 +45,7 @@ const Example = () => {
   const [rowSelection, setRowSelection] = useState([]);
   const [activeFilterValue, setActiveFilterValue] = useState('all');
 
-  const playlists = usePlaylistsStore((state) => state.playlists);
+  const { playlists, setRefreshProgress } = usePlaylistsStore();
 
   const theme = useMantineTheme();
 
@@ -109,6 +109,7 @@ const Example = () => {
 
   const refreshPlaylist = async (id) => {
     await API.refreshPlaylist(id);
+    setRefreshProgress(id, 0);
   };
 
   const deletePlaylist = async (id) => {

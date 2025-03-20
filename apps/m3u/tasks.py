@@ -23,7 +23,7 @@ from asgiref.sync import async_to_sync
 logger = logging.getLogger(__name__)
 
 LOCK_EXPIRE = 300
-BATCH_SIZE = 10000
+BATCH_SIZE = 1000
 SKIP_EXTS = {}
 
 def fetch_m3u_lines(account):
@@ -230,7 +230,7 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
             obj.last_seen = timezone.now()
             if changed:
                 streams_to_update.append(obj)
-                del existig_streams[stream_hash]
+                del existing_streams[stream_hash]
             else:
                 existing_streams[stream_hash] = obj
         else:

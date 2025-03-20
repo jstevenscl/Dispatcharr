@@ -21,6 +21,7 @@ export default function M3URefreshNotification() {
     const playlist = playlists.find((pl) => pl.id == id);
     if (!progress[id]) {
       if (refreshProgress[id] == 100) {
+        // This situation is if it refreshes so fast we only get the 100% complete notification
         const notificationId = notifications.show({
           loading: false,
           title: `M3U Refresh: ${playlist.name}`,
@@ -38,7 +39,7 @@ export default function M3URefreshNotification() {
       const notificationId = notifications.show({
         loading: true,
         title: `M3U Refresh: ${playlist.name}`,
-        message: `Updating M3U: ${refreshProgress[id]}%`,
+        message: `Starting...`,
         autoClose: false,
         withCloseButton: false,
       });
