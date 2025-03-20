@@ -54,7 +54,7 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
         transcode = True
 
     # Get profile name as string
-    profile_value = str(stream_profile)
+    profile_value = stream_profile.id
 
     return stream_url, stream_user_agent, transcode, profile_value
 
