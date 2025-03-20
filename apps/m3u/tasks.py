@@ -234,6 +234,7 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
             else:
                 existing_streams[stream_hash] = obj
         else:
+            stream_props["last_seen"] = timezone.now()
             streams_to_create.append(Stream(**stream_props))
 
     try:
@@ -245,8 +246,6 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
             Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
         logger.error(f"Bulk create failed: {str(e)}")
-        check_field_lengths(streams_to_create)
-        # check_field_lengths(streams_to_update)
 
 
     return f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
