@@ -1,28 +1,118 @@
 import redis
 import logging
+import time
+import os
 from django.conf import settings
+from redis.exceptions import ConnectionError, TimeoutError
 
 logger = logging.getLogger(__name__)
 
-def get_redis_client():
-    """Get Redis client with connection validation"""
-    try:
-        # Create Redis client
-        client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=getattr(settings, 'REDIS_PORT', 6379),
-            db=settings.REDIS_DB,
-            socket_timeout=5,
-            socket_connect_timeout=5
-        )
-        
-        # Validate connection with ping
-        client.ping()
-        logger.info(f"Connected to Redis at {settings.REDIS_HOST}:6379/{settings.REDIS_DB}")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        return None
+def get_redis_client(max_retries=5, retry_interval=1):
+    """Get Redis client with connection validation and retry logic"""
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            # Get connection parameters from settings or environment
+            redis_host = os.environ.get("REDIS_HOST", getattr(settings, 'REDIS_HOST', 'localhost'))
+            redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
+            redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
 
-# Initialize the global client
-redis_client = get_redis_client()
+            # Create Redis client with better defaults
+            client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                retry_on_timeout=True,
+                health_check_interval=30
+            )
+
+            # Validate connection with ping
+            client.ping()
+            logger.info(f"Connected to Redis at {redis_host}:{redis_port}/{redis_db}")
+            return client
+
+        except (ConnectionError, TimeoutError) as e:
+            retry_count += 1
+            if retry_count >= max_retries:
+                logger.error(f"Failed to connect to Redis after {max_retries} attempts: {e}")
+                return None
+            else:
+                # Use exponential backoff for retries
+                wait_time = retry_interval * (2 ** (retry_count - 1))
+                logger.warning(f"Redis connection failed. Retrying in {wait_time}s... ({retry_count}/{max_retries})")
+                time.sleep(wait_time)
+
+        except Exception as e:
+            logger.error(f"Unexpected error connecting to Redis: {e}")
+            return None
+
+def get_redis_pubsub_client(max_retries=5, retry_interval=3):
+    """Get Redis client optimized for PubSub operations with longer timeouts"""
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            # Get connection parameters from settings or environment
+            redis_host = os.environ.get("REDIS_HOST", getattr(settings, 'REDIS_HOST', 'localhost'))
+            redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
+            redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
+
+            # Create Redis client with PubSub-optimized settings
+            client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                socket_timeout=60,        # Longer timeout for blocking operations
+                socket_connect_timeout=5,
+                socket_keepalive=True,    # Enable TCP keepalive
+                health_check_interval=30,
+                retry_on_timeout=True
+            )
+
+            # Validate connection with ping
+            client.ping()
+            logger.info(f"Connected to Redis for PubSub at {redis_host}:{redis_port}/{redis_db}")
+            return client
+
+        except (ConnectionError, TimeoutError) as e:
+            retry_count += 1
+            if retry_count >= max_retries:
+                logger.error(f"Failed to connect to Redis for PubSub after {max_retries} attempts: {e}")
+                return None
+            else:
+                # Use exponential backoff for retries
+                wait_time = retry_interval * (2 ** (retry_count - 1))
+                logger.warning(f"Redis PubSub connection failed. Retrying in {wait_time}s... ({retry_count}/{max_retries})")
+                time.sleep(wait_time)
+
+        except Exception as e:
+            logger.error(f"Unexpected error connecting to Redis for PubSub: {e}")
+            return None
+
+def execute_redis_command(redis_client, command_func, default_return=None):
+    """
+    Execute a Redis command with proper error handling
+
+    Args:
+        redis_client: The Redis client instance
+        command_func: Lambda function containing the Redis command to execute
+        default_return: Value to return if command fails
+
+    Returns:
+        Command result or default_return on failure
+    """
+    if redis_client is None:
+        return default_return
+
+    try:
+        return command_func()
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Redis connection error: {e}")
+        return default_return
+    except Exception as e:
+        logger.error(f"Redis command error: {e}")
+        return default_return
+
+# Initialize the global client with retry logic
+redis_client = get_redis_client(max_retries=10, retry_interval=1)
