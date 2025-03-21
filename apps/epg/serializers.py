@@ -13,12 +13,14 @@ class ProgramDataSerializer(serializers.ModelSerializer):
         fields = ['id', 'start_time', 'end_time', 'title', 'sub_title', 'description', 'tvg_id']
 
 class EPGDataSerializer(serializers.ModelSerializer):
-    programs = ProgramDataSerializer(many=True, read_only=True)
-    channel = serializers.SerializerMethodField()
-
-    def get_channel(self, obj):
-        return {"id": obj.channel.id, "name": obj.channel.name} if obj.channel else None
-
+    """
+    Only returns the tvg_id and the 'name' field from EPGData.
+    We assume 'name' is effectively the channel name.
+    """
     class Meta:
         model = EPGData
-        fields = ['id', 'channel', 'name', 'programs']
+        fields = [
+            'id',
+            'tvg_id',
+            'name',
+        ]
