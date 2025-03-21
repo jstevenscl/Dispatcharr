@@ -1,5 +1,0 @@
-{
-    "docker.imageBuildContextPath": "${workspaceFolder}"
-    //"docker.imageBuildContextPath": "/MainPool/Main/Vital_Data/Scripts/Dispatcharr/Dispatcharr"
-
-}
