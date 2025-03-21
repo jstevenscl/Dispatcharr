@@ -218,8 +218,18 @@ class ChannelService:
                 if metadata and b'state' in metadata:
                     state = metadata[b'state'].decode('utf-8')
                     channel_info = {"state": state}
+
+                    # Immediately mark as stopping in metadata so clients detect it faster
+                    proxy_server.redis_client.hset(metadata_key, "state", ChannelState.STOPPING)
+                    proxy_server.redis_client.hset(metadata_key, "state_changed_at", str(time.time()))
             except Exception as e:
                 logger.error(f"Error fetching channel state: {e}")
+
+        # Set stopping flag with higher TTL to ensure it persists
+        if proxy_server.redis_client:
+            stop_key = RedisKeys.channel_stopping(channel_id)
+            proxy_server.redis_client.setex(stop_key, 60, "true")  # Higher TTL of 60 seconds
+            logger.info(f"Set channel stopping flag with 60s TTL for channel {channel_id}")
 
         # Broadcast stop event to all workers via PubSub
         if proxy_server.redis_client:
