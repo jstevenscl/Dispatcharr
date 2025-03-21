@@ -7,7 +7,6 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from .routing import websocket_urlpatterns
-from apps.hdhr.api_views import HDHRDeviceViewSet, DiscoverAPIView, LineupAPIView, LineupStatusAPIView, HDHRDeviceXMLAPIView, hdhr_dashboard_view
 
 
 # Define schema_view for Swagger
@@ -44,13 +43,6 @@ urlpatterns = [
     # Add proxy apps - Move these before the catch-all
     path('proxy/', include(('apps.proxy.urls', 'proxy'), namespace='proxy')),
     path('proxy', RedirectView.as_view(url='/proxy/', permanent=True)),
-
-    # HDHR API
-    path('discover.json', DiscoverAPIView.as_view(), name='discover'),
-    path('lineup.json', LineupAPIView.as_view(), name='lineup'),
-    path('lineup_status.json', LineupStatusAPIView.as_view(), name='lineup_status'),
-    path('device.xml', HDHRDeviceXMLAPIView.as_view(), name='device_xml'),
-
 
     # Swagger UI
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

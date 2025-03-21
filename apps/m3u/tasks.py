@@ -117,7 +117,7 @@ def refresh_single_m3u_account(account_id):
                 return err_msg
 
             headers = {"User-Agent": account.user_agent.user_agent}
-            response = requests.get(account.server_url, timeout=60, headers=headers)
+            response = requests.get(account.server_url, headers=headers)
             response.raise_for_status()
             lines = response.text.splitlines()
         elif account.uploaded_file:
