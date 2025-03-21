@@ -308,6 +308,12 @@ class ProxyServer:
             if current and current.decode('utf-8') == self.worker_id:
                 self.redis_client.delete(lock_key)
                 logger.info(f"Released ownership of channel {channel_id}")
+
+                # Also ensure channel stopping key is set to signal clients
+                stop_key = RedisKeys.channel_stopping(channel_id)
+                self.redis_client.setex(stop_key, 30, "true")
+                logger.info(f"Set stopping signal for channel {channel_id} clients")
+
         except Exception as e:
             logger.error(f"Error releasing channel ownership: {e}")
 
@@ -458,7 +464,8 @@ class ProxyServer:
                 buffer,
                 user_agent=channel_user_agent,
                 transcode=transcode,
-                stream_id=channel_stream_id  # Pass stream ID to the manager
+                stream_id=channel_stream_id,  # Pass stream ID to the manager
+                worker_id=self.worker_id  # Pass worker_id explicitly to eliminate circular dependency
             )
             logger.info(f"Created StreamManager for channel {channel_id} with stream ID {channel_stream_id}")
             self.stream_managers[channel_id] = stream_manager

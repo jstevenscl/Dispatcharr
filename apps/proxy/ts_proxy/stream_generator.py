@@ -103,7 +103,7 @@ class StreamGenerator:
                     if state in ['waiting_for_clients', 'active']:
                         logger.info(f"[{self.client_id}] Channel {self.channel_id} now ready (state={state})")
                         return True
-                    elif state in ['error', 'stopped']:
+                    elif state in ['error', 'stopped', 'stopping']:  # Added 'stopping' to error states
                         error_message = metadata.get(b'error_message', b'Unknown error').decode('utf-8')
                         logger.error(f"[{self.client_id}] Channel {self.channel_id} in error state: {state}, message: {error_message}")
                         # Send error packet before giving up
@@ -118,6 +118,13 @@ class StreamGenerator:
                             yield keepalive_packet
                             self.bytes_sent += len(keepalive_packet)
                             last_keepalive = time.time()
+
+                # Also check stopping key directly
+                stop_key = RedisKeys.channel_stopping(self.channel_id)
+                if proxy_server.redis_client.exists(stop_key):
+                    logger.error(f"[{self.client_id}] Channel {self.channel_id} stopping flag detected during initialization")
+                    yield create_ts_packet('error', "Error: Channel is stopping")
+                    return False
 
             # Wait a bit before checking again
             time.sleep(0.1)
@@ -221,11 +228,20 @@ class StreamGenerator:
 
         # Check if this specific client has been stopped (Redis keys, etc.)
         if proxy_server.redis_client:
-            # Channel stop check
+            # Channel stop check - with extended key set
             stop_key = RedisKeys.channel_stopping(self.channel_id)
             if proxy_server.redis_client.exists(stop_key):
                 logger.info(f"[{self.client_id}] Detected channel stop signal, terminating stream")
                 return False
+
+            # Also check channel state in metadata
+            metadata_key = RedisKeys.channel_metadata(self.channel_id)
+            metadata = proxy_server.redis_client.hgetall(metadata_key)
+            if metadata and b'state' in metadata:
+                state = metadata[b'state'].decode('utf-8')
+                if state in ['error', 'stopped', 'stopping']:
+                    logger.info(f"[{self.client_id}] Channel in {state} state, terminating stream")
+                    return False
 
             # Client stop check
             client_stop_key = RedisKeys.client_stop(self.channel_id, self.client_id)

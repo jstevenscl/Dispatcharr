@@ -78,3 +78,8 @@ class RedisKeys:
     def worker_heartbeat(worker_id):
         """Key for worker heartbeat"""
         return f"ts_proxy:worker:{worker_id}:heartbeat"
+
+    @staticmethod
+    def transcode_active(channel_id):
+        """Key indicating active transcode process"""
+        return f"ts_proxy:channel:{channel_id}:transcode_active"
