@@ -193,7 +193,7 @@ class StreamManager:
                             logger.warning(f"Maximum retry attempts ({self.max_retries}) reached for URL: {self.url}")
                         else:
                             # Wait with exponential backoff before retrying
-                            timeout = min(.25 ** self.retry_count, 3)  # Cap at 3 seconds
+                            timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count}/{self.max_retries})")
                             time.sleep(timeout)
 
@@ -206,7 +206,7 @@ class StreamManager:
                             url_failed = True
                         else:
                             # Wait with exponential backoff before retrying
-                            timeout = min(2 ** self.retry_count, 10)
+                            timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds after error... (attempt {self.retry_count}/{self.max_retries})")
                             time.sleep(timeout)
 
