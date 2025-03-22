@@ -57,7 +57,7 @@ def get_redis_client(max_retries=5, retry_interval=1):
             logger.error(f"Unexpected error connecting to Redis: {e}")
             return None
 
-def get_redis_pubsub_client(max_retries=5, retry_interval=3):
+def get_redis_pubsub_client(max_retries=5, retry_interval=1):
     """Get Redis client optimized for PubSub operations"""
     retry_count = 0
     while retry_count < max_retries:
@@ -133,8 +133,8 @@ def execute_redis_command(redis_client, command_func, default_return=None):
         return default_return
 
 # Initialize the global clients with retry logic
-redis_client = get_redis_client(max_retries=10, retry_interval=1)
-redis_pubsub_client = get_redis_pubsub_client(max_retries=10, retry_interval=1)
+redis_client = get_redis_client()
+redis_pubsub_client = get_redis_pubsub_client()
 
 # Import and initialize the PubSub manager
 from .redis_pubsub import get_pubsub_manager
