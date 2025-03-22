@@ -24,7 +24,7 @@ logger = logging.getLogger("ts_proxy")
 class StreamManager:
     """Manages a connection to a TS stream without using raw sockets"""
 
-    def __init__(self, channel_id, url, buffer, user_agent=None, transcode=False, stream_id=None):
+    def __init__(self, channel_id, url, buffer, user_agent=None, transcode=False, stream_id=None, worker_id=None):
         # Basic properties
         self.channel_id = channel_id
         self.url = url
@@ -36,6 +36,8 @@ class StreamManager:
         self.current_response = None
         self.current_session = None
         self.url_switching = False
+        # Store worker_id for ownership checks
+        self.worker_id = worker_id
 
         # Sockets used for transcode jobs
         self.socket = None
@@ -88,6 +90,9 @@ class StreamManager:
                 logger.warning(f"Unable to get stream ID for channel {channel_id} - stream switching may not work correctly")
 
         logger.info(f"Initialized stream manager for channel {buffer.channel_id}")
+
+        # Add this flag for tracking transcoding process status
+        self.transcode_process_active = False
 
     def _create_session(self):
         """Create and configure requests session with optimal settings"""
@@ -193,7 +198,7 @@ class StreamManager:
                             logger.warning(f"Maximum retry attempts ({self.max_retries}) reached for URL: {self.url}")
                         else:
                             # Wait with exponential backoff before retrying
-                            timeout = min(.25 ** self.retry_count, 3)  # Cap at 3 seconds
+                            timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count}/{self.max_retries})")
                             time.sleep(timeout)
 
@@ -206,7 +211,7 @@ class StreamManager:
                             url_failed = True
                         else:
                             # Wait with exponential backoff before retrying
-                            timeout = min(2 ** self.retry_count, 10)
+                            timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds after error... (attempt {self.retry_count}/{self.max_retries})")
                             time.sleep(timeout)
 
@@ -234,9 +239,61 @@ class StreamManager:
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
         finally:
+            # Enhanced cleanup in the finally block
             self.connected = False
+
+            # Explicitly cancel all timers
+            for timer in list(self._buffer_check_timers):
+                try:
+                    if timer and timer.is_alive():
+                        timer.cancel()
+                except Exception:
+                    pass
+
+            self._buffer_check_timers.clear()
+
+            # Make sure transcode process is terminated
+            if self.transcode_process_active:
+                logger.info("Ensuring transcode process is terminated in finally block")
+                self._close_socket()
+
+            # Close all connections
             self._close_all_connections()
-            logger.info(f"Stream manager stopped")
+
+            # Update channel state in Redis to prevent clients from waiting indefinitely
+            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                try:
+                    metadata_key = RedisKeys.channel_metadata(self.channel_id)
+
+                    # Check if we're the owner before updating state
+                    owner_key = RedisKeys.channel_owner(self.channel_id)
+                    current_owner = self.buffer.redis_client.get(owner_key)
+
+                    # Use the worker_id that was passed in during initialization
+                    if current_owner and self.worker_id and current_owner.decode('utf-8') == self.worker_id:
+                        # Determine the appropriate error message based on retry failures
+                        if self.tried_stream_ids and len(self.tried_stream_ids) > 0:
+                            error_message = f"All {len(self.tried_stream_ids)} stream options failed"
+                        else:
+                            error_message = f"Connection failed after {self.max_retries} attempts"
+
+                        # Update metadata to indicate error state
+                        update_data = {
+                            "state": ChannelState.ERROR,
+                            "state_changed_at": str(time.time()),
+                            "error_message": error_message,
+                            "error_time": str(time.time())
+                        }
+                        self.buffer.redis_client.hset(metadata_key, mapping=update_data)
+                        logger.info(f"Updated channel {self.channel_id} state to ERROR in Redis after stream failure")
+
+                        # Also set stopping key to ensure clients disconnect
+                        stop_key = RedisKeys.channel_stopping(self.channel_id)
+                        self.buffer.redis_client.setex(stop_key, 60, "true")
+                except Exception as e:
+                    logger.error(f"Failed to update channel state in Redis: {e}")
+
+            logger.info(f"Stream manager stopped for channel {self.channel_id}")
 
     def _establish_transcode_connection(self):
         """Establish a connection using transcoding"""
@@ -264,11 +321,14 @@ class StreamManager:
             self.transcode_process = subprocess.Popen(
                 self.transcode_cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,  # Suppress FFmpeg logs
+                stderr=subprocess.DEVNULL,  # Suppress error logs
                 bufsize=188 * 64            # Buffer optimized for TS packets
             )
 
-            self.socket = self.transcode_process.stdout  # Read from FFmpeg output
+            # Set flag that transcoding process is active
+            self.transcode_process_active = True
+
+            self.socket = self.transcode_process.stdout  # Read from std output
             self.connected = True
 
             # Set channel state to waiting for clients
@@ -392,6 +452,8 @@ class StreamManager:
 
     def stop(self):
         """Stop the stream manager and cancel all timers"""
+        logger.info(f"Stopping stream manager for channel {self.channel_id}")
+
         # Add at the beginning of your stop method
         self.stopping = True
 
@@ -405,7 +467,6 @@ class StreamManager:
 
         self._buffer_check_timers.clear()
 
-        # Rest of your existing stop method...
         # Set the flag first
         self.stop_requested = True
 
@@ -422,6 +483,9 @@ class StreamManager:
                 self.current_session.close()
             except Exception:
                 pass
+
+        # Explicitly close socket/transcode resources
+        self._close_socket()
 
         # Set running to false to ensure thread exits
         self.running = False
@@ -530,15 +594,56 @@ class StreamManager:
             self.socket = None
             self.connected = False
 
+        # Enhanced transcode process cleanup with more aggressive termination
         if self.transcode_process:
             try:
+                # First try polite termination
+                logger.debug(f"Terminating transcode process for channel {self.channel_id}")
                 self.transcode_process.terminate()
-                self.transcode_process.wait()
+
+                # Give it a short time to terminate gracefully
+                try:
+                    self.transcode_process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    # If it doesn't terminate quickly, kill it
+                    logger.warning(f"Transcode process didn't terminate within timeout, killing forcefully")
+                    self.transcode_process.kill()
+
+                    try:
+                        self.transcode_process.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        logger.error(f"Failed to kill transcode process even with force")
             except Exception as e:
                 logger.debug(f"Error terminating transcode process: {e}")
-                pass
+
+                # Final attempt: try to kill directly
+                try:
+                    self.transcode_process.kill()
+                except Exception as e:
+                    logger.error(f"Final kill attempt failed: {e}")
 
             self.transcode_process = None
+            self.transcode_process_active = False  # Reset the flag
+
+            # Clear transcode active key in Redis if available
+            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                try:
+                    transcode_key = RedisKeys.transcode_active(self.channel_id)
+                    self.buffer.redis_client.delete(transcode_key)
+                    logger.debug(f"Cleared transcode active flag for channel {self.channel_id}")
+                except Exception as e:
+                    logger.debug(f"Error clearing transcode flag: {e}")
+
+        # Cancel any remaining buffer check timers
+        for timer in list(self._buffer_check_timers):
+            try:
+                if timer and timer.is_alive():
+                    timer.cancel()
+                    logger.debug(f"Cancelled buffer check timer during socket close for channel {self.channel_id}")
+            except Exception as e:
+                logger.debug(f"Error canceling timer during socket close: {e}")
+
+        self._buffer_check_timers = []
 
     def fetch_chunk(self):
         """Fetch data from socket with direct pass-through to buffer"""
@@ -649,10 +754,10 @@ class StreamManager:
     def _check_buffer_and_set_state(self):
         """Check buffer size and set state to waiting_for_clients when ready"""
         try:
-            # First check if we're stopping or reconnecting
-            if getattr(self, 'stopping', False) or getattr(self, 'reconnecting', False):
+            # Enhanced stop detection with short-circuit return
+            if not self.running or getattr(self, 'stopping', False) or getattr(self, 'reconnecting', False):
                 logger.debug(f"Buffer check aborted - channel {self.buffer.channel_id} is stopping or reconnecting")
-                return
+                return False  # Return value to indicate check was aborted
 
             # Clean up completed timers
             self._buffer_check_timers = [t for t in self._buffer_check_timers if t.is_alive()]
@@ -670,14 +775,17 @@ class StreamManager:
                     # Still waiting, log progress and schedule another check
                     logger.debug(f"Buffer filling for channel {channel_id}: {current_buffer_index}/{initial_chunks_needed} chunks")
 
-                    # Schedule another check - NOW WITH TRACKING
-                    if not getattr(self, 'stopping', False):
+                    # Schedule another check - NOW WITH STOPPING CHECK
+                    if self.running and not getattr(self, 'stopping', False):
                         timer = threading.Timer(0.5, self._check_buffer_and_set_state)
                         timer.daemon = True
                         timer.start()
                         self._buffer_check_timers.append(timer)
+
+            return True  # Return value to indicate check was successful
         except Exception as e:
             logger.error(f"Error in buffer check: {e}")
+            return False
 
     def _try_next_stream(self):
         """
