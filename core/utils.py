@@ -2,6 +2,7 @@ import redis
 import logging
 import time
 import os
+import threading
 from django.conf import settings
 from redis.exceptions import ConnectionError, TimeoutError
 
@@ -17,15 +18,23 @@ def get_redis_client(max_retries=5, retry_interval=1):
             redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
             redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
 
+            # Use standardized settings
+            socket_timeout = getattr(settings, 'REDIS_SOCKET_TIMEOUT', 5)
+            socket_connect_timeout = getattr(settings, 'REDIS_SOCKET_CONNECT_TIMEOUT', 5)
+            health_check_interval = getattr(settings, 'REDIS_HEALTH_CHECK_INTERVAL', 30)
+            socket_keepalive = getattr(settings, 'REDIS_SOCKET_KEEPALIVE', True)
+            retry_on_timeout = getattr(settings, 'REDIS_RETRY_ON_TIMEOUT', True)
+
             # Create Redis client with better defaults
             client = redis.Redis(
                 host=redis_host,
                 port=redis_port,
                 db=redis_db,
-                socket_timeout=5,
-                socket_connect_timeout=5,
-                retry_on_timeout=True,
-                health_check_interval=30
+                socket_timeout=socket_timeout,
+                socket_connect_timeout=socket_connect_timeout,
+                socket_keepalive=socket_keepalive,
+                health_check_interval=health_check_interval,
+                retry_on_timeout=retry_on_timeout
             )
 
             # Validate connection with ping
@@ -49,7 +58,7 @@ def get_redis_client(max_retries=5, retry_interval=1):
             return None
 
 def get_redis_pubsub_client(max_retries=5, retry_interval=3):
-    """Get Redis client optimized for PubSub operations with longer timeouts"""
+    """Get Redis client optimized for PubSub operations"""
     retry_count = 0
     while retry_count < max_retries:
         try:
@@ -58,21 +67,30 @@ def get_redis_pubsub_client(max_retries=5, retry_interval=3):
             redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
             redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
 
-            # Create Redis client with PubSub-optimized settings
+            # Use standardized settings but without socket timeouts for PubSub
+            # Important: socket_timeout is None for PubSub operations
+            socket_connect_timeout = getattr(settings, 'REDIS_SOCKET_CONNECT_TIMEOUT', 5)
+            socket_keepalive = getattr(settings, 'REDIS_SOCKET_KEEPALIVE', True)
+            health_check_interval = getattr(settings, 'REDIS_HEALTH_CHECK_INTERVAL', 30)
+            retry_on_timeout = getattr(settings, 'REDIS_RETRY_ON_TIMEOUT', True)
+
+            # Create Redis client with PubSub-optimized settings - no timeout
             client = redis.Redis(
                 host=redis_host,
                 port=redis_port,
                 db=redis_db,
-                socket_timeout=60,        # Longer timeout for blocking operations
-                socket_connect_timeout=5,
-                socket_keepalive=True,    # Enable TCP keepalive
-                health_check_interval=30,
-                retry_on_timeout=True
+                socket_timeout=None,  # Critical: No timeout for PubSub operations
+                socket_connect_timeout=socket_connect_timeout,
+                socket_keepalive=socket_keepalive,
+                health_check_interval=health_check_interval,
+                retry_on_timeout=retry_on_timeout
             )
 
             # Validate connection with ping
             client.ping()
             logger.info(f"Connected to Redis for PubSub at {redis_host}:{redis_port}/{redis_db}")
+
+            # We don't need the keepalive thread anymore since we're using proper PubSub handling
             return client
 
         except (ConnectionError, TimeoutError) as e:
@@ -114,5 +132,10 @@ def execute_redis_command(redis_client, command_func, default_return=None):
         logger.error(f"Redis command error: {e}")
         return default_return
 
-# Initialize the global client with retry logic
+# Initialize the global clients with retry logic
 redis_client = get_redis_client(max_retries=10, retry_interval=1)
+redis_pubsub_client = get_redis_pubsub_client(max_retries=10, retry_interval=1)
+
+# Import and initialize the PubSub manager
+from .redis_pubsub import get_pubsub_manager
+pubsub_manager = get_pubsub_manager(redis_client)

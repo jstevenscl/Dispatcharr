@@ -18,7 +18,7 @@ import json
 from typing import Dict, Optional, Set
 from apps.proxy.config import TSConfig as Config
 from apps.channels.models import Channel
-from core.utils import redis_client as global_redis_client  # Import the global Redis client
+from core.utils import redis_client as global_redis_client, redis_pubsub_client as global_redis_pubsub_client  # Import both global Redis clients
 from redis.exceptions import ConnectionError, TimeoutError
 from .stream_manager import StreamManager
 from .stream_buffer import StreamBuffer
@@ -156,30 +156,34 @@ class ProxyServer:
 
             while True:
                 try:
-                    # Create a dedicated Redis client for PubSub with longer timeouts
-                    # This avoids affecting the main Redis client operations
-                    from django.conf import settings
-                    import redis
+                    # Use the global PubSub client if available
+                    if global_redis_pubsub_client:
+                        pubsub_client = global_redis_pubsub_client
+                        logger.info("Using global Redis PubSub client for event listener")
+                    else:
+                        # Fall back to creating a dedicated client if global one is unavailable
+                        from django.conf import settings
+                        import redis
 
-                    redis_host = os.environ.get("REDIS_HOST", getattr(settings, 'REDIS_HOST', 'localhost'))
-                    redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
-                    redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
+                        redis_host = os.environ.get("REDIS_HOST", getattr(settings, 'REDIS_HOST', 'localhost'))
+                        redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
+                        redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
 
-                    # Create a dedicated client with generous timeouts for PubSub connections
-                    pubsub_client = redis.Redis(
-                        host=redis_host,
-                        port=redis_port,
-                        db=redis_db,
-                        socket_timeout=60,  # Much longer timeout for PubSub operations
-                        socket_connect_timeout=10,
-                        socket_keepalive=True,  # Enable TCP keepalive
-                        health_check_interval=30
-                    )
+                        pubsub_client = redis.Redis(
+                            host=redis_host,
+                            port=redis_port,
+                            db=redis_db,
+                            socket_timeout=60,
+                            socket_connect_timeout=10,
+                            socket_keepalive=True,
+                            health_check_interval=30
+                        )
+                        logger.info("Created dedicated Redis PubSub client for event listener")
 
                     # Test connection before subscribing
                     pubsub_client.ping()
 
-                    # Create a new pubsub instance from the dedicated client
+                    # Create a pubsub instance from the client
                     pubsub = pubsub_client.pubsub()
                     pubsub.psubscribe("ts_proxy:events:*")
 

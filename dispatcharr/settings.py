@@ -179,8 +179,15 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,  # Optional: Whether to blacklist refresh tokens
 }
 
-# Redis settings for TS proxy
+# Redis connection settings
 REDIS_URL = 'redis://localhost:6379/0'
+REDIS_SOCKET_TIMEOUT = 60  # Socket timeout in seconds
+REDIS_SOCKET_CONNECT_TIMEOUT = 5  # Connection timeout in seconds
+REDIS_HEALTH_CHECK_INTERVAL = 15  # Health check every 15 seconds
+REDIS_SOCKET_KEEPALIVE = True  # Enable socket keepalive
+REDIS_RETRY_ON_TIMEOUT = True  # Retry on timeout
+REDIS_MAX_RETRIES = 10  # Maximum number of retries
+REDIS_RETRY_INTERVAL = 1  # Initial retry interval in seconds
 
 # Proxy Settings
 PROXY_SETTINGS = {
