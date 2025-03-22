@@ -38,12 +38,15 @@ import {
   IconSortAscendingNumbers,
   IconSquarePlus,
 } from '@tabler/icons-react'; // Import custom icons
+import M3UGroupFilter from '../forms/M3UGroupFilter';
 
 const Example = () => {
   const [playlist, setPlaylist] = useState(null);
   const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
+  const [groupFilterModalOpen, setGroupFilterModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
   const [activeFilterValue, setActiveFilterValue] = useState('all');
+  const [playlistCreated, setPlaylistCreated] = useState(false);
 
   const { playlists, setRefreshProgress } = usePlaylistsStore();
 
@@ -116,9 +119,15 @@ const Example = () => {
     await API.deletePlaylist(id);
   };
 
-  const closeModal = () => {
-    setPlaylistModalOpen(false);
-    setPlaylist(null);
+  const closeModal = (newPlaylist = null) => {
+    if (newPlaylist) {
+      setPlaylistCreated(true);
+      setPlaylist(newPlaylist);
+    } else {
+      setPlaylistModalOpen(false);
+      setPlaylist(null);
+      setPlaylistCreated(false);
+    }
   };
 
   const deletePlaylists = async (ids) => {
@@ -267,6 +276,7 @@ const Example = () => {
         playlist={playlist}
         isOpen={playlistModalOpen}
         onClose={closeModal}
+        playlistCreated={playlistCreated}
       />
     </Box>
   );

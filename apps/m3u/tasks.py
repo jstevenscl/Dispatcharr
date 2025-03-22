@@ -25,21 +25,31 @@ logger = logging.getLogger(__name__)
 LOCK_EXPIRE = 300
 BATCH_SIZE = 1000
 SKIP_EXTS = {}
+m3u_dir = os.path.join(settings.MEDIA_ROOT, "cached_m3u")
 
-def fetch_m3u_lines(account):
+def fetch_m3u_lines(account, use_cache=False):
+    os.makedirs(m3u_dir, exist_ok=True)
+    file_path = os.path.join(m3u_dir, f"{account.id}.m3u")
+
     """Fetch M3U file lines efficiently."""
     if account.server_url:
-        headers = {"User-Agent": account.user_agent.user_agent}
-        logger.info(f"Fetching from URL {account.server_url}")
-        try:
-            # Perform the HTTP request with stream and handle any potential issues
-            with requests.get(account.server_url, timeout=60, headers=headers, stream=True) as response:
+        if not use_cache or not os.path.exists(file_path):
+            headers = {"User-Agent": account.user_agent.user_agent}
+            logger.info(f"Fetching from URL {account.server_url}")
+            try:
+                response = requests.get(account.server_url, headers=headers, stream=True)
                 response.raise_for_status()  # This will raise an HTTPError if the status is not 200
-                # Return an iterator for the lines
-                return response.iter_lines(decode_unicode=True)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
-            return []  # Return an empty list in case of error
+                with open(file_path, 'wb') as file:
+                    # Stream the content in chunks and write to the file
+                    for chunk in response.iter_content(chunk_size=8192):  # You can adjust the chunk size
+                        if chunk:  # Ensure chunk is not empty
+                            file.write(chunk)
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
+                return []  # Return an empty list in case of error
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.readlines()
     elif account.uploaded_file:
         try:
             # Open the file and return the lines as a list or iterator
@@ -137,6 +147,7 @@ def process_groups(account, group_names):
     groups = []
     groups_to_create = []
     for group_name in group_names:
+        logger.info(f"Handling group: {group_name}")
         if group_name in existing_groups:
             groups.append(existing_groups[group_name])
         else:
@@ -166,7 +177,10 @@ def process_groups(account, group_names):
 def process_m3u_batch(account_id, batch, group_names, hash_keys):
     """Processes a batch of M3U streams using bulk operations."""
     account = M3UAccount.objects.get(id=account_id)
-    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(name__in=group_names)}
+    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(
+        m3u_account__m3u_account=account,  # Filter by the M3UAccount
+            m3u_account__enabled=True  # Filter by the enabled flag in the join table
+    )}
 
     streams_to_create = []
     streams_to_update = []
@@ -174,11 +188,16 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
 
     # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
 
-    logger.info(f"Processing batch of {len(batch)}")
+    logger.debug(f"Processing batch of {len(batch)}")
     for stream_info in batch:
         name, url = stream_info["name"], stream_info["url"]
         tvg_id, tvg_logo = stream_info["attributes"].get("tvg-id", ""), stream_info["attributes"].get("tvg-logo", "")
         group_title = stream_info["attributes"].get("group-title", "Default Group")
+
+        # Filter out disabled groups for this account
+        if group_title not in existing_groups:
+            logger.debug(f"Skipping stream in disabled group: {group_title}")
+            continue
 
         # if any(url.lower().endswith(ext) for ext in SKIP_EXTS) or len(url) > 2000:
         #     continue
@@ -250,8 +269,53 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
 
     return f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
 
+def refresh_m3u_groups(account_id):
+    if not acquire_lock('refresh_m3u_account_groups', account_id):
+        return f"Task already running for account_id={account_id}."
+
+    # Record start time
+    start_time = time.time()
+    send_progress_update(0, account_id)
+
+    try:
+        account = M3UAccount.objects.get(id=account_id, is_active=True)
+    except M3UAccount.DoesNotExist:
+        release_lock('refresh_m3u_account_groups', account_id)
+        return f"M3UAccount with ID={account_id} not found or inactive."
+
+    lines = fetch_m3u_lines(account)
+    extinf_data = []
+    groups = set(["Default Group"])
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith("#EXTINF"):
+            parsed = parse_extinf_line(line)
+            if parsed:
+                if "group-title" in parsed["attributes"]:
+                    groups.add(parsed["attributes"]["group-title"])
+
+                extinf_data.append(parsed)
+        elif extinf_data and line.startswith("http"):
+            # Associate URL with the last EXTINF line
+            extinf_data[-1]["url"] = line
+
+    groups = list(groups)
+    cache_path = os.path.join(m3u_dir, f"{account_id}.json")
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        json.dump({
+            "extinf_data": extinf_data,
+            "groups": groups,
+        }, f)
+
+    process_groups(account, groups)
+
+    release_lock('refresh_m3u_account_groups`', account_id)
+
+    return extinf_data, groups
+
 @shared_task
-def refresh_single_m3u_account(account_id):
+def refresh_single_m3u_account(account_id, use_cache=False):
     """Splits M3U processing into chunks and dispatches them as parallel tasks."""
     if not acquire_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
@@ -269,47 +333,19 @@ def refresh_single_m3u_account(account_id):
 
     # Fetch M3U lines and handle potential issues
     # lines = fetch_m3u_lines(account)  # Extracted fetch logic into separate function
-
-    lines = []
-    if account.server_url:
-        if not account.user_agent:
-            err_msg = f"User-Agent not provided for account id {account_id}."
-            logger.error(err_msg)
-            release_lock('refresh_single_m3u_account', account_id)
-            return err_msg
-
-        headers = {"User-Agent": account.user_agent.user_agent}
-        response = requests.get(account.server_url, headers=headers)
-        response.raise_for_status()
-        lines = response.text.splitlines()
-    elif account.uploaded_file:
-        file_path = account.uploaded_file.path
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.read().splitlines()
-
     extinf_data = []
-    stream_hashes = []
-    groups = set("Default Group")
+    groups = None
 
-    for line in lines:
-        line = line.strip()
-        if line.startswith("#EXTINF"):
-            parsed = parse_extinf_line(line)
-            if parsed:
-                groups.add(parsed["attributes"].get("group-title", "Default Group"))
-                extinf_data.append(parsed)
-        elif extinf_data and line.startswith("http"):
-            # Associate URL with the last EXTINF line
-            extinf_data[-1]["url"] = line
+    cache_path = os.path.join(m3u_dir, f"{account_id}.json")
+    if use_cache and os.path.exists(cache_path):
+        with open(cache_path, 'r') as file:
+            data = json.load(file)
+
+        extinf_data = data['extinf_data']
+        groups = data['groups']
 
     if not extinf_data:
-        release_lock('refresh_single_m3u_account', account_id)
-        return "No valid EXTINF data found."
-
-    groups = list(groups)
-    # Retrieve all unique groups so we can create / associate them before
-    # processing the streams themselves
-    process_groups(account, groups)
+        extinf_data, groups = refresh_m3u_groups(account_id)
 
     hash_keys = CoreSettings.get_m3u_hash_key().split(",")
 

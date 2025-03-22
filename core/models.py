@@ -67,7 +67,7 @@ class StreamProfile(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:  # Only check existing records
             orig = StreamProfile.objects.get(pk=self.pk)
-            if orig.is_protected:
+            if orig.locked:
                 allowed_fields = {"user_agent_id"}  # Only allow this field to change
                 for field in self._meta.fields:
                     field_name = field.name
@@ -91,7 +91,7 @@ class StreamProfile(models.Model):
     def update(cls, pk, **kwargs):
         instance = cls.objects.get(pk=pk)
 
-        if instance.is_protected:
+        if instance.locked:
             allowed_fields = {"user_agent_id"}  # Only allow updating this field
 
             for field_name, new_value in kwargs.items():

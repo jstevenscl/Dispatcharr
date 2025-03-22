@@ -32,6 +32,7 @@ import {
   Group,
   NumberInput,
   NativeSelect,
+  MultiSelect,
 } from '@mantine/core';
 import {
   IconArrowDown,
@@ -133,12 +134,11 @@ const StreamsTable = ({}) => {
       },
       {
         header: 'Group',
-        accessorFn: (row) =>
-          channelGroups.find((group) => group.id === row.channel_group)?.name,
+        accessorFn: (row) => channelGroups[row.channel_group].name,
         size: 100,
         Header: ({ column }) => (
           <Box onClick={handleSelectClick}>
-            <Select
+            <MultiSelect
               placeholder="Group"
               searchable
               size="xs"

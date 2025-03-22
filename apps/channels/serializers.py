@@ -148,9 +148,11 @@ class ChannelSerializer(serializers.ModelSerializer):
         return instance
 
 class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
+    enabled = serializers.BooleanField()
+
     class Meta:
         model = ChannelGroupM3UAccount
-        fields = ['channel_group', 'enabled']
+        fields = ['id', 'channel_group', 'enabled']
 
     # Optionally, if you only need the id of the ChannelGroup, you can customize it like this:
-    channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())
+    # channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())

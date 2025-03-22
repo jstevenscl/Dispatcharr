@@ -715,8 +715,14 @@ class ProxyServer:
                 try:
                     # Send worker heartbeat first
                     if self.redis_client:
-                        worker_heartbeat_key = f"ts_proxy:worker:{self.worker_id}:heartbeat"
-                        self.redis_client.setex(worker_heartbeat_key, 30, str(time.time()))
+                        while True:
+                            try:
+                                worker_heartbeat_key = f"ts_proxy:worker:{self.worker_id}:heartbeat"
+                                self.redis_client.setex(worker_heartbeat_key, 30, str(time.time()))
+                                break
+                            except:
+                                logger.debug("Waiting for redis connection...")
+                                time.sleep(1)
 
                     # Refresh channel registry
                     self.refresh_channel_registry()
