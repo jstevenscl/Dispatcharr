@@ -10,6 +10,23 @@ from redis.exceptions import ConnectionError, TimeoutError
 
 logger = logging.getLogger(__name__)
 
+class DummyPubSub:
+    """Dummy PubSub implementation when Redis isn't available"""
+    def __init__(self):
+        pass
+
+    def subscribe(self, *args, **kwargs):
+        pass
+
+    def psubscribe(self, *args, **kwargs):
+        pass
+
+    def get_message(self, *args, **kwargs):
+        return None
+
+    def close(self):
+        pass
+
 class RedisPubSubManager:
     """
     A robust Redis PubSub manager that handles disconnections and reconnections.
@@ -23,9 +40,7 @@ class RedisPubSubManager:
             redis_client: An existing Redis client to use
             auto_reconnect: Whether to automatically reconnect on failure
         """
-        from .utils import get_redis_client
-
-        self.redis_client = redis_client or get_redis_client()
+        self.redis_client = redis_client
         self.pubsub = None
         self.subscriptions = set()
         self.pattern_subscriptions = set()
@@ -34,6 +49,7 @@ class RedisPubSubManager:
         self.lock = threading.RLock()
         self.message_handlers = {}  # Map of channels to handler functions
         self.message_thread = None
+        self.is_dummy = redis_client is None
 
     def subscribe(self, channel, handler=None):
         """
@@ -43,6 +59,9 @@ class RedisPubSubManager:
             channel: The channel to subscribe to
             handler: Optional function to call when messages are received
         """
+        if self.is_dummy:
+            return
+
         with self.lock:
             self.subscriptions.add(channel)
             if handler:
@@ -60,6 +79,9 @@ class RedisPubSubManager:
             pattern: The pattern to subscribe to
             handler: Optional function to call when messages are received
         """
+        if self.is_dummy:
+            return
+
         with self.lock:
             self.pattern_subscriptions.add(pattern)
             if handler:
@@ -80,6 +102,9 @@ class RedisPubSubManager:
         Returns:
             Number of clients that received the message
         """
+        if self.is_dummy:
+            return 0
+
         try:
             if not isinstance(message, str):
                 message = json.dumps(message)
@@ -92,6 +117,10 @@ class RedisPubSubManager:
         """
         Start listening for messages in a background thread.
         """
+        if self.is_dummy:
+            logger.debug("Running with dummy Redis client - not starting listener")
+            return
+
         if not self.message_thread:
             self._connect()
             self.message_thread = threading.Thread(
@@ -106,6 +135,9 @@ class RedisPubSubManager:
         """
         Stop listening and clean up resources.
         """
+        if self.is_dummy:
+            return
+
         self.running = False
         if self.pubsub:
             try:
@@ -118,6 +150,10 @@ class RedisPubSubManager:
         """
         Establish a new PubSub connection and subscribe to all channels.
         """
+        if self.is_dummy:
+            self.pubsub = DummyPubSub()
+            return
+
         with self.lock:
             # Close any existing connection
             if self.pubsub:
@@ -144,6 +180,9 @@ class RedisPubSubManager:
         """
         Background thread that listens for messages and handles reconnections.
         """
+        if self.is_dummy:
+            return
+
         consecutive_errors = 0
 
         while self.running:
@@ -218,6 +257,11 @@ def get_pubsub_manager(redis_client=None):
 
     if pubsub_manager is None:
         pubsub_manager = RedisPubSubManager(redis_client)
-        pubsub_manager.start_listening()
+        # Only start if redis_client is not None
+        if redis_client is not None:
+            try:
+                pubsub_manager.start_listening()
+            except Exception as e:
+                logger.error(f"Failed to start PubSub listener: {e}")
 
     return pubsub_manager

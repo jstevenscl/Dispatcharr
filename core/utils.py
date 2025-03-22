@@ -8,8 +8,16 @@ from redis.exceptions import ConnectionError, TimeoutError
 
 logger = logging.getLogger(__name__)
 
+# Import the command detector
+from .command_utils import is_management_command
+
 def get_redis_client(max_retries=5, retry_interval=1):
     """Get Redis client with connection validation and retry logic"""
+    # Skip Redis connection for management commands like collectstatic
+    if is_management_command():
+        logger.info("Running as management command - skipping Redis initialization")
+        return None
+
     retry_count = 0
     while retry_count < max_retries:
         try:
@@ -59,6 +67,11 @@ def get_redis_client(max_retries=5, retry_interval=1):
 
 def get_redis_pubsub_client(max_retries=5, retry_interval=1):
     """Get Redis client optimized for PubSub operations"""
+    # Skip Redis connection for management commands like collectstatic
+    if is_management_command():
+        logger.info("Running as management command - skipping Redis PubSub initialization")
+        return None
+
     retry_count = 0
     while retry_count < max_retries:
         try:
@@ -133,9 +146,20 @@ def execute_redis_command(redis_client, command_func, default_return=None):
         return default_return
 
 # Initialize the global clients with retry logic
-redis_client = get_redis_client()
-redis_pubsub_client = get_redis_pubsub_client()
+# Skip Redis initialization if running as a management command
+if is_management_command():
+    redis_client = None
+    redis_pubsub_client = None
+    logger.info("Running as management command - Redis clients set to None")
+else:
+    redis_client = get_redis_client()
+    redis_pubsub_client = get_redis_pubsub_client()
 
 # Import and initialize the PubSub manager
-from .redis_pubsub import get_pubsub_manager
-pubsub_manager = get_pubsub_manager(redis_client)
+# Skip if running as management command or if Redis client is None
+if not is_management_command() and redis_client is not None:
+    from .redis_pubsub import get_pubsub_manager
+    pubsub_manager = get_pubsub_manager(redis_client)
+else:
+    logger.info("PubSub manager not initialized (running as management command or Redis not available)")
+    pubsub_manager = None

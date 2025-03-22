@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from core.models import StreamProfile
 from django.conf import settings
 from core.models import StreamProfile, CoreSettings
-from core.utils import redis_client
+from core.utils import redis_client, execute_redis_command
 import logging
 import uuid
 from datetime import datetime
@@ -14,6 +14,17 @@ logger = logging.getLogger(__name__)
 
 # If you have an M3UAccount model in apps.m3u, you can still import it:
 from apps.m3u.models import M3UAccount
+
+# Add fallback functions if Redis isn't available
+def get_total_viewers(channel_id):
+    """Get viewer count from Redis or return 0 if Redis isn't available"""
+    if redis_client is None:
+        return 0
+
+    try:
+        return int(redis_client.get(f"channel:{channel_id}:viewers") or 0)
+    except Exception:
+        return 0
 
 class ChannelGroup(models.Model):
     name = models.CharField(max_length=100, unique=True)
