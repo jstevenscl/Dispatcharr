@@ -12,6 +12,8 @@ from celery import shared_task
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from apps.channels.models import Channel
+
 
 from .models import EPGSource, EPGData, ProgramData
 
@@ -60,9 +62,11 @@ def fetch_xmltv(source):
         source.file_path = file_path
         source.save(update_fields=['file_path'])
 
-        # If you store the path on EPGSource, do so here:
-        # source.file_path = file_path
-        # source.save(update_fields=['file_path'])
+        epg_entries = EPGData.objects.exclude(tvg_id__isnull=True).exclude(tvg_id__exact='')
+        for epg in epg_entries:
+            if Channel.objects.filter(tvg_id=epg.tvg_id).exists():
+                logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
+                parse_programs_for_tvg_id(file_path, epg.tvg_id)
 
         # Now parse <channel> blocks only
         parse_channels_only(file_path)
