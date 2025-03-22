@@ -9,8 +9,9 @@ from django.shortcuts import get_object_or_404
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
+from .utils import get_logger
 
-logger = logging.getLogger("ts_proxy")
+logger = get_logger()
 
 def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
     """

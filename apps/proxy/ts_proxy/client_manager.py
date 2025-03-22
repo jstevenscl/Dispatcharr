@@ -10,8 +10,9 @@ from redis.exceptions import ConnectionError, TimeoutError
 from .constants import EventType
 from .config_helper import ConfigHelper
 from .redis_keys import RedisKeys
+from .utils import get_logger
 
-logger = logging.getLogger("ts_proxy")
+logger = get_logger()
 
 class ClientManager:
     """Manages client connections with no duplicates"""

@@ -26,8 +26,9 @@ from .client_manager import ClientManager
 from .redis_keys import RedisKeys
 from .constants import ChannelState, EventType, StreamType
 from .config_helper import ConfigHelper
+from .utils import get_logger
 
-logger = logging.getLogger("ts_proxy")
+logger = get_logger()
 
 class ProxyServer:
     """Manages TS proxy server instance with worker coordination"""

@@ -5,8 +5,9 @@ from . import proxy_server
 from .redis_keys import RedisKeys
 from .constants import TS_PACKET_SIZE
 from redis.exceptions import ConnectionError, TimeoutError
+from .utils import get_logger
 
-logger = logging.getLogger("ts_proxy")
+logger = get_logger()
 
 class ChannelStatus:
 

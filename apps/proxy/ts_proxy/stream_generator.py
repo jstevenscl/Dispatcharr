@@ -8,10 +8,11 @@ import logging
 import threading
 from apps.proxy.config import TSConfig as Config
 from . import proxy_server
-from .utils import create_ts_packet
+from .utils import create_ts_packet, get_logger
 from .redis_keys import RedisKeys
+from .utils import get_logger
 
-logger = logging.getLogger("ts_proxy")
+logger = get_logger()
 
 class StreamGenerator:
     """
