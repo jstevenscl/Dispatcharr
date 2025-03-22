@@ -1,5 +1,8 @@
 FROM python:3.13-slim AS builder
 
+# Define build argument with default value of "main"
+ARG BRANCH=main
+
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
     DJANGO_SETTINGS_MODULE=dispatcharr.settings \
@@ -24,7 +27,7 @@ RUN apt-get update && \
         nodejs && \
     python -m pip install virtualenv && \
     virtualenv /dispatcharrpy && \
-    git clone https://github.com/Dispatcharr/Dispatcharr /app && \
+    git clone -b ${BRANCH} https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
     rm -rf .git && \
     cd /app && \

@@ -27,13 +27,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine image tag
-        id: set-tag
+      - name: Determine image tag and branch
+        id: set-tag-branch
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "TAG=latest" >> $GITHUB_ENV
+            echo "BRANCH=main" >> $GITHUB_ENV
           elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
             echo "TAG=dev" >> $GITHUB_ENV
+            echo "BRANCH=dev" >> $GITHUB_ENV
           fi
 
       - name: Convert repository name to lowercase
@@ -46,6 +48,8 @@ jobs:
           file: docker/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            BRANCH=${{ env.BRANCH }}
           tags: |
             ghcr.io/${{ env.REPO_NAME }}:${{ env.TAG }}
             ghcr.io/${{ env.REPO_NAME }}:${{ github.sha }}
