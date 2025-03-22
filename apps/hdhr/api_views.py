@@ -39,7 +39,7 @@ class DiscoverAPIView(APIView):
         responses={200: openapi.Response("HDHR Discovery JSON")}
     )
     def get(self, request):
-        base_url = request.build_absolute_uri('/').rstrip('/')
+        base_url = request.build_absolute_uri('/hdhr/').rstrip('/')
         device = HDHRDevice.objects.first()
 
         if not device:
@@ -115,7 +115,7 @@ class HDHRDeviceXMLAPIView(APIView):
         responses={200: openapi.Response("HDHR Device XML")}
     )
     def get(self, request):
-        base_url = request.build_absolute_uri('/').rstrip('/')
+        base_url = request.build_absolute_uri('/hdhr/').rstrip('/')
 
         xml_response = f"""<?xml version="1.0" encoding="utf-8"?>
         <root>
