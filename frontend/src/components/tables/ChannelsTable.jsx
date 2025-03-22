@@ -175,7 +175,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
 
 const m3uUrl = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrl = `${window.location.protocol}//${window.location.host}/output/epg`;
-const hdhrUrl = `${window.location.protocol}//${window.location.host}/output/hdhr`;
+const hdhrUrl = `${window.location.protocol}//${window.location.host}/hdhr/`;
 
 const ChannelsTable = ({}) => {
   const [channel, setChannel] = useState(null);
@@ -441,7 +441,7 @@ const ChannelsTable = ({}) => {
   };
   const copyHDHRUrl = () => {
     handleCopy(
-      `${window.location.protocol}//${window.location.host}/output/hdhr`,
+      `${window.location.protocol}//${window.location.host}/hdhr/`,
       hdhrUrlRef
     );
   };

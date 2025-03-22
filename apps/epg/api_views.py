@@ -7,8 +7,8 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.utils import timezone
 from datetime import timedelta
-from .models import EPGSource, ProgramData  # Using ProgramData
-from .serializers import ProgramDataSerializer, EPGSourceSerializer  # Updated serializer
+from .models import EPGSource, ProgramData, EPGData  # Added ProgramData
+from .serializers import ProgramDataSerializer, EPGSourceSerializer, EPGDataSerializer # Updated serializer
 from .tasks import refresh_epg_data
 
 logger = logging.getLogger(__name__)
@@ -78,3 +78,16 @@ class EPGImportAPIView(APIView):
         refresh_epg_data.delay()  # Trigger Celery task
         logger.info("EPGImportAPIView: Task dispatched to refresh EPG data.")
         return Response({'success': True, 'message': 'EPG data import initiated.'}, status=status.HTTP_202_ACCEPTED)
+
+
+# ─────────────────────────────
+# 5) EPG Data View
+# ─────────────────────────────
+class EPGDataViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows EPGData objects to be viewed.
+    """
+    queryset = EPGData.objects.all()
+    serializer_class = EPGDataSerializer
+    permission_classes = [IsAuthenticated]
+
