@@ -31,7 +31,7 @@ RUN apt-get update && \
     pip install --no-cache-dir -r requirements.txt && \
     python manage.py collectstatic --noinput && \
     cd /app/frontend && \
-    npm install && \
+    npm install --legacy-peer-deps && \
     npm run build && \
     find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
 
@@ -46,8 +46,9 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
 COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
 
+# Install base dependencies with memory optimization
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl \
         ffmpeg \
         libpcre3 \
@@ -59,33 +60,30 @@ RUN apt-get update && \
         gnupg2 \
         lsb-release && \
     cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
-    # Set up PostgreSQL repository using more modern method
-    echo "=== setting up postgres ====" && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up Redis repository in a separate step
+RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
+    chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y redis-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up PostgreSQL repository and install in a separate step
+RUN echo "=== setting up postgres ====" && \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
     wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
-    # Set up Redis repository
-    echo "=== setting up redis ===" && \
-    curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
-    chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list && \
-    # Update and install database packages
     apt-get update && \
-    apt-get install -y \
-        postgresql-14 \
-        postgresql-contrib-14 \
-        redis-server && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-14 postgresql-contrib-14 && \
     mkdir -p /data && \
-    # Cleanup
-    apt-get remove -y \
-        gnupg2 \
-        lsb-release && \
+    apt-get remove -y gnupg2 lsb-release && \
     apt-get clean && \
     apt-get autoremove -y && \
-    rm -rf \
-        /tmp/* \
-        /var/lib/apt/lists/* \
-        /var/tmp/*
+    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 WORKDIR /app
 
