@@ -1,9 +1,13 @@
 FROM python:3.13-slim AS builder
 
+# Define build argument with default value of "main"
+ARG BRANCH=main
+
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
     DJANGO_SETTINGS_MODULE=dispatcharr.settings \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    DISPATCHARR_BUILD=1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -23,14 +27,14 @@ RUN apt-get update && \
         nodejs && \
     python -m pip install virtualenv && \
     virtualenv /dispatcharrpy && \
-    git clone https://github.com/Dispatcharr/Dispatcharr /app && \
+    git clone -b ${BRANCH} https://github.com/Dispatcharr/Dispatcharr /app && \
     cd /app && \
     rm -rf .git && \
     cd /app && \
     pip install --no-cache-dir -r requirements.txt && \
     python manage.py collectstatic --noinput && \
     cd /app/frontend && \
-    npm install && \
+    npm install --legacy-peer-deps && \
     npm run build && \
     find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
 
@@ -45,43 +49,44 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
 COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
 
+# Install base dependencies with memory optimization
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl \
         ffmpeg \
-        gnupg2 \
-        gpg \
         libpcre3 \
         libpq-dev \
-        lsb-release \
         nginx \
         procps \
         streamlink \
-        wget && \
+        wget \
+        gnupg2 \
+        lsb-release && \
     cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
-    echo "=== setting up postgres ====" && \
-    echo "deb http://apt.postgresql.org/pub/repos/apt/ bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
-    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - && \
-    echo "=== setting up redis ===" && \
-    curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up Redis repository in a separate step
+RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
     chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list && \
     apt-get update && \
-    apt-get install -y \
-        postgresql-14 \
-        postgresql-contrib-14 \
-        redis-server && \
-    mkdir /data && \
-    apt-get remove -y \
-        gnupg2 \
-        gpg \
-        lsb-release && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y redis-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up PostgreSQL repository and install in a separate step
+RUN echo "=== setting up postgres ====" && \
+    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-14 postgresql-contrib-14 && \
+    mkdir -p /data && \
+    apt-get remove -y gnupg2 lsb-release && \
     apt-get clean && \
     apt-get autoremove -y && \
-    rm -rf \
-        /tmp/* \
-        /var/lib/apt/lists/* \
-        /var/tmp/*
+    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 WORKDIR /app
 
