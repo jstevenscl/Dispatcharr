@@ -21,14 +21,17 @@ import {
   Center,
   Grid,
   Flex,
+  Select,
 } from '@mantine/core';
 import { SquarePlus } from 'lucide-react';
+import useEPGsStore from '../../store/epgs';
 
 const Channel = ({ channel = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((state) => state.channelGroups);
   const streams = useStreamsStore((state) => state.streams);
   const { profiles: streamProfiles } = useStreamProfilesStore();
   const { playlists } = usePlaylistsStore();
+  const { tvgs } = useEPGsStore();
 
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(logo);
@@ -60,7 +63,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       name: '',
       channel_number: '',
       channel_group_id: '',
-      stream_profile_id: null,
+      stream_profile_id: '0',
       tvg_id: '',
       tvg_name: '',
     },
@@ -74,7 +77,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         values.stream_profile_id = null;
       }
 
-      console.log(values);
       if (channel?.id) {
         await API.updateChannel({
           id: channel.id,
@@ -104,7 +106,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         name: channel.name,
         channel_number: channel.channel_number,
         channel_group_id: channel.channel_group?.id,
-        stream_profile_id: channel.stream_profile_id,
+        stream_profile_id: channel.stream_profile_id || '0',
         tvg_id: channel.tvg_id,
         tvg_name: channel.tvg_name,
       });
@@ -248,6 +250,8 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     return <></>;
   }
 
+  console.log(streamProfiles);
+
   return (
     <>
       <Modal opened={isOpen} onClose={onClose} size={800} title="Channel">
@@ -265,7 +269,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
               <Grid>
                 <Grid.Col span={11}>
-                  <NativeSelect
+                  <Select
                     id="channel_group_id"
                     name="channel_group_id"
                     label="Channel Group"
@@ -276,7 +280,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                         ? formik.touched.channel_group_id
                         : ''
                     }
-                    data={channelGroups.map((option, index) => ({
+                    data={Object.values(channelGroups).map((option, index) => ({
                       value: `${option.id}`,
                       label: option.name,
                     }))}
@@ -296,18 +300,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 </Grid.Col>
               </Grid>
 
-              <NativeSelect
+              <Select
                 id="stream_profile_id"
                 label="Stream Profile"
                 name="stream_profile_id"
                 value={formik.values.stream_profile_id}
-                onChange={formik.handleChange}
+                onChange={(value) => {
+                  formik.setFieldValue('stream_profile_id', value); // Update Formik's state with the new value
+                }}
                 error={
                   formik.errors.stream_profile_id
                     ? formik.touched.stream_profile_id
                     : ''
                 }
-                data={[{ value: null, label: '(use default)' }].concat(
+                data={[{ value: '0', label: '(use default)' }].concat(
                   streamProfiles.map((option) => ({
                     value: `${option.id}`,
                     label: option.name,
@@ -339,13 +345,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 error={formik.errors.tvg_name ? formik.touched.tvg_name : ''}
               />
 
-              <TextInput
+              <Select
                 id="tvg_id"
                 name="tvg_id"
                 label="TVG ID"
+                searchable
                 value={formik.values.tvg_id}
-                onChange={formik.handleChange}
-                error={formik.errors.tvg_id ? formik.touched.tvg_id : ''}
+                onChange={(value) => {
+                  formik.setFieldValue('tvg_id', value); // Update Formik's state with the new value
+                }}
+                error={formik.errors.tvg_id}
+                data={tvgs.map((tvg) => ({
+                  value: tvg.name,
+                  label: tvg.tvg_id,
+                }))}
               />
 
               <TextInput

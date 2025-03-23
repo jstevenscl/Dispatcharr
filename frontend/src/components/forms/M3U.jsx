@@ -18,9 +18,12 @@ import {
   Space,
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
+import useChannelsStore from '../../store/channels';
 
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
-  const userAgents = useUserAgentsStore((state) => state.userAgents);
+  const { userAgents } = useUserAgentsStore();
+  const { fetchChannelGroups } = useChannelsStore();
+
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [groupFilterModalOpen, setGroupFilterModalOpen] = useState(false);
@@ -59,6 +62,8 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           ...values,
           uploaded_file: file,
         });
+
+        await fetchChannelGroups();
       }
 
       resetForm();

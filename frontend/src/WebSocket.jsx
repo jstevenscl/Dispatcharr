@@ -9,6 +9,7 @@ import useStreamsStore from './store/streams';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from './store/channels';
 import usePlaylistsStore from './store/playlists';
+import useEPGsStore from './store/epgs';
 
 export const WebsocketContext = createContext(false, null, () => {});
 
@@ -19,6 +20,7 @@ export const WebsocketProvider = ({ children }) => {
   const { fetchStreams } = useStreamsStore();
   const { setChannelStats, fetchChannelGroups } = useChannelsStore();
   const { setRefreshProgress } = usePlaylistsStore();
+  const { fetchEPGData } = useEPGsStore();
 
   const ws = useRef(null);
 
@@ -65,6 +67,7 @@ export const WebsocketProvider = ({ children }) => {
             if (event.data.progress == 100) {
               fetchStreams();
               fetchChannelGroups();
+              fetchEPGData();
             }
             setRefreshProgress(event.data.account, event.data.progress);
           }

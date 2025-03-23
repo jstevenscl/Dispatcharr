@@ -31,7 +31,10 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const [groupFilter, setGroupFilter] = useState('');
 
   useEffect(() => {
-    console.log(playlist.channel_groups);
+    if (Object.keys(channelGroups).length === 0) {
+      return;
+    }
+
     setGroupStates(
       playlist.channel_groups.map((group) => ({
         ...group,
