@@ -57,13 +57,16 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           uploaded_file: file,
         });
       } else {
-        setLoadingText('Loading groups...');
         newPlaylist = await API.addPlaylist({
           ...values,
           uploaded_file: file,
         });
 
         await fetchChannelGroups();
+
+        // Don't prompt for group filters, but keeping this here
+        // in case we want to revive it
+        newPlaylist = null;
       }
 
       resetForm();
