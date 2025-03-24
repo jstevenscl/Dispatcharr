@@ -1,7 +1,10 @@
 FROM python:3.13-slim AS builder
 
-# Define build argument with default value of "main"
+# Define build arguments with default values
 ARG BRANCH=main
+# This will be overridden by the GitHub Actions workflow
+# when building the Docker image for production.
+ARG REPO_URL=https://github.com/Dispatcharr/Dispatcharr
 
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
@@ -27,7 +30,7 @@ RUN apt-get update && \
         nodejs && \
     python -m pip install virtualenv && \
     virtualenv /dispatcharrpy && \
-    git clone -b ${BRANCH} https://github.com/Dispatcharr/Dispatcharr /app && \
+    git clone -b ${BRANCH} ${REPO_URL} /app && \
     cd /app && \
     rm -rf .git && \
     cd /app && \
