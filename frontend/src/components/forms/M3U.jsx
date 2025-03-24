@@ -14,7 +14,6 @@ import {
   Flex,
   NativeSelect,
   FileInput,
-  Select,
   Space,
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
@@ -30,6 +29,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   const [loadingText, setLoadingText] = useState('');
 
   const handleFileChange = (file) => {
+    console.log(file);
     if (file) {
       setFile(file);
     }
@@ -204,12 +204,23 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
                 </Button>
               </>
             )}
+            {!playlist && (
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                disabled={formik.isSubmitting}
+                size="sm"
+              >
+                Save & Select Groups
+              </Button>
+            )}
             <Button
               type="submit"
               variant="contained"
               color="primary"
               disabled={formik.isSubmitting}
-              size="small"
+              size="sm"
             >
               Save
             </Button>
