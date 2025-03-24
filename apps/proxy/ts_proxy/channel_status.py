@@ -71,6 +71,20 @@ class ChannelStatus:
                     client_info['last_active'] = last_active
                     client_info['last_active_ago'] = time.time() - last_active
 
+                # Add transfer rate statistics
+                if b'bytes_sent' in client_data:
+                    client_info['bytes_sent'] = int(client_data[b'bytes_sent'].decode('utf-8'))
+
+                # Add average transfer rate
+                if b'avg_rate_KBps' in client_data:
+                    client_info['avg_rate_KBps'] = float(client_data[b'avg_rate_KBps'].decode('utf-8'))
+                elif b'transfer_rate_KBps' in client_data:  # For backward compatibility
+                    client_info['avg_rate_KBps'] = float(client_data[b'transfer_rate_KBps'].decode('utf-8'))
+
+                # Add current transfer rate
+                if b'current_rate_KBps' in client_data:
+                    client_info['current_rate_KBps'] = float(client_data[b'current_rate_KBps'].decode('utf-8'))
+
                 clients.append(client_info)
 
         info['clients'] = clients
