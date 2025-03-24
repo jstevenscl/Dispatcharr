@@ -3,8 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import Draggable from 'react-draggable';
 import useVideoStore from '../store/useVideoStore';
 import mpegts from 'mpegts.js';
-import { ActionIcon, Flex } from '@mantine/core';
-import { SquareX } from 'lucide-react';
+import { CloseButton, Flex } from '@mantine/core';
 
 export default function FloatingVideo() {
   const { isVisible, streamUrl, hideVideo } = useVideoStore();
@@ -68,9 +67,7 @@ export default function FloatingVideo() {
       >
         {/* Simple header row with a close button */}
         <Flex justify="flex-end" style={{ padding: 3 }}>
-          <ActionIcon variant="transparent" onClick={hideVideo}>
-            <SquareX color="red" size="30" />
-          </ActionIcon>
+          <CloseButton onClick={hideVideo} />
         </Flex>
 
         {/* The <video> element used by mpegts.js */}

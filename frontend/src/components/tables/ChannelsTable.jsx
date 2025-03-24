@@ -245,6 +245,8 @@ const ChannelsTable = ({}) => {
               handleFilterChange(column.id, e.target.value);
             }}
             size="xs"
+            variant="unstyled"
+            className="table-input-header"
           />
         ),
         Cell: ({ cell }) => (
@@ -273,6 +275,8 @@ const ChannelsTable = ({}) => {
               handleGroupChange(value);
             }}
             data={channelGroupOptions}
+            variant="unstyled"
+            className="table-input-header"
           />
         ),
       },
@@ -490,6 +494,12 @@ const ChannelsTable = ({}) => {
       'mrt-row-expand': {
         size: 10,
         header: '',
+        mantineTableHeadCellProps: {
+          padding: 0,
+        },
+        mantineTableBodyCellProps: {
+          padding: 0,
+        },
       },
       'mrt-row-actions': {
         size: 74,
@@ -516,7 +526,7 @@ const ChannelsTable = ({}) => {
             <ActionIcon
               size="sm"
               variant="transparent"
-              color="yellow.5"
+              color={theme.tailwind.yellow[3]}
               onClick={() => {
                 editChannel(row.original);
               }}
@@ -529,7 +539,7 @@ const ChannelsTable = ({}) => {
             <ActionIcon
               size="sm"
               variant="transparent"
-              color="red.9"
+              color={theme.tailwind.red[6]}
               onClick={() => deleteChannel(row.original.id)}
             >
               <SquareMinus size="18" />
@@ -540,7 +550,7 @@ const ChannelsTable = ({}) => {
             <ActionIcon
               size="sm"
               variant="transparent"
-              color="green.5"
+              color={theme.tailwind.green[5]}
               onClick={() => handleWatchStream(row.original.uuid)}
             >
               <CirclePlay size="18" />
@@ -701,6 +711,7 @@ const ChannelsTable = ({}) => {
       <Paper
         style={{
           height: 'calc(100vh - 75px)',
+          backgroundColor: '#27272A',
         }}
       >
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
@@ -751,10 +762,10 @@ const ChannelsTable = ({}) => {
               size="xs"
               onClick={() => editChannel()}
               p={5}
-              color="green"
+              color={theme.tailwind.green[5]}
               style={{
                 borderWidth: '1px',
-                borderColor: 'green',
+                borderColor: theme.tailwind.green[5],
                 color: 'white',
               }}
             >

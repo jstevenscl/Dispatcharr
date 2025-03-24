@@ -22,11 +22,17 @@ import {
   Grid,
   Flex,
   Select,
+  Divider,
+  Stack,
+  useMantineTheme,
 } from '@mantine/core';
-import { SquarePlus } from 'lucide-react';
+import { ListOrdered, SquarePlus, SquareX } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
+import { Dropzone } from '@mantine/dropzone';
 
 const Channel = ({ channel = null, isOpen, onClose }) => {
+  const theme = useMantineTheme();
+
   const channelGroups = useChannelsStore((state) => state.channelGroups);
   const streams = useStreamsStore((state) => state.streams);
   const { profiles: streamProfiles } = useStreamProfilesStore();
@@ -34,7 +40,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const { tvgs } = useEPGsStore();
 
   const [logoFile, setLogoFile] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(logo);
+  const [logoPreview, setLogoPreview] = useState(null);
   const [channelStreams, setChannelStreams] = useState([]);
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
 
@@ -50,11 +56,14 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     setChannelStreams(Array.from(streamSet));
   };
 
-  const handleLogoChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setLogoFile(file);
-      setLogoPreview(URL.createObjectURL(file));
+  const handleLogoChange = (files) => {
+    if (files.length === 1) {
+      console.log(files[0]);
+      setLogoFile(files[0]);
+      setLogoPreview(URL.createObjectURL(files[0]));
+    } else {
+      setLogoFile(null);
+      setLogoPreview(null);
     }
   };
 
@@ -77,6 +86,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         values.stream_profile_id = null;
       }
 
+      if (values.stream_profile_id == null) {
+        delete values.stream_profile_id;
+      }
+
       if (channel?.id) {
         await API.updateChannel({
           id: channel.id,
@@ -94,7 +107,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
       resetForm();
       setLogoFile(null);
-      setLogoPreview(logo);
+      setLogoPreview(null);
       setSubmitting(false);
       onClose();
     },
@@ -250,14 +263,23 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     return <></>;
   }
 
-  console.log(streamProfiles);
-
   return (
     <>
-      <Modal opened={isOpen} onClose={onClose} size={800} title="Channel">
+      <Modal
+        opened={isOpen}
+        onClose={onClose}
+        size={1000}
+        title={
+          <Group gap="5">
+            <ListOrdered size="20" />
+            <Text>Channels</Text>
+          </Group>
+        }
+        styles={{ content: { '--mantine-color-body': '#27272A' } }}
+      >
         <form onSubmit={formik.handleSubmit}>
-          <Grid gap={2}>
-            <Grid.Col span={6}>
+          <Group justify="space-between" align="top">
+            <Stack gap="5" style={{ flex: 1 }}>
               <TextInput
                 id="name"
                 name="name"
@@ -265,40 +287,43 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 value={formik.values.name}
                 onChange={formik.handleChange}
                 error={formik.errors.name ? formik.touched.name : ''}
+                size="xs"
               />
 
-              <Grid>
-                <Grid.Col span={11}>
-                  <Select
-                    id="channel_group_id"
-                    name="channel_group_id"
-                    label="Channel Group"
-                    value={formik.values.channel_group_id}
-                    onChange={formik.handleChange}
-                    error={
-                      formik.errors.channel_group_id
-                        ? formik.touched.channel_group_id
-                        : ''
-                    }
-                    data={Object.values(channelGroups).map((option, index) => ({
-                      value: `${option.id}`,
-                      label: option.name,
-                    }))}
-                  />
-                </Grid.Col>
-                <Grid.Col span={1}>
+              <Flex gap="sm">
+                <Select
+                  id="channel_group_id"
+                  name="channel_group_id"
+                  label="Channel Group"
+                  value={formik.values.channel_group_id}
+                  onChange={(value) => {
+                    formik.setFieldValue('channel_group_id', value); // Update Formik's state with the new value
+                  }}
+                  error={
+                    formik.errors.channel_group_id
+                      ? formik.touched.channel_group_id
+                      : ''
+                  }
+                  data={Object.values(channelGroups).map((option, index) => ({
+                    value: `${option.id}`,
+                    label: option.name,
+                  }))}
+                  size="xs"
+                  style={{ flex: 1 }}
+                />
+                <Flex align="flex-end">
                   <ActionIcon
-                    color="green.5"
+                    color={theme.tailwind.green[5]}
                     onClick={() => setChannelGroupModalOpen(true)}
                     title="Create new group"
                     size="small"
-                    variant="light"
-                    style={{ marginTop: '175%' }} // @TODO: I don't like this, figure out better placement
+                    variant="transparent"
+                    style={{ marginBottom: 5 }}
                   >
-                    <SquarePlus />
+                    <SquarePlus size="20" />
                   </ActionIcon>
-                </Grid.Col>
-              </Grid>
+                </Flex>
+              </Flex>
 
               <Select
                 id="stream_profile_id"
@@ -319,6 +344,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     label: option.name,
                   }))
                 )}
+                size="xs"
               />
 
               <TextInput
@@ -332,10 +358,81 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     ? formik.touched.channel_number
                     : ''
                 }
+                size="xs"
               />
-            </Grid.Col>
+            </Stack>
 
-            <Grid.Col span={6}>
+            <Divider size="sm" orientation="vertical" />
+
+            <Stack justify="flex-start" style={{ flex: 1 }}>
+              <TextInput
+                id="logo_url"
+                name="logo_url"
+                label="Logo (URL)"
+                value={formik.values.logo_url}
+                onChange={formik.handleChange}
+                error={formik.errors.logo_url ? formik.touched.logo_url : ''}
+                size="xs"
+              />
+
+              <Group>
+                <Divider size="xs" style={{ flex: 1 }} />
+                <Text size="xs" c="dimmed">
+                  OR
+                </Text>
+                <Divider size="xs" style={{ flex: 1 }} />
+              </Group>
+
+              <Stack>
+                <Group justify="space-between">
+                  <Text size="sm">Upload Logo</Text>
+                  {logoPreview && (
+                    <ActionIcon
+                      variant="transparent"
+                      color="red.9"
+                      onClick={handleLogoChange}
+                    >
+                      <SquareX />
+                    </ActionIcon>
+                  )}
+                </Group>
+                <Dropzone
+                  onDrop={handleLogoChange}
+                  onReject={(files) => console.log('rejected files', files)}
+                  maxSize={5 * 1024 ** 2}
+                >
+                  <Group
+                    justify="center"
+                    gap="xl"
+                    mih={40}
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    <div>
+                      {logoPreview && (
+                        <Center>
+                          <img
+                            src={logoPreview || logo}
+                            alt="Selected"
+                            style={{ maxWidth: 50, height: 'auto' }}
+                          />
+                        </Center>
+                      )}
+                      {!logoPreview && (
+                        <Text size="sm" inline>
+                          Drag images here or click to select files
+                        </Text>
+                      )}
+                    </div>
+                  </Group>
+                </Dropzone>
+
+                <Center></Center>
+              </Stack>
+            </Stack>
+
+            <Divider size="sm" orientation="vertical" />
+
+            <Stack gap="5" style={{ flex: 1 }} justify="flex-start">
               <TextInput
                 id="tvg_name"
                 name="tvg_name"
@@ -343,6 +440,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 value={formik.values.tvg_name}
                 onChange={formik.handleChange}
                 error={formik.errors.tvg_name ? formik.touched.tvg_name : ''}
+                size="xs"
               />
 
               <Select
@@ -359,6 +457,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   value: tvg.name,
                   label: tvg.tvg_id,
                 }))}
+                size="xs"
               />
 
               <TextInput
@@ -368,34 +467,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 style={{ marginBottom: 2 }}
                 value={formik.values.logo_url}
                 onChange={formik.handleChange}
+                size="xs"
               />
-
-              <Group style={{ paddingTop: 10 }}>
-                <Text>Logo</Text>
-                {/* Display selected image */}
-                <Box>
-                  <img
-                    src={logoPreview}
-                    alt="Selected"
-                    style={{ maxWidth: 50, height: 'auto' }}
-                  />
-                </Box>
-                <input
-                  type="file"
-                  id="logo"
-                  name="logo"
-                  accept="image/*"
-                  onChange={(event) => handleLogoChange(event)}
-                  style={{ display: 'none' }}
-                />
-                <label htmlFor="logo">
-                  <Button variant="contained" component="span" size="small">
-                    Browse...
-                  </Button>
-                </label>
-              </Group>
-            </Grid.Col>
-          </Grid>
+            </Stack>
+          </Group>
 
           {/* <Grid gap={2}>
             <Grid.Col span={6}>
@@ -412,8 +487,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
             <Button
               type="submit"
-              variant="contained"
-              color="primary"
+              variant="default"
               disabled={formik.isSubmitting}
             >
               Submit
