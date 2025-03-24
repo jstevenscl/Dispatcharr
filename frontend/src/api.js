@@ -197,13 +197,33 @@ export default class API {
 
   static async updateChannel(values) {
     const { id, ...payload } = values;
+
+    let body = null;
+    if (values.logo_file) {
+      // Must send FormData for file upload
+      body = new FormData();
+      for (const prop in values) {
+        body.append(prop, values[prop]);
+      }
+    } else {
+      body = { ...values };
+      delete body.logo_file;
+      body = JSON.stringify(body);
+    }
+
+    console.log(body);
+
     const response = await fetch(`${host}/api/channels/channels/${id}/`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
+        ...(values.logo_file
+          ? {}
+          : {
+              'Content-Type': 'application/json',
+            }),
       },
-      body: JSON.stringify(payload),
+      body: body,
     });
 
     const retval = await response.json();

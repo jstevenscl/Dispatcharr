@@ -39,3 +39,9 @@ code {
 table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Table-td-detail-panel {
   width: 100% !important;
 }
+
+.table-input-header input::placeholder {
+    color: rgb(207,207,207);
+    font-weight: normal;
+    font-size: 14px;
+}
