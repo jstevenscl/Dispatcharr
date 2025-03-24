@@ -11,6 +11,16 @@ logger = get_logger()
 
 class ChannelStatus:
 
+    @staticmethod
+    def _calculate_bitrate(total_bytes, duration):
+        """Calculate bitrate in Kbps based on total bytes and duration in seconds"""
+        if duration <= 0:
+            return 0
+
+        # Convert bytes to bits (x8) and divide by duration to get bits per second
+        # Then divide by 1000 to get Kbps
+        return (total_bytes * 8) / duration / 1000
+
     def get_detailed_channel_info(channel_id):
         # Get channel metadata
         metadata_key = RedisKeys.channel_metadata(channel_id)
@@ -43,6 +53,32 @@ class ChannelStatus:
             created_at = float(metadata[b'init_time'].decode('utf-8'))
             info['started_at'] = created_at
             info['uptime'] = time.time() - created_at
+
+        # Add data throughput information
+        if b'total_bytes' in metadata:
+            total_bytes = int(metadata[b'total_bytes'].decode('utf-8'))
+            info['total_bytes'] = total_bytes
+
+            # Format total bytes in human-readable form
+            if total_bytes < 1024:
+                info['total_data'] = f"{total_bytes} B"
+            elif total_bytes < 1024 * 1024:
+                info['total_data'] = f"{total_bytes / 1024:.2f} KB"
+            elif total_bytes < 1024 * 1024 * 1024:
+                info['total_data'] = f"{total_bytes / (1024 * 1024):.2f} MB"
+            else:
+                info['total_data'] = f"{total_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+            # Calculate average bitrate if we have uptime
+            if 'uptime' in info and info['uptime'] > 0:
+                avg_bitrate = ChannelStatus._calculate_bitrate(total_bytes, info['uptime'])
+                info['avg_bitrate_kbps'] = avg_bitrate
+
+                # Format in Mbps if over 1000 Kbps
+                if avg_bitrate > 1000:
+                    info['avg_bitrate'] = f"{avg_bitrate / 1000:.2f} Mbps"
+                else:
+                    info['avg_bitrate'] = f"{avg_bitrate:.2f} Kbps"
 
         # Get client information
         client_set_key = RedisKeys.clients(channel_id)
@@ -239,6 +275,23 @@ class ChannelStatus:
                 'client_count': client_count,
                 'uptime': uptime
             }
+
+            # Add data throughput information to basic info
+            total_bytes_bytes = proxy_server.redis_client.hget(metadata_key, 'total_bytes')
+            if total_bytes_bytes:
+                total_bytes = int(total_bytes_bytes.decode('utf-8'))
+                info['total_bytes'] = total_bytes
+
+                # Calculate and add bitrate
+                if uptime > 0:
+                    avg_bitrate = ChannelStatus._calculate_bitrate(total_bytes, uptime)
+                    info['avg_bitrate_kbps'] = avg_bitrate
+
+                    # Format for display
+                    if avg_bitrate > 1000:
+                        info['avg_bitrate'] = f"{avg_bitrate / 1000:.2f} Mbps"
+                    else:
+                        info['avg_bitrate'] = f"{avg_bitrate:.2f} Kbps"
 
             # Quick health check if available locally
             if channel_id in proxy_server.stream_managers:
