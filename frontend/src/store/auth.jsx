@@ -37,6 +37,7 @@ const useAuthStore = create((set, get) => ({
       useUserAgentsStore.getState().fetchUserAgents(),
       usePlaylistsStore.getState().fetchPlaylists(),
       useEPGsStore.getState().fetchEPGs(),
+      useEPGsStore.getState().fetchEPGData(),
       useStreamProfilesStore.getState().fetchProfiles(),
       useSettingsStore.getState().fetchSettings(),
     ]);
@@ -119,7 +120,7 @@ const useAuthStore = create((set, get) => ({
     const refreshToken = localStorage.getItem('refreshToken') || null;
 
     if (refreshToken) {
-      const loggedIn = await get().refreshToken();
+      const loggedIn = await get().getRefreshToken();
       if (loggedIn) {
         return true;
       }

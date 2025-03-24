@@ -581,6 +581,18 @@ export default class API {
     return retval;
   }
 
+  static async getEPGData() {
+    const response = await fetch(`${host}/api/epg/epgdata/`, {
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
   // Notice there's a duplicated "refreshPlaylist" method above;
   // you might want to rename or remove one if it's not needed.
 

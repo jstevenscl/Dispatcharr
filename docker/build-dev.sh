@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker build -t dispatcharr/dispatcharr:dev -f Dockerfile ..
+docker build --build-arg BRANCH=dev -t dispatcharr/dispatcharr:dev -f Dockerfile ..
