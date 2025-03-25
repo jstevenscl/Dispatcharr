@@ -45,8 +45,7 @@ class ChannelMetadataField:
     STREAM_ID = "stream_id"
 
     # Profile fields
-    STREAM_PROFILE = "stream_profile"  # New preferred name
-    PROFILE = "profile"                # Legacy name
+    STREAM_PROFILE = "stream_profile"
     M3U_PROFILE = "m3u_profile"
 
     # Status and error fields
