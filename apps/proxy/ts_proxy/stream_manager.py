@@ -890,8 +890,8 @@ class StreamManager:
                     ChannelMetadataField.USER_AGENT: new_user_agent,
                     ChannelMetadataField.STREAM_PROFILE: stream_info['profile'],
                     ChannelMetadataField.STREAM_ID: str(stream_id),
-                    "stream_switch_time": str(time.time()),
-                    "stream_switch_reason": "max_retries_exceeded"
+                    ChannelMetadataField.STREAM_SWITCH_TIME: str(time.time()),
+                    ChannelMetadataField.STREAM_SWITCH_REASON: "max_retries_exceeded"
                 })
 
                 # Log the switch
