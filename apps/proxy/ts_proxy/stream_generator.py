@@ -44,6 +44,11 @@ class StreamGenerator:
         self.local_index = 0
         self.consecutive_empty = 0
 
+        # Add tracking for current transfer rate calculation
+        self.last_stats_time = time.time()
+        self.last_stats_bytes = 0
+        self.current_rate = 0.0
+
     def generate(self):
         """
         Generator function that produces the stream content for the client.
@@ -266,26 +271,43 @@ class StreamGenerator:
                 self.bytes_sent += len(chunk)
                 self.chunks_sent += 1
                 logger.debug(f"[{self.client_id}] Sent chunk {self.chunks_sent} ({len(chunk)} bytes) to client")
-                # Log every 10 chunks and store in redis for visibility
-                if self.chunks_sent % 10 == 0:
-                    elapsed = time.time() - self.stream_start_time
-                    rate = self.bytes_sent / elapsed / 1024 if elapsed > 0 else 0
-                    logger.debug(f"[{self.client_id}] Stats: {self.chunks_sent} chunks, {self.bytes_sent/1024:.1f} KB, {rate:.1f} KB/s")
 
-                    # Store stats in Redis client metadata
-                    if proxy_server.redis_client:
-                        try:
-                            client_key = RedisKeys.client_metadata(self.channel_id, self.client_id)
-                            stats = {
-                                "chunks_sent": str(self.chunks_sent),
-                                "bytes_sent": str(self.bytes_sent),
-                                "transfer_rate_KBps": str(round(rate, 1)),
-                                "stats_updated_at": str(time.time())
-                            }
-                            proxy_server.redis_client.hset(client_key, mapping=stats)
-                            # No need to set expiration as client heartbeat will refresh this key
-                        except Exception as e:
-                            logger.warning(f"[{self.client_id}] Failed to store stats in Redis: {e}")
+                current_time = time.time()
+
+                # Calculate average rate (since stream start)
+                elapsed_total = current_time - self.stream_start_time
+                avg_rate = self.bytes_sent / elapsed_total / 1024 if elapsed_total > 0 else 0
+
+                # Calculate current rate (since last measurement)
+                elapsed_current = current_time - self.last_stats_time
+                bytes_since_last = self.bytes_sent - self.last_stats_bytes
+
+                if elapsed_current > 0:
+                    self.current_rate = bytes_since_last / elapsed_current / 1024
+
+                # Update last stats values
+                self.last_stats_time = current_time
+                self.last_stats_bytes = self.bytes_sent
+                # Log every 10 chunks
+                if self.chunks_sent % 10 == 0:
+                    logger.debug(f"[{self.client_id}] Stats: {self.chunks_sent} chunks, {self.bytes_sent/1024:.1f} KB, "
+                                f"avg: {avg_rate:.1f} KB/s, current: {self.current_rate:.1f} KB/s")
+
+                # Store stats in Redis client metadata
+                if proxy_server.redis_client:
+                    try:
+                        client_key = RedisKeys.client_metadata(self.channel_id, self.client_id)
+                        stats = {
+                            "chunks_sent": str(self.chunks_sent),
+                            "bytes_sent": str(self.bytes_sent),
+                            "avg_rate_KBps": str(round(avg_rate, 1)),
+                            "current_rate_KBps": str(round(self.current_rate, 1)),
+                            "stats_updated_at": str(current_time)
+                        }
+                        proxy_server.redis_client.hset(client_key, mapping=stats)
+                        # No need to set expiration as client heartbeat will refresh this key
+                    except Exception as e:
+                        logger.warning(f"[{self.client_id}] Failed to store stats in Redis: {e}")
 
             except Exception as e:
                 logger.error(f"[{self.client_id}] Error sending chunk to client: {e}")

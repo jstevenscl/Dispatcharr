@@ -196,7 +196,7 @@ const StreamsTable = ({}) => {
         ),
       },
     ],
-    [playlists, groupOptions, filters]
+    [playlists, groupOptions, filters, channelGroups]
   );
 
   /**

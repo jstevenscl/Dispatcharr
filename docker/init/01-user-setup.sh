@@ -18,4 +18,5 @@ else
     fi
 fi
 
-usermod -aG www-data $POSTGRES_USER
+# Run nginx as specified user
+sed -i 's/user www-data;/user dispatch;/g' /etc/nginx/nginx.conf

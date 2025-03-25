@@ -94,6 +94,11 @@ class StreamManager:
         # Add this flag for tracking transcoding process status
         self.transcode_process_active = False
 
+        # Add tracking for data throughput
+        self.bytes_processed = 0
+        self.last_bytes_update = time.time()
+        self.bytes_update_interval = 5  # Update Redis every 5 seconds
+
     def _create_session(self):
         """Create and configure requests session with optimal settings"""
         session = requests.Session()
@@ -379,6 +384,30 @@ class StreamManager:
             self._close_connection()
             return False
 
+    def _update_bytes_processed(self, chunk_size):
+        """Update the total bytes processed in Redis metadata"""
+        try:
+            # Update local counter
+            self.bytes_processed += chunk_size
+
+            # Only update Redis periodically to reduce overhead
+            now = time.time()
+            if now - self.last_bytes_update >= self.bytes_update_interval:
+                if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                    # Update channel metadata with total bytes
+                    metadata_key = RedisKeys.channel_metadata(self.channel_id)
+
+                    # Use hincrby to atomically increment the total_bytes field
+                    self.buffer.redis_client.hincrby(metadata_key, "total_bytes", self.bytes_processed)
+
+                    # Reset local counter after updating Redis
+                    self.bytes_processed = 0
+                    self.last_bytes_update = now
+
+                    logger.debug(f"Updated total_bytes in Redis for channel {self.channel_id}")
+        except Exception as e:
+            logger.error(f"Error updating bytes processed: {e}")
+
     def _process_stream_data(self):
         """Process stream data until disconnect or error"""
         try:
@@ -401,6 +430,10 @@ class StreamManager:
                             break
 
                         if chunk:
+                            # Track chunk size before adding to buffer
+                            chunk_size = len(chunk)
+                            self._update_bytes_processed(chunk_size)
+
                             # Add chunk to buffer with TS packet alignment
                             success = self.buffer.add_chunk(chunk)
 
@@ -669,6 +702,10 @@ class StreamManager:
                 self._close_socket()
                 self.connected = False
                 return False
+
+            # Track chunk size before adding to buffer
+            chunk_size = len(chunk)
+            self._update_bytes_processed(chunk_size)
 
             # Add directly to buffer without TS-specific processing
             success = self.buffer.add_chunk(chunk)
