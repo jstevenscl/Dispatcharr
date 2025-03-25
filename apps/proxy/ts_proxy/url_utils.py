@@ -33,10 +33,10 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
 
     # Get the M3U account profile for URL pattern
     stream = get_object_or_404(Stream, pk=stream_id)
-    profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
+    m3u_profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
 
     # Get the appropriate user agent
-    m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
+    m3u_account = M3UAccount.objects.get(id=m3u_profile.m3u_account.id)
     stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
 
     if stream_user_agent is None:
@@ -45,7 +45,7 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
 
     # Generate stream URL based on the selected profile
     input_url = stream.url
-    stream_url = transform_url(input_url, profile.search_pattern, profile.replace_pattern)
+    stream_url = transform_url(input_url, m3u_profile.search_pattern, m3u_profile.replace_pattern)
 
     # Check if transcoding is needed
     stream_profile = channel.get_stream_profile()
