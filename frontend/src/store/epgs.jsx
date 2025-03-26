@@ -49,11 +49,14 @@ const useEPGsStore = create((set) => ({
     })),
 
   removeEPGs: (epgIds) =>
-    set((state) => ({
-      epgs: Object.fromEntries(
-        Object.entries(state.epgs).filter(([id]) => !epgIds.includes(id))
-      ),
-    })),
+    set((state) => {
+      const updatedEPGs = { ...state.epgs };
+      for (const id of epgIds) {
+        delete updatedEPGs[id];
+      }
+
+      return { epgs: updatedEPGs };
+    }),
 }));
 
 export default useEPGsStore;

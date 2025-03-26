@@ -24,6 +24,7 @@ const EPGsTable = () => {
   const [rowSelection, setRowSelection] = useState([]);
 
   const { epgs } = useEPGsStore();
+  console.log(epgs);
 
   const theme = useMantineTheme();
 
