@@ -14,6 +14,8 @@ from django.db import transaction
 from django.utils import timezone
 from apps.channels.models import Channel
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from .models import EPGSource, EPGData, ProgramData
 
@@ -78,6 +80,7 @@ def fetch_xmltv(source):
 
 def parse_channels_only(source, file_path):
     logger.info(f"Parsing channels from EPG file: {file_path}")
+    existing_epgs = {e.tvg_id: e for e in EPGData.objects.filter(epg_source=source)}
 
     # Read entire file (decompress if .gz)
     if file_path.endswith('.gz'):
@@ -91,26 +94,42 @@ def parse_channels_only(source, file_path):
     root = ET.fromstring(xml_data)
     channels = root.findall('channel')
 
+    epgs_to_create = []
+    epgs_to_update = []
+
     logger.info(f"Found {len(channels)} <channel> entries in {file_path}")
-    with transaction.atomic():
-        for channel_elem in channels:
-            tvg_id = channel_elem.get('id', '').strip()
-            if not tvg_id:
-                continue  # skip blank/invalid IDs
+    for channel_elem in channels:
+        tvg_id = channel_elem.get('id', '').strip()
+        if not tvg_id:
+            continue  # skip blank/invalid IDs
 
-            display_name = channel_elem.findtext('display-name', default=tvg_id).strip()
+        display_name = channel_elem.findtext('display-name', default=tvg_id).strip()
 
-            epg_obj, created = EPGData.objects.get_or_create(
+        if tvg_id in existing_epgs:
+            epg_obj = existing_epgs[tvg_id]
+            if epg_obj.name != display_name:
+                epg_obj.name = display_name
+                epgs_to_update.append(epg_obj)
+        else:
+            epgs_to_create.append(EPGData(
                 tvg_id=tvg_id,
+                name=display_name,
                 epg_source=source,
-                defaults={'name': display_name},
-            )
-            if not created:
-                # Optionally update if new name is different
-                if epg_obj.name != display_name:
-                    epg_obj.name = display_name
-                    epg_obj.save()
-            logger.debug(f"Channel <{tvg_id}> => EPGData.id={epg_obj.id}, created={created}")
+            ))
+
+    if epgs_to_create:
+        EPGData.objects.bulk_create(epgs_to_create, ignore_conflicts=True)
+    if epgs_to_update:
+        EPGData.objects.bulk_update(epgs_to_update, ["name"])
+
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        'updates',
+        {
+            'type': 'update',
+            "data": {"success": True, "type": "epg_channels"}
+        }
+    )
 
     logger.info("Finished parsing channel info.")
 

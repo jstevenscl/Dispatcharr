@@ -29,6 +29,9 @@ class EPGData(models.Model):
         related_name="epgs",
     )
 
+    class Meta:
+        unique_together = ('tvg_id', 'epg_source')
+
     def __str__(self):
         return f"EPG Data for {self.name}"
 

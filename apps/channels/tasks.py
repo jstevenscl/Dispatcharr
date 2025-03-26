@@ -14,6 +14,9 @@ from apps.epg.models import EPGData, EPGSource
 from core.models import CoreSettings
 from apps.epg.tasks import parse_programs_for_tvg_id  # <-- we import our new helper
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 logger = logging.getLogger(__name__)
 
 # Load the sentence-transformers model once at the module level
@@ -220,4 +223,14 @@ def match_epg_channels():
         logger.info("No new channels were matched.")
 
     logger.info("Finished EPG matching logic.")
+
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        'updates',
+        {
+            'type': 'update',
+            "data": {"success": True, "type": "epg_match"}
+        }
+    )
+
     return f"Done. Matched {total_matched} channel(s)."

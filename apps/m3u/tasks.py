@@ -15,7 +15,6 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.utils import timezone
 import time
-from channels.layers import get_channel_layer
 import json
 from core.utils import redis_client
 from core.models import CoreSettings

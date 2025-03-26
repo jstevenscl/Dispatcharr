@@ -561,7 +561,7 @@ const ChannelsTable = ({}) => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 127px)',
+        height: 'calc(100vh - 110px)',
         overflowY: 'auto',
       },
     },
@@ -710,7 +710,7 @@ const ChannelsTable = ({}) => {
       {/* Paper container: contains top toolbar and table (or ghost state) */}
       <Paper
         style={{
-          height: 'calc(100vh - 75px)',
+          height: 'calc(100vh - 60px)',
           backgroundColor: '#27272A',
         }}
       >

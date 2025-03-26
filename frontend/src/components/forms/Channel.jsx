@@ -317,6 +317,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   name="channel_group_id"
                   label="Channel Group"
                   value={formik.values.channel_group_id}
+                  searchable
                   onChange={(value) => {
                     formik.setFieldValue('channel_group_id', value); // Update Formik's state with the new value
                   }}

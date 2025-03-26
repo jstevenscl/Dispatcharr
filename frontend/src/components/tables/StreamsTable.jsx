@@ -571,7 +571,7 @@ const StreamsTable = ({}) => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 167px)',
+        height: 'calc(100vh - 150px)',
         overflowY: 'auto',
       },
     },
