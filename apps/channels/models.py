@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 import hashlib
 import json
+from apps.epg.models import EPGData
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,13 @@ class Channel(models.Model):
         help_text="Channel group this channel belongs to."
     )
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
-    tvg_name = models.CharField(max_length=255, blank=True, null=True)
+    epg_data = models.ForeignKey(
+        EPGData,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='channels'
+    )
 
     stream_profile = models.ForeignKey(
         StreamProfile,
@@ -218,8 +225,6 @@ class Channel(models.Model):
             m3u_profiles = m3u_account.profiles.all()
             default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
             profiles = [default_profile] + [obj for obj in m3u_profiles if not obj.is_default]
-
-            logger.info('profiles')
 
             for profile in profiles:
                 logger.info(profile)

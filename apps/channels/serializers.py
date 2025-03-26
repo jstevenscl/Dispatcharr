@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount
+from apps.epg.serializers import EPGDataSerializer
 from core.models import StreamProfile
+from apps.epg.models import EPGData
 
 #
 # Stream
@@ -68,6 +70,13 @@ class ChannelSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+    epg_data = EPGDataSerializer(read_only=True)
+    epg_data_id = serializers.PrimaryKeyRelatedField(
+        queryset=EPGData.objects.all(),
+        source="epg_data",
+        write_only=True,
+        required=False,
+    )
 
     stream_profile_id = serializers.PrimaryKeyRelatedField(
         queryset=StreamProfile.objects.all(),
@@ -92,7 +101,8 @@ class ChannelSerializer(serializers.ModelSerializer):
             'channel_group',
             'channel_group_id',
             'tvg_id',
-            'tvg_name',
+            'epg_data',
+            'epg_data_id',
             'streams',
             'stream_ids',
             'stream_profile_id',
@@ -126,7 +136,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         instance.name = validated_data.get('name', instance.name)
         instance.logo_url = validated_data.get('logo_url', instance.logo_url)
         instance.tvg_id = validated_data.get('tvg_id', instance.tvg_id)
-        instance.tvg_name = validated_data.get('tvg_name', instance.tvg_name)
+        instance.epg_data = validated_data.get('epg_data', instance.epg_data)
 
         # If serializer allows changing channel_group or stream_profile:
         if 'channel_group' in validated_data:

@@ -116,7 +116,9 @@ const Example = () => {
   };
 
   const deletePlaylist = async (id) => {
+    setIsLoading(true);
     await API.deletePlaylist(id);
+    setIsLoading(false);
   };
 
   const closeModal = (newPlaylist = null) => {

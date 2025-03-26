@@ -142,7 +142,10 @@ const StreamsTable = ({}) => {
       },
       {
         header: 'Group',
-        accessorFn: (row) => channelGroups[row.channel_group].name,
+        accessorFn: (row) =>
+          channelGroups[row.channel_group]
+            ? channelGroups[row.channel_group].name
+            : '',
         size: 100,
         Header: ({ column }) => (
           <Box onClick={handleSelectClick}>

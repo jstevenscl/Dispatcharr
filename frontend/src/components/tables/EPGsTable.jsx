@@ -23,7 +23,7 @@ const EPGsTable = () => {
   const [epgModalOpen, setEPGModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
 
-  const epgs = useEPGsStore((state) => state.epgs);
+  const { epgs } = useEPGsStore();
 
   const theme = useMantineTheme();
 
@@ -93,7 +93,7 @@ const EPGsTable = () => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: epgs,
+    data: Object.values(epgs),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: false,

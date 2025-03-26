@@ -1,6 +1,19 @@
 import { createTheme, MantineProvider, rem } from '@mantine/core';
 
 const theme = createTheme({
+  globalStyles: (theme) => ({
+    ':root': {
+      '--mantine-color-text': '#fff',
+      '--mantine-color-body': '#27272A',
+    },
+    ':root[data-mantine-color-scheme="dark"]': {
+      '--mantine-color-text': '#fff',
+    },
+    ':root[data-mantine-color-scheme="light"]': {
+      '--mantine-color-text': '#fff',
+    },
+  }),
+
   tailwind: {
     red: [
       'oklch(0.971 0.013 17.38)',

@@ -62,20 +62,21 @@ def fetch_xmltv(source):
         source.file_path = file_path
         source.save(update_fields=['file_path'])
 
-        epg_entries = EPGData.objects.exclude(tvg_id__isnull=True).exclude(tvg_id__exact='')
-        for epg in epg_entries:
-            if Channel.objects.filter(tvg_id=epg.tvg_id).exists():
-                logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
-                parse_programs_for_tvg_id(file_path, epg.tvg_id)
-
         # Now parse <channel> blocks only
-        parse_channels_only(file_path)
+        parse_channels_only(source, file_path)
+
+        epg_entries = EPGData.objects.filter(epg_source=source)
+        for epg in epg_entries:
+            if epg.tvg_id:
+                if Channel.objects.filter(epg_data=epg).exists():
+                    logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
+                    parse_programs_for_tvg_id(file_path, epg)
 
     except Exception as e:
         logger.error(f"Error fetching XMLTV from {source.name}: {e}", exc_info=True)
 
 
-def parse_channels_only(file_path):
+def parse_channels_only(source, file_path):
     logger.info(f"Parsing channels from EPG file: {file_path}")
 
     # Read entire file (decompress if .gz)
@@ -101,7 +102,8 @@ def parse_channels_only(file_path):
 
             epg_obj, created = EPGData.objects.get_or_create(
                 tvg_id=tvg_id,
-                defaults={'name': display_name}
+                epg_source=source,
+                defaults={'name': display_name},
             )
             if not created:
                 # Optionally update if new name is different
@@ -110,13 +112,11 @@ def parse_channels_only(file_path):
                     epg_obj.save()
             logger.debug(f"Channel <{tvg_id}> => EPGData.id={epg_obj.id}, created={created}")
 
-            parse_programs_for_tvg_id(file_path, tvg_id)
-
     logger.info("Finished parsing channel info.")
 
 
-def parse_programs_for_tvg_id(file_path, tvg_id):
-    logger.info(f"Parsing <programme> for tvg_id={tvg_id} from {file_path}")
+def parse_programs_for_tvg_id(file_path, epg):
+    logger.info(f"Parsing <programme> for tvg_id={epg.tvg_id} from {file_path}")
 
     # Read entire file (decompress if .gz)
     if file_path.endswith('.gz'):
@@ -128,16 +128,10 @@ def parse_programs_for_tvg_id(file_path, tvg_id):
             xml_data = xml_file.read()
 
     root = ET.fromstring(xml_data)
-    # Retrieve the EPGData record
-    try:
-        epg_obj = EPGData.objects.get(tvg_id=tvg_id)
-    except EPGData.DoesNotExist:
-        logger.warning(f"No EPGData record found for tvg_id={tvg_id}")
-        return
 
     # Find only <programme> elements for this tvg_id
-    matched_programmes = [p for p in root.findall('programme') if p.get('channel') == tvg_id]
-    logger.debug(f"Found {len(matched_programmes)} programmes for tvg_id={tvg_id}")
+    matched_programmes = [p for p in root.findall('programme') if p.get('channel') == epg.tvg_id]
+    logger.debug(f"Found {len(matched_programmes)} programmes for tvg_id={epg.tvg_id}")
 
     with transaction.atomic():
         for prog in matched_programmes:
@@ -147,19 +141,19 @@ def parse_programs_for_tvg_id(file_path, tvg_id):
             desc = prog.findtext('desc', default='')
 
             obj, created = ProgramData.objects.update_or_create(
-                epg=epg_obj,
+                epg=epg,
                 start_time=start_time,
                 title=title,
                 defaults={
                     'end_time': end_time,
                     'description': desc,
                     'sub_title': '',
-                    'tvg_id': tvg_id,
+                    'tvg_id': epg.tvg_id,
                 }
             )
             if created:
                 logger.debug(f"Created ProgramData: {title} [{start_time} - {end_time}]")
-    logger.info(f"Completed program parsing for tvg_id={tvg_id}.")
+    logger.info(f"Completed program parsing for tvg_id={epg.tvg_id}.")
 
 
 def fetch_schedules_direct(source):
