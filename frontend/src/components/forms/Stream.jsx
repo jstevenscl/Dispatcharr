@@ -10,7 +10,6 @@ import useChannelsStore from '../../store/channels';
 const Stream = ({ stream = null, isOpen, onClose }) => {
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
   const { channelGroups } = useChannelsStore();
-  const [selectedStreamProfile, setSelectedStreamProfile] = useState('');
 
   const formik = useFormik({
     initialValues: {
@@ -85,7 +84,7 @@ const Stream = ({ stream = null, isOpen, onClose }) => {
             formik.setFieldValue('channel_group', value); // Update Formik's state with the new value
           }}
           error={formik.errors.channel_group}
-          data={channelGroups.map((group) => ({
+          data={Object.values(channelGroups).map((group) => ({
             label: group.name,
             value: `${group.id}`,
           }))}
