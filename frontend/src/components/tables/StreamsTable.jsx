@@ -109,9 +109,6 @@ const StreamsTable = ({}) => {
       {
         header: 'Name',
         accessorKey: 'name',
-        mantineTableHeadCellProps: {
-          style: { textAlign: 'center', backgroundColor: 'rgb(56, 58, 63)' }, // Center-align the header
-        },
         Header: ({ column }) => (
           <TextInput
             name="name"
@@ -122,9 +119,6 @@ const StreamsTable = ({}) => {
             size="xs"
             variant="unstyled"
             className="table-input-header"
-            style={{
-              paddingLeft: 10,
-            }}
           />
         ),
         Cell: ({ cell }) => (
@@ -524,9 +518,10 @@ const StreamsTable = ({}) => {
         <Tooltip label="Add to Channel">
           <ActionIcon
             size="sm"
-            color={theme.tailwind.blue[4]}
+            color={theme.tailwind.blue[6]}
             variant="transparent"
             onClick={() => addStreamToChannel(row.original.id)}
+            style={{ background: 'none' }}
             disabled={
               channelsPageSelection.length !== 1 ||
               (channelSelectionStreams &&

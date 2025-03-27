@@ -5,6 +5,7 @@ const theme = createTheme({
     ':root': {
       '--mantine-color-text': '#fff',
       '--mantine-color-body': '#27272A',
+      '--mrt-striped-row-background-color': '#fff',
     },
     ':root[data-mantine-color-scheme="dark"]': {
       '--mantine-color-text': '#fff',
@@ -217,6 +218,10 @@ const theme = createTheme({
   },
 
   custom: {
+    colors: {
+      buttonPrimary: '#14917E',
+    },
+
     sidebar: {
       activeBackground: 'rgba(21, 69, 62, 0.67)',
       activeBorder: '#14917e',

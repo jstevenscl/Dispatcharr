@@ -42,6 +42,7 @@ const EPGsTable = () => {
       {
         header: 'URL / API Key',
         accessorKey: 'max_streams',
+        enableSorting: false,
       },
     ],
     []
@@ -143,6 +144,11 @@ const EPGsTable = () => {
     mantineTableContainerProps: {
       style: {
         height: 'calc(40vh - 0px)',
+      },
+    },
+    displayColumnDefOptions: {
+      'mrt-row-actions': {
+        size: 10,
       },
     },
   });

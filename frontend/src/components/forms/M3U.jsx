@@ -15,12 +15,15 @@ import {
   NativeSelect,
   FileInput,
   Space,
+  useMantineTheme,
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
 import useChannelsStore from '../../store/channels';
 import usePlaylistsStore from '../../store/playlists';
 
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
+  const theme = useMantineTheme();
+
   const { userAgents } = useUserAgentsStore();
   const { fetchChannelGroups } = useChannelsStore();
   const { setRefreshProgress } = usePlaylistsStore();
@@ -63,7 +66,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           ...values,
           uploaded_file: file,
         });
-        setRefreshProgress(id, 0);
 
         await fetchChannelGroups();
 
@@ -193,17 +195,17 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
             {playlist && (
               <>
                 <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
+                  variant="filled"
+                  // color={theme.custom.colors.buttonPrimary}
+                  size="sm"
                   onClick={() => setGroupFilterModalOpen(true)}
                 >
                   Groups
                 </Button>
                 <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
+                  variant="filled"
+                  // color={theme.custom.colors.buttonPrimary}
+                  size="sm"
                   onClick={() => setProfileModalOpen(true)}
                 >
                   Profiles
@@ -212,8 +214,8 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
             )}
             <Button
               type="submit"
-              variant="contained"
-              color="primary"
+              variant="filled"
+              // color={theme.custom.colors.buttonPrimary}
               disabled={formik.isSubmitting}
               size="sm"
             >
