@@ -14,7 +14,7 @@ class StreamSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False
     )
-    read_only_fields = ['is_custom', 'm3u_account']
+    read_only_fields = ['is_custom', 'm3u_account', 'stream_hash']
 
     class Meta:
         model = Stream
@@ -31,6 +31,7 @@ class StreamSerializer(serializers.ModelSerializer):
             'stream_profile_id',
             'is_custom',
             'channel_group',
+            'stream_hash',
         ]
 
     def get_fields(self):

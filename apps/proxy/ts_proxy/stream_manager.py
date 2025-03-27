@@ -17,7 +17,7 @@ from .utils import detect_stream_type, get_logger
 from .redis_keys import RedisKeys
 from .constants import ChannelState, EventType, StreamType, TS_PACKET_SIZE
 from .config_helper import ConfigHelper
-from .url_utils import get_alternate_streams, get_stream_info_for_switch
+from .url_utils import get_alternate_streams, get_stream_info_for_switch, get_stream_object
 
 logger = get_logger()
 
@@ -304,7 +304,7 @@ class StreamManager:
         """Establish a connection using transcoding"""
         try:
             logger.debug(f"Building transcode command for channel {self.channel_id}")
-            channel = get_object_or_404(Channel, uuid=self.channel_id)
+            channel = get_stream_object(self.channel_id)
 
             # Use FFmpeg specifically for HLS streams
             if hasattr(self, 'force_ffmpeg') and self.force_ffmpeg:
@@ -908,5 +908,3 @@ class StreamManager:
         except Exception as e:
             logger.error(f"Error trying next stream for channel {self.channel_id}: {e}", exc_info=True)
             return False
-
-

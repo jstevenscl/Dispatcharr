@@ -21,8 +21,9 @@ from rest_framework.permissions import IsAuthenticated
 from .constants import ChannelState, EventType, StreamType
 from .config_helper import ConfigHelper
 from .services.channel_service import ChannelService
-from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch
+from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object
 from .utils import get_logger
+from uuid import UUID
 
 logger = get_logger()
 
@@ -30,9 +31,9 @@ logger = get_logger()
 @api_view(['GET'])
 def stream_ts(request, channel_id):
     """Stream TS data to client with immediate response and keep-alive packets during initialization"""
+    channel = get_stream_object(channel_id)
+
     client_user_agent = None
-    logger.info(f"Fetching channel ID {channel_id}")
-    channel = get_object_or_404(Channel, uuid=channel_id)
 
     try:
         # Generate a unique client ID

@@ -133,15 +133,21 @@ class Stream(models.Model):
             stream = cls.objects.create(**fields_to_update)
             return stream, True  # True means it was created
 
+    # @TODO: honor stream's stream profile
+    def get_stream_profile(self):
+        stream_profile = StreamProfile.objects.get(id=CoreSettings.get_default_stream_profile_id())
+
+        return stream_profile
+
     def get_stream(self):
         """
         Finds an available stream for the requested channel and returns the selected stream and profile.
         """
 
-        profile_id = redis_client.get(f"stream_profile:{stream_id}")
+        profile_id = redis_client.get(f"stream_profile:{self.id}")
         if profile_id:
             profile_id = int(profile_id)
-            return profile_id
+            return self.id, profile_id
 
         # Retrieve the M3U account associated with the stream.
         m3u_account = self.m3u_account
@@ -168,10 +174,10 @@ class Stream(models.Model):
                 if profile.max_streams > 0:
                     redis_client.incr(profile_connections_key)
 
-                return profile.id  # Return newly assigned stream and matched profile
+                return self.id, profile.id  # Return newly assigned stream and matched profile
 
         # 4. No available streams
-        return None
+        return None, None
 
     def release_stream(self):
         """
@@ -260,6 +266,7 @@ class Channel(models.Model):
     def __str__(self):
         return f"{self.channel_number} - {self.name}"
 
+    # @TODO: honor stream's stream profile
     def get_stream_profile(self):
         stream_profile = self.stream_profile
         if not stream_profile:
