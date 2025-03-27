@@ -10,8 +10,19 @@ from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
 from .utils import get_logger
+from uuid import UUID
 
 logger = get_logger()
+
+def get_stream_object(id: str):
+    try:
+        uuid_obj = UUID(id, version=4)
+        logger.info(f"Fetching channel ID {id}")
+        return get_object_or_404(Channel, uuid=id)
+    except:
+        # UUID check failed, assume stream hash
+        logger.info(f"Fetching stream hash {id}")
+        return get_object_or_404(Stream, stream_hash=id)
 
 def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
     """
@@ -24,7 +35,7 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
         Tuple[str, str, bool]: (stream_url, user_agent, transcode_flag)
     """
     # Get channel and related objects
-    channel = get_object_or_404(Channel, uuid=channel_id)
+    channel = get_stream_object(channel_id)
     stream_id, profile_id = channel.get_stream()
 
     if stream_id is None or profile_id is None:
@@ -178,7 +189,11 @@ def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = No
     """
     try:
         # Get channel object
-        channel = get_object_or_404(Channel, uuid=channel_id)
+        channel = get_stream_object(channel_id)
+        if isinstance(channel, Stream):
+            logger.error(f"Stream is not a channel")
+            return []
+
         logger.debug(f"Looking for alternate streams for channel {channel_id}, current stream ID: {current_stream_id}")
 
         # Get all assigned streams for this channel

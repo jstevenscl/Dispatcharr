@@ -37,6 +37,8 @@ import {
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import useSettingsStore from '../../store/settings';
+import useVideoStore from '../../store/useVideoStore';
 
 const StreamsTable = ({}) => {
   const theme = useMantineTheme();
@@ -84,6 +86,10 @@ const StreamsTable = ({}) => {
   const channelSelectionStreams = useChannelsStore(
     (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
   );
+  const {
+    environment: { env_mode },
+  } = useSettingsStore();
+  const { showVideo } = useVideoStore();
 
   const isMoreActionsOpen = Boolean(moreActionsAnchorEl);
 
@@ -429,6 +435,14 @@ const StreamsTable = ({}) => {
     setPagination(updater);
   };
 
+  function handleWatchStream(streamHash) {
+    let vidUrl = `/proxy/ts/stream/${streamHash}`;
+    if (env_mode == 'dev') {
+      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+    }
+    showVideo(vidUrl);
+  }
+
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -561,6 +575,11 @@ const StreamsTable = ({}) => {
               disabled={!row.original.is_custom}
             >
               Delete Stream
+            </Menu.Item>
+            <Menu.Item
+              onClick={() => handleWatchStream(row.original.stream_hash)}
+            >
+              Preview Stream
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
