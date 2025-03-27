@@ -1,0 +1,19 @@
+services:
+  dispatcharr:
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile.dev
+    image: dispatcharr/dispatcharr
+    container_name: dispatcharr_debug
+    ports:
+      - 5656:5656 # API port
+      - 9193:9191 # Web UI port
+      - 8001:8001 # Socket port
+      - 5678:5678 # Debugging port
+    volumes:
+      - ../:/app
+    environment:
+      - DISPATCHARR_ENV=dev
+      - DISPATCHARR_DEBUG=true
+      - REDIS_HOST=localhost
+      - CELERY_BROKER_URL=redis://localhost:6379/0

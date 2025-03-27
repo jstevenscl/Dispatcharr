@@ -15,5 +15,11 @@ fi
 
 # Install frontend dependencies
 cd /app/frontend && npm install
-
+# Install pip dependencies
 cd /app && pip install -r requirements.txt
+
+# Install debugpy for remote debugging
+if [ "$DISPATCHARR_DEBUG" = "true" ]; then
+    echo "=== setting up debugpy ==="
+    pip install debugpy
+fi
