@@ -35,14 +35,7 @@ import {
   MultiSelect,
   useMantineTheme,
 } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconDeviceDesktopSearch,
-  IconSelector,
-  IconSortAscendingNumbers,
-  IconSquarePlus,
-} from '@tabler/icons-react';
+import { IconSquarePlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 
 const StreamsTable = ({}) => {
@@ -148,7 +141,7 @@ const StreamsTable = ({}) => {
             : '',
         size: 100,
         Header: ({ column }) => (
-          <Box onClick={handleSelectClick}>
+          <Box onClick={handleSelectClick} style={{ width: '100%' }}>
             <MultiSelect
               placeholder="Group"
               searchable
@@ -158,7 +151,11 @@ const StreamsTable = ({}) => {
               onChange={handleGroupChange}
               data={groupOptions}
               variant="unstyled"
-              className="table-input-header"
+              className="table-input-header custom-multiselect"
+              clearable
+              valueComponent={({ value }) => {
+                return <div>foo</div>; // Override to display custom text
+              }}
             />
           </Box>
         ),

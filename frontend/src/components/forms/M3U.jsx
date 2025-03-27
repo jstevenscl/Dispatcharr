@@ -18,10 +18,12 @@ import {
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
 import useChannelsStore from '../../store/channels';
+import usePlaylistsStore from '../../store/playlists';
 
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   const { userAgents } = useUserAgentsStore();
   const { fetchChannelGroups } = useChannelsStore();
+  const { setRefreshProgress } = usePlaylistsStore();
 
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -61,6 +63,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           ...values,
           uploaded_file: file,
         });
+        setRefreshProgress(id, 0);
 
         await fetchChannelGroups();
 
@@ -206,17 +209,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
                   Profiles
                 </Button>
               </>
-            )}
-            {!playlist && (
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={formik.isSubmitting}
-                size="sm"
-              >
-                Save & Select Groups
-              </Button>
             )}
             <Button
               type="submit"

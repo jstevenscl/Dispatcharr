@@ -136,7 +136,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
         MINUTE_BLOCK_WIDTH;
       guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
     }
-  }, [programs, start]);
+  }, [programs]);
 
   // Update “now” every 60s
   useEffect(() => {
