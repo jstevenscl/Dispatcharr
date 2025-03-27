@@ -248,8 +248,11 @@ class ChannelService:
             logger.info(f"Released channel {channel_id} stream allocation")
             model_released = True
         except Channel.DoesNotExist:
-            logger.warning(f"Could not find Channel model for UUID {channel_id}")
-            model_released = False
+            logger.warning(f"Could not find Channel model for UUID {channel_id}, attempting stream hash")
+            stream = Stream.objects.get(stream_hash=channel_id)
+            stream.release_stream()
+            logger.info(f"Released stream {channel_id} stream allocation")
+            model_released = True
         except Exception as e:
             logger.error(f"Error releasing channel stream: {e}")
             model_released = False
