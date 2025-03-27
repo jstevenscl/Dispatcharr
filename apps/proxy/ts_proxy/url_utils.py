@@ -65,11 +65,9 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
     else:
         transcode = True
 
-    # Get profile name as string - use id for backward compatibility
-    # but we'll store it in the STREAM_PROFILE field
-    profile_value = stream_profile.id
+    stream_profile_id = stream_profile.id
 
-    return stream_url, stream_user_agent, transcode, profile_value
+    return stream_url, stream_user_agent, transcode, stream_profile_id
 
 def transform_url(input_url: str, search_pattern: str, replace_pattern: str) -> str:
     """
