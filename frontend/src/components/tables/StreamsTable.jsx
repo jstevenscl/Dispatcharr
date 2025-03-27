@@ -33,6 +33,7 @@ import {
   NumberInput,
   NativeSelect,
   MultiSelect,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconArrowDown,
@@ -45,6 +46,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 const StreamsTable = ({}) => {
+  const theme = useMantineTheme();
+
   /**
    * useState
    */
@@ -118,6 +121,11 @@ const StreamsTable = ({}) => {
             onClick={(e) => e.stopPropagation()}
             onChange={handleFilterChange}
             size="xs"
+            variant="unstyled"
+            className="table-input-header"
+            style={{
+              paddingLeft: 10,
+            }}
           />
         ),
         Cell: ({ cell }) => (
@@ -146,6 +154,8 @@ const StreamsTable = ({}) => {
               onClick={handleSelectClick}
               onChange={handleGroupChange}
               data={groupOptions}
+              variant="unstyled"
+              className="table-input-header"
             />
           </Box>
         ),
@@ -179,6 +189,8 @@ const StreamsTable = ({}) => {
                 label: playlist.name,
                 value: `${playlist.id}`,
               }))}
+              variant="unstyled"
+              className="table-input-header"
             />
           </Box>
         ),
@@ -498,7 +510,7 @@ const StreamsTable = ({}) => {
         <Tooltip label="Add to Channel">
           <ActionIcon
             size="sm"
-            color="blue.5"
+            color={theme.tailwind.blue[4]}
             variant="transparent"
             onClick={() => addStreamToChannel(row.original.id)}
             disabled={
@@ -516,7 +528,7 @@ const StreamsTable = ({}) => {
         <Tooltip label="Create New Channel">
           <ActionIcon
             size="sm"
-            color="green.5"
+            color={theme.tailwind.green[5]}
             variant="transparent"
             onClick={() => createChannelFromStream(row.original)}
           >
@@ -563,6 +575,7 @@ const StreamsTable = ({}) => {
     displayColumnDefOptions: {
       'mrt-row-actions': {
         size: 30,
+        color: 'white',
       },
       'mrt-row-select': {
         size: 20,
@@ -618,6 +631,7 @@ const StreamsTable = ({}) => {
       <Paper
         style={{
           height: 'calc(100vh - 75px)',
+          backgroundColor: '#27272A',
         }}
       >
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
@@ -655,10 +669,10 @@ const StreamsTable = ({}) => {
               size="xs"
               onClick={() => editStream()}
               p={5}
-              color="green"
+              color={theme.tailwind.green[5]}
               style={{
                 borderWidth: '1px',
-                borderColor: 'green',
+                borderColor: theme.tailwind.green[5],
                 color: 'white',
               }}
             >

@@ -19,7 +19,7 @@ export const WebsocketProvider = ({ children }) => {
 
   const { fetchStreams } = useStreamsStore();
   const { setChannelStats, fetchChannelGroups } = useChannelsStore();
-  const { setRefreshProgress } = usePlaylistsStore();
+  const { fetchPlaylists, setRefreshProgress } = usePlaylistsStore();
   const { fetchEPGData } = useEPGsStore();
 
   const ws = useRef(null);
@@ -68,6 +68,7 @@ export const WebsocketProvider = ({ children }) => {
               fetchStreams();
               fetchChannelGroups();
               fetchEPGData();
+              fetchPlaylists();
             }
             setRefreshProgress(event.data.account, event.data.progress);
           }

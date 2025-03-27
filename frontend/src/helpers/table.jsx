@@ -17,6 +17,7 @@ export default {
     mantinePaperProps: {
       style: {
         '--mrt-selected-row-background-color': '#163632',
+        '--mrt-base-background-color': '#27272A',
       },
     },
     mantineSelectAllCheckboxProps: {

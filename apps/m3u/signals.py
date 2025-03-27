@@ -12,4 +12,4 @@ def refresh_account_on_save(sender, instance, created, **kwargs):
     if it is active or newly created.
     """
     if created:
-        refresh_m3u_groups(instance.id)
+        refresh_single_m3u_account.delay(instance.id)
