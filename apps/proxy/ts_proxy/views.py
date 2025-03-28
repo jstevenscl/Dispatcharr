@@ -91,8 +91,8 @@ def stream_ts(request, channel_id):
                 return JsonResponse({'error': 'Channel not available'}, status=404)
 
             # Get the stream ID from the channel
-            stream_id, profile_id = channel.get_stream()
-            logger.info(f"Channel {channel_id} using stream ID {stream_id}, profile ID {profile_id}")
+            stream_id, m3u_profile_id = channel.get_stream()
+            logger.info(f"Channel {channel_id} using stream ID {stream_id}, m3u account profile ID {m3u_profile_id}")
 
             # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
@@ -101,7 +101,7 @@ def stream_ts(request, channel_id):
 
             # Initialize channel with the stream's user agent (not the client's)
             success = ChannelService.initialize_channel(
-                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id
+                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id, m3u_profile_id
             )
 
             if not success:

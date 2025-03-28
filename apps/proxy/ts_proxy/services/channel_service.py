@@ -20,7 +20,7 @@ class ChannelService:
     """Service class for channel operations"""
 
     @staticmethod
-    def initialize_channel(channel_id, stream_url, user_agent, transcode=False, profile_value=None, stream_id=None):
+    def initialize_channel(channel_id, stream_url, user_agent, transcode=False, stream_profile_value=None, stream_id=None, m3u_profile_id=None):
         """
         Initialize a channel with the given parameters.
 
@@ -29,8 +29,9 @@ class ChannelService:
             stream_url: URL of the stream
             user_agent: User agent for the stream connection
             transcode: Whether to transcode the stream
-            profile_value: Stream profile value to store in metadata
+            stream_profile_value: Stream profile value to store in metadata
             stream_id: ID of the stream being used
+            m3u_profile_id: ID of the M3U profile being used
 
         Returns:
             bool: Success status
@@ -67,10 +68,12 @@ class ChannelService:
         if success and proxy_server.redis_client:
             metadata_key = RedisKeys.channel_metadata(channel_id)
             update_data = {}
-            if profile_value:
-                update_data[ChannelMetadataField.STREAM_PROFILE] = profile_value
+            if stream_profile_value:
+                update_data[ChannelMetadataField.STREAM_PROFILE] = stream_profile_value
             if stream_id:
                 update_data[ChannelMetadataField.STREAM_ID] = str(stream_id)
+            if m3u_profile_id:
+                update_data[ChannelMetadataField.M3U_PROFILE] = str(m3u_profile_id)
 
             if update_data:
                 proxy_server.redis_client.hset(metadata_key, mapping=update_data)
