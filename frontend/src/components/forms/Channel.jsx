@@ -27,8 +27,9 @@ import {
   useMantineTheme,
   Popover,
   ScrollArea,
+  Tooltip,
 } from '@mantine/core';
-import { ListOrdered, SquarePlus, SquareX } from 'lucide-react';
+import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
 import { Dropzone } from '@mantine/dropzone';
 import { FixedSizeList as List } from 'react-window';
@@ -92,10 +93,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       if (values.stream_profile_id == '0') {
         values.stream_profile_id = null;
-      }
-
-      if (values.stream_profile_id == null) {
-        delete values.stream_profile_id;
       }
 
       if (channel?.id) {
@@ -368,20 +365,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 )}
                 size="xs"
               />
-
-              <TextInput
-                id="channel_number"
-                name="channel_number"
-                label="Channel #"
-                value={formik.values.channel_number}
-                onChange={formik.handleChange}
-                error={
-                  formik.errors.channel_number
-                    ? formik.touched.channel_number
-                    : ''
-                }
-                size="xs"
-              />
             </Stack>
 
             <Divider size="sm" orientation="vertical" />
@@ -456,6 +439,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
             <Stack gap="5" style={{ flex: 1 }} justify="flex-start">
               <TextInput
+                id="channel_number"
+                name="channel_number"
+                label="Channel #"
+                value={formik.values.channel_number}
+                onChange={formik.handleChange}
+                error={
+                  formik.errors.channel_number
+                    ? formik.touched.channel_number
+                    : ''
+                }
+                size="xs"
+              />
+
+              <TextInput
                 id="tvg_id"
                 name="tvg_id"
                 label="TVG-ID"
@@ -480,10 +477,27 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     value={
                       formik.values.epg_data_id
                         ? tvgsById[formik.values.epg_data_id].name
-                        : ''
+                        : 'Dummy'
                     }
                     onClick={() => setEpgPopoverOpened(true)}
                     size="xs"
+                    rightSection={
+                      <Tooltip label="Use dummy EPG">
+                        <ActionIcon
+                          // color={theme.tailwind.green[5]}
+                          color="white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            formik.setFieldValue('epg_data_id', null);
+                          }}
+                          title="Create new group"
+                          size="small"
+                          variant="transparent"
+                        >
+                          <X size="20" />
+                        </ActionIcon>
+                      </Tooltip>
+                    }
                   />
                 </Popover.Target>
 
@@ -531,10 +545,14 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                             justify="left"
                             size="xs"
                             onClick={() => {
-                              formik.setFieldValue(
-                                'epg_data_id',
-                                filteredTvgs[index].id
-                              );
+                              if (filteredTvgs[index].id == '0') {
+                                formik.setFieldValue('epg_data_id', null);
+                              } else {
+                                formik.setFieldValue(
+                                  'epg_data_id',
+                                  filteredTvgs[index].id
+                                );
+                              }
                               setEpgPopoverOpened(false);
                             }}
                           >
@@ -546,16 +564,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   </ScrollArea>
                 </Popover.Dropdown>
               </Popover>
-
-              <TextInput
-                id="logo_url"
-                name="logo_url"
-                label="Logo URL (Optional)"
-                style={{ marginBottom: 2 }}
-                value={formik.values.logo_url}
-                onChange={formik.handleChange}
-                size="xs"
-              />
             </Stack>
           </Group>
 

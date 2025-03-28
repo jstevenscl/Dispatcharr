@@ -1,9 +1,13 @@
 # apps/channels/signals.py
 
-from django.db.models.signals import m2m_changed, pre_save
+from django.db.models.signals import m2m_changed, pre_save, post_save
 from django.dispatch import receiver
 from .models import Channel, Stream
 from apps.m3u.models import M3UAccount
+from apps.epg.tasks import parse_programs_for_tvg_id
+import logging
+
+logger = logging.getLogger(__name__)
 
 @receiver(m2m_changed, sender=Channel.streams.through)
 def update_channel_tvg_id_and_logo(sender, instance, action, reverse, model, pk_set, **kwargs):
@@ -45,3 +49,8 @@ def set_default_m3u_account(sender, instance, **kwargs):
             instance.m3u_account = default_account
         else:
             raise ValueError("No default M3UAccount found.")
+
+@receiver(post_save, sender=Channel)
+def refresh_epg_programs(sender, instance, created, **kwargs):
+    if instance.epg_data:
+        parse_programs_for_tvg_id.delay(instance.epg_data.id)

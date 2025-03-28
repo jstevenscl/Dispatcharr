@@ -12,7 +12,6 @@ from django.db import transaction
 from apps.channels.models import Channel
 from apps.epg.models import EPGData, EPGSource
 from core.models import CoreSettings
-from apps.epg.tasks import parse_programs_for_tvg_id  # <-- we import our new helper
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -73,8 +72,7 @@ def match_epg_channels():
       1) If channel.tvg_id is valid in EPGData, skip.
       2) If channel has a tvg_id but not found in EPGData, attempt direct EPGData lookup.
       3) Otherwise, perform name-based fuzzy matching with optional region-based bonus.
-      4) If a match is found, we set channel.tvg_id and also parse its programs
-         from the cached EPG file (parse_programs_for_tvg_id).
+      4) If a match is found, we set channel.tvg_id
       5) Summarize and log results.
     """
     logger.info("Starting EPG matching logic...")
@@ -172,11 +170,6 @@ def match_epg_channels():
                 chan.epg_data = all_epg[best_epg["epg_id"]]
                 chan.save()
 
-                # Attempt to parse program data for this channel
-                if epg_file_path:
-                    parse_programs_for_tvg_id(epg_file_path, all_epg[best_epg["epg_id"]])
-                    logger.info(f"Loaded program data for tvg_id={best_epg['tvg_id']}")
-
                 matched_channels.append((chan.id, fallback_name, best_epg["tvg_id"]))
                 logger.info(
                     f"Channel {chan.id} '{fallback_name}' => matched tvg_id={best_epg['tvg_id']} "
@@ -193,10 +186,6 @@ def match_epg_channels():
                     matched_epg = epg_rows[top_index]
                     chan.epg_data = all_epg[matched_epg["epg_id"]]
                     chan.save()
-
-                    if epg_file_path:
-                        parse_programs_for_tvg_id(epg_file_path, all_epg[matched_epg["epg_id"]])
-                        logger.info(f"Loaded program data for tvg_id={matched_epg['tvg_id']}")
 
                     matched_channels.append((chan.id, fallback_name, matched_epg["tvg_id"]))
                     logger.info(

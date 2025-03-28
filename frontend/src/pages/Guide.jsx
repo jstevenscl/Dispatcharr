@@ -63,7 +63,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
       // Filter your Redux/Zustand channels by matching tvg_id
       const filteredChannels = Object.values(channels).filter((ch) =>
-        programIds.includes(ch.tvg_id)
+        programIds.includes(ch.epg_data?.tvg_id)
       );
       console.log(
         `found ${filteredChannels.length} channels with matching tvg_ids`
@@ -155,7 +155,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
   // Helper: find channel by tvg_id
   function findChannelByTvgId(tvgId) {
-    return guideChannels.find((ch) => ch.tvg_id === tvgId);
+    return guideChannels.find((ch) => ch.epg_data?.tvg_id === tvgId);
   }
 
   // The “Watch Now” click => show floating video
@@ -420,7 +420,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
             {/* Channel rows */}
             {guideChannels.map((channel) => {
               const channelPrograms = programs.filter(
-                (p) => p.tvg_id === channel.tvg_id
+                (p) => p.tvg_id === channel.epg_data?.tvg_id
               );
               return (
                 <Box

@@ -77,13 +77,14 @@ class ChannelSerializer(serializers.ModelSerializer):
         source="epg_data",
         write_only=True,
         required=False,
+        allow_null=True,
     )
 
     stream_profile_id = serializers.PrimaryKeyRelatedField(
         queryset=StreamProfile.objects.all(),
         source='stream_profile',
         allow_null=True,
-        required=False
+        required=False,
     )
 
     streams = serializers.SerializerMethodField()
@@ -137,7 +138,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         instance.name = validated_data.get('name', instance.name)
         instance.logo_url = validated_data.get('logo_url', instance.logo_url)
         instance.tvg_id = validated_data.get('tvg_id', instance.tvg_id)
-        instance.epg_data = validated_data.get('epg_data', instance.epg_data)
+        instance.epg_data = validated_data.get('epg_data', None)
 
         # If serializer allows changing channel_group or stream_profile:
         if 'channel_group' in validated_data:

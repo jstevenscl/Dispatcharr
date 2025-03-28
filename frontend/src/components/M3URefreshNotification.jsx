@@ -37,10 +37,9 @@ export default function M3URefreshNotification() {
         return;
       }
 
-      console.log('starting progress bar');
       const notificationId = notifications.show({
         loading: true,
-        title: `M3U Refresh: ${playlist.name}`,
+        title: `M3U Refresh`,
         message: `Starting...`,
         autoClose: false,
         withCloseButton: false,
@@ -48,6 +47,9 @@ export default function M3URefreshNotification() {
 
       setProgress({
         ...progress,
+        ...(playlist && {
+          title: `M3U Refresh: ${playlist.name}`,
+        }),
         [id]: notificationId,
       });
     } else {

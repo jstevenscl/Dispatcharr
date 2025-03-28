@@ -57,14 +57,13 @@ export const WebsocketProvider = ({ children }) => {
       event = JSON.parse(event.data);
       switch (event.data.type) {
         case 'm3u_refresh':
-          console.log('inside m3u_refresh event');
           if (event.data.success) {
             fetchStreams();
             notifications.show({
               message: event.data.message,
               color: 'green.5',
             });
-          } else if (event.data.progress) {
+          } else if (event.data.progress !== undefined) {
             if (event.data.progress == 100) {
               fetchStreams();
               fetchChannelGroups();
