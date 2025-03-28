@@ -888,7 +888,8 @@ class StreamManager:
                 self.buffer.redis_client.hset(metadata_key, mapping={
                     ChannelMetadataField.URL: new_url,
                     ChannelMetadataField.USER_AGENT: new_user_agent,
-                    ChannelMetadataField.STREAM_PROFILE: stream_info['profile'],
+                    ChannelMetadataField.STREAM_PROFILE: stream_info['stream_profile'],
+                    ChannelMetadataField.M3U_PROFILE: stream_info['m3u_profile_id'],
                     ChannelMetadataField.STREAM_ID: str(stream_id),
                     ChannelMetadataField.STREAM_SWITCH_TIME: str(time.time()),
                     ChannelMetadataField.STREAM_SWITCH_REASON: "max_retries_exceeded"

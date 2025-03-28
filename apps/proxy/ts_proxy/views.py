@@ -21,7 +21,7 @@ from rest_framework.permissions import IsAuthenticated
 from .constants import ChannelState, EventType, StreamType, ChannelMetadataField
 from .config_helper import ConfigHelper
 from .services.channel_service import ChannelService
-from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object
+from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object, get_alternate_streams
 from .utils import get_logger
 from uuid import UUID
 
@@ -189,7 +189,7 @@ def stream_ts(request, channel_id):
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+#@permission_classes([IsAuthenticated])
 def change_stream(request, channel_id):
     """Change stream URL for existing channel with enhanced diagnostics"""
     try:
@@ -336,4 +336,76 @@ def stop_client(request, channel_id):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         logger.error(f"Failed to stop client: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@api_view(['POST'])
+#@permission_classes([IsAuthenticated])
+def next_stream(request, channel_id):
+    """Switch to the next available stream for a channel"""
+    try:
+        logger.info(f"Request to switch to next stream for channel {channel_id} received")
+
+        # Check if the channel exists
+        channel = get_stream_object(channel_id)
+
+        # Get current stream info to know which one we're currently using
+        current_stream_id, profile_id = channel.get_stream()
+
+        if not current_stream_id:
+            return JsonResponse({'error': 'No current stream found for channel'}, status=404)
+
+        # Get alternate streams excluding the current one
+        alternate_streams = get_alternate_streams(channel_id, current_stream_id)
+
+        if not alternate_streams:
+            return JsonResponse({
+                'error': 'No alternate streams available for this channel',
+                'current_stream_id': current_stream_id
+            }, status=404)
+
+        # Pick the next stream from alternatives
+        next_stream = alternate_streams[0]  # Get the first alternative
+        next_stream_id = next_stream['stream_id']
+
+        # Get full stream info including URL for the next stream
+        stream_info = get_stream_info_for_switch(channel_id, next_stream_id)
+
+        if 'error' in stream_info:
+            return JsonResponse({
+                'error': stream_info['error'],
+                'current_stream_id': current_stream_id,
+                'next_stream_id': next_stream_id
+            }, status=404)
+
+        # Now use the ChannelService to change the stream URL
+        result = ChannelService.change_stream_url(
+            channel_id,
+            stream_info['url'],
+            stream_info['user_agent']
+        )
+
+        if result.get('status') == 'error':
+            return JsonResponse({
+                'error': result.get('message', 'Unknown error'),
+                'diagnostics': result.get('diagnostics', {}),
+                'current_stream_id': current_stream_id,
+                'next_stream_id': next_stream_id
+            }, status=404)
+
+        # Format success response
+        response_data = {
+            'message': 'Stream switched to next available',
+            'channel': channel_id,
+            'previous_stream_id': current_stream_id,
+            'new_stream_id': next_stream_id,
+            'new_url': stream_info['url'],
+            'owner': result.get('direct_update', False),
+            'worker_id': proxy_server.worker_id
+        }
+
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        logger.error(f"Failed to switch to next stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

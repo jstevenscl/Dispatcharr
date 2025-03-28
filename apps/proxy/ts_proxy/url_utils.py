@@ -132,21 +132,21 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
                 ).first()
 
                 if default_profile:
-                    profile_id = default_profile.id
+                    m3u_profile_id = default_profile.id
                 else:
                     logger.error(f"No profile found for stream {stream_id}")
                     return {'error': 'No profile found for stream'}
             else:
                 # Use first available profile
-                profile_id = profiles.first().id
+                m3u_profile_id = profiles.first().id
         else:
-            stream_id, profile_id = channel.get_stream()
-            if stream_id is None or profile_id is None:
+            stream_id, m3u_profile_id = channel.get_stream()
+            if stream_id is None or m3u_profile_id is None:
                 return {'error': 'No stream assigned to channel'}
 
         # Get the stream and profile objects directly
         stream = get_object_or_404(Stream, pk=stream_id)
-        profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
+        profile = get_object_or_404(M3UAccountProfile, pk=m3u_profile_id)
 
         # Get the user agent from the M3U account
         m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
@@ -166,9 +166,9 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
             'url': stream_url,
             'user_agent': user_agent,
             'transcode': transcode,
-            'profile': profile_value,
+            'stream_profile': profile_value,
             'stream_id': stream_id,
-            'profile_id': profile_id
+            'm3u_profile_id': m3u_profile_id
         }
     except Exception as e:
         logger.error(f"Error getting stream info for switch: {e}", exc_info=True)
