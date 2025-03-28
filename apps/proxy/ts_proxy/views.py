@@ -346,6 +346,9 @@ def next_stream(request, channel_id):
     try:
         logger.info(f"Request to switch to next stream for channel {channel_id} received")
 
+        # Check if the channel exists
+        channel = get_stream_object(channel_id)
+
         # First check if channel is active in Redis
         current_stream_id = None
         profile_id = None
@@ -369,18 +372,38 @@ def next_stream(request, channel_id):
             # Channel is not running
             return JsonResponse({'error': 'No current stream found for channel'}, status=404)
 
-        # Get alternate streams excluding the current one
-        alternate_streams = get_alternate_streams(channel_id, current_stream_id)
+        # Get all streams for this channel in their defined order
+        streams = list(channel.streams.all().order_by('channelstream__order'))
 
-        if not alternate_streams:
+        if len(streams) <= 1:
             return JsonResponse({
                 'error': 'No alternate streams available for this channel',
                 'current_stream_id': current_stream_id
             }, status=404)
 
-        # Pick the next stream from alternatives
-        next_stream = alternate_streams[0]  # Get the first alternative
-        next_stream_id = next_stream['stream_id']
+        # Find the current stream's position in the list
+        current_index = None
+        for i, stream in enumerate(streams):
+            if stream.id == current_stream_id:
+                current_index = i
+                break
+
+        if current_index is None:
+            logger.warning(f"Current stream ID {current_stream_id} not found in channel's streams list")
+            # Fall back to the first stream that's not the current one
+            next_stream = next((s for s in streams if s.id != current_stream_id), None)
+            if not next_stream:
+                return JsonResponse({
+                    'error': 'Could not find current stream in channel list',
+                    'current_stream_id': current_stream_id
+                }, status=404)
+        else:
+            # Get the next stream in the rotation (with wrap-around)
+            next_index = (current_index + 1) % len(streams)
+            next_stream = streams[next_index]
+
+        next_stream_id = next_stream.id
+        logger.info(f"Rotating to next stream ID {next_stream_id} for channel {channel_id}")
 
         # Get full stream info including URL for the next stream
         stream_info = get_stream_info_for_switch(channel_id, next_stream_id)
