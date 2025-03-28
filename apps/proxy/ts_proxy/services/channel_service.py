@@ -95,6 +95,7 @@ class ChannelService:
             dict: Result information including success status and diagnostics
         """
         # If no direct URL is provided but a target stream is, get URL from target stream
+        stream_id = None
         if not new_url and target_stream_id:
             stream_info = get_stream_info_for_switch(channel_id, target_stream_id)
             if 'error' in stream_info:
@@ -104,6 +105,10 @@ class ChannelService:
                 }
             new_url = stream_info['url']
             user_agent = stream_info['user_agent']
+            stream_id = target_stream_id
+        elif target_stream_id:
+            # If we have both URL and target_stream_id, use the target_stream_id
+            stream_id = target_stream_id
 
         # Check if channel exists
         in_local_managers = channel_id in proxy_server.stream_managers
@@ -155,7 +160,7 @@ class ChannelService:
         # Update metadata in Redis regardless of ownership
         if proxy_server.redis_client:
             try:
-                ChannelService._update_channel_metadata(channel_id, new_url, user_agent)
+                ChannelService._update_channel_metadata(channel_id, new_url, user_agent, stream_id)
                 result['metadata_updated'] = True
             except Exception as e:
                 logger.error(f"Error updating Redis metadata: {e}", exc_info=True)
@@ -180,7 +185,7 @@ class ChannelService:
             # If we're not the owner, publish an event for the owner to pick up
             logger.info(f"Not the owner, requesting URL change via Redis PubSub")
             if proxy_server.redis_client:
-                ChannelService._publish_stream_switch_event(channel_id, new_url, user_agent)
+                ChannelService._publish_stream_switch_event(channel_id, new_url, user_agent, stream_id)
                 result.update({
                     'direct_update': False,
                     'event_published': True,
@@ -400,7 +405,7 @@ class ChannelService:
     # Helper methods for Redis operations
 
     @staticmethod
-    def _update_channel_metadata(channel_id, url, user_agent=None):
+    def _update_channel_metadata(channel_id, url, user_agent=None, stream_id=None):
         """Update channel metadata in Redis"""
         if not proxy_server.redis_client:
             return False
@@ -411,23 +416,22 @@ class ChannelService:
         key_type = proxy_server.redis_client.type(metadata_key).decode('utf-8')
         logger.debug(f"Redis key {metadata_key} is of type: {key_type}")
 
+        # Build metadata update dict
+        metadata = {ChannelMetadataField.URL: url}
+        if user_agent:
+            metadata[ChannelMetadataField.USER_AGENT] = user_agent
+        if stream_id:
+            metadata[ChannelMetadataField.STREAM_ID] = str(stream_id)
+            logger.info(f"Updating stream ID to {stream_id} in Redis for channel {channel_id}")
+
         # Use the appropriate method based on the key type
         if key_type == 'hash':
-            proxy_server.redis_client.hset(metadata_key, ChannelMetadataField.URL, url)
-            if user_agent:
-                proxy_server.redis_client.hset(metadata_key, ChannelMetadataField.USER_AGENT, user_agent)
+            proxy_server.redis_client.hset(metadata_key, mapping=metadata)
         elif key_type == 'none':  # Key doesn't exist yet
-            # Create new hash with all required fields
-            metadata = {ChannelMetadataField.URL: url}
-            if user_agent:
-                metadata[ChannelMetadataField.USER_AGENT] = user_agent
             proxy_server.redis_client.hset(metadata_key, mapping=metadata)
         else:
             # If key exists with wrong type, delete it and recreate
             proxy_server.redis_client.delete(metadata_key)
-            metadata = {ChannelMetadataField.URL: url}
-            if user_agent:
-                metadata[ChannelMetadataField.USER_AGENT] = user_agent
             proxy_server.redis_client.hset(metadata_key, mapping=metadata)
 
         # Set switch request flag to ensure all workers see it
@@ -438,7 +442,7 @@ class ChannelService:
         return True
 
     @staticmethod
-    def _publish_stream_switch_event(channel_id, new_url, user_agent=None):
+    def _publish_stream_switch_event(channel_id, new_url, user_agent=None, stream_id=None):
         """Publish a stream switch event to Redis pubsub"""
         if not proxy_server.redis_client:
             return False
@@ -448,6 +452,7 @@ class ChannelService:
             "channel_id": channel_id,
             "url": new_url,
             "user_agent": user_agent,
+            "stream_id": stream_id,
             "requester": proxy_server.worker_id,
             "timestamp": time.time()
         }

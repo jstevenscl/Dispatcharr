@@ -346,13 +346,27 @@ def next_stream(request, channel_id):
     try:
         logger.info(f"Request to switch to next stream for channel {channel_id} received")
 
-        # Check if the channel exists
-        channel = get_stream_object(channel_id)
+        # First check if channel is active in Redis
+        current_stream_id = None
+        profile_id = None
 
-        # Get current stream info to know which one we're currently using
-        current_stream_id, profile_id = channel.get_stream()
+        if proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if proxy_server.redis_client.exists(metadata_key):
+                # Get current stream ID from Redis
+                stream_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_ID)
+                if stream_id_bytes:
+                    current_stream_id = int(stream_id_bytes.decode('utf-8'))
+                    logger.info(f"Found current stream ID {current_stream_id} in Redis for channel {channel_id}")
+
+                    # Get M3U profile from Redis if available
+                    profile_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.M3U_PROFILE)
+                    if profile_id_bytes:
+                        profile_id = int(profile_id_bytes.decode('utf-8'))
+                        logger.info(f"Found M3U profile ID {profile_id} in Redis for channel {channel_id}")
 
         if not current_stream_id:
+            # Channel is not running
             return JsonResponse({'error': 'No current stream found for channel'}, status=404)
 
         # Get alternate streams excluding the current one
@@ -382,7 +396,8 @@ def next_stream(request, channel_id):
         result = ChannelService.change_stream_url(
             channel_id,
             stream_info['url'],
-            stream_info['user_agent']
+            stream_info['user_agent'],
+            next_stream_id  # Pass the stream_id to be stored in Redis
         )
 
         if result.get('status') == 'error':
