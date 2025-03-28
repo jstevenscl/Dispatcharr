@@ -54,6 +54,7 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
+    echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
