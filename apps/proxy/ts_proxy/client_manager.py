@@ -38,6 +38,11 @@ class ClientManager:
     def _start_heartbeat_thread(self):
         """Start thread to regularly refresh client presence in Redis"""
         def heartbeat_task():
+            no_clients_count = 0  # Track consecutive empty cycles
+            max_empty_cycles = 3  # Exit after this many consecutive empty checks
+
+            logger.debug(f"Started heartbeat thread for channel {self.channel_id} (interval: {self.heartbeat_interval}s)")
+
             while True:
                 try:
                     # Wait for the interval
@@ -46,7 +51,19 @@ class ClientManager:
                     # Send heartbeat for all local clients
                     with self.lock:
                         if not self.clients or not self.redis_client:
+                            # No clients left, increment our counter
+                            no_clients_count += 1
+
+                            # If we've seen no clients for several consecutive checks, exit the thread
+                            if no_clients_count >= max_empty_cycles:
+                                logger.info(f"No clients for channel {self.channel_id} after {no_clients_count} consecutive checks, exiting heartbeat thread")
+                                return  # This exits the thread
+
+                            # Skip this cycle if we have no clients
                             continue
+                        else:
+                            # Reset counter when we see clients
+                            no_clients_count = 0
 
                         # IMPROVED GHOST DETECTION: Check for stale clients before sending heartbeats
                         current_time = time.time()
