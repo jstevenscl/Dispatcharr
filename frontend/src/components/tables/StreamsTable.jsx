@@ -60,7 +60,7 @@ const StreamsTable = ({}) => {
   const [pageCount, setPageCount] = useState(0);
   const [paginationString, setPaginationString] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([]);
+  const [sorting, setSorting] = useState([{ id: 'name', desc: '' }]);
   const [selectedStreamIds, setSelectedStreamIds] = useState([]);
   const [unselectedStreamIds, setUnselectedStreamIds] = useState([]);
   // const [allRowsSelected, setAllRowsSelected] = useState(false);

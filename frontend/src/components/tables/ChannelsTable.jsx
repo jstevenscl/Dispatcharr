@@ -484,6 +484,16 @@ const ChannelsTable = ({}) => {
     rowVirtualizerOptions: { overscan: 5 },
     initialState: {
       density: 'compact',
+      sorting: [
+        {
+          id: 'channel_number',
+          desc: true,
+        },
+        {
+          id: 'name',
+          desc: true,
+        },
+      ],
     },
     enableRowActions: true,
     enableExpandAll: false,
@@ -502,7 +512,7 @@ const ChannelsTable = ({}) => {
         },
       },
       'mrt-row-actions': {
-        size: 50,
+        size: 60,
       },
     },
     mantineExpandButtonProps: ({ row, table }) => ({
