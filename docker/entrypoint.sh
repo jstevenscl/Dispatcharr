@@ -37,6 +37,9 @@ export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
 
+# READ-ONLY - don't let users change these
+export POSTGRES_DIR=/data/db
+
 # Global variables, stored so other users inherit them
 if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export PATH=$PATH" >> /etc/profile.d/dispatcharr.sh
@@ -65,13 +68,13 @@ echo "Starting init process..."
 
 # Start PostgreSQL
 echo "Starting Postgres..."
-su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
+su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
 # Wait for PostgreSQL to be ready
 until su - postgres -c "/usr/lib/postgresql/14/bin/pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT}" >/dev/null 2>&1; do
     echo_with_timestamp "Waiting for PostgreSQL to be ready..."
     sleep 1
 done
-postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
+postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 

@@ -1,28 +1,36 @@
 #!/bin/bash
 
+# Temporary migration from postgres in /data to /data/db. Can likely remove
+# some time in the future.
+if [ -e "/data/postgresql.conf" ]; then
+    mv /data /db
+    mkdir /data
+    mv /db /data/
+fi
+
 # Inwitialize PostgreSQL database
-if [ -z "$(ls -A "/data")" ]; then
+if [ -z "$(ls -A $POSTGRES_DIR)" ]; then
     echo_with_timestamp "Initializing PostgreSQL database..."
-    mkdir -p "/data"
-    chown -R postgres:postgres "/data"
-    chmod 700 "/data"
+    mkdir -p $POSTGRES_DIR
+    chown -R postgres:postgres $POSTGRES_DIR
+    chmod 700 $POSTGRES_DIR
 
     # Initialize PostgreSQL
-    su - postgres -c "/usr/lib/postgresql/14/bin/initdb -D /data"
+    su - postgres -c "/usr/lib/postgresql/14/bin/initdb -D ${POSTGRES_DIR}"
     # Configure PostgreSQL
-    echo "host all all 0.0.0.0/0 md5" >> "/data/pg_hba.conf"
-    echo "listen_addresses='*'" >> "/data/postgresql.conf"
+    echo "host all all 0.0.0.0/0 md5" >> "${POSTGRES_DIR}/pg_hba.conf"
+    echo "listen_addresses='*'" >> "${POSTGRES_DIR}/postgresql.conf"
 
     # Start PostgreSQL
     echo "Starting Postgres..."
-    su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
+    su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
     # Wait for PostgreSQL to be ready
     until su - postgres -c "/usr/lib/postgresql/14/bin/pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT}" >/dev/null 2>&1; do
         echo_with_timestamp "Waiting for PostgreSQL to be ready..."
         sleep 1
     done
 
-    postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
+    postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
 
     # Setup database if needed
     if ! su - postgres -c "psql -p ${POSTGRES_PORT} -tAc \"SELECT 1 FROM pg_database WHERE datname = '$POSTGRES_DB';\"" | grep -q 1; then
