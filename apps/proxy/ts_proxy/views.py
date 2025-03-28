@@ -189,7 +189,7 @@ def stream_ts(request, channel_id):
 
 @csrf_exempt
 @api_view(['POST'])
-#@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def change_stream(request, channel_id):
     """Change stream URL for existing channel with enhanced diagnostics"""
     try:
@@ -340,7 +340,7 @@ def stop_client(request, channel_id):
 
 @csrf_exempt
 @api_view(['POST'])
-#@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def next_stream(request, channel_id):
     """Switch to the next available stream for a channel"""
     try:
