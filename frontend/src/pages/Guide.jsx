@@ -180,11 +180,6 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
   // On program click, open the details modal
   function handleProgramClick(program, event) {
-    // Optionally scroll that element into view or do something else
-    event.currentTarget.scrollIntoView({
-      behavior: 'smooth',
-      inline: 'center',
-    });
     setSelectedProgram(program);
   }
 
