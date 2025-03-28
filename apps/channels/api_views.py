@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
 from .models import Stream, Channel, ChannelGroup
 from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer
@@ -131,9 +132,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=['post'], url_path='assign')
     def assign(self, request):
-        channel_order = request.data.get('channel_order', [])
-        for order, channel_id in enumerate(channel_order, start=1):
-            Channel.objects.filter(id=channel_id).update(channel_number=order)
+        with transaction.atomic():
+            channel_order = request.data.get('channel_order', [])
+            for order, channel_id in enumerate(channel_order, start=1):
+                Channel.objects.filter(id=channel_id).update(channel_number=order)
+
         return Response({"message": "Channels have been auto-assigned!"}, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
