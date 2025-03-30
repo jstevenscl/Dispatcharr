@@ -7,7 +7,7 @@ class EPGSourceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EPGSource
-        fields = ['id', 'name', 'source_type', 'url', 'api_key', 'is_active', 'epg_data_ids']
+        fields = ['id', 'name', 'source_type', 'url', 'api_key', 'is_active', 'epg_data_ids', 'refresh_interval']
 
     def get_epg_data_ids(self, obj):
         return  list(obj.epgs.values_list('id', flat=True))

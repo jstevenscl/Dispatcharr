@@ -104,26 +104,29 @@ def match_epg_channels():
         )
 
     matched_channels = []
+    channels_to_update = []
 
     source = EPGSource.objects.filter(is_active=True).first()
     epg_file_path = getattr(source, 'file_path', None) if source else None
 
     with transaction.atomic():
         for chan in Channel.objects.all():
-
-            # A) Skip if channel.tvg_id is already valid
-            if chan.tvg_id and EPGData.objects.filter(tvg_id=chan.tvg_id).exists():
+            # skip if channel already assigned an EPG
+            if chan.epg_data:
                 continue
 
-            # B) If channel has a tvg_id that doesn't exist in EPGData, do direct check
+            # If channel has a tvg_id that doesn't exist in EPGData, do direct check.
+            # I don't THINK this should happen now that we assign EPG on channel creation.
             if chan.tvg_id:
                 epg_match = EPGData.objects.filter(tvg_id=chan.tvg_id).first()
                 if epg_match:
+                    chan.epg_data = epg_match
                     logger.info(f"Channel {chan.id} '{chan.name}' => EPG found by tvg_id={chan.tvg_id}")
+                    channels_to_update.append(chan)
                     continue
 
             # C) Perform name-based fuzzy matching
-            fallback_name = chan.epg_data.name.strip() if chan.epg_data else chan.name
+            fallback_name = chan.tvg_id.strip() if chan.tvg_id else chan.name
             norm_chan = normalize_name(fallback_name)
             if not norm_chan:
                 logger.info(f"Channel {chan.id} '{chan.name}' => empty after normalization, skipping")

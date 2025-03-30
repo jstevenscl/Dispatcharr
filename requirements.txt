@@ -27,3 +27,4 @@ channels
 channels-redis
 daphne
 django-filter
+django-celery-beat

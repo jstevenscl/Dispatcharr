@@ -4,6 +4,7 @@ from core.models import UserAgent
 import re
 from django.dispatch import receiver
 from apps.channels.models import StreamProfile
+from django_celery_beat.models import PeriodicTask
 
 CUSTOM_M3U_ACCOUNT_NAME="custom"
 
@@ -68,6 +69,10 @@ class M3UAccount(models.Model):
         related_name='m3u_accounts'
     )
     custom_properties = models.TextField(null=True, blank=True)
+    refresh_interval = models.IntegerField(default=24)
+    refresh_task = models.ForeignKey(
+        PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
+    )
 
     def __str__(self):
         return self.name

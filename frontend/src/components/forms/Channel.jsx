@@ -472,7 +472,12 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   <TextInput
                     id="epg_data_id"
                     name="epg_data_id"
-                    label="EPG"
+                    label={
+                      <Group style={{ width: '100%' }}>
+                        <Box>EPG</Box>
+                        <Button size="xs">Use Dummy</Button>
+                      </Group>
+                    }
                     readOnly
                     value={
                       formik.values.epg_data_id

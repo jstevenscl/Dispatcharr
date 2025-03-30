@@ -18,28 +18,39 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 from .models import EPGSource, EPGData, ProgramData
+from core.utils import acquire_task_lock, release_task_lock
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task
-def refresh_epg_data():
+def refresh_all_epg_data():
     logger.info("Starting refresh_epg_data task.")
     active_sources = EPGSource.objects.filter(is_active=True)
     logger.debug(f"Found {active_sources.count()} active EPGSource(s).")
 
     for source in active_sources:
-        logger.info(f"Processing EPGSource: {source.name} (type: {source.source_type})")
-        if source.source_type == 'xmltv':
-            fetch_xmltv(source)
-            parse_channels_only(source)
-            parse_programs_for_source(source)
-        elif source.source_type == 'schedules_direct':
-            fetch_schedules_direct(source)
+        refresh_epg_data(source.id)
 
     logger.info("Finished refresh_epg_data task.")
     return "EPG data refreshed."
 
+@shared_task
+def refresh_epg_data(source_id):
+    if not acquire_task_lock('refresh_epg_data', source_id):
+        logger.debug(f"EPG refresh for {source_id} already running")
+        return
+
+    source = EPGSource.objects.get(id=source_id)
+    logger.info(f"Processing EPGSource: {source.name} (type: {source.source_type})")
+    if source.source_type == 'xmltv':
+        fetch_xmltv(source)
+        parse_channels_only(source)
+        parse_programs_for_source(source)
+    elif source.source_type == 'schedules_direct':
+        fetch_schedules_direct(source)
+
+    release_task_lock('refresh_epg_data', source_id)
 
 def fetch_xmltv(source):
     logger.info(f"Fetching XMLTV data from source: {source.name}")
@@ -128,11 +139,16 @@ def parse_channels_only(source):
 
 @shared_task
 def parse_programs_for_tvg_id(epg_id):
+    if not acquire_task_lock('parse_epg_programs', epg_id):
+        logger.debug(f"Program parse for {epg_id} already in progress")
+        return
+
     epg = EPGData.objects.get(id=epg_id)
     epg_source = epg.epg_source
 
     if not Channel.objects.filter(epg_data=epg).exists():
         logger.info(f"No channels matched to EPG {epg.tvg_id}")
+        release_task_lock('parse_epg_programs', epg_id)
         return
 
     logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
@@ -173,6 +189,9 @@ def parse_programs_for_tvg_id(epg_id):
         ))
 
     ProgramData.objects.bulk_create(programs_to_create)
+
+    release_task_lock('parse_epg_programs', epg_id)
+
     logger.info(f"Completed program parsing for tvg_id={epg.tvg_id}.")
 
 def parse_programs_for_source(epg_source, tvg_id=None):

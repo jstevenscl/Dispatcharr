@@ -34,6 +34,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
       url: '',
       api_key: '',
       is_active: true,
+      refresh_interval: 24,
     },
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
@@ -64,6 +65,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
         url: epg.url,
         api_key: epg.api_key,
         is_active: epg.is_active,
+        refresh_interval: epg.refresh_interval,
       });
     } else {
       formik.resetForm();
@@ -123,6 +125,17 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
               value: 'schedules_direct',
             },
           ]}
+        />
+
+        <NumberInput
+          label="Refresh Interval (hours)"
+          value={formik.values.refresh_interval}
+          onChange={formik.handleChange}
+          error={
+            formik.errors.refresh_interval
+              ? formik.touched.refresh_interval
+              : ''
+          }
         />
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">

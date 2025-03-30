@@ -16,13 +16,12 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 import time
 import json
-from core.utils import redis_client
+from core.utils import redis_client, acquire_task_lock, release_task_lock
 from core.models import CoreSettings
 from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
 
-LOCK_EXPIRE = 300
 BATCH_SIZE = 1000
 SKIP_EXTS = {}
 m3u_dir = os.path.join(settings.MEDIA_ROOT, "cached_m3u")
@@ -103,19 +102,6 @@ def _matches_filters(stream_name: str, group_name: str, filters):
         if pattern.search(target or ''):
             return exclude
     return False
-
-def acquire_lock(task_name, account_id):
-    """Acquire a lock to prevent concurrent task execution."""
-    lock_id = f"task_lock_{task_name}_{account_id}"
-    lock_acquired = cache.add(lock_id, "locked", timeout=LOCK_EXPIRE)
-    if not lock_acquired:
-        logger.warning(f"Lock for {task_name} and account_id={account_id} already acquired. Task will not proceed.")
-    return lock_acquired
-
-def release_lock(task_name, account_id):
-    """Release the lock after task execution."""
-    lock_id = f"task_lock_{task_name}_{account_id}"
-    cache.delete(lock_id)
 
 @shared_task
 def refresh_m3u_accounts():
@@ -289,18 +275,19 @@ def cleanup_streams(account_id):
     logger.info(f"Cleanup complete")
 
 def refresh_m3u_groups(account_id):
-    if not acquire_lock('refresh_m3u_account_groups', account_id):
+    if not acquire_task_lock('refresh_m3u_account_groups', account_id):
         return f"Task already running for account_id={account_id}.", None
 
     # Record start time
     start_time = time.time()
-    send_progress_update(0, account_id)
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
     except M3UAccount.DoesNotExist:
-        release_lock('refresh_m3u_account_groups', account_id)
-        return f"M3UAccount with ID={account_id} not found or inactive."
+        release_task_lock('refresh_m3u_account_groups', account_id)
+        return f"M3UAccount with ID={account_id} not found or inactive.", None
+
+    send_progress_update(0, account_id)
 
     lines = fetch_m3u_lines(account)
     extinf_data = []
@@ -329,14 +316,14 @@ def refresh_m3u_groups(account_id):
 
     process_groups(account, groups)
 
-    release_lock('refresh_m3u_account_groups`', account_id)
+    release_task_lock('refresh_m3u_account_groups', account_id)
 
     return extinf_data, groups
 
 @shared_task
 def refresh_single_m3u_account(account_id, use_cache=False):
     """Splits M3U processing into chunks and dispatches them as parallel tasks."""
-    if not acquire_lock('refresh_single_m3u_account', account_id):
+    if not acquire_task_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
 
     # Record start time
@@ -347,7 +334,7 @@ def refresh_single_m3u_account(account_id, use_cache=False):
         account = M3UAccount.objects.get(id=account_id, is_active=True)
         filters = list(account.filters.all())
     except M3UAccount.DoesNotExist:
-        release_lock('refresh_single_m3u_account', account_id)
+        release_task_lock('refresh_single_m3u_account', account_id)
         return f"M3UAccount with ID={account_id} not found or inactive."
 
     # Fetch M3U lines and handle potential issues
@@ -366,7 +353,11 @@ def refresh_single_m3u_account(account_id, use_cache=False):
     if not extinf_data:
         try:
             extinf_data, groups = refresh_m3u_groups(account_id)
+            if not extinf_data or not groups:
+                release_task_lock('refresh_single_m3u_account', account_id)
+                return "Failed to update m3u account, task may already be running"
         except:
+            release_task_lock('refresh_single_m3u_account', account_id)
             return "Failed to update m3u account"
 
     hash_keys = CoreSettings.get_m3u_hash_key().split(",")
@@ -415,7 +406,7 @@ def refresh_single_m3u_account(account_id, use_cache=False):
 
     print(f"Function took {elapsed_time} seconds to execute.")
 
-    release_lock('refresh_single_m3u_account', account_id)
+    release_task_lock('refresh_single_m3u_account', account_id)
 
     cursor = 0
     while True:
