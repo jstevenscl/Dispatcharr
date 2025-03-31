@@ -5,6 +5,7 @@ import os
 import threading
 from django.conf import settings
 from redis.exceptions import ConnectionError, TimeoutError
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,27 @@ def execute_redis_command(redis_client, command_func, default_return=None):
     except Exception as e:
         logger.error(f"Redis command error: {e}")
         return default_return
+
+def acquire_task_lock(task_name, id):
+    """Acquire a lock to prevent concurrent task execution."""
+    redis_client = get_redis_client()
+    lock_id = f"task_lock_{task_name}_{id}"
+
+    # Use the Redis SET command with NX (only set if not exists) and EX (set expiration)
+    lock_acquired = redis_client.set(lock_id, "locked", ex=300, nx=True)
+
+    if not lock_acquired:
+        logger.warning(f"Lock for {task_name} and id={id} already acquired. Task will not proceed.")
+
+    return lock_acquired
+
+def release_task_lock(task_name, id):
+    """Release the lock after task execution."""
+    redis_client = get_redis_client()
+    lock_id = f"task_lock_{task_name}_{id}"
+
+    # Remove the lock
+    redis_client.delete(lock_id)
 
 # Initialize the global clients with retry logic
 # Skip Redis initialization if running as a management command
