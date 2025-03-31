@@ -21,7 +21,7 @@ from rest_framework.permissions import IsAuthenticated
 from .constants import ChannelState, EventType, StreamType, ChannelMetadataField
 from .config_helper import ConfigHelper
 from .services.channel_service import ChannelService
-from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object
+from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object, get_alternate_streams
 from .utils import get_logger
 from uuid import UUID
 
@@ -91,8 +91,8 @@ def stream_ts(request, channel_id):
                 return JsonResponse({'error': 'Channel not available'}, status=404)
 
             # Get the stream ID from the channel
-            stream_id, profile_id = channel.get_stream()
-            logger.info(f"Channel {channel_id} using stream ID {stream_id}, profile ID {profile_id}")
+            stream_id, m3u_profile_id = channel.get_stream()
+            logger.info(f"Channel {channel_id} using stream ID {stream_id}, m3u account profile ID {m3u_profile_id}")
 
             # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
@@ -101,7 +101,7 @@ def stream_ts(request, channel_id):
 
             # Initialize channel with the stream's user agent (not the client's)
             success = ChannelService.initialize_channel(
-                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id
+                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id, m3u_profile_id
             )
 
             if not success:
@@ -336,4 +336,114 @@ def stop_client(request, channel_id):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         logger.error(f"Failed to stop client: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def next_stream(request, channel_id):
+    """Switch to the next available stream for a channel"""
+    try:
+        logger.info(f"Request to switch to next stream for channel {channel_id} received")
+
+        # Check if the channel exists
+        channel = get_stream_object(channel_id)
+
+        # First check if channel is active in Redis
+        current_stream_id = None
+        profile_id = None
+
+        if proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if proxy_server.redis_client.exists(metadata_key):
+                # Get current stream ID from Redis
+                stream_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_ID)
+                if stream_id_bytes:
+                    current_stream_id = int(stream_id_bytes.decode('utf-8'))
+                    logger.info(f"Found current stream ID {current_stream_id} in Redis for channel {channel_id}")
+
+                    # Get M3U profile from Redis if available
+                    profile_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.M3U_PROFILE)
+                    if profile_id_bytes:
+                        profile_id = int(profile_id_bytes.decode('utf-8'))
+                        logger.info(f"Found M3U profile ID {profile_id} in Redis for channel {channel_id}")
+
+        if not current_stream_id:
+            # Channel is not running
+            return JsonResponse({'error': 'No current stream found for channel'}, status=404)
+
+        # Get all streams for this channel in their defined order
+        streams = list(channel.streams.all().order_by('channelstream__order'))
+
+        if len(streams) <= 1:
+            return JsonResponse({
+                'error': 'No alternate streams available for this channel',
+                'current_stream_id': current_stream_id
+            }, status=404)
+
+        # Find the current stream's position in the list
+        current_index = None
+        for i, stream in enumerate(streams):
+            if stream.id == current_stream_id:
+                current_index = i
+                break
+
+        if current_index is None:
+            logger.warning(f"Current stream ID {current_stream_id} not found in channel's streams list")
+            # Fall back to the first stream that's not the current one
+            next_stream = next((s for s in streams if s.id != current_stream_id), None)
+            if not next_stream:
+                return JsonResponse({
+                    'error': 'Could not find current stream in channel list',
+                    'current_stream_id': current_stream_id
+                }, status=404)
+        else:
+            # Get the next stream in the rotation (with wrap-around)
+            next_index = (current_index + 1) % len(streams)
+            next_stream = streams[next_index]
+
+        next_stream_id = next_stream.id
+        logger.info(f"Rotating to next stream ID {next_stream_id} for channel {channel_id}")
+
+        # Get full stream info including URL for the next stream
+        stream_info = get_stream_info_for_switch(channel_id, next_stream_id)
+
+        if 'error' in stream_info:
+            return JsonResponse({
+                'error': stream_info['error'],
+                'current_stream_id': current_stream_id,
+                'next_stream_id': next_stream_id
+            }, status=404)
+
+        # Now use the ChannelService to change the stream URL
+        result = ChannelService.change_stream_url(
+            channel_id,
+            stream_info['url'],
+            stream_info['user_agent'],
+            next_stream_id  # Pass the stream_id to be stored in Redis
+        )
+
+        if result.get('status') == 'error':
+            return JsonResponse({
+                'error': result.get('message', 'Unknown error'),
+                'diagnostics': result.get('diagnostics', {}),
+                'current_stream_id': current_stream_id,
+                'next_stream_id': next_stream_id
+            }, status=404)
+
+        # Format success response
+        response_data = {
+            'message': 'Stream switched to next available',
+            'channel': channel_id,
+            'previous_stream_id': current_stream_id,
+            'new_stream_id': next_stream_id,
+            'new_url': stream_info['url'],
+            'owner': result.get('direct_update', False),
+            'worker_id': proxy_server.worker_id
+        }
+
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        logger.error(f"Failed to switch to next stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

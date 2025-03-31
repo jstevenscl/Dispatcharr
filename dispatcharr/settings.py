@@ -152,7 +152,7 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 
 # Configure Redis key prefix
 CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
-    'prefix': 'celery-task:',  # Set the Redis key prefix for Celery
+    'global_keyprefix': 'celery-tasks:',  # Set the Redis key prefix for Celery
 }
 
 # Set TTL (Time-to-Live) for task results (in seconds)

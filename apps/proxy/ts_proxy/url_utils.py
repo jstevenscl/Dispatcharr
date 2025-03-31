@@ -65,11 +65,9 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
     else:
         transcode = True
 
-    # Get profile name as string - use id for backward compatibility
-    # but we'll store it in the STREAM_PROFILE field
-    profile_value = stream_profile.id
+    stream_profile_id = stream_profile.id
 
-    return stream_url, stream_user_agent, transcode, profile_value
+    return stream_url, stream_user_agent, transcode, stream_profile_id
 
 def transform_url(input_url: str, search_pattern: str, replace_pattern: str) -> str:
     """
@@ -134,21 +132,21 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
                 ).first()
 
                 if default_profile:
-                    profile_id = default_profile.id
+                    m3u_profile_id = default_profile.id
                 else:
                     logger.error(f"No profile found for stream {stream_id}")
                     return {'error': 'No profile found for stream'}
             else:
                 # Use first available profile
-                profile_id = profiles.first().id
+                m3u_profile_id = profiles.first().id
         else:
-            stream_id, profile_id = channel.get_stream()
-            if stream_id is None or profile_id is None:
+            stream_id, m3u_profile_id = channel.get_stream()
+            if stream_id is None or m3u_profile_id is None:
                 return {'error': 'No stream assigned to channel'}
 
         # Get the stream and profile objects directly
         stream = get_object_or_404(Stream, pk=stream_id)
-        profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
+        profile = get_object_or_404(M3UAccountProfile, pk=m3u_profile_id)
 
         # Get the user agent from the M3U account
         m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
@@ -168,9 +166,9 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
             'url': stream_url,
             'user_agent': user_agent,
             'transcode': transcode,
-            'profile': profile_value,
+            'stream_profile': profile_value,
             'stream_id': stream_id,
-            'profile_id': profile_id
+            'm3u_profile_id': m3u_profile_id
         }
     except Exception as e:
         logger.error(f"Error getting stream info for switch: {e}", exc_info=True)
@@ -196,8 +194,8 @@ def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = No
 
         logger.debug(f"Looking for alternate streams for channel {channel_id}, current stream ID: {current_stream_id}")
 
-        # Get all assigned streams for this channel
-        streams = channel.streams.all()
+        # Get all assigned streams for this channel using the correct ordering from the channelstream table
+        streams = channel.streams.all().order_by('channelstream__order')
         logger.debug(f"Channel {channel_id} has {streams.count()} total assigned streams")
 
         if not streams.exists():
@@ -206,7 +204,7 @@ def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = No
 
         alternate_streams = []
 
-        # Process each stream
+        # Process each stream in the user-defined order
         for stream in streams:
             # Log each stream we're checking
             logger.debug(f"Checking stream ID {stream.id} ({stream.name}) for channel {channel_id}")
@@ -217,8 +215,6 @@ def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = No
                 continue
 
             # Find compatible profiles for this stream
-            # FIX: Looking at the error message, M3UAccountProfile doesn't have a 'stream' field
-            # We need to find which field relates M3UAccountProfile to Stream
             try:
                 # Check if we can find profiles via m3u_account
                 profiles = M3UAccountProfile.objects.filter(m3u_account=stream.m3u_account)

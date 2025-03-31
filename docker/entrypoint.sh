@@ -52,6 +52,7 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export POSTGRES_HOST=$POSTGRES_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_DEBUG=$DISPATCHARR_DEBUG" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
@@ -79,8 +80,18 @@ postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 
-if [ "$DISPATCHARR_ENV" = "dev" ]; then
+
+uwsgi_file="/app/docker/uwsgi.ini"
+if [ "$DISPATCHARR_ENV" = "dev" ] && [ "$DISPATCHARR_DEBUG" != "true" ]; then
+    uwsgi_file="/app/docker/uwsgi.dev.ini"
+elif [ "$DISPATCHARR_DEBUG" = "true" ]; then
+    uwsgi_file="/app/docker/uwsgi.debug.ini"
+fi
+
+
+if [[ "$DISPATCHARR_ENV" = "dev" ]]; then
     . /app/docker/init/99-init-dev.sh
+
 else
     echo "🚀 Starting nginx..."
     nginx
@@ -89,17 +100,12 @@ else
     pids+=("$nginx_pid")
 fi
 
-uwsgi_file="/app/docker/uwsgi.ini"
-if [ "$DISPATCHARR_ENV" = "dev" ]; then
-    uwsgi_file="/app/docker/uwsgi.dev.ini"
-fi
 
 echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
 uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")
-
 
 
 cd /app

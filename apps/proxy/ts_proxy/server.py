@@ -1157,7 +1157,7 @@ class ProxyServer:
             self.redis_client.hset(metadata_key, mapping=update_data)
 
             # Log the transition
-            logger.info(f"Channel {channel_id} state transition: {current_state or 'None'} → {new_state}")
+            logger.info(f"Channel {channel_id} state transition: {current_state or 'None'} -> {new_state}")
             return True
         except Exception as e:
             logger.error(f"Error updating channel state: {e}")

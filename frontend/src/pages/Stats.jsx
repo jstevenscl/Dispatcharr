@@ -315,7 +315,7 @@ const ChannelsPage = () => {
         ...channels[channelsByUUID[ch.channel_id]],
         bitrates,
         stream_profile: streamProfiles.find(
-          (profile) => profile.id == parseInt(ch.profile)
+          (profile) => profile.id == parseInt(ch.stream_profile)
         ),
       };
 
