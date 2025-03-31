@@ -35,9 +35,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_filters',
+    'django_celery_beat',
 ]
-
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -164,6 +163,10 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     'visibility_timeout': 3600,  # Time in seconds that a task remains invisible during retries
 }
 
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     'fetch-channel-statuses': {
         'task': 'apps.proxy.tasks.fetch_channel_stats',
