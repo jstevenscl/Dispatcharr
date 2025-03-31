@@ -9,7 +9,7 @@ import json
 def trigger_refresh_on_new_epg_source(sender, instance, created, **kwargs):
     # Trigger refresh only if the source is newly created and active
     if created and instance.is_active:
-        refresh_epg_data.delay()
+        refresh_epg_data.delay(instance.id)
 
 @receiver(post_save, sender=EPGSource)
 def create_or_update_refresh_task(sender, instance, **kwargs):
