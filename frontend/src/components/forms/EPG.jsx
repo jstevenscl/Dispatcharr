@@ -12,7 +12,7 @@ import {
   Modal,
   Flex,
   NativeSelect,
-  FileInput,
+  NumberInput,
   Space,
 } from '@mantine/core';
 
