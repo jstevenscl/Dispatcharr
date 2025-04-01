@@ -75,7 +75,7 @@ class EPGImportAPIView(APIView):
     )
     def post(self, request, format=None):
         logger.info("EPGImportAPIView: Received request to import EPG data.")
-        refresh_epg_data.delay()  # Trigger Celery task
+        refresh_epg_data.delay(request.data.get('id', None))  # Trigger Celery task
         logger.info("EPGImportAPIView: Task dispatched to refresh EPG data.")
         return Response({'success': True, 'message': 'EPG data import initiated.'}, status=status.HTTP_202_ACCEPTED)
 
@@ -90,4 +90,3 @@ class EPGDataViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = EPGData.objects.all()
     serializer_class = EPGDataSerializer
     permission_classes = [IsAuthenticated]
-
