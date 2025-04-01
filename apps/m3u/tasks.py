@@ -211,6 +211,7 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
                 "m3u_account": account,
                 "channel_group": existing_groups[group_title],
                 "stream_hash": stream_hash,
+                "custom_properties": json.dumps(stream_info["attributes"]),
             }
 
             if stream_hash not in stream_hashes:

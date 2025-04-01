@@ -91,6 +91,7 @@ class Stream(models.Model):
         db_index=True,
     )
     last_seen = models.DateTimeField(db_index=True, default=datetime.now)
+    custom_properties = models.TextField(null=True, blank=True)
 
     class Meta:
         # If you use m3u_account, you might do unique_together = ('name','url','m3u_account')
