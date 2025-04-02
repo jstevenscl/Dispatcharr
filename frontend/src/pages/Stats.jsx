@@ -335,80 +335,123 @@ const ChannelsPage = () => {
     setClients(clientStats);
   }, [channelStats]);
 
+  const clientsColumns = useMemo(
+    () => [
+      {
+        header: 'IP Address',
+        accessorKey: 'ip_address',
+        size: 50,
+      },
+    ],
+    []
+  );
+
   return (
     <SimpleGrid cols={3} spacing="md" style={{ padding: 10 }}>
-      {Object.values(activeChannels).map((channel) => (
-        <Card
-          shadow="sm"
-          padding="md"
-          radius="md"
-          withBorder
-          style={{
-            color: '#fff',
-            backgroundColor: '#27272A',
-          }}
-        >
-          <Stack style={{ position: 'relative' }}>
-            <Group justify="space-between">
-              <img
-                src={channel.logo_url || logo}
-                width="30"
-                alt="channel logo"
-              />
+      {Object.values(activeChannels).map((channel) => {
+        // Create a clients table specific to this channel
+        const channelClientsTable = useMantineReactTable({
+          ...TableHelper.defaultProperties,
+          columns: clientsColumns,
+          data: clients.filter(client => client.channel.channel_id === channel.channel_id),
+          enablePagination: false,
+          enableTopToolbar: false,
+          enableBottomToolbar: false,
+          enableRowSelection: false,
+          enableColumnFilters: false,
+          mantineTableBodyCellProps: {
+            style: {
+              padding: 4,
+              borderColor: '#444',
+              color: '#E0E0E0',
+              fontSize: '0.85rem',
+            },
+          },
+          displayColumnDefOptions: {
+            'mrt-row-numbers': {
+              size: 15,
+              header: '',
+            },
+            'mrt-row-actions': {
+              size: 74,
+            },
+          },
+        });
 
-              <Group>
-                <Box>
-                  <Tooltip label={getStartDate(channel.uptime)}>
-                    <Center>
-                      <Timer style={{ paddingRight: 5 }} />
-                      {dayjs.duration(channel.uptime, 'seconds').humanize()}
-                    </Center>
-                  </Tooltip>
-                </Box>
-                <Center>
-                  <Tooltip label="Stop Channel">
-                    <ActionIcon variant="transparent" color="red.9">
-                      <SquareX size="24" />
-                    </ActionIcon>
-                  </Tooltip>
-                </Center>
+        return (
+          <Card
+            key={channel.channel_id}
+            shadow="sm"
+            padding="md"
+            radius="md"
+            withBorder
+            style={{
+              color: '#fff',
+              backgroundColor: '#27272A',
+            }}
+          >
+            <Stack style={{ position: 'relative' }}>
+              <Group justify="space-between">
+                <img
+                  src={channel.logo_url || logo}
+                  width="30"
+                  alt="channel logo"
+                />
+
+                <Group>
+                  <Box>
+                    <Tooltip label={getStartDate(channel.uptime)}>
+                      <Center>
+                        <Timer style={{ paddingRight: 5 }} />
+                        {dayjs.duration(channel.uptime, 'seconds').humanize()}
+                      </Center>
+                    </Tooltip>
+                  </Box>
+                  <Center>
+                    <Tooltip label="Stop Channel">
+                      <ActionIcon variant="transparent" color="red.9">
+                        <SquareX size="24" />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Center>
+                </Group>
               </Group>
-            </Group>
 
-            <Flex justify="space-between" align="center">
-              <Group>
-                <Text fw={500}>{channel.name}</Text>
+              <Flex justify="space-between" align="center">
+                <Group>
+                  <Text fw={500}>{channel.name}</Text>
+                </Group>
+
+                <Group gap={5}>
+                  <Video size="18" />
+                  {channel.stream_profile.name}
+                </Group>
+              </Flex>
+
+              <Group justify="space-between">
+                <Group gap={4}>
+                  <Gauge style={{ paddingRight: 5 }} size="22" />
+                  <Text size="sm">{formatSpeed(channel.bitrates.at(-1))}</Text>
+                </Group>
+
+                <Text size="sm">Avg: {channel.avg_bitrate}</Text>
+
+                <Group gap={4}>
+                  <HardDriveDownload size="18" />
+                  <Text size="sm">{formatBytes(channel.total_bytes)}</Text>
+                </Group>
+
+                <Group gap={5}>
+                  <Users size="18" />
+                  <Text size="sm">{channel.client_count}</Text>
+                </Group>
               </Group>
 
-              <Group gap={5}>
-                <Video size="18" />
-                {channel.stream_profile.name}
-              </Group>
-            </Flex>
-
-            <Group justify="space-between">
-              <Group gap={4}>
-                <Gauge style={{ paddingRight: 5 }} size="22" />
-                <Text size="sm">{formatSpeed(channel.bitrates.at(-1))}</Text>
-              </Group>
-
-              <Text size="sm">Avg: {channel.avg_bitrate}</Text>
-
-              <Group gap={4}>
-                <HardDriveDownload size="18" />
-                <Text size="sm">{formatBytes(channel.total_bytes)}</Text>
-              </Group>
-
-              <Group gap={5}>
-                <Users size="18" />
-                <Text size="sm">{channel.client_count}</Text>
-              </Group>
-            </Group>
-
-            <MantineReactTable table={clientsTable} />
-          </Stack>
-        </Card>
-      ))}
+              <MantineReactTable table={channelClientsTable} />
+            </Stack>
+          </Card>
+        );
+      })}
     </SimpleGrid>
   );
 };
