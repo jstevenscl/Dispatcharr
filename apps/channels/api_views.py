@@ -3,20 +3,37 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+import os, json
 
-from .models import Stream, Channel, ChannelGroup
-from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer
+from .models import Stream, Channel, ChannelGroup, Logo
+from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer, LogoSerializer
 from .tasks import match_epg_channels
 import django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
+from django.db.models import Q
 
 from rest_framework.pagination import PageNumberPagination
+
+
+class OrInFilter(django_filters.Filter):
+    """
+    Custom filter that handles the OR condition instead of AND.
+    """
+    def filter(self, queryset, value):
+        if value:
+            # Create a Q object for each value and combine them with OR
+            query = Q()
+            for val in value.split(','):
+                query |= Q(**{self.field_name: val})
+            return queryset.filter(query)
+        return queryset
 
 class StreamPagination(PageNumberPagination):
     page_size = 25  # Default page size
@@ -25,7 +42,7 @@ class StreamPagination(PageNumberPagination):
 
 class StreamFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr='icontains')
-    channel_group_name = django_filters.CharFilter(field_name="channel_group__name", lookup_expr="icontains")
+    channel_group_name = OrInFilter(field_name="channel_group__name", lookup_expr="icontains")
     m3u_account = django_filters.NumberFilter(field_name="m3u_account__id")
     m3u_account_name = django_filters.CharFilter(field_name="m3u_account__name", lookup_expr="icontains")
     m3u_account_is_active = django_filters.BooleanFilter(field_name="m3u_account__is_active")
@@ -64,7 +81,8 @@ class StreamViewSet(viewsets.ModelViewSet):
 
         channel_group = self.request.query_params.get('channel_group')
         if channel_group:
-            qs = qs.filter(channel_group__name=channel_group)
+            group_names = channel_group.split(',')
+            qs = qs.filter(channel_group__name__in=group_names)
 
         return qs
 
@@ -192,14 +210,25 @@ class ChannelViewSet(viewsets.ModelViewSet):
         if name is None:
             name = stream.name
 
+        stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
         channel_data = {
             'channel_number': channel_number,
             'name': name,
             'tvg_id': stream.tvg_id,
             'channel_group_id': channel_group.id,
-            'logo_url': stream.logo_url,
-            'streams': [stream_id]
+            'streams': [stream_id],
         }
+
+        if 'tv-chno' in stream_custom_props:
+            channel_data['channel_number'] = int(stream_custom_props['tv-chno'])
+        elif 'channel-number' in stream_custom_props:
+            channel_data['channel_number'] = int(stream_custom_props['channel-number'])
+
+        if stream.logo_url:
+            logo, _ = Logo.objects.get_or_create(url=stream.logo_url, defaults={
+                "name": stream.name or stream.tvg_id
+            })
+            channel_data["logo_id"] = logo.id
 
         # Attempt to find existing EPGs with the same tvg-id
         epgs = EPGData.objects.filter(tvg_id=stream.tvg_id)
@@ -387,3 +416,29 @@ class BulkDeleteChannelsAPIView(APIView):
         channel_ids = request.data.get('channel_ids', [])
         Channel.objects.filter(id__in=channel_ids).delete()
         return Response({"message": "Channels deleted"}, status=status.HTTP_204_NO_CONTENT)
+
+class LogoViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = Logo.objects.all()
+    serializer_class = LogoSerializer
+    parser_classes = (MultiPartParser, FormParser)
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        file_name = file.name
+        file_path = os.path.join('/data/logos', file_name)
+
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+
+        logo, _ = Logo.objects.get_or_create(url=file_path, defaults={
+            "name": file_name,
+        })
+
+        return Response({'id': logo.id, 'name': logo.name, 'url': logo.url}, status=status.HTTP_201_CREATED)

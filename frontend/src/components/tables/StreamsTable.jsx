@@ -82,7 +82,8 @@ const StreamsTable = ({}) => {
    * Stores
    */
   const { playlists } = usePlaylistsStore();
-  const { channelGroups, channelsPageSelection } = useChannelsStore();
+  const { channelGroups, channelsPageSelection, fetchLogos } =
+    useChannelsStore();
   const channelSelectionStreams = useChannelsStore(
     (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
   );
@@ -291,6 +292,7 @@ const StreamsTable = ({}) => {
       channel_number: null,
       stream_id: stream.id,
     });
+    fetchLogos();
   };
 
   // Bulk creation: create channels from selected streams in one API call
@@ -301,6 +303,7 @@ const StreamsTable = ({}) => {
         stream_id,
       }))
     );
+    fetchLogos();
     setIsLoading(false);
   };
 

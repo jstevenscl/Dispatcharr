@@ -5,7 +5,7 @@ import re
 
 from celery import shared_task
 from rapidfuzz import fuzz
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import util
 from django.conf import settings
 from django.db import transaction
 
@@ -15,21 +15,9 @@ from core.models import CoreSettings
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from core.apps import st_model
 
 logger = logging.getLogger(__name__)
-
-# Load the sentence-transformers model once at the module level
-SENTENCE_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-MODEL_PATH = os.path.join(settings.MEDIA_ROOT, "models", "all-MiniLM-L6-v2")
-os.makedirs(MODEL_PATH, exist_ok=True)
-
-# If not present locally, download:
-if not os.path.exists(os.path.join(MODEL_PATH, "config.json")):
-    logger.info(f"Local model not found in {MODEL_PATH}; downloading from {SENTENCE_MODEL_NAME}...")
-    st_model = SentenceTransformer(SENTENCE_MODEL_NAME, cache_folder=MODEL_PATH)
-else:
-    logger.info(f"Loading local model from {MODEL_PATH}")
-    st_model = SentenceTransformer(MODEL_PATH)
 
 # Thresholds
 BEST_FUZZY_THRESHOLD = 85

@@ -901,4 +901,35 @@ export default class API {
     const retval = await response.json();
     return retval;
   }
+
+  static async getLogos() {
+    const response = await fetch(`${host}/api/channels/logos/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async uploadLogo(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${host}/api/channels/logos/upload/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+      body: formData,
+    });
+
+    const retval = await response.json();
+
+    useChannelsStore.getState().addLogo(retval);
+
+    return retval;
+  }
 }

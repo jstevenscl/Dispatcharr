@@ -39,13 +39,12 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const listRef = useRef(null);
 
-  const channelGroups = useChannelsStore((state) => state.channelGroups);
+  const { channelGroups, logos } = useChannelsStore();
   const streams = useStreamsStore((state) => state.streams);
   const { profiles: streamProfiles } = useStreamProfilesStore();
   const { playlists } = usePlaylistsStore();
   const { epgs, tvgs, tvgsById } = useEPGsStore();
 
-  const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
   const [channelStreams, setChannelStreams] = useState([]);
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
@@ -65,13 +64,13 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     setChannelStreams(Array.from(streamSet));
   };
 
-  const handleLogoChange = (files) => {
+  const handleLogoChange = async (files) => {
     if (files.length === 1) {
       console.log(files[0]);
-      setLogoFile(files[0]);
-      setLogoPreview(URL.createObjectURL(files[0]));
+      const retval = await API.uploadLogo(files[0]);
+      setLogoPreview(retval.url);
+      formik.setFieldValue('logo_id', retval.id);
     } else {
-      setLogoFile(null);
       setLogoPreview(null);
     }
   };
@@ -84,6 +83,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       stream_profile_id: '0',
       tvg_id: '',
       epg_data_id: '',
+      logo_id: '',
     },
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
@@ -95,23 +95,24 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         values.stream_profile_id = null;
       }
 
+      if (!values.logo_id) {
+        delete values.logo_id;
+      }
+
       if (channel?.id) {
         await API.updateChannel({
           id: channel.id,
           ...values,
-          logo_file: logoFile,
           streams: channelStreams.map((stream) => stream.id),
         });
       } else {
         await API.addChannel({
           ...values,
-          logo_file: logoFile,
           streams: channelStreams.map((stream) => stream.id),
         });
       }
 
       resetForm();
-      setLogoFile(null);
       setLogoPreview(null);
       setSubmitting(false);
       setTvgFilter('');
@@ -135,6 +136,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           : '0',
         tvg_id: channel.tvg_id,
         epg_data_id: channel.epg_data ? `${channel.epg_data?.id}` : '',
+        logo_id: `${channel.logo?.id}`,
       });
 
       console.log(channel);
@@ -144,6 +146,14 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       setTvgFilter('');
     }
   }, [channel, tvgsById]);
+
+  const renderLogoOption = ({ option, checked }) => {
+    return (
+      <Center style={{ width: '100%' }}>
+        <img src={logos[option.value].url} width="30" />
+      </Center>
+    );
+  };
 
   // const activeStreamsTable = useMantineReactTable({
   //   data: channelStreams,
@@ -370,15 +380,36 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
             <Divider size="sm" orientation="vertical" />
 
             <Stack justify="flex-start" style={{ flex: 1 }}>
-              <TextInput
-                id="logo_url"
-                name="logo_url"
-                label="Logo (URL)"
-                value={formik.values.logo_url}
-                onChange={formik.handleChange}
-                error={formik.errors.logo_url ? formik.touched.logo_url : ''}
-                size="xs"
-              />
+              <Flex gap="sm">
+                <Select
+                  id="logo_id"
+                  name="logo_id"
+                  label="Logo"
+                  searchable
+                  value={formik.values.logo_id}
+                  onChange={(value) => {
+                    formik.setFieldValue('logo_id', value);
+                  }}
+                  error={formik.errors.logo_id ? formik.touched.logo_id : ''}
+                  size="xs"
+                  data={Object.values(logos).map((logo) => ({
+                    label: logo.name,
+                    value: `${logo.id}`,
+                  }))}
+                  renderOption={renderLogoOption}
+                  comboboxProps={{ width: 75, position: 'bottom-start' }}
+                />
+                <Flex align="flex-end" style={{ marginTop: 10 }}>
+                  <img
+                    src={
+                      logos[formik.values.logo_id]
+                        ? logos[formik.values.logo_id].url
+                        : logo
+                    }
+                    height="40"
+                  />
+                </Flex>
+              </Flex>
 
               <Group>
                 <Divider size="xs" style={{ flex: 1 }} />
@@ -389,18 +420,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
               </Group>
 
               <Stack>
-                <Group justify="space-between">
-                  <Text size="sm">Upload Logo</Text>
-                  {logoPreview && (
-                    <ActionIcon
-                      variant="transparent"
-                      color="red.9"
-                      onClick={handleLogoChange}
-                    >
-                      <SquareX />
-                    </ActionIcon>
-                  )}
-                </Group>
+                <Text size="sm">Upload Logo</Text>
                 <Dropzone
                   onDrop={handleLogoChange}
                   onReject={(files) => console.log('rejected files', files)}
@@ -412,22 +432,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     mih={40}
                     style={{ pointerEvents: 'none' }}
                   >
-                    <div>
-                      {logoPreview && (
-                        <Center>
-                          <img
-                            src={logoPreview || logo}
-                            alt="Selected"
-                            style={{ maxWidth: 50, height: 'auto' }}
-                          />
-                        </Center>
-                      )}
-                      {!logoPreview && (
-                        <Text size="sm" inline>
-                          Drag images here or click to select files
-                        </Text>
-                      )}
-                    </div>
+                    <Text size="sm" inline>
+                      Drag images here or click to select files
+                    </Text>
                   </Group>
                 </Dropzone>
 

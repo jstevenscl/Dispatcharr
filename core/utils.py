@@ -6,6 +6,8 @@ import threading
 from django.conf import settings
 from redis.exceptions import ConnectionError, TimeoutError
 from django.core.cache import cache
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
 
@@ -167,9 +169,19 @@ def release_task_lock(task_name, id):
     # Remove the lock
     redis_client.delete(lock_id)
 
+def send_websocket_event(event, success, data):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        'updates',
+        {
+            'type': 'update',
+            "data": {"success": True, "type": "epg_channels"}
+        }
+    )
+
 # Initialize the global clients with retry logic
 # Skip Redis initialization if running as a management command
-if is_management_command():
+if __name__ == '__main__':
     redis_client = None
     redis_pubsub_client = None
     logger.info("Running as management command - Redis clients set to None")

@@ -10,6 +10,7 @@ const useChannelsStore = create((set, get) => ({
   stats: {},
   activeChannels: {},
   activeClients: {},
+  logos: {},
   isLoading: false,
   error: null,
 
@@ -65,9 +66,13 @@ const useChannelsStore = create((set, get) => ({
 
   addChannels: (newChannels) => {
     const channelsByUUID = {};
+    const logos = {};
     const channelsByID = newChannels.reduce((acc, channel) => {
       acc[channel.id] = channel;
       channelsByUUID[channel.uuid] = channel.id;
+      if (channel.logo) {
+        logos[channel.logo.id] = channel.logo;
+      }
       return acc;
     }, {});
     return set((state) => ({
@@ -78,6 +83,10 @@ const useChannelsStore = create((set, get) => ({
       channelsByUUID: {
         ...state.channelsByUUID,
         ...channelsByUUID,
+      },
+      logos: {
+        ...state.logos,
+        ...logos,
       },
     }));
   },
@@ -124,6 +133,37 @@ const useChannelsStore = create((set, get) => ({
     set((state) => ({
       ...state.channelGroups,
       [channelGroup.id]: channelGroup,
+    })),
+
+  fetchLogos: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const logos = await api.getLogos();
+      set({
+        logos: logos.reduce((acc, logo) => {
+          acc[logo.id] = {
+            ...logo,
+            url: logo.url.replace(/^\/data/, ''),
+          };
+          return acc;
+        }, {}),
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to fetch logos:', error);
+      set({ error: 'Failed to load logos.', isLoading: false });
+    }
+  },
+
+  addLogo: (newLogo) =>
+    set((state) => ({
+      logos: {
+        ...state.logos,
+        [newLogo.id]: {
+          ...newLogo,
+          url: newLogo.url.replace(/^\/data/, ''),
+        },
+      },
     })),
 
   setChannelsPageSelection: (channelsPageSelection) =>

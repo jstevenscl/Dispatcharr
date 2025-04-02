@@ -20,7 +20,8 @@ export const WebsocketProvider = ({ children }) => {
   const { fetchStreams } = useStreamsStore();
   const { fetchChannels, setChannelStats, fetchChannelGroups } =
     useChannelsStore();
-  const { fetchPlaylists, setRefreshProgress } = usePlaylistsStore();
+  const { fetchPlaylists, setRefreshProgress, setProfilePreview } =
+    usePlaylistsStore();
   const { fetchEPGData } = useEPGsStore();
 
   const ws = useRef(null);
@@ -95,6 +96,9 @@ export const WebsocketProvider = ({ children }) => {
           fetchEPGData();
           break;
 
+        case 'm3u_profile_test':
+          setProfilePreview(event.data.search_preview, event.data.result);
+
         default:
           console.error(`Unknown websocket event type: ${event.type}`);
           break;
@@ -108,7 +112,7 @@ export const WebsocketProvider = ({ children }) => {
     };
   }, []);
 
-  const ret = [isReady, val, ws.current?.send.bind(ws.current)];
+  const ret = [isReady, ws.current?.send.bind(ws.current), val];
 
   return (
     <WebsocketContext.Provider value={ret}>

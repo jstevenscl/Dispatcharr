@@ -82,18 +82,18 @@ def transform_url(input_url: str, search_pattern: str, replace_pattern: str) -> 
         str: The transformed URL
     """
     try:
-        logger.debug("Executing URL pattern replacement:")
-        logger.debug(f"  base URL: {input_url}")
-        logger.debug(f"  search: {search_pattern}")
+        logger.info("Executing URL pattern replacement:")
+        logger.info(f"  base URL: {input_url}")
+        logger.info(f"  search: {search_pattern}")
 
         # Handle backreferences in the replacement pattern
         safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', replace_pattern)
-        logger.debug(f"  replace: {replace_pattern}")
-        logger.debug(f"  safe replace: {safe_replace_pattern}")
+        logger.info(f"  replace: {replace_pattern}")
+        logger.info(f"  safe replace: {safe_replace_pattern}")
 
         # Apply the transformation
         stream_url = re.sub(search_pattern, safe_replace_pattern, input_url)
-        logger.debug(f"Generated stream url: {stream_url}")
+        logger.info(f"Generated stream url: {stream_url}")
 
         return stream_url
     except Exception as e:

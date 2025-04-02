@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount
+from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount, Logo
 from apps.epg.serializers import EPGDataSerializer
 from core.models import StreamProfile
 from apps.epg.models import EPGData
@@ -92,14 +92,21 @@ class ChannelSerializer(serializers.ModelSerializer):
         queryset=Stream.objects.all(), many=True, write_only=True, required=False
     )
 
+    logo = serializers.SerializerMethodField()
+    logo_id = serializers.PrimaryKeyRelatedField(
+        queryset=Logo.objects.all(),
+        source='logo',
+        allow_null=True,
+        required=False,
+        write_only=True,
+    )
+
     class Meta:
         model = Channel
         fields = [
             'id',
             'channel_number',
             'name',
-            'logo_url',
-            'logo_file',
             'channel_group',
             'channel_group_id',
             'tvg_id',
@@ -109,12 +116,17 @@ class ChannelSerializer(serializers.ModelSerializer):
             'stream_ids',
             'stream_profile_id',
             'uuid',
+            'logo',
+            'logo_id',
         ]
 
     def get_streams(self, obj):
         """Retrieve ordered stream objects for GET requests."""
         ordered_streams = obj.streams.all().order_by('channelstream__order')
         return StreamSerializer(ordered_streams, many=True).data
+
+    def get_logo(self, obj):
+        return LogoSerializer(obj.logo).data
 
     # def get_stream_ids(self, obj):
     #     """Retrieve ordered stream IDs for GET requests."""
@@ -136,7 +148,6 @@ class ChannelSerializer(serializers.ModelSerializer):
         # Update the actual Channel fields
         instance.channel_number = validated_data.get('channel_number', instance.channel_number)
         instance.name = validated_data.get('name', instance.name)
-        instance.logo_url = validated_data.get('logo_url', instance.logo_url)
         instance.tvg_id = validated_data.get('tvg_id', instance.tvg_id)
         instance.epg_data = validated_data.get('epg_data', None)
 
@@ -145,6 +156,8 @@ class ChannelSerializer(serializers.ModelSerializer):
             instance.channel_group = validated_data['channel_group']
         if 'stream_profile' in validated_data:
             instance.stream_profile = validated_data['stream_profile']
+        if 'logo' in validated_data:
+            instance.logo = validated_data['logo']
 
         instance.save()
 
@@ -168,3 +181,8 @@ class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
 
     # Optionally, if you only need the id of the ChannelGroup, you can customize it like this:
     # channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())
+
+class LogoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Logo
+        fields = ['id', 'name', 'url']

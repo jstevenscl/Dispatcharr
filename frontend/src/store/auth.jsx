@@ -34,6 +34,7 @@ const useAuthStore = create((set, get) => ({
     await Promise.all([
       useChannelsStore.getState().fetchChannels(),
       useChannelsStore.getState().fetchChannelGroups(),
+      useChannelsStore.getState().fetchLogos(),
       useUserAgentsStore.getState().fetchUserAgents(),
       usePlaylistsStore.getState().fetchPlaylists(),
       useEPGsStore.getState().fetchEPGs(),

@@ -211,11 +211,12 @@ class ChannelManager(models.Manager):
 class Channel(models.Model):
     channel_number = models.IntegerField()
     name = models.CharField(max_length=255)
-    logo_url = models.URLField(max_length=2000, blank=True, null=True)
-    logo_file = models.ImageField(
-        upload_to='logos/',  # Will store in MEDIA_ROOT/logos
+    logo = models.ForeignKey(
+        'Logo',
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        null=True
+        related_name='channels',
     )
 
     # M2M to Stream now in the same file
@@ -379,3 +380,11 @@ class ChannelGroupM3UAccount(models.Model):
 
     def __str__(self):
         return f"{self.channel_group.name} - {self.m3u_account.name} (Enabled: {self.enabled})"
+
+
+class Logo(models.Model):
+    name = models.CharField(max_length=255)
+    url = models.URLField(unique=True)
+
+    def __str__(self):
+        return self.name

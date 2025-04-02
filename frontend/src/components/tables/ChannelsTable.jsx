@@ -282,7 +282,7 @@ const ChannelsTable = ({}) => {
       },
       {
         header: 'Logo',
-        accessorKey: 'logo_url',
+        accessorKey: 'logo.url',
         enableSorting: false,
         size: 55,
         mantineTableBodyCellProps: {

@@ -8,6 +8,9 @@ const usePlaylistsStore = create((set) => ({
   isLoading: false,
   error: null,
 
+  profileSearchPreview: '',
+  profileResult: '',
+
   fetchPlaylists: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -79,6 +82,12 @@ const usePlaylistsStore = create((set) => ({
         refreshProgress: updatedProgress,
       };
     }),
+
+  setProfilePreview: (profileSearchPreview, profileResult) =>
+    set((state) => ({
+      profileSearchPreview,
+      profileResult,
+    })),
 }));
 
 export default usePlaylistsStore;
