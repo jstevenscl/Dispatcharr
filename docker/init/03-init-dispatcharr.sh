@@ -13,3 +13,12 @@ if [ "$(id -u)" = "0" ]; then
     chown -R $PUID:$PGID /app
     echo "Created and set permissions for cached_m3u directory"
 fi
+
+mkdir -p /data/logos
+chown -R $PUID:$PGID /data/logos
+
+# Permissions
+chown -R postgres:postgres /data/db
+
+# Set nginx port from ENV
+sed -i "s/NGINX_PORT/${DISPATCHARR_PORT}/g" /etc/nginx/sites-enabled/default

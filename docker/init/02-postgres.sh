@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Temporary migration from postgres in /data to /data/db. Can likely remove
+# Temporary migration from postgres in /data to $POSTGRES_DIR. Can likely remove
 # some time in the future.
 if [ -e "/data/postgresql.conf" ]; then
-    echo "Migrating PostgreSQL data from /data to /data/db..."
+    echo "Migrating PostgreSQL data from /data to $POSTGRES_DIR..."
 
     # Create a temporary directory outside of /data
     mkdir -p /tmp/postgres_migration
@@ -12,17 +12,17 @@ if [ -e "/data/postgresql.conf" ]; then
     mv /data/* /tmp/postgres_migration/
 
     # Create the target directory
-    mkdir -p /data/db
+    mkdir -p $POSTGRES_DIR
 
     # Move the files from temporary directory to the final location
-    mv /tmp/postgres_migration/* /data/db/
+    mv /tmp/postgres_migration/* $POSTGRES_DIR/
 
     # Clean up the temporary directory
     rmdir /tmp/postgres_migration
 
     # Set proper ownership and permissions for PostgreSQL data directory
-    chown -R postgres:postgres /data/db
-    chmod 700 /data/db
+    chown -R postgres:postgres $POSTGRES_DIR
+    chmod 700 $POSTGRES_DIR
 
     echo "Migration completed successfully."
 fi
