@@ -36,6 +36,7 @@ export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 
 export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
+export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
 
 # READ-ONLY - don't let users change these
 export POSTGRES_DIR=/data/db
@@ -56,6 +57,7 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
@@ -99,7 +101,6 @@ else
     echo "✅ nginx started with PID $nginx_pid"
     pids+=("$nginx_pid")
 fi
-
 
 echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
