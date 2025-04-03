@@ -424,7 +424,13 @@ const ChannelsTable = ({}) => {
               alignItems: 'center',
             }}
           >
-            <img src={cell.getValue() || logo} height="20" alt="channel logo" />
+            <img
+              src={
+                cell.getValue() ? cell.getValue().replace(/^\/data/, '') : logo
+              }
+              height="20"
+              alt="channel logo"
+            />
           </Grid>
         ),
       },
