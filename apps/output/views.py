@@ -91,6 +91,19 @@ def generate_epg(request, profile_name=None):
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         xml_lines.append(f'  <channel id="{channel_id}">')
         xml_lines.append(f'    <display-name>{display_name}</display-name>')
+
+        # Add channel logo if available
+        if channel.logo:
+            # Use the full URL for the logo
+            base_url = request.build_absolute_uri('/')[:-1]
+            logo_url = channel.logo.url
+
+            # Convert to absolute URL if it's relative
+            if logo_url.startswith('/'):
+                logo_url = f"{base_url}{logo_url}"
+
+            xml_lines.append(f'    <icon src="{logo_url}" />')
+
         xml_lines.append('  </channel>')
 
     for channel in channels:
