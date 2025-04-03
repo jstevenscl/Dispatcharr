@@ -312,8 +312,12 @@ const ChannelsTable = ({}) => {
     () => [
       {
         id: 'enabled',
-        header: <ScanEye size="16" />,
-        size: 40,
+        header: (
+          <Box style={{ paddingLeft: 10 }}>
+            <ScanEye size="16" />
+          </Box>
+        ),
+        size: 50,
         enableSorting: false,
         accessorFn: (row) => {
           if (selectedProfileId == '0') {

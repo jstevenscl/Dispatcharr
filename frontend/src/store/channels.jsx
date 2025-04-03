@@ -74,16 +74,32 @@ const useChannelsStore = create((set, get) => ({
 
   addChannel: (newChannel) => {
     get().fetchChannelProfiles();
-    set((state) => ({
-      channels: {
-        ...state.channels,
-        [newChannel.id]: newChannel,
-      },
-      channelsByUUID: {
-        ...state.channelsByUUID,
-        [newChannel.uuid]: newChannel.id,
-      },
-    }));
+    set((state) => {
+      const profiles = { ...state.profiles };
+      Object.values(profiles).forEach((item) => {
+        item.channels.push({
+          id: newChannel.id,
+          enabled: true,
+        });
+      });
+
+      return {
+        channels: {
+          ...state.channels,
+          [newChannel.id]: newChannel,
+        },
+        channelsByUUID: {
+          ...state.channelsByUUID,
+          [newChannel.uuid]: newChannel.id,
+        },
+        profiles,
+        selectedProfile: profiles[state.selectedProfileId],
+        selectedProfileChannels:
+          state.selectedProfileId == '0'
+            ? []
+            : profiles[state.selectedProfileId].channels,
+      };
+    });
   },
 
   addChannels: (newChannels) => {
@@ -98,6 +114,14 @@ const useChannelsStore = create((set, get) => ({
       }
       return acc;
     }, {});
+    const profileChannels = newChannels.map((channel) => ({
+      id: channel.id,
+      enabled: true,
+    }));
+    const profiles = { ...state.profiles };
+    Object.values(profiles).forEach((item) => {
+      item.channels.concat(profileChannels); // Append a new channel object
+    });
     return set((state) => ({
       channels: {
         ...state.channels,
@@ -111,6 +135,9 @@ const useChannelsStore = create((set, get) => ({
         ...state.logos,
         ...logos,
       },
+      profiles,
+      selectedProfile: profiles[state.selectedProfileId],
+      selectedProfileChannels: profiles[state.selectedProfileId].channels,
     }));
   },
 
