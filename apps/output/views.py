@@ -195,15 +195,6 @@ def generate_epg(request, profile_name=None):
                         if custom_data.get('new', False):
                             xml_lines.append(f'    <new />')
 
-                        # Define all properties we specifically handle to avoid adding them as comments
-                        skip_keys = [
-                            'categories', 'episode', 'season', 'rating', 'rating_system', 'credits',
-                            'year', 'country', 'icon', 'previously_shown', 'premiere', 'new',
-                            'onscreen_episode'
-                        ]
-
-                        # Don't add comments for standard properties - XMLTV clients don't need them
-                        # and they just clutter the output
                     except Exception as e:
                         xml_lines.append(f'    <!-- Error parsing custom properties: {str(e)} -->')
 
