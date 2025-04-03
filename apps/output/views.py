@@ -4,6 +4,7 @@ from apps.channels.models import Channel, ChannelProfile
 from apps.epg.models import ProgramData
 from django.utils import timezone
 from datetime import datetime, timedelta
+import re
 
 def generate_m3u(request, profile_name=None):
     """
@@ -94,13 +95,14 @@ def generate_epg(request, profile_name=None):
 
         # Add channel logo if available
         if channel.logo:
-            # Use the full URL for the logo
-            base_url = request.build_absolute_uri('/')[:-1]
             logo_url = channel.logo.url
 
             # Convert to absolute URL if it's relative
-            if logo_url.startswith('/'):
-                logo_url = f"{base_url}{logo_url}"
+            if logo_url.startswith('/data'):
+                # Use the full URL for the logo
+                logo_uri = re.sub(r"^\/data", '', logo_url)
+                base_url = request.build_absolute_uri('/')[:-1]
+                logo_url = f"{base_url}{logo_uri}"
 
             xml_lines.append(f'    <icon src="{logo_url}" />')
 
