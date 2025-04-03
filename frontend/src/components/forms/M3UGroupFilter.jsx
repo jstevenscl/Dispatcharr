@@ -112,6 +112,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
             .filter((group) =>
               group.name.toLowerCase().includes(groupFilter.toLowerCase())
             )
+            .sort((a, b) => a.name > b.name)
             .map((group) => (
               <Button
                 color={group.enabled ? 'green' : 'gray'}
