@@ -98,6 +98,7 @@ export const WebsocketProvider = ({ children }) => {
 
         case 'm3u_profile_test':
           setProfilePreview(event.data.search_preview, event.data.result);
+          break;
 
         default:
           console.error(`Unknown websocket event type: ${event.type}`);
