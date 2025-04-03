@@ -573,7 +573,7 @@ export default class API {
   static async updatePlaylist(values) {
     const { id, ...payload } = values;
     const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
         'Content-Type': 'application/json',

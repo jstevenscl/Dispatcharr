@@ -12,9 +12,8 @@ import {
   Checkbox,
   Modal,
   Flex,
-  NativeSelect,
+  Select,
   FileInput,
-  Space,
   useMantineTheme,
   NumberInput,
   Divider,
@@ -30,7 +29,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
   const { userAgents } = useUserAgentsStore();
   const { fetchChannelGroups } = useChannelsStore();
-  const { setRefreshProgress } = usePlaylistsStore();
 
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -60,6 +58,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       let newPlaylist;
+      console.log(values);
       if (playlist?.id) {
         await API.updatePlaylist({
           id: playlist.id,
@@ -180,7 +179,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               }
             />
 
-            <NativeSelect
+            <Select
               id="user_agent"
               name="user_agent"
               label="User-Agent"
@@ -196,7 +195,9 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
             <NumberInput
               label="Refresh Interval (hours)"
               value={formik.values.refresh_interval}
-              onChange={formik.handleChange}
+              onChange={(value) => {
+                formik.setFieldValue('refresh_interval', value);
+              }}
               error={
                 formik.errors.refresh_interval
                   ? formik.touched.refresh_interval
