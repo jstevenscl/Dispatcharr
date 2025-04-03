@@ -177,15 +177,97 @@ def parse_programs_for_tvg_id(epg_id):
         end_time = parse_xmltv_time(prog.get('stop'))
         title = prog.findtext('title', default='No Title')
         desc = prog.findtext('desc', default='')
+        sub_title = prog.findtext('sub-title', default='')
+
+        # Extract custom properties
+        custom_props = {}
+
+        # Extract categories
+        categories = []
+        for cat_elem in prog.findall('category'):
+            if cat_elem.text and cat_elem.text.strip():
+                categories.append(cat_elem.text.strip())
+        if categories:
+            custom_props['categories'] = categories
+
+        # Extract episode numbers
+        for ep_num in prog.findall('episode-num'):
+            system = ep_num.get('system', '')
+            if system == 'xmltv_ns' and ep_num.text:
+                # Parse XMLTV episode-num format (season.episode.part)
+                parts = ep_num.text.split('.')
+                if len(parts) >= 2:
+                    if parts[0].strip() != '':
+                        try:
+                            season = int(parts[0]) + 1  # XMLTV format is zero-based
+                            custom_props['season'] = season
+                        except ValueError:
+                            pass
+                    if parts[1].strip() != '':
+                        try:
+                            episode = int(parts[1]) + 1  # XMLTV format is zero-based
+                            custom_props['episode'] = episode
+                        except ValueError:
+                            pass
+            elif system == 'onscreen' and ep_num.text:
+                # Just store the raw onscreen format
+                custom_props['onscreen_episode'] = ep_num.text.strip()
+
+        # Extract ratings
+        for rating_elem in prog.findall('rating'):
+            if rating_elem.findtext('value'):
+                custom_props['rating'] = rating_elem.findtext('value').strip()
+                if rating_elem.get('system'):
+                    custom_props['rating_system'] = rating_elem.get('system')
+                break  # Just use the first rating
+
+        # Extract credits (actors, directors, etc.)
+        credits_elem = prog.find('credits')
+        if credits_elem is not None:
+            credits = {}
+            for credit_type in ['director', 'actor', 'writer', 'presenter', 'producer']:
+                elements = credits_elem.findall(credit_type)
+                if elements:
+                    names = [e.text.strip() for e in elements if e.text and e.text.strip()]
+                    if names:
+                        credits[credit_type] = names
+            if credits:
+                custom_props['credits'] = credits
+
+        # Extract other common program metadata
+        if prog.findtext('date'):
+            custom_props['year'] = prog.findtext('date').strip()[:4]  # Just the year part
+
+        if prog.findtext('country'):
+            custom_props['country'] = prog.findtext('country').strip()
+
+        for icon_elem in prog.findall('icon'):
+            if icon_elem.get('src'):
+                custom_props['icon'] = icon_elem.get('src')
+                break  # Just use the first icon
+
+        for kw in ['previously-shown', 'premiere', 'new']:
+            if prog.find(kw) is not None:
+                custom_props[kw.replace('-', '_')] = True
+
+        # Convert custom_props to JSON string if not empty
+        custom_properties_json = None
+        if custom_props:
+            import json
+            try:
+                custom_properties_json = json.dumps(custom_props)
+            except Exception as e:
+                logger.error(f"Error serializing custom properties to JSON: {e}", exc_info=True)
 
         programs_to_create.append(ProgramData(
             epg=epg,
             start_time=start_time,
-            title=title,
             end_time=end_time,
+            title=title,
             description=desc,
-            sub_title='',
+            sub_title=sub_title,
             tvg_id=epg.tvg_id,
+            custom_properties=custom_properties_json
         ))
 
     ProgramData.objects.bulk_create(programs_to_create)
