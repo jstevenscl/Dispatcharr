@@ -75,7 +75,7 @@ def generate_epg(request, profile_name=None):
     """
     xml_lines = []
     xml_lines.append('<?xml version="1.0" encoding="UTF-8"?>')
-    xml_lines.append('<tv generator-info-name="Dispatcharr" generator-info-url="https://example.com">')
+    xml_lines.append('<tv generator-info-name="Dispatcharr" generator-info-url="https://github.com/Dispatcharr/Dispatcharr">')
 
     if profile_name is not None:
         channel_profile = ChannelProfile.objects.get(name=profile_name)
