@@ -21,6 +21,8 @@ import {
   ArrowDown01,
   SquarePlus,
   Copy,
+  CircleCheck,
+  ScanEye,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -39,6 +41,7 @@ import {
   useMantineTheme,
   Center,
   Container,
+  Switch,
 } from '@mantine/core';
 
 const ChannelStreams = ({ channel, isExpanded }) => {
@@ -173,15 +176,90 @@ const ChannelStreams = ({ channel, isExpanded }) => {
   );
 };
 
-const m3uUrl = `${window.location.protocol}//${window.location.host}/output/m3u`;
-const epgUrl = `${window.location.protocol}//${window.location.host}/output/epg`;
-const hdhrUrl = `${window.location.protocol}//${window.location.host}/hdhr`;
+const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
+const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
+const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
+
+const CreateProfilePopover = ({}) => {
+  const [opened, setOpened] = useState(false);
+  const [name, setName] = useState('');
+  const theme = useMantineTheme();
+
+  const setOpen = () => {
+    setName('');
+    setOpened(!opened);
+  };
+
+  const submit = async () => {
+    await API.addChannelProfile({ name });
+    setName('');
+    setOpened(false);
+  };
+
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpen}
+      position="bottom"
+      withArrow
+      shadow="md"
+    >
+      <Popover.Target>
+        <ActionIcon
+          variant="transparent"
+          color={theme.tailwind.green[5]}
+          onClick={setOpen}
+        >
+          <SquarePlus />
+        </ActionIcon>
+      </Popover.Target>
+
+      <Popover.Dropdown>
+        <Group>
+          <TextInput
+            placeholder="Name"
+            value={name}
+            onChange={(event) => setName(event.currentTarget.value)}
+            size="xs"
+          />
+
+          <ActionIcon
+            variant="transparent"
+            color={theme.tailwind.green[5]}
+            size="sm"
+            onClick={submit}
+          >
+            <CircleCheck />
+          </ActionIcon>
+        </Group>
+      </Popover.Dropdown>
+    </Popover>
+  );
+};
 
 const ChannelsTable = ({}) => {
+  const {
+    channels,
+    isLoading: channelsLoading,
+    fetchChannels,
+    setChannelsPageSelection,
+    profiles,
+    selectedProfileId,
+    setSelectedProfileId,
+    selectedProfileChannels,
+  } = useChannelsStore();
+
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
   const [channelGroupOptions, setChannelGroupOptions] = useState([]);
+  const [selectedProfile, setSelectedProfile] = useState(
+    profiles[selectedProfileId]
+  );
+
+  const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
+  const [epgUrl, setEPGUrl] = useState(epgUrlBase);
+  const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
 
   const [textToCopy, setTextToCopy] = useState('');
 
@@ -191,12 +269,16 @@ const ChannelsTable = ({}) => {
   const theme = useMantineTheme();
 
   const { showVideo } = useVideoStore();
-  const {
-    channels,
-    isLoading: channelsLoading,
-    fetchChannels,
-    setChannelsPageSelection,
-  } = useChannelsStore();
+
+  useEffect(() => {
+    setSelectedProfile(profiles[selectedProfileId]);
+
+    const profileString =
+      selectedProfileId != '0' ? `/${profiles[selectedProfileId].name}` : '';
+    setHDHRUrl(`${hdhrUrlBase}${profileString}`);
+    setEPGUrl(`${epgUrlBase}${profileString}`);
+    setM3UUrl(`${m3uUrlBase}${profileString}`);
+  }, [selectedProfileId]);
 
   useEffect(() => {
     setChannelGroupOptions([
@@ -221,9 +303,37 @@ const ChannelsTable = ({}) => {
     environment: { env_mode },
   } = useSettingsStore();
 
+  const toggleChannelEnabled = async (channelId, enabled) => {
+    await API.updateProfileChannel(channelId, selectedProfileId, enabled);
+  };
+
   // Configure columns
   const columns = useMemo(
     () => [
+      {
+        id: 'enabled',
+        header: <ScanEye size="16" />,
+        size: 40,
+        enableSorting: false,
+        accessorFn: (row) => {
+          if (selectedProfileId == '0') {
+            return true;
+          }
+
+          return selectedProfileChannels.find((channel) => row.id == channel.id)
+            .enabled;
+        },
+        Cell: ({ row, cell }) => (
+          <Switch
+            size="xs"
+            checked={cell.getValue()}
+            onChange={() => {
+              toggleChannelEnabled(row.original.id, !cell.getValue());
+            }}
+            disabled={selectedProfileId == '0'}
+          />
+        ),
+      },
       {
         header: '#',
         size: 50,
@@ -262,6 +372,17 @@ const ChannelsTable = ({}) => {
       {
         header: 'Group',
         accessorFn: (row) => row.channel_group?.name || '',
+        Cell: ({ cell }) => (
+          <div
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {cell.getValue()}
+          </div>
+        ),
         Header: ({ column }) => (
           <Box onClick={(e) => e.stopPropagation()}>
             <Select
@@ -269,10 +390,10 @@ const ChannelsTable = ({}) => {
               searchable
               size="xs"
               nothingFound="No options"
-              onChange={(e, value) => {
-                e.stopPropagation();
-                handleGroupChange(value);
-              }}
+              // onChange={(e, value) => {
+              //   e.stopPropagation();
+              //   handleGroupChange(value);
+              // }}
               data={channelGroupOptions}
               variant="unstyled"
               className="table-input-header"
@@ -302,12 +423,14 @@ const ChannelsTable = ({}) => {
             <img src={cell.getValue() || logo} height="20" alt="channel logo" />
           </Grid>
         ),
-        meta: {
-          filterVariant: null,
-        },
       },
     ],
-    [channelGroupOptions, filterValues]
+    [
+      channelGroupOptions,
+      filterValues,
+      selectedProfile,
+      selectedProfileChannels,
+    ]
   );
 
   // Access the row virtualizer instance (optional)
@@ -431,22 +554,13 @@ const ChannelsTable = ({}) => {
 
   // Example copy URLs
   const copyM3UUrl = () => {
-    handleCopy(
-      `${window.location.protocol}//${window.location.host}/output/m3u`,
-      m3uUrlRef
-    );
+    handleCopy(m3uUrl, m3uUrlRef);
   };
   const copyEPGUrl = () => {
-    handleCopy(
-      `${window.location.protocol}//${window.location.host}/output/epg`,
-      epgUrlRef
-    );
+    handleCopy(epgUrl, epgUrlRef);
   };
   const copyHDHRUrl = () => {
-    handleCopy(
-      `${window.location.protocol}//${window.location.host}/hdhr`,
-      hdhrUrlRef
-    );
+    handleCopy(hdhrUrl, hdhrUrlRef);
   };
 
   useEffect(() => {
@@ -463,6 +577,31 @@ const ChannelsTable = ({}) => {
         : true
     )
   );
+
+  const deleteProfile = async (id) => {
+    await API.deleteChannelProfile(id);
+  };
+
+  const renderProfileOption = ({ option, checked }) => {
+    return (
+      <Group justify="space-between" style={{ width: '100%' }}>
+        <Box>{option.label}</Box>
+        {option.value != '0' && (
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.red[6]}
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteProfile(option.value);
+            }}
+          >
+            <SquareMinus />
+          </ActionIcon>
+        )}
+      </Group>
+    );
+  };
 
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
@@ -725,64 +864,85 @@ const ChannelsTable = ({}) => {
         }}
       >
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
-        <Box
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            padding: 10,
-          }}
-        >
-          <Flex gap={6}>
-            <Button
-              leftSection={<SquareMinus size={18} />}
-              variant="default"
+        <Group justify="space-between">
+          <Group gap={5} style={{ paddingLeft: 10 }}>
+            <Select
               size="xs"
-              onClick={deleteChannels}
-            >
-              Remove
-            </Button>
+              value={selectedProfileId}
+              onChange={setSelectedProfileId}
+              data={[{ label: 'All', value: '0' }].concat(
+                Object.values(profiles).map((profile) => ({
+                  label: profile.name,
+                  value: `${profile.id}`,
+                }))
+              )}
+              renderOption={renderProfileOption}
+            />
 
-            <Tooltip label="Assign Channel #s">
+            <Tooltip label="Create Profile">
+              <CreateProfilePopover />
+            </Tooltip>
+          </Group>
+
+          <Box
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              padding: 10,
+            }}
+          >
+            <Flex gap={6}>
               <Button
-                leftSection={<ArrowDown01 size={18} />}
+                leftSection={<SquareMinus size={18} />}
                 variant="default"
                 size="xs"
-                onClick={assignChannels}
-                p={5}
+                onClick={deleteChannels}
               >
-                Assign
+                Remove
               </Button>
-            </Tooltip>
 
-            <Tooltip label="Auto-Match EPG">
+              <Tooltip label="Assign Channel #s">
+                <Button
+                  leftSection={<ArrowDown01 size={18} />}
+                  variant="default"
+                  size="xs"
+                  onClick={assignChannels}
+                  p={5}
+                >
+                  Assign
+                </Button>
+              </Tooltip>
+
+              <Tooltip label="Auto-Match EPG">
+                <Button
+                  leftSection={<Binary size={18} />}
+                  variant="default"
+                  size="xs"
+                  onClick={matchEpg}
+                  p={5}
+                >
+                  Auto-Match
+                </Button>
+              </Tooltip>
+
               <Button
-                leftSection={<Binary size={18} />}
-                variant="default"
+                leftSection={<SquarePlus size={18} />}
+                variant="light"
                 size="xs"
-                onClick={matchEpg}
+                onClick={() => editChannel()}
                 p={5}
+                color={theme.tailwind.green[5]}
+                style={{
+                  borderWidth: '1px',
+                  borderColor: theme.tailwind.green[5],
+                  color: 'white',
+                }}
               >
-                Auto-Match
+                Add
               </Button>
-            </Tooltip>
-
-            <Button
-              leftSection={<SquarePlus size={18} />}
-              variant="light"
-              size="xs"
-              onClick={() => editChannel()}
-              p={5}
-              color={theme.tailwind.green[5]}
-              style={{
-                borderWidth: '1px',
-                borderColor: theme.tailwind.green[5],
-                color: 'white',
-              }}
-            >
-              Add
-            </Button>
-          </Flex>
-        </Box>
+            </Flex>
+          </Box>
+        </Group>
 
         {/* Table or ghost empty state inside Paper */}
         <Box>

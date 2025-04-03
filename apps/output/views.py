@@ -1,17 +1,25 @@
 from django.http import HttpResponse
 from django.urls import reverse
-from apps.channels.models import Channel
+from apps.channels.models import Channel, ChannelProfile
 from apps.epg.models import ProgramData
 from django.utils import timezone
 from datetime import datetime, timedelta
 
-def generate_m3u(request):
+def generate_m3u(request, profile_name=None):
     """
     Dynamically generate an M3U file from channels.
     The stream URL now points to the new stream_view that uses StreamProfile.
     """
+    if profile_name is not None:
+        channel_profile = ChannelProfile.objects.get(name=profile_name)
+        channels = Channel.objects.filter(
+            channelprofilemembership__channel_profile=channel_profile,
+            channelprofilemembership__enabled=True
+        ).order_by('channel_number')
+    else:
+        channels = Channel.objects.order_by('channel_number')
+
     m3u_content = "#EXTM3U\n"
-    channels = Channel.objects.order_by('channel_number')
     for channel in channels:
         group_title = channel.channel_group.name if channel.channel_group else "Default"
         tvg_id = channel.tvg_id or ""
@@ -57,7 +65,7 @@ def generate_dummy_epg(name, channel_id, num_days=7, interval_hours=4):
 
     return xml_lines
 
-def generate_epg(request):
+def generate_epg(request, profile_name=None):
     """
     Dynamically generate an XMLTV (EPG) file using the new EPGData/ProgramData models.
     Since the EPG data is stored independently of Channels, we group programmes
@@ -68,8 +76,16 @@ def generate_epg(request):
     xml_lines.append('<?xml version="1.0" encoding="UTF-8"?>')
     xml_lines.append('<tv generator-info-name="Dispatcharr" generator-info-url="https://example.com">')
 
+    if profile_name is not None:
+        channel_profile = ChannelProfile.objects.get(name=profile_name)
+        channels = Channel.objects.filter(
+            channelprofilemembership__channel_profile=channel_profile,
+            channelprofilemembership__enabled=True
+        )
+    else:
+        channels = Channel.objects.all()
+
     # Retrieve all active channels
-    channels = Channel.objects.all()
     for channel in channels:
         channel_id = channel.epg_data.tvg_id if channel.epg_data else f"default-{channel.id}"
         display_name = channel.epg_data.name if channel.epg_data else channel.name

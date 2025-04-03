@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount, Logo
+from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount, Logo, ChannelProfile, ChannelProfileMembership
 from apps.epg.serializers import EPGDataSerializer
 from core.models import StreamProfile
 from apps.epg.models import EPGData
@@ -58,6 +58,40 @@ class ChannelGroupSerializer(serializers.ModelSerializer):
         model = ChannelGroup
         fields = ['id', 'name']
 
+class ChannelProfileSerializer(serializers.ModelSerializer):
+    channels = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChannelProfile
+        fields = ['id', 'name', 'channels']
+
+    def get_channels(self, obj):
+        memberships = ChannelProfileMembership.objects.filter(channel_profile=obj)
+        return [
+            {
+                'id': membership.channel.id,
+                'enabled': membership.enabled
+            }
+            for membership in memberships
+        ]
+
+class ChannelProfileMembershipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChannelProfileMembership
+        fields = ['channel', 'enabled']
+
+class BulkChannelProfileMembershipSerializer(serializers.Serializer):
+    channels = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.BooleanField(),
+            allow_empty=False
+        )
+    )
+
+    def validate_channels(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one channel must be provided.")
+        return value
 
 #
 # Channel

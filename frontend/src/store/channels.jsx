@@ -6,6 +6,9 @@ const useChannelsStore = create((set, get) => ({
   channels: [],
   channelsByUUID: {},
   channelGroups: {},
+  profiles: {},
+  selectedProfileId: '0',
+  selectedProfileChannels: [],
   channelsPageSelection: [],
   stats: {},
   activeChannels: {},
@@ -52,7 +55,25 @@ const useChannelsStore = create((set, get) => ({
     }
   },
 
-  addChannel: (newChannel) =>
+  fetchChannelProfiles: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const profiles = await api.getChannelProfiles();
+      set({
+        profiles: profiles.reduce((acc, profile) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {}),
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to fetch channel profiles:', error);
+      set({ error: 'Failed to load channel profiles.', isLoading: false });
+    }
+  },
+
+  addChannel: (newChannel) => {
+    get().fetchChannelProfiles();
     set((state) => ({
       channels: {
         ...state.channels,
@@ -62,9 +83,11 @@ const useChannelsStore = create((set, get) => ({
         ...state.channelsByUUID,
         [newChannel.uuid]: newChannel.id,
       },
-    })),
+    }));
+  },
 
   addChannels: (newChannels) => {
+    get().fetchChannelProfiles();
     const channelsByUUID = {};
     const logos = {};
     const channelsByID = newChannels.reduce((acc, channel) => {
@@ -103,7 +126,7 @@ const useChannelsStore = create((set, get) => ({
       },
     })),
 
-  removeChannels: (channelIds) =>
+  removeChannels: (channelIds) => {
     set((state) => {
       const updatedChannels = { ...state.channels };
       const channelsByUUID = { ...state.channelsByUUID };
@@ -119,7 +142,8 @@ const useChannelsStore = create((set, get) => ({
       }
 
       return { channels: updatedChannels, channelsByUUID };
-    }),
+    });
+  },
 
   addChannelGroup: (newChannelGroup) =>
     set((state) => ({
@@ -166,8 +190,68 @@ const useChannelsStore = create((set, get) => ({
       },
     })),
 
+  addProfile: (profile) =>
+    set((state) => ({
+      profiles: {
+        ...state.profiles,
+        [profile.id]: profile,
+      },
+    })),
+
+  updateProfile: (profile) =>
+    set((state) => ({
+      channels: {
+        ...state.profiles,
+        [profile.id]: profile,
+      },
+    })),
+
+  removeProfiles: (profileIds) =>
+    set((state) => {
+      const updatedProfiles = { ...state.profiles };
+      for (const id of profileIds) {
+        delete updatedProfiles[id];
+      }
+
+      return { profiles: updatedProfiles };
+    }),
+
+  updateProfileChannel: (channelId, profileId, enabled) =>
+    set((state) => {
+      // Get the specific profile
+      const profile = state.profiles[profileId];
+      if (!profile) return state; // Profile doesn't exist, no update needed
+
+      // Efficiently update only the specific channel
+      return {
+        profiles: {
+          ...state.profiles,
+          [profileId]: {
+            ...profile,
+            channels: profile.channels.map((channel) =>
+              channel.id === channelId
+                ? { ...channel, enabled } // Update enabled flag
+                : channel
+            ),
+          },
+        },
+        selectedProfileChannels: state.selectedProfileChannels.map(
+          (channel) => ({
+            id: channel.id,
+            enabled: channel.id == channelId ? enabled : channel.enabled,
+          })
+        ),
+      };
+    }),
+
   setChannelsPageSelection: (channelsPageSelection) =>
     set((state) => ({ channelsPageSelection })),
+
+  setSelectedProfileId: (id) =>
+    set((state) => ({
+      selectedProfileId: id,
+      selectedProfileChannels: id == '0' ? [] : state.profiles[id].channels,
+    })),
 
   setChannelStats: (stats) => {
     const {

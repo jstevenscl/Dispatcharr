@@ -2,7 +2,7 @@
 
 from django.db.models.signals import m2m_changed, pre_save, post_save
 from django.dispatch import receiver
-from .models import Channel, Stream
+from .models import Channel, Stream, ChannelProfile, ChannelProfileMembership
 from apps.m3u.models import M3UAccount
 from apps.epg.tasks import parse_programs_for_tvg_id
 import logging
@@ -44,3 +44,21 @@ def set_default_m3u_account(sender, instance, **kwargs):
 def refresh_epg_programs(sender, instance, created, **kwargs):
     if instance.epg_data:
         parse_programs_for_tvg_id.delay(instance.epg_data.id)
+
+@receiver(post_save, sender=Channel)
+def add_new_channel_to_groups(sender, instance, created, **kwargs):
+    if created:
+        profiles = ChannelProfile.objects.all()
+        ChannelProfileMembership.objects.bulk_create([
+            ChannelProfileMembership(channel_profile=profile, channel=instance)
+            for profile in profiles
+        ])
+
+@receiver(post_save, sender=ChannelProfile)
+def create_profile_memberships(sender, instance, created, **kwargs):
+    if created:
+        channels = Channel.objects.all()
+        ChannelProfileMembership.objects.bulk_create([
+            ChannelProfileMembership(channel_profile=instance, channel=channel)
+            for channel in channels
+        ])

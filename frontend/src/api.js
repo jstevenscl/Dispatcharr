@@ -932,4 +932,83 @@ export default class API {
 
     return retval;
   }
+
+  static async getChannelProfiles() {
+    const response = await fetch(`${host}/api/channels/profiles/`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
+  static async addChannelProfile(values) {
+    const response = await fetch(`${host}/api/channels/profiles/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(values),
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useChannelsStore.getState().addProfile(retval);
+    }
+
+    return retval;
+  }
+
+  static async updateChannelProfile(values) {
+    const { id, ...payload } = values;
+    const response = await fetch(`${host}/api/channels/profiles/${id}/`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useChannelsStore.getState().updateProfile(retval);
+    }
+
+    return retval;
+  }
+
+  static async deleteChannelProfile(id) {
+    const response = await fetch(`${host}/api/channels/profiles/${id}/`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    useChannelsStore.getState().removeProfiles([id]);
+  }
+
+  static async updateProfileChannel(channelId, profileId, enabled) {
+    const response = await fetch(
+      `${host}/api/channels/profiles/${profileId}/channels/${channelId}/`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled }),
+      }
+    );
+
+    useChannelsStore
+      .getState()
+      .updateProfileChannel(channelId, profileId, enabled);
+  }
 }

@@ -10,8 +10,8 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 import os, json
 
-from .models import Stream, Channel, ChannelGroup, Logo
-from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer, LogoSerializer
+from .models import Stream, Channel, ChannelGroup, Logo, ChannelProfile, ChannelProfileMembership
+from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer, LogoSerializer, ChannelProfileMembershipSerializer, BulkChannelProfileMembershipSerializer, ChannelProfileSerializer
 from .tasks import match_epg_channels
 import django_filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -442,3 +442,51 @@ class LogoViewSet(viewsets.ModelViewSet):
         })
 
         return Response({'id': logo.id, 'name': logo.name, 'url': logo.url}, status=status.HTTP_201_CREATED)
+
+class ChannelProfileViewSet(viewsets.ModelViewSet):
+    queryset = ChannelProfile.objects.all()
+    serializer_class = ChannelProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+class UpdateChannelMembershipAPIView(APIView):
+    def patch(self, request, profile_id, channel_id):
+        """Enable or disable a channel for a specific group"""
+        channel_profile = get_object_or_404(ChannelProfile, id=profile_id)
+        channel = get_object_or_404(Channel, id=channel_id)
+        membership = get_object_or_404(ChannelProfileMembership, channel_profile=channel_profile, channel=channel)
+
+        serializer = ChannelProfileMembershipSerializer(membership, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class BulkUpdateChannelMembershipAPIView(APIView):
+    def patch(self, request, group_id):
+        """Bulk enable or disable channels for a specific profile"""
+        channel_profile = get_object_or_404(ChannelProfile, id=group_id)
+        serializer = BulkChannelProfileMembershipSerializer(data=request.data)
+
+        if serializer.is_valid():
+            updates = serializer.validated_data['channels']
+            channel_ids = [entry['channel_id'] for entry in updates]
+
+            memberships = ChannelProfileMembership.objects.filter(
+                channel_profile=channel_profile,
+                channel_id__in=channel_ids
+            )
+
+            membership_dict = {m.channel.id: m for m in memberships}
+
+            for entry in updates:
+                channel_id = entry['channel_id']
+                enabled_status = entry['enabled']
+                if channel_id in membership_dict:
+                    membership_dict[channel_id].enabled = enabled_status
+
+            ChannelProfileMembership.objects.bulk_update(memberships, ['enabled'])
+
+            return Response({"status": "success"}, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

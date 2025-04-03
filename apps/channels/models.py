@@ -354,6 +354,18 @@ class Channel(models.Model):
         if current_count > 0:
             redis_client.decr(profile_connections_key)
 
+
+class ChannelProfile(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+class ChannelProfileMembership(models.Model):
+    channel_profile = models.ForeignKey(ChannelProfile, on_delete=models.CASCADE)
+    channel = models.ForeignKey(Channel, on_delete=models.CASCADE)
+    enabled = models.BooleanField(default=True)  # Track if the channel is enabled for this group
+
+    class Meta:
+        unique_together = ('channel_profile', 'channel')
+
 class ChannelStream(models.Model):
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE)
     stream = models.ForeignKey(Stream, on_delete=models.CASCADE)
