@@ -24,7 +24,7 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
     task_name = f"m3u_account-refresh-{instance.id}"
 
     interval, _ = IntervalSchedule.objects.get_or_create(
-        every=24,
+        every=int(instance.refresh_interval),
         period=IntervalSchedule.HOURS
     )
 
