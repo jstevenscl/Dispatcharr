@@ -191,6 +191,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         channel_group = stream.channel_group
 
         # Check if client provided a channel_number; if not, auto-assign one.
+        channel_number = None
         provided_number = request.data.get('channel_number')
         if provided_number is None:
             channel_number = self.get_next_available_channel_number()
@@ -211,6 +212,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
             name = stream.name
 
         stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
+        if channel_number is None:
+            if 'tv-chno' in stream_custom_props:
+                channel_number = int(stream_custom_props['tv-chno'])
+            elif 'channel-number' in stream_custom_props:
+                channel_number = int(stream_custom_props['channel-number'])
+
         channel_data = {
             'channel_number': channel_number,
             'name': name,
@@ -218,11 +225,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
             'channel_group_id': channel_group.id,
             'streams': [stream_id],
         }
-
-        if 'tv-chno' in stream_custom_props:
-            channel_data['channel_number'] = int(stream_custom_props['tv-chno'])
-        elif 'channel-number' in stream_custom_props:
-            channel_data['channel_number'] = int(stream_custom_props['channel-number'])
 
         if stream.logo_url:
             logo, _ = Logo.objects.get_or_create(url=stream.logo_url, defaults={
@@ -304,6 +306,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             channel_group = stream.channel_group
 
             # Determine channel number: if provided, use it (if free); else auto assign.
+            channel_number = None
             provided_number = item.get('channel_number')
             if provided_number is None:
                 channel_number = get_auto_number()
@@ -321,6 +324,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
             name = item.get('name')
             if name is None:
                 name = stream.name
+
+            stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
+            if channel_number is None:
+                if 'tv-chno' in stream_custom_props:
+                    channel_number = int(stream_custom_props['tv-chno'])
+                elif 'channel-number' in stream_custom_props:
+                    channel_number = int(stream_custom_props['channel-number'])
 
             channel_data = {
                 "channel_number": channel_number,
