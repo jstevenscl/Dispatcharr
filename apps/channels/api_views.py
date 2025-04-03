@@ -337,9 +337,14 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 "name": name,
                 "tvg_id": stream.tvg_id,
                 "channel_group_id": channel_group.id,
-                "logo_url": stream.logo_url,
                 "streams": [stream_id],
             }
+
+            if stream.logo_url:
+                logo, _ = Logo.objects.get_or_create(url=stream.logo_url, defaults={
+                    "name": stream.name or stream.tvg_id
+                })
+                channel_data["logo_id"] = logo.id
 
             # Attempt to find existing EPGs with the same tvg-id
             epgs = EPGData.objects.filter(tvg_id=stream.tvg_id)
