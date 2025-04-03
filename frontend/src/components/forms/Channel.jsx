@@ -380,7 +380,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
             <Divider size="sm" orientation="vertical" />
 
             <Stack justify="flex-start" style={{ flex: 1 }}>
-              <Flex gap="sm">
+              <Group justify="space-between">
                 <Select
                   id="logo_id"
                   name="logo_id"
@@ -399,17 +399,15 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   renderOption={renderLogoOption}
                   comboboxProps={{ width: 75, position: 'bottom-start' }}
                 />
-                <Flex align="flex-end" style={{ marginTop: 10 }}>
-                  <img
-                    src={
-                      logos[formik.values.logo_id]
-                        ? logos[formik.values.logo_id].url
-                        : logo
-                    }
-                    height="40"
-                  />
-                </Flex>
-              </Flex>
+                <img
+                  src={
+                    logos[formik.values.logo_id]
+                      ? logos[formik.values.logo_id].url
+                      : logo
+                  }
+                  height="40"
+                />
+              </Group>
 
               <Group>
                 <Divider size="xs" style={{ flex: 1 }} />

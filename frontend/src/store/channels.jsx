@@ -240,7 +240,22 @@ const useChannelsStore = create((set, get) => ({
         delete updatedProfiles[id];
       }
 
-      return { profiles: updatedProfiles };
+      let additionalUpdates = {};
+      if (profileIds.includes(state.selectedProfileId)) {
+        additionalUpdates = {
+          selectedProfileId: '0',
+          selectedProfileChannels: [],
+          selectedProfile: {},
+        };
+      }
+
+      return {
+        profiles: updatedProfiles,
+        selectedProfileId: profileIds.includes(state.selectedProfileId)
+          ? '0'
+          : state.selectedProfileId,
+        ...additionalUpdates,
+      };
     }),
 
   updateProfileChannel: (channelId, profileId, enabled) =>
