@@ -50,6 +50,7 @@ def get_redis_client(max_retries=5, retry_interval=1):
 
             # Validate connection with ping
             client.ping()
+            client.flushdb()
             logger.info(f"Connected to Redis at {redis_host}:{redis_port}/{redis_db}")
             return client
 
