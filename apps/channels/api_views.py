@@ -291,6 +291,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
             used_numbers.add(next_number)
             return next_number
 
+        logos_to_create = []
+        channels_to_create = []
+        streams_map = []
+        logo_map = []
         for item in data_list:
             stream_id = item.get('stream_id')
             if not all([stream_id]):
@@ -340,12 +344,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 "streams": [stream_id],
             }
 
-            if stream.logo_url:
-                logo, _ = Logo.objects.get_or_create(url=stream.logo_url, defaults={
-                    "name": stream.name or stream.tvg_id
-                })
-                channel_data["logo_id"] = logo.id
-
             # Attempt to find existing EPGs with the same tvg-id
             epgs = EPGData.objects.filter(tvg_id=stream.tvg_id)
             if epgs:
@@ -353,13 +351,47 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
-                channel = serializer.save()
-                channel.streams.add(stream)
-                created_channels.append(serializer.data)
+                validated_data = serializer.validated_data
+                stream_ids = validated_data.pop("streams", None)  # Extract stream relation if exists
+                channel = Channel(**validated_data)
+                channels_to_create.append(channel)
+
+                streams_map.append(stream_ids)
+                if stream.logo_url:
+                    logos_to_create.append(Logo(
+                        url=stream.logo_url,
+                        name=stream.name or stream.tvg_id,
+                    ))
+                    logo_map.append(stream.logo_url)
+                else:
+                    logo_map.append(None)
+
+                # channel = serializer.save()
+                # channel.streams.add(stream)
+                # created_channels.append(serializer.data)
             else:
                 errors.append({"item": item, "error": serializer.errors})
 
-        response_data = {"created": created_channels}
+        if logos_to_create:
+            Logo.objects.bulk_create(logos_to_create, ignore_conflicts=True)
+
+        channel_logos = {logo.url: logo for logo in Logo.objects.filter(url__in=[url for url in logo_map if url is not None])}
+
+        if channels_to_create:
+            with transaction.atomic():
+                created_channels = Channel.objects.bulk_create(channels_to_create)
+
+                update = []
+                for channel, stream_ids, logo_url in zip(created_channels, streams_map, logo_map):
+                    if stream_ids:
+                        channel.streams.set(stream_ids)
+                    if logo_url:
+                        channel.logo = channel_logos[logo_url]
+                        update.append(channel)
+
+                Channel.objects.bulk_update(update, ['logo'])
+
+        response_data = {"created": ChannelSerializer(created_channels, many=True).data}
         if errors:
             response_data["errors"] = errors
 

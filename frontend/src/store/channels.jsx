@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import api from '../api';
 import { notifications } from '@mantine/notifications';
 
+const defaultProfiles = { 0: { name: 'All', channels: [] } };
+
 const useChannelsStore = create((set, get) => ({
   channels: [],
   channelsByUUID: {},
@@ -63,7 +65,7 @@ const useChannelsStore = create((set, get) => ({
         profiles: profiles.reduce((acc, profile) => {
           acc[profile.id] = profile;
           return acc;
-        }, {}),
+        }, defaultProfiles),
         isLoading: false,
       });
     } catch (error) {
@@ -102,44 +104,45 @@ const useChannelsStore = create((set, get) => ({
     });
   },
 
-  addChannels: (newChannels) => {
-    get().fetchChannelProfiles();
-    const channelsByUUID = {};
-    const logos = {};
-    const channelsByID = newChannels.reduce((acc, channel) => {
-      acc[channel.id] = channel;
-      channelsByUUID[channel.uuid] = channel.id;
-      if (channel.logo) {
-        logos[channel.logo.id] = channel.logo;
-      }
-      return acc;
-    }, {});
-    const profileChannels = newChannels.map((channel) => ({
-      id: channel.id,
-      enabled: true,
-    }));
-    const profiles = { ...state.profiles };
-    Object.values(profiles).forEach((item) => {
-      item.channels.concat(profileChannels); // Append a new channel object
-    });
-    return set((state) => ({
-      channels: {
-        ...state.channels,
-        ...channelsByID,
-      },
-      channelsByUUID: {
-        ...state.channelsByUUID,
-        ...channelsByUUID,
-      },
-      logos: {
-        ...state.logos,
-        ...logos,
-      },
-      profiles,
-      selectedProfile: profiles[state.selectedProfileId],
-      selectedProfileChannels: profiles[state.selectedProfileId].channels,
-    }));
-  },
+  addChannels: (newChannels) =>
+    set((state) => {
+      const channelsByUUID = {};
+      const logos = {};
+      const channelsByID = newChannels.reduce((acc, channel) => {
+        acc[channel.id] = channel;
+        channelsByUUID[channel.uuid] = channel.id;
+        if (channel.logo) {
+          logos[channel.logo.id] = channel.logo;
+        }
+        return acc;
+      }, {});
+      const profileChannels = newChannels.map((channel) => ({
+        id: channel.id,
+        enabled: true,
+      }));
+      const profiles = { ...state.profiles };
+      Object.values(profiles).forEach((item) => {
+        item.channels.concat(profileChannels); // Append a new channel object
+      });
+
+      return {
+        channels: {
+          ...state.channels,
+          ...channelsByID,
+        },
+        channelsByUUID: {
+          ...state.channelsByUUID,
+          ...channelsByUUID,
+        },
+        logos: {
+          ...state.logos,
+          ...logos,
+        },
+        profiles,
+        selectedProfile: profiles[state.selectedProfileId],
+        selectedProfileChannels: profiles[state.selectedProfileId].channels,
+      };
+    }),
 
   updateChannel: (channel) =>
     set((state) => ({
