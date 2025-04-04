@@ -289,7 +289,11 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const filteredTvgs = tvgs
     .filter((tvg) => tvg.epg_source == selectedEPG)
-    .filter((tvg) => tvg.name.toLowerCase().includes(tvgFilter));
+    .filter(
+      (tvg) =>
+        tvg.name.toLowerCase().includes(tvgFilter.toLowerCase()) ||
+        tvg.tvg_id.toLowerCase().includes(tvgFilter.toLowerCase())
+    );
 
   return (
     <>

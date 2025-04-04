@@ -349,7 +349,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             # Attempt to find existing EPGs with the same tvg-id
             epgs = EPGData.objects.filter(tvg_id=stream.tvg_id)
             if epgs:
-                channel_data["epg_data"] = epgs.first()
+                channel_data["epg_data_id"] = epgs.first().id
 
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
