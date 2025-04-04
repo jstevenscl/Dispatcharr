@@ -217,7 +217,7 @@ const CreateProfilePopover = ({}) => {
       <Popover.Dropdown>
         <Group>
           <TextInput
-            placeholder="Name"
+            placeholder="Profile Name"
             value={name}
             onChange={(event) => setName(event.currentTarget.value)}
             size="xs"
@@ -429,8 +429,13 @@ const ChannelsTable = ({}) => {
           >
             <img
               src={cell.getValue() ? cell.getValue().cache_url : logo}
-              height="20"
               alt="channel logo"
+              style={{
+                width: 'auto',
+                height: 'auto',
+                maxWidth: '55px',
+                maxHeight: '18px',
+              }}
             />
           </Grid>
         ),
@@ -906,6 +911,7 @@ const ChannelsTable = ({}) => {
                 variant="default"
                 size="xs"
                 onClick={deleteChannels}
+                disabled={Object.values(rowSelection).length == 0}
               >
                 Remove
               </Button>
