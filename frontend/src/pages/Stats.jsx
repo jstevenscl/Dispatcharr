@@ -74,7 +74,7 @@ const getStartDate = (uptime) => {
 };
 
 // Create a separate component for each channel card to properly handle the hook
-const ChannelCard = ({ channel, clients, stopClient }) => {
+const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
   const clientsColumns = useMemo(
     () => [
       {
@@ -171,7 +171,11 @@ const ChannelCard = ({ channel, clients, stopClient }) => {
             </Box>
             <Center>
               <Tooltip label="Stop Channel">
-                <ActionIcon variant="transparent" color="red.9">
+                <ActionIcon
+                  variant="transparent"
+                  color="red.9"
+                  onClick={() => stopChannel(channel.channel_id)}
+                >
                   <SquareX size="24" />
                 </ActionIcon>
               </Tooltip>
@@ -367,6 +371,7 @@ const ChannelsPage = () => {
           channel={channel}
           clients={clients}
           stopClient={stopClient}
+          stopChannel={stopChannel}
         />
       ))}
     </SimpleGrid>
