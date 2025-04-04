@@ -3,6 +3,21 @@ from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3
 from apps.epg.serializers import EPGDataSerializer
 from core.models import StreamProfile
 from apps.epg.models import EPGData
+from django.urls import reverse
+
+class LogoSerializer(serializers.ModelSerializer):
+    cache_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Logo
+        fields = ['id', 'name', 'url', 'cache_url']
+
+    def get_cache_url(self, obj):
+        # return f"/api/channels/logos/{obj.id}/cache/"
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(reverse('api:channels:logo-cache', args=[obj.id]))  # Use 'logo-cache'
+        return reverse('api:channels:logo-cache', args=[obj.id])
 
 #
 # Stream
@@ -126,7 +141,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         queryset=Stream.objects.all(), many=True, write_only=True, required=False
     )
 
-    logo = serializers.SerializerMethodField()
+    logo = LogoSerializer(read_only=True)
     logo_id = serializers.PrimaryKeyRelatedField(
         queryset=Logo.objects.all(),
         source='logo',
@@ -215,8 +230,3 @@ class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
 
     # Optionally, if you only need the id of the ChannelGroup, you can customize it like this:
     # channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())
-
-class LogoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Logo
-        fields = ['id', 'name', 'url']

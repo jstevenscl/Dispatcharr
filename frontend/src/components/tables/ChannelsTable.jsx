@@ -327,6 +327,9 @@ const ChannelsTable = ({}) => {
           return selectedProfileChannels.find((channel) => row.id == channel.id)
             .enabled;
         },
+        mantineTableBodyCellProps: {
+          align: 'center',
+        },
         Cell: ({ row, cell }) => (
           <Switch
             size="xs"
@@ -407,7 +410,7 @@ const ChannelsTable = ({}) => {
       },
       {
         header: 'Logo',
-        accessorKey: 'logo.url',
+        accessorKey: 'logo',
         enableSorting: false,
         size: 55,
         mantineTableBodyCellProps: {
@@ -425,9 +428,7 @@ const ChannelsTable = ({}) => {
             }}
           >
             <img
-              src={
-                cell.getValue() ? cell.getValue().replace(/^\/data/, '') : logo
-              }
+              src={cell.getValue() ? cell.getValue().cache_url : logo}
               height="20"
               alt="channel logo"
             />
@@ -880,12 +881,10 @@ const ChannelsTable = ({}) => {
               size="xs"
               value={selectedProfileId}
               onChange={setSelectedProfileId}
-              data={[{ label: 'All', value: '0' }].concat(
-                Object.values(profiles).map((profile) => ({
-                  label: profile.name,
-                  value: `${profile.id}`,
-                }))
-              )}
+              data={Object.values(profiles).map((profile) => ({
+                label: profile.name,
+                value: `${profile.id}`,
+              }))}
               renderOption={renderProfileOption}
             />
 
