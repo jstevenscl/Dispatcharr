@@ -95,7 +95,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         values.stream_profile_id = null;
       }
 
-      if (!values.logo_id) {
+      if (!values.logo_id || values.logo_id === 'undefined') {
         delete values.logo_id;
       }
 
