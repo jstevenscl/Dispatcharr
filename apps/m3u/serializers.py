@@ -44,8 +44,7 @@ class M3UAccountSerializer(serializers.ModelSerializer):
     profiles = M3UAccountProfileSerializer(many=True, read_only=True)
     read_only_fields = ['locked']
     # channel_groups = serializers.SerializerMethodField()
-    channel_groups = ChannelGroupM3UAccountSerializer(source='channel_group.all', many=True, required=False)
-
+    channel_groups = ChannelGroupM3UAccountSerializer(source='channel_group', many=True, required=False)
 
     class Meta:
         model = M3UAccount
@@ -54,6 +53,37 @@ class M3UAccountSerializer(serializers.ModelSerializer):
             'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked',
             'channel_groups', 'refresh_interval'
         ]
+
+    def update(self, instance, validated_data):
+        # Pop out channel group memberships so we can handle them manually
+        channel_group_data = validated_data.pop('channel_group', [])
+
+        # First, update the M3UAccount itself
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Prepare a list of memberships to update
+        memberships_to_update = []
+        for group_data in channel_group_data:
+            group = group_data.get('channel_group')
+            enabled = group_data.get('enabled')
+
+            try:
+                membership = ChannelGroupM3UAccount.objects.get(
+                    m3u_account=instance,
+                    channel_group=group
+                )
+                membership.enabled = enabled
+                memberships_to_update.append(membership)
+            except ChannelGroupM3UAccount.DoesNotExist:
+                continue
+
+        # Perform the bulk update
+        if memberships_to_update:
+            ChannelGroupM3UAccount.objects.bulk_update(memberships_to_update, ['enabled'])
+
+        return instance
 
 class ServerGroupSerializer(serializers.ModelSerializer):
     """Serializer for Server Group"""
