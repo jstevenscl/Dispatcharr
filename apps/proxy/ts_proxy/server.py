@@ -18,7 +18,7 @@ import json
 from typing import Dict, Optional, Set
 from apps.proxy.config import TSConfig as Config
 from apps.channels.models import Channel, Stream
-from core.utils import redis_client as global_redis_client, redis_pubsub_client as global_redis_pubsub_client  # Import both global Redis clients
+from core.utils import get_redis_client, get_redis_pubsub_client
 from redis.exceptions import ConnectionError, TimeoutError
 from .stream_manager import StreamManager
 from .stream_buffer import StreamBuffer
@@ -46,17 +46,17 @@ class ProxyServer:
         hostname = socket.gethostname()
         self.worker_id = f"{hostname}:{pid}"
 
-        # Connect to Redis - try using global client first
+        # Connect to Redis - use dedicated client for proxy
         self.redis_client = None
         self.redis_connection_attempts = 0
         self.redis_max_retries = 3
         self.redis_retry_interval = 5  # seconds
 
         try:
-            # First try to use the global client from core.utils
-            if global_redis_client is not None:
-                self.redis_client = global_redis_client
-                logger.info(f"Using global Redis client")
+            # Use dedicated Redis client for proxy
+            self.redis_client = get_redis_client()
+            if self.redis_client is not None:
+                logger.info(f"Using dedicated Redis client for proxy server")
                 logger.info(f"Worker ID: {self.worker_id}")
             else:
                 # Fall back to direct connection with retry
@@ -75,50 +75,14 @@ class ProxyServer:
 
     def _setup_redis_connection(self):
         """Setup Redis connection with retry logic"""
-        import redis
-        from django.conf import settings
-
-        while self.redis_connection_attempts < self.redis_max_retries:
-            try:
-                logger.info(f"Attempting to connect to Redis ({self.redis_connection_attempts+1}/{self.redis_max_retries})")
-
-                # Get connection parameters from settings or environment
-                redis_host = os.environ.get("REDIS_HOST", getattr(settings, 'REDIS_HOST', 'localhost'))
-                redis_port = int(os.environ.get("REDIS_PORT", getattr(settings, 'REDIS_PORT', 6379)))
-                redis_db = int(os.environ.get("REDIS_DB", getattr(settings, 'REDIS_DB', 0)))
-
-                # Create Redis client with reasonable timeouts
-                self.redis_client = redis.Redis(
-                    host=redis_host,
-                    port=redis_port,
-                    db=redis_db,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
-                    retry_on_timeout=True,
-                    health_check_interval=30
-                )
-
-                # Test connection
-                self.redis_client.ping()
-                logger.info(f"Successfully connected to Redis at {redis_host}:{redis_port}/{redis_db}")
-                logger.info(f"Worker ID: {self.worker_id}")
-                break
-
-            except (ConnectionError, TimeoutError) as e:
-                self.redis_connection_attempts += 1
-                if self.redis_connection_attempts >= self.redis_max_retries:
-                    logger.error(f"Failed to connect to Redis after {self.redis_max_retries} attempts: {e}")
-                    self.redis_client = None
-                else:
-                    # Exponential backoff with a maximum of 30 seconds
-                    retry_delay = min(self.redis_retry_interval * (2 ** (self.redis_connection_attempts - 1)), 30)
-                    logger.warning(f"Redis connection failed. Retrying in {retry_delay}s... ({self.redis_connection_attempts}/{self.redis_max_retries})")
-                    time.sleep(retry_delay)
-
-            except Exception as e:
-                logger.error(f"Unexpected error connecting to Redis: {e}", exc_info=True)
-                self.redis_client = None
-                break
+        # Try to use get_redis_client utility instead of direct connection
+        self.redis_client = get_redis_client(max_retries=self.redis_max_retries,
+                                            retry_interval=self.redis_retry_interval)
+        if self.redis_client:
+            logger.info(f"Successfully connected to Redis using utility function")
+            logger.info(f"Worker ID: {self.worker_id}")
+        else:
+            logger.error(f"Failed to connect to Redis after {self.redis_max_retries} attempts")
 
     def _execute_redis_command(self, command_func, *args, **kwargs):
         """Execute Redis command with error handling and reconnection logic"""
@@ -156,12 +120,13 @@ class ProxyServer:
 
             while True:
                 try:
-                    # Use the global PubSub client if available
-                    if global_redis_pubsub_client:
-                        pubsub_client = global_redis_pubsub_client
-                        logger.info("Using global Redis PubSub client for event listener")
+                    # Use dedicated PubSub client for event listener
+                    pubsub_client = get_redis_pubsub_client()
+                    if pubsub_client:
+                        logger.info("Using dedicated Redis PubSub client for event listener")
                     else:
-                        # Fall back to creating a dedicated client if global one is unavailable
+                        # Fall back to creating a dedicated client if utility fails
+                        logger.warning("Utility function for PubSub client failed, creating direct connection")
                         from django.conf import settings
                         import redis
 
@@ -178,7 +143,7 @@ class ProxyServer:
                             socket_keepalive=True,
                             health_check_interval=30
                         )
-                        logger.info("Created dedicated Redis PubSub client for event listener")
+                        logger.info("Created fallback Redis PubSub client for event listener")
 
                     # Test connection before subscribing
                     pubsub_client.ping()
