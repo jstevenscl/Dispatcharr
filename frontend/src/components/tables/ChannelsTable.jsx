@@ -313,7 +313,7 @@ const ChannelsTable = ({}) => {
       {
         id: 'enabled',
         header: (
-          <Box style={{ paddingLeft: 10 }}>
+          <Box style={{ paddingLeft: 12 }}>
             <ScanEye size="16" />
           </Box>
         ),
