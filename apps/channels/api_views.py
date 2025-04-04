@@ -1,14 +1,14 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-import os, json
+import os, json, requests
 
 from .models import Stream, Channel, ChannelGroup, Logo, ChannelProfile, ChannelProfileMembership
 from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer, LogoSerializer, ChannelProfileMembershipSerializer, BulkChannelProfileMembershipSerializer, ChannelProfileSerializer
@@ -18,6 +18,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
 from django.db.models import Q
+from django.http import StreamingHttpResponse, FileResponse, Http404
+
 
 from rest_framework.pagination import PageNumberPagination
 
@@ -489,6 +491,26 @@ class LogoViewSet(viewsets.ModelViewSet):
         })
 
         return Response({'id': logo.id, 'name': logo.name, 'url': logo.url}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], permission_classes=[AllowAny])
+    def cache(self, request, pk=None):
+        """Streams the logo file, whether it's local or remote."""
+        logo = self.get_object()
+        logo_url = logo.url
+
+        if logo_url.startswith("/data"):  # Local file
+            if not os.path.exists(logo_url):
+                raise Http404("Image not found")
+            return FileResponse(open(logo_url, "rb"), content_type="image/*")
+
+        else:  # Remote image
+            try:
+                remote_response = requests.get(logo_url, stream=True)
+                if remote_response.status_code == 200:
+                    return StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type="image/*")
+                raise Http404("Remote image not found")
+            except requests.RequestException:
+                raise Http404("Error fetching remote image")
 
 class ChannelProfileViewSet(viewsets.ModelViewSet):
     queryset = ChannelProfile.objects.all()

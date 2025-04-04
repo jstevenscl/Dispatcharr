@@ -312,7 +312,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 }}
               >
                 <img
-                  src={channel.logo.url.replace(/^\/data/, '') || logo}
+                  src={channel.logo.cache_url || logo}
                   alt={channel.name}
                   style={{
                     width: '100%',

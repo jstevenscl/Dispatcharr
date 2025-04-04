@@ -18,8 +18,8 @@ router = DefaultRouter()
 router.register(r'streams', StreamViewSet, basename='stream')
 router.register(r'groups', ChannelGroupViewSet, basename='channel-group')
 router.register(r'channels', ChannelViewSet, basename='channel')
-router.register(r'logos', LogoViewSet, basename='logos')
-router.register(r'profiles', ChannelProfileViewSet, basename='profiles')
+router.register(r'logos', LogoViewSet, basename='logo')
+router.register(r'profiles', ChannelProfileViewSet, basename='profile')
 
 urlpatterns = [
     # Bulk delete is a single APIView, not a ViewSet

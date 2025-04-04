@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import api from '../api';
 import { notifications } from '@mantine/notifications';
 
-const defaultProfiles = { 0: { name: 'All', channels: [] } };
+const defaultProfiles = { 0: { id: '0', name: 'All', channels: [] } };
 
 const useChannelsStore = create((set, get) => ({
   channels: [],

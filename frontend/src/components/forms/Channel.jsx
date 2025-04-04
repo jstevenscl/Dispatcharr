@@ -68,7 +68,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     if (files.length === 1) {
       console.log(files[0]);
       const retval = await API.uploadLogo(files[0]);
-      setLogoPreview(retval.url);
+      setLogoPreview(retval.cache_url);
       formik.setFieldValue('logo_id', retval.id);
     } else {
       setLogoPreview(null);
@@ -150,7 +150,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const renderLogoOption = ({ option, checked }) => {
     return (
       <Center style={{ width: '100%' }}>
-        <img src={logos[option.value].url} width="30" />
+        <img src={logos[option.value].cache_url} width="30" />
       </Center>
     );
   };
@@ -402,7 +402,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 <img
                   src={
                     logos[formik.values.logo_id]
-                      ? logos[formik.values.logo_id].url
+                      ? logos[formik.values.logo_id].cache_url
                       : logo
                   }
                   height="40"
