@@ -194,6 +194,9 @@ def match_epg_channels():
                     f"{LOWER_FUZZY_THRESHOLD}, skipping"
                 )
 
+        if channels_to_update:
+            Channel.objects.bulk_update(channels_to_update, ['epg_data'])
+
     total_matched = len(matched_channels)
     if total_matched:
         logger.info(f"Match Summary: {total_matched} channel(s) matched.")
