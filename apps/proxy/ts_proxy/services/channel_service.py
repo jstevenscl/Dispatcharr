@@ -9,7 +9,7 @@ import json
 from django.shortcuts import get_object_or_404
 from apps.channels.models import Channel
 from apps.proxy.config import TSConfig as Config
-from .. import proxy_server
+from ..server import ProxyServer
 from ..redis_keys import RedisKeys
 from ..constants import EventType, ChannelState, ChannelMetadataField
 from ..url_utils import get_stream_info_for_switch
@@ -36,6 +36,7 @@ class ChannelService:
         Returns:
             bool: Success status
         """
+        proxy_server = ProxyServer.get_instance()
         # FIXED: First, ensure that Redis metadata including stream_id is set BEFORE channel initialization
         # This ensures the stream ID is available when the StreamManager looks it up
         if stream_id and proxy_server.redis_client:
@@ -94,6 +95,8 @@ class ChannelService:
         Returns:
             dict: Result information including success status and diagnostics
         """
+        proxy_server = ProxyServer.get_instance()
+
         # If no direct URL is provided but a target stream is, get URL from target stream
         stream_id = None
         if not new_url and target_stream_id:
@@ -211,6 +214,8 @@ class ChannelService:
         Returns:
             dict: Result information including previous state if available
         """
+        proxy_server = ProxyServer.get_instance()
+
         # Check if channel exists
         channel_exists = proxy_server.check_if_channel_exists(channel_id)
         if not channel_exists:
@@ -287,6 +292,7 @@ class ChannelService:
             dict: Result information
         """
         logger.info(f"Request to stop client {client_id} on channel {channel_id}")
+        proxy_server = ProxyServer.get_instance()
 
         # Set a Redis key for immediate detection
         key_set = False
@@ -350,6 +356,8 @@ class ChannelService:
         Returns:
             tuple: (valid, state, owner, details) - validity status, current state, owner, and diagnostic info
         """
+        proxy_server = ProxyServer.get_instance()
+
         if not proxy_server.redis_client:
             return False, None, None, {"error": "Redis not available"}
 
@@ -407,6 +415,8 @@ class ChannelService:
     @staticmethod
     def _update_channel_metadata(channel_id, url, user_agent=None, stream_id=None):
         """Update channel metadata in Redis"""
+        proxy_server = ProxyServer.get_instance()
+
         if not proxy_server.redis_client:
             return False
 
@@ -444,6 +454,8 @@ class ChannelService:
     @staticmethod
     def _publish_stream_switch_event(channel_id, new_url, user_agent=None, stream_id=None):
         """Publish a stream switch event to Redis pubsub"""
+        proxy_server = ProxyServer.get_instance()
+
         if not proxy_server.redis_client:
             return False
 
@@ -466,6 +478,8 @@ class ChannelService:
     @staticmethod
     def _publish_channel_stop_event(channel_id):
         """Publish a channel stop event to Redis pubsub"""
+        proxy_server = ProxyServer.get_instance()
+
         if not proxy_server.redis_client:
             return False
 
@@ -487,6 +501,8 @@ class ChannelService:
     @staticmethod
     def _publish_client_stop_event(channel_id, client_id):
         """Publish a client stop event to Redis pubsub"""
+        proxy_server = ProxyServer.get_instance()
+
         if not proxy_server.redis_client:
             return False
 

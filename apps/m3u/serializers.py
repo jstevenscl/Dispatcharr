@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.response import Response
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
 from apps.channels.models import ChannelGroup, ChannelGroupM3UAccount
@@ -32,6 +33,19 @@ class M3UAccountProfileSerializer(serializers.ModelSerializer):
 
         return super().create(validated_data)
 
+    def update(self, instance, validated_data):
+        if instance.is_default:
+            raise serializers.ValidationError("Default profiles cannot be modified.")
+        return super().update(instance, validated_data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_default:
+            return Response(
+                {"error": "Default profiles cannot be deleted."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
 
 class M3UAccountSerializer(serializers.ModelSerializer):
     """Serializer for M3U Account"""

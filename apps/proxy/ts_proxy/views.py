@@ -7,7 +7,7 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponseRedirec
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
-from . import proxy_server
+from .server import ProxyServer
 from .channel_status import ChannelStatus
 from .stream_generator import create_stream_generator
 from .utils import get_client_ip
@@ -34,6 +34,7 @@ def stream_ts(request, channel_id):
     channel = get_stream_object(channel_id)
 
     client_user_agent = None
+    proxy_server = ProxyServer.get_instance()
 
     try:
         # Generate a unique client ID
@@ -192,6 +193,8 @@ def stream_ts(request, channel_id):
 @permission_classes([IsAuthenticated])
 def change_stream(request, channel_id):
     """Change stream URL for existing channel with enhanced diagnostics"""
+    proxy_server = ProxyServer.get_instance()
+
     try:
         data = json.loads(request.body)
         new_url = data.get('url')
@@ -243,6 +246,8 @@ def channel_status(request, channel_id=None):
     - /status/ returns basic summary of all channels
     - /status/{channel_id} returns detailed info about specific channel
     """
+    proxy_server = ProxyServer.get_instance()
+
     try:
         # Check if Redis is available
         if not proxy_server.redis_client:
@@ -343,6 +348,8 @@ def stop_client(request, channel_id):
 @permission_classes([IsAuthenticated])
 def next_stream(request, channel_id):
     """Switch to the next available stream for a channel"""
+    proxy_server = ProxyServer.get_instance()
+
     try:
         logger.info(f"Request to switch to next stream for channel {channel_id} received")
 

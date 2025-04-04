@@ -1,7 +1,7 @@
 import logging
 import time
 import re
-from . import proxy_server
+from .server import ProxyServer
 from .redis_keys import RedisKeys
 from .constants import TS_PACKET_SIZE, ChannelMetadataField
 from redis.exceptions import ConnectionError, TimeoutError
@@ -22,6 +22,8 @@ class ChannelStatus:
         return (total_bytes * 8) / duration / 1000
 
     def get_detailed_channel_info(channel_id):
+        proxy_server = ProxyServer.get_instance()
+
         # Get channel metadata
         metadata_key = RedisKeys.channel_metadata(channel_id)
         metadata = proxy_server.redis_client.hgetall(metadata_key)
@@ -230,6 +232,8 @@ class ChannelStatus:
     @staticmethod
     def _execute_redis_command(command_func):
         """Execute Redis command with error handling"""
+        proxy_server = ProxyServer.get_instance()
+
         if not proxy_server.redis_client:
             return None
 
@@ -245,6 +249,8 @@ class ChannelStatus:
     @staticmethod
     def get_basic_channel_info(channel_id):
         """Get basic channel information with Redis error handling"""
+        proxy_server = ProxyServer.get_instance()
+
         try:
             # Use _execute_redis_command for Redis operations
             metadata_key = RedisKeys.channel_metadata(channel_id)

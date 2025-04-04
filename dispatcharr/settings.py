@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'apps.m3u',
     'apps.output',
     'apps.proxy.apps.ProxyConfig',
+    'apps.proxy.ts_proxy',
     'core',
     'drf_yasg',
     'daphne',

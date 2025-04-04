@@ -18,7 +18,7 @@ import json
 from typing import Dict, Optional, Set
 from apps.proxy.config import TSConfig as Config
 from apps.channels.models import Channel, Stream
-from core.utils import get_redis_client, get_redis_pubsub_client
+from core.utils import RedisClient
 from redis.exceptions import ConnectionError, TimeoutError
 from .stream_manager import StreamManager
 from .stream_buffer import StreamBuffer
@@ -32,6 +32,19 @@ logger = get_logger()
 
 class ProxyServer:
     """Manages TS proxy server instance with worker coordination"""
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            from .server import ProxyServer
+            from .stream_manager import StreamManager
+            from .stream_buffer import StreamBuffer
+            from .client_manager import ClientManager
+
+            cls._instance = ProxyServer()
+
+        return cls._instance
 
     def __init__(self):
         """Initialize proxy server with worker identification"""
@@ -54,7 +67,7 @@ class ProxyServer:
 
         try:
             # Use dedicated Redis client for proxy
-            self.redis_client = get_redis_client()
+            self.redis_client = RedisClient.get_client()
             if self.redis_client is not None:
                 logger.info(f"Using dedicated Redis client for proxy server")
                 logger.info(f"Worker ID: {self.worker_id}")
@@ -76,7 +89,7 @@ class ProxyServer:
     def _setup_redis_connection(self):
         """Setup Redis connection with retry logic"""
         # Try to use get_redis_client utility instead of direct connection
-        self.redis_client = get_redis_client(max_retries=self.redis_max_retries,
+        self.redis_client = RedisClient.get_client(max_retries=self.redis_max_retries,
                                             retry_interval=self.redis_retry_interval)
         if self.redis_client:
             logger.info(f"Successfully connected to Redis using utility function")
@@ -121,7 +134,7 @@ class ProxyServer:
             while True:
                 try:
                     # Use dedicated PubSub client for event listener
-                    pubsub_client = get_redis_pubsub_client()
+                    pubsub_client = RedisClient.get_pubsub_client()
                     if pubsub_client:
                         logger.info("Using dedicated Redis PubSub client for event listener")
                     else:

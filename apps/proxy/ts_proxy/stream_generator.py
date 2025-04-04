@@ -7,7 +7,7 @@ import time
 import logging
 import threading
 from apps.proxy.config import TSConfig as Config
-from . import proxy_server
+from .server import ProxyServer
 from .utils import create_ts_packet, get_logger
 from .redis_keys import RedisKeys
 from .utils import get_logger
@@ -97,6 +97,7 @@ class StreamGenerator:
         max_init_wait = getattr(Config, 'CLIENT_WAIT_TIMEOUT', 30)
         keepalive_interval = 0.5
         last_keepalive = 0
+        proxy_server = ProxyServer.get_instance()
 
         # While init is happening, send keepalive packets
         while time.time() - initialization_start < max_init_wait:
@@ -143,6 +144,8 @@ class StreamGenerator:
 
     def _setup_streaming(self):
         """Setup streaming parameters and check resources."""
+        proxy_server = ProxyServer.get_instance()
+
         # Get buffer - stream manager may not exist in this worker
         buffer = proxy_server.stream_buffers.get(self.channel_id)
         stream_manager = proxy_server.stream_managers.get(self.channel_id)
@@ -218,6 +221,8 @@ class StreamGenerator:
 
     def _check_resources(self):
         """Check if required resources still exist."""
+        proxy_server = ProxyServer.get_instance()
+
         # Enhanced resource checks
         if self.channel_id not in proxy_server.stream_buffers:
             logger.info(f"[{self.client_id}] Channel buffer no longer exists, terminating stream")
@@ -264,6 +269,7 @@ class StreamGenerator:
         # Process and send chunks
         total_size = sum(len(c) for c in chunks)
         logger.debug(f"[{self.client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {self.local_index+1} to {next_index}")
+        proxy_server = ProxyServer.get_instance()
 
         # Send the chunks to the client
         for chunk in chunks:
@@ -346,6 +352,7 @@ class StreamGenerator:
         elapsed = time.time() - self.stream_start_time
         local_clients = 0
         total_clients = 0
+        proxy_server = ProxyServer.get_instance()
 
         if self.channel_id in proxy_server.client_managers:
             client_manager = proxy_server.client_managers[self.channel_id]
@@ -360,6 +367,8 @@ class StreamGenerator:
         """
         Schedule channel shutdown if there are no clients left and we're the owner.
         """
+        proxy_server = ProxyServer.get_instance()
+
         # If no clients left and we're the owner, schedule shutdown using the config value
         if local_clients == 0 and proxy_server.am_i_owner(self.channel_id):
             logger.info(f"No local clients left for channel {self.channel_id}, scheduling shutdown")

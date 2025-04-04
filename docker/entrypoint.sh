@@ -82,7 +82,6 @@ postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 
-
 uwsgi_file="/app/docker/uwsgi.ini"
 if [ "$DISPATCHARR_ENV" = "dev" ] && [ "$DISPATCHARR_DEBUG" != "true" ]; then
     uwsgi_file="/app/docker/uwsgi.dev.ini"
@@ -102,16 +101,15 @@ else
     pids+=("$nginx_pid")
 fi
 
+cd /app
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+
 echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
 uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")
-
-
-cd /app
-python manage.py migrate --noinput
-python manage.py collectstatic --noinput
 
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then

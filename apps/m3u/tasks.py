@@ -16,7 +16,7 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 import time
 import json
-from core.utils import redis_client, acquire_task_lock, release_task_lock
+from core.utils import acquire_task_lock, release_task_lock
 from core.models import CoreSettings
 from asgiref.sync import async_to_sync
 
@@ -173,6 +173,7 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
     stream_hashes = {}
 
     # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
+    redis_client = RedisClient.get_client()
 
     logger.debug(f"Processing batch of {len(batch)}")
     for stream_info in batch:
@@ -327,6 +328,7 @@ def refresh_single_m3u_account(account_id, use_cache=False):
     if not acquire_task_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
 
+    redis_client = RedisClient.get_client()
     # Record start time
     start_time = time.time()
     send_progress_update(0, account_id)

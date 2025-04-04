@@ -6,7 +6,7 @@ import redis
 import json
 import logging
 import re
-from core.utils import redis_client
+from core.utils import RedisClient
 from apps.proxy.ts_proxy.channel_status import ChannelStatus
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,8 @@ last_known_data = {}
 
 @shared_task
 def fetch_channel_stats():
+    redis_client = RedisClient.get_client()
+
     try:
         # Basic info for all channels
         channel_pattern = "ts_proxy:channel:*:metadata"

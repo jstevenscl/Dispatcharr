@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from core.models import StreamProfile
 from django.conf import settings
 from core.models import StreamProfile, CoreSettings
-from core.utils import redis_client, execute_redis_command
+from core.utils import RedisClient
 import logging
 import uuid
 from datetime import datetime
@@ -19,8 +19,7 @@ from apps.m3u.models import M3UAccount
 # Add fallback functions if Redis isn't available
 def get_total_viewers(channel_id):
     """Get viewer count from Redis or return 0 if Redis isn't available"""
-    if redis_client is None:
-        return 0
+    redis_client = RedisClient.get_client()
 
     try:
         return int(redis_client.get(f"channel:{channel_id}:viewers") or 0)
@@ -144,7 +143,7 @@ class Stream(models.Model):
         """
         Finds an available stream for the requested channel and returns the selected stream and profile.
         """
-
+        redis_client = RedisClient.get_client()
         profile_id = redis_client.get(f"stream_profile:{self.id}")
         if profile_id:
             profile_id = int(profile_id)
@@ -184,6 +183,8 @@ class Stream(models.Model):
         """
         Called when a stream is finished to release the lock.
         """
+        redis_client = RedisClient.get_client()
+
         stream_id = self.id
         # Get the matched profile for cleanup
         profile_id = redis_client.get(f"stream_profile:{stream_id}")
@@ -280,6 +281,7 @@ class Channel(models.Model):
         """
         Finds an available stream for the requested channel and returns the selected stream and profile.
         """
+        redis_client = RedisClient.get_client()
 
         # 2. Check if a stream is already active for this channel
         stream_id = redis_client.get(f"channel_stream:{self.id}")
@@ -326,6 +328,8 @@ class Channel(models.Model):
         """
         Called when a stream is finished to release the lock.
         """
+        redis_client = RedisClient.get_client()
+
         stream_id = redis_client.get(f"channel_stream:{self.id}")
         if not stream_id:
             logger.debug("Invalid stream ID pulled from channel index")
