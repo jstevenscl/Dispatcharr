@@ -343,7 +343,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 "name": name,
                 "tvg_id": stream.tvg_id,
                 "channel_group_id": channel_group.id,
-                "streams": [stream_id],
             }
 
             # Attempt to find existing EPGs with the same tvg-id
@@ -354,11 +353,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(data=channel_data)
             if serializer.is_valid():
                 validated_data = serializer.validated_data
-                stream_ids = validated_data.pop("streams", None)  # Extract stream relation if exists
                 channel = Channel(**validated_data)
                 channels_to_create.append(channel)
 
-                streams_map.append(stream_ids)
+                streams_map.append([stream_id])
                 if stream.logo_url:
                     logos_to_create.append(Logo(
                         url=stream.logo_url,
@@ -385,13 +383,14 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
                 update = []
                 for channel, stream_ids, logo_url in zip(created_channels, streams_map, logo_map):
-                    if stream_ids:
-                        channel.streams.set(stream_ids)
                     if logo_url:
                         channel.logo = channel_logos[logo_url]
-                        update.append(channel)
+                    update.append(channel)
 
                 Channel.objects.bulk_update(update, ['logo'])
+
+                for channel, stream_ids in zip(created_channels, streams_map):
+                    channel.streams.set(stream_ids)
 
         response_data = {"created": ChannelSerializer(created_channels, many=True).data}
         if errors:
