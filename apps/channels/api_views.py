@@ -192,33 +192,36 @@ class ChannelViewSet(viewsets.ModelViewSet):
         stream = get_object_or_404(Stream, pk=stream_id)
         channel_group = stream.channel_group
 
-        # Check if client provided a channel_number; if not, auto-assign one.
-        channel_number = None
-        provided_number = request.data.get('channel_number')
-        if provided_number is None:
-            channel_number = self.get_next_available_channel_number()
-        else:
-            try:
-                channel_number = int(provided_number)
-            except ValueError:
-                return Response({"error": "channel_number must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
-            # If the provided number is already used, return an error.
-            if Channel.objects.filter(channel_number=channel_number).exists():
-                return Response(
-                    {"error": f"Channel number {channel_number} is already in use. Please choose a different number."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
         name = request.data.get('name')
         if name is None:
             name = stream.name
 
+        # Check if client provided a channel_number; if not, auto-assign one.
         stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
+
+        channel_number = None
+        if 'tv-chno' in stream_custom_props:
+            channel_number = int(stream_custom_props['tv-chno'])
+        elif 'channel-number' in stream_custom_props:
+            channel_number = int(stream_custom_props['channel-number'])
+
         if channel_number is None:
-            if 'tv-chno' in stream_custom_props:
-                channel_number = int(stream_custom_props['tv-chno'])
-            elif 'channel-number' in stream_custom_props:
-                channel_number = int(stream_custom_props['channel-number'])
+            provided_number = request.data.get('channel_number')
+            if provided_number is None:
+                channel_number = self.get_next_available_channel_number()
+            else:
+                try:
+                    channel_number = int(provided_number)
+                except ValueError:
+                    return Response({"error": "channel_number must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+                # If the provided number is already used, return an error.
+                if Channel.objects.filter(channel_number=channel_number).exists():
+                    return Response(
+                        {"error": f"Channel number {channel_number} is already in use. Please choose a different number."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+
 
         channel_data = {
             'channel_number': channel_number,
@@ -309,34 +312,35 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 errors.append({"item": item, "error": str(e)})
                 continue
 
-            channel_group = stream.channel_group
-
-            # Determine channel number: if provided, use it (if free); else auto assign.
-            channel_number = None
-            provided_number = item.get('channel_number')
-            if provided_number is None:
-                channel_number = get_auto_number()
-            else:
-                try:
-                    channel_number = int(provided_number)
-                except ValueError:
-                    errors.append({"item": item, "error": "channel_number must be an integer."})
-                    continue
-                if channel_number in used_numbers or Channel.objects.filter(channel_number=channel_number).exists():
-                    errors.append({"item": item, "error": f"Channel number {channel_number} is already in use."})
-                    continue
-                used_numbers.add(channel_number)
-
             name = item.get('name')
             if name is None:
                 name = stream.name
 
+            channel_group = stream.channel_group
+
             stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
+
+            channel_number = None
+            if 'tv-chno' in stream_custom_props:
+                channel_number = int(stream_custom_props['tv-chno'])
+            elif 'channel-number' in stream_custom_props:
+                channel_number = int(stream_custom_props['channel-number'])
+
+            # Determine channel number: if provided, use it (if free); else auto assign.
             if channel_number is None:
-                if 'tv-chno' in stream_custom_props:
-                    channel_number = int(stream_custom_props['tv-chno'])
-                elif 'channel-number' in stream_custom_props:
-                    channel_number = int(stream_custom_props['channel-number'])
+                provided_number = item.get('channel_number')
+                if provided_number is None:
+                    channel_number = get_auto_number()
+                else:
+                    try:
+                        channel_number = int(provided_number)
+                    except ValueError:
+                        errors.append({"item": item, "error": "channel_number must be an integer."})
+                        continue
+                    if channel_number in used_numbers or Channel.objects.filter(channel_number=channel_number).exists():
+                        errors.append({"item": item, "error": f"Channel number {channel_number} is already in use."})
+                        continue
+                    used_numbers.add(channel_number)
 
             channel_data = {
                 "channel_number": channel_number,
