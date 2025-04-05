@@ -1,6 +1,8 @@
 #!/bin/bash
 
 mkdir -p /data/logos
+mkdir -p /app/logo_cache
+mkdir -p /app/media
 
 sed -i "s/NGINX_PORT/${DISPATCHARR_PORT}/g" /etc/nginx/sites-enabled/default
 
@@ -11,14 +13,10 @@ if [ "$(id -u)" = "0" ]; then
     chown -R $PUID:$PGID /app
     chown $PUID:$PGID /app/uwsgi.sock
 
-    # Create and set permissions for the media / cache directories
-    mkdir -p /app/media
-
     chown -R $PUID:$PGID /app
-    echo "Created and set permissions for cached_m3u directory"
-
     chown -R $PUID:$PGID /data/logos
 
     # Permissions
     chown -R postgres:postgres /data/db
+    chmod +x /data
 fi
