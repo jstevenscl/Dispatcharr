@@ -520,7 +520,10 @@ const ChannelsTable = ({ }) => {
   const rowVirtualizerInstanceRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([{ id: 'channel_number', desc: false }]);
+  const [sorting, setSorting] = useState([
+    { id: 'channel_number', desc: false },
+    { id: 'name', desc: false }
+  ]);
 
   const editChannel = async (ch = null) => {
     setChannel(ch);
@@ -719,11 +722,11 @@ const ChannelsTable = ({ }) => {
       sorting: [
         {
           id: 'channel_number',
-          desc: true,
+          desc: false,
         },
         {
           id: 'name',
-          desc: true,
+          desc: false,
         },
       ],
     },
