@@ -1009,6 +1009,29 @@ export default class API {
 
     useChannelsStore
       .getState()
-      .updateProfileChannel(channelId, profileId, enabled);
+      .updateProfileChannels([channelId], profileId, enabled);
+  }
+
+  static async updateProfileChannels(channelIds, profileId, enabled) {
+    const response = await fetch(
+      `${host}/api/channels/profiles/${profileId}/channels/bulk-update/`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channels: channelIds.map((id) => ({
+            channel_id: id,
+            enabled,
+          })),
+        }),
+      }
+    );
+
+    useChannelsStore
+      .getState()
+      .updateProfileChannels(channelIds, profileId, enabled);
   }
 }

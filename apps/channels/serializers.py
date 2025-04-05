@@ -95,12 +95,14 @@ class ChannelProfileMembershipSerializer(serializers.ModelSerializer):
         model = ChannelProfileMembership
         fields = ['channel', 'enabled']
 
+class ChanneProfilelMembershipUpdateSerializer(serializers.Serializer):
+    channel_id = serializers.IntegerField()  # Ensure channel_id is an integer
+    enabled = serializers.BooleanField()
+
 class BulkChannelProfileMembershipSerializer(serializers.Serializer):
     channels = serializers.ListField(
-        child=serializers.DictField(
-            child=serializers.BooleanField(),
-            allow_empty=False
-        )
+        child=ChanneProfilelMembershipUpdateSerializer(),  # Use the nested serializer
+        allow_empty=False
     )
 
     def validate_channels(self, value):

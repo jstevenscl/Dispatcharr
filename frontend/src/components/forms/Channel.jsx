@@ -39,7 +39,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const listRef = useRef(null);
 
-  const { channelGroups, logos } = useChannelsStore();
+  const { channelGroups, logos, fetchLogos } = useChannelsStore();
   const streams = useStreamsStore((state) => state.streams);
   const { profiles: streamProfiles } = useStreamProfilesStore();
   const { playlists } = usePlaylistsStore();
@@ -68,6 +68,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     if (files.length === 1) {
       console.log(files[0]);
       const retval = await API.uploadLogo(files[0]);
+      await fetchLogos();
       setLogoPreview(retval.cache_url);
       formik.setFieldValue('logo_id', retval.id);
     } else {

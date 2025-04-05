@@ -247,6 +247,7 @@ const ChannelsTable = ({}) => {
     selectedProfileId,
     setSelectedProfileId,
     selectedProfileChannels,
+    channelsPageSelection,
   } = useChannelsStore();
 
   const [channel, setChannel] = useState(null);
@@ -256,6 +257,8 @@ const ChannelsTable = ({}) => {
   const [selectedProfile, setSelectedProfile] = useState(
     profiles[selectedProfileId]
   );
+  const [channelsEnabledHeaderSwitch, setChannelsEnabledHeaderSwitch] =
+    useState(false);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
@@ -303,8 +306,13 @@ const ChannelsTable = ({}) => {
     environment: { env_mode },
   } = useSettingsStore();
 
-  const toggleChannelEnabled = async (channelId, enabled) => {
-    await API.updateProfileChannel(channelId, selectedProfileId, enabled);
+  const toggleChannelEnabled = async (channelIds, enabled) => {
+    if (channelIds.length == 1) {
+      await API.updateProfileChannel(channelIds[0], selectedProfileId, enabled);
+    } else {
+      await API.updateProfileChannels(channelIds, selectedProfileId, enabled);
+      setChannelsEnabledHeaderSwitch(enabled);
+    }
   };
 
   // Configure columns
@@ -312,12 +320,34 @@ const ChannelsTable = ({}) => {
     () => [
       {
         id: 'enabled',
-        header: (
-          <Box style={{ paddingLeft: 12 }}>
-            <ScanEye size="16" />
-          </Box>
-        ),
-        size: 50,
+        Header: () => {
+          if (Object.values(rowSelection).length == 0) {
+            return (
+              <Container style={{ paddingLeft: 15 }}>
+                <ScanEye size="16" />
+              </Container>
+            );
+          }
+
+          return (
+            <Container style={{ paddingLeft: 8 }}>
+              <Switch
+                size="xs"
+                checked={
+                  selectedProfileId == '0' || channelsEnabledHeaderSwitch
+                }
+                onChange={() => {
+                  console.log(channelsPageSelection);
+                  toggleChannelEnabled(
+                    channelsPageSelection.map((row) => row.id),
+                    !channelsEnabledHeaderSwitch
+                  );
+                }}
+                disabled={selectedProfileId == '0'}
+              />
+            </Container>
+          );
+        },
         enableSorting: false,
         accessorFn: (row) => {
           if (selectedProfileId == '0') {
@@ -327,15 +357,33 @@ const ChannelsTable = ({}) => {
           return selectedProfileChannels.find((channel) => row.id == channel.id)
             .enabled;
         },
+        size: 20,
+        mantineTableHeadCellProps: {
+          // align: 'center',
+          style: {
+            backgroundColor: '#3F3F46',
+            minWidth: '20px',
+            width: '50px !important',
+            justifyContent: 'center',
+            // paddingLeft: 8,
+            paddingRight: 0,
+          },
+        },
         mantineTableBodyCellProps: {
-          align: 'center',
+          // align: 'center',
+          style: {
+            minWidth: '20px',
+            justifyContent: 'center',
+            paddingLeft: 0,
+            paddingRight: 0,
+          },
         },
         Cell: ({ row, cell }) => (
           <Switch
             size="xs"
             checked={cell.getValue()}
             onChange={() => {
-              toggleChannelEnabled(row.original.id, !cell.getValue());
+              toggleChannelEnabled([row.original.id], !cell.getValue());
             }}
             disabled={selectedProfileId == '0'}
           />
@@ -343,8 +391,26 @@ const ChannelsTable = ({}) => {
       },
       {
         header: '#',
-        size: 50,
+        size: 30,
         accessorKey: 'channel_number',
+        mantineTableHeadCellProps: {
+          style: {
+            backgroundColor: '#3F3F46',
+            minWidth: '20px',
+            justifyContent: 'center',
+            paddingLeft: 15,
+            paddingRight: 0,
+          },
+        },
+        mantineTableBodyCellProps: {
+          align: 'center',
+          style: {
+            minWidth: '20px',
+            justifyContent: 'center',
+            paddingLeft: 0,
+            paddingRight: 0,
+          },
+        },
       },
       {
         header: 'Name',
@@ -409,14 +475,12 @@ const ChannelsTable = ({}) => {
         ),
       },
       {
-        header: 'Logo',
+        header: '',
         accessorKey: 'logo',
         enableSorting: false,
         size: 55,
         mantineTableBodyCellProps: {
-          style: {
-            justifyContent: 'center',
-          },
+          align: 'center',
         },
         Cell: ({ cell }) => (
           <Grid
@@ -446,6 +510,9 @@ const ChannelsTable = ({}) => {
       filterValues,
       selectedProfile,
       selectedProfileChannels,
+      rowSelection,
+      channelsPageSelection,
+      channelsEnabledHeaderSwitch,
     ]
   );
 
@@ -584,6 +651,16 @@ const ChannelsTable = ({}) => {
       .getSelectedRowModel()
       .rows.map((row) => row.original);
     setChannelsPageSelection(selectedRows);
+
+    if (selectedProfileId != '0') {
+      setChannelsEnabledHeaderSwitch(
+        selectedRows.filter(
+          (row) =>
+            selectedProfileChannels.find((channel) => row.id == channel.id)
+              .enabled
+        ).length == selectedRows.length
+      );
+    }
   }, [rowSelection]);
 
   const filteredData = Object.values(channels).filter((row) =>
@@ -654,20 +731,61 @@ const ChannelsTable = ({}) => {
     enableExpandAll: false,
     displayColumnDefOptions: {
       'mrt-row-select': {
-        size: 20,
-      },
-      'mrt-row-expand': {
-        size: 10,
-        header: '',
+        // size: 20,
         mantineTableHeadCellProps: {
-          padding: 0,
+          // align: 'center',
+          style: {
+            paddingLeft: 7,
+            width: '30px',
+            minWidth: '30px',
+            backgroundColor: '#3F3F46',
+          },
         },
         mantineTableBodyCellProps: {
-          padding: 0,
+          align: 'center',
+          style: {
+            // paddingLeft: 10,
+            width: '30px',
+            minWidth: '30px',
+          },
+        },
+      },
+      'mrt-row-expand': {
+        size: 20,
+        header: '',
+        mantineTableHeadCellProps: {
+          style: {
+            padding: 0,
+            paddingLeft: 2,
+            width: '20px',
+            minWidth: '20px',
+            backgroundColor: '#3F3F46',
+          },
+        },
+        mantineTableBodyCellProps: {
+          style: {
+            padding: 0,
+            paddingLeft: 2,
+            width: '20px',
+            minWidth: '20px',
+          },
         },
       },
       'mrt-row-actions': {
         size: 60,
+        mantineTableHeadCellProps: {
+          style: {
+            paddingLeft: 10,
+            fontWeight: 'normal',
+            color: 'rgb(207,207,207)',
+            backgroundColor: '#3F3F46',
+          },
+        },
+        mantineTableBodyCellProps: {
+          style: {
+            paddingRight: 10,
+          },
+        },
       },
     },
     mantineExpandButtonProps: ({ row, table }) => ({
@@ -728,6 +846,7 @@ const ChannelsTable = ({}) => {
       style: {
         height: 'calc(100vh - 110px)',
         overflowY: 'auto',
+        // margin: 5,
       },
     },
   });

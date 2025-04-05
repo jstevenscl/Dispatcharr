@@ -261,7 +261,7 @@ const useChannelsStore = create((set, get) => ({
       };
     }),
 
-  updateProfileChannel: (channelId, profileId, enabled) =>
+  updateProfileChannels: (channelIds, profileId, enabled) =>
     set((state) => {
       // Get the specific profile
       const profile = state.profiles[profileId];
@@ -274,7 +274,7 @@ const useChannelsStore = create((set, get) => ({
           [profileId]: {
             ...profile,
             channels: profile.channels.map((channel) =>
-              channel.id === channelId
+              channelIds.includes(channel.id)
                 ? { ...channel, enabled } // Update enabled flag
                 : channel
             ),
@@ -283,7 +283,9 @@ const useChannelsStore = create((set, get) => ({
         selectedProfileChannels: state.selectedProfileChannels.map(
           (channel) => ({
             id: channel.id,
-            enabled: channel.id == channelId ? enabled : channel.enabled,
+            enabled: channelIds.includes(channel.id)
+              ? enabled
+              : channel.enabled,
           })
         ),
       };
@@ -299,73 +301,75 @@ const useChannelsStore = create((set, get) => ({
     })),
 
   setChannelStats: (stats) => {
-    const {
-      channels,
-      stats: currentStats,
-      activeChannels: oldChannels,
-      activeClients: oldClients,
-      channelsByUUID,
-    } = get();
+    return set((state) => {
+      const {
+        channels,
+        stats: currentStats,
+        activeChannels: oldChannels,
+        activeClients: oldClients,
+        channelsByUUID,
+      } = state;
 
-    const newClients = {};
-    const newChannels = stats.channels.reduce((acc, ch) => {
-      acc[ch.channel_id] = ch;
+      const newClients = {};
+      const newChannels = stats.channels.reduce((acc, ch) => {
+        acc[ch.channel_id] = ch;
 
-      if (currentStats.channels) {
-        if (oldChannels[ch.channel_id] === undefined) {
-          notifications.show({
-            title: 'New channel streaming',
-            message: channels[channelsByUUID[ch.channel_id]].name,
-            color: 'blue.5',
-          });
-        }
-      }
-
-      ch.clients.map((client) => {
-        newClients[client.client_id] = client;
-        // This check prevents the notifications if streams are active on page load
         if (currentStats.channels) {
-          if (oldClients[client.client_id] === undefined) {
+          if (oldChannels[ch.channel_id] === undefined) {
             notifications.show({
-              title: 'New client started streaming',
-              message: `Client streaming from ${client.ip_address}`,
+              title: 'New channel streaming',
+              message: channels[channelsByUUID[ch.channel_id]].name,
               color: 'blue.5',
             });
           }
         }
-      });
 
-      return acc;
-    }, {});
+        ch.clients.map((client) => {
+          newClients[client.client_id] = client;
+          // This check prevents the notifications if streams are active on page load
+          if (currentStats.channels) {
+            if (oldClients[client.client_id] === undefined) {
+              notifications.show({
+                title: 'New client started streaming',
+                message: `Client streaming from ${client.ip_address}`,
+                color: 'blue.5',
+              });
+            }
+          }
+        });
 
-    // This check prevents the notifications if streams are active on page load
-    if (currentStats.channels) {
-      for (const uuid in oldChannels) {
-        if (newChannels[uuid] === undefined) {
-          notifications.show({
-            title: 'Channel streaming stopped',
-            message: channels[channelsByUUID[uuid]].name,
-            color: 'blue.5',
-          });
+        return acc;
+      }, {});
+
+      // This check prevents the notifications if streams are active on page load
+      if (currentStats.channels) {
+        for (const uuid in oldChannels) {
+          if (newChannels[uuid] === undefined) {
+            notifications.show({
+              title: 'Channel streaming stopped',
+              message: channels[channelsByUUID[uuid]].name,
+              color: 'blue.5',
+            });
+          }
+        }
+
+        for (const clientId in oldClients) {
+          if (newClients[clientId] === undefined) {
+            notifications.show({
+              title: 'Client stopped streaming',
+              message: `Client stopped streaming from ${oldClients[clientId].ip_address}`,
+              color: 'blue.5',
+            });
+          }
         }
       }
 
-      for (const clientId in oldClients) {
-        if (newClients[clientId] === undefined) {
-          notifications.show({
-            title: 'Client stopped streaming',
-            message: `Client stopped streaming from ${oldClients[clientId].ip_address}`,
-            color: 'blue.5',
-          });
-        }
-      }
-    }
-
-    return set((state) => ({
-      stats,
-      activeChannels: newChannels,
-      activeClients: newClients,
-    }));
+      return {
+        stats,
+        activeChannels: newChannels,
+        activeClients: newClients,
+      };
+    });
   },
 }));
 

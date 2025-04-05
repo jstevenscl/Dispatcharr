@@ -51,7 +51,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
     <>
       <Modal opened={isOpen} onClose={onClose} title="Profiles">
         {profiles
-          .filter((playlist) => playlist.is_default == false)
+          // .filter((playlist) => playlist.is_default == false)
           .map((item) => (
             <Card
             // key={item.id}

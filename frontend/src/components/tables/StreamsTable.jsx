@@ -592,7 +592,20 @@ const StreamsTable = ({}) => {
     displayColumnDefOptions: {
       'mrt-row-actions': {
         size: 30,
-        color: 'white',
+        mantineTableHeadCellProps: {
+          style: {
+            paddingLeft: 4,
+            backgroundColor: '#3F3F46',
+            fontWeight: 'normal',
+            color: 'rgb(207,207,207)',
+          },
+        },
+        mantineTableBodyCellProps: {
+          style: {
+            paddingLeft: 0,
+            paddingRight: 0,
+          },
+        },
       },
       'mrt-row-select': {
         size: 20,

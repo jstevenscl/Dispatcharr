@@ -535,9 +535,12 @@ class UpdateChannelMembershipAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class BulkUpdateChannelMembershipAPIView(APIView):
-    def patch(self, request, group_id):
+    def patch(self, request, profile_id):
         """Bulk enable or disable channels for a specific profile"""
-        channel_profile = get_object_or_404(ChannelProfile, id=group_id)
+        # Get the channel profile
+        channel_profile = get_object_or_404(ChannelProfile, id=profile_id)
+
+        # Validate the incoming data using the serializer
         serializer = BulkChannelProfileMembershipSerializer(data=request.data)
 
         if serializer.is_valid():
