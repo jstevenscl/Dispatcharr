@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount, Logo, ChannelProfile, ChannelProfileMembership
+from .models import Stream, Channel, ChannelGroup, ChannelStream, ChannelGroupM3UAccount, Logo, ChannelProfile, ChannelProfileMembership, Recording
 from apps.epg.serializers import EPGDataSerializer
 from core.models import StreamProfile
 from apps.epg.models import EPGData
@@ -232,3 +232,10 @@ class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
 
     # Optionally, if you only need the id of the ChannelGroup, you can customize it like this:
     # channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())
+
+
+class RecordingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Recording
+        fields = '__all__'
+        read_only_fields = ['task_id']

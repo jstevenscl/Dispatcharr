@@ -2,12 +2,16 @@
 import logging
 import os
 import re
+import requests
+import time
+from datetime import datetime
 
 from celery import shared_task
 from rapidfuzz import fuzz
 from sentence_transformers import util
 from django.conf import settings
 from django.db import transaction
+from django.utils.text import slugify
 
 from apps.channels.models import Channel
 from apps.epg.models import EPGData, EPGSource
@@ -217,3 +221,33 @@ def match_epg_channels():
     )
 
     return f"Done. Matched {total_matched} channel(s)."
+
+@shared_task
+def run_recording(channel_id, start_time_str, end_time_str):
+    channel = Channel.objects.get(id=channel_id)
+
+    start_time = datetime.fromisoformat(start_time_str)
+    end_time = datetime.fromisoformat(end_time_str)
+
+    duration_seconds = int((end_time - start_time).total_seconds())
+    filename = f'{slugify(channel.name)}-{start_time.strftime("%Y-%m-%d_%H-%M-%S")}.mp4'
+
+    logger.info(f"Starting recording for channel {channel.name}")
+    with requests.get(f"http://localhost:5656/proxy/ts/stream/{channel.uuid}", headers={
+        'User-Agent': 'Dispatcharr-DVR',
+    }, stream=True) as response:
+        # Raise an exception for bad responses (4xx, 5xx)
+        response.raise_for_status()
+
+        # Open the file in write-binary mode
+        with open(f"/data/recordings/{filename}", 'wb') as file:
+            start_time = time.time()  # Start the timer
+            for chunk in response.iter_content(chunk_size=8192):  # 8KB chunks
+                if time.time() - start_time > duration_seconds:
+                    print(f"Timeout reached: {duration_seconds} seconds")
+                    break
+                # Write the chunk to the file
+                file.write(chunk)
+
+        # After the loop, the file and response are closed automatically.
+        logger.info(f"Finished recording for channel {channel.name}")

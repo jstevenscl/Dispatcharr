@@ -1,6 +1,7 @@
 #!/bin/bash
 
 mkdir -p /data/logos
+mkdir -p /data/recordings
 mkdir -p /app/logo_cache
 mkdir -p /app/media
 
@@ -14,7 +15,8 @@ if [ "$(id -u)" = "0" ]; then
     chown $PUID:$PGID /app/uwsgi.sock
 
     chown -R $PUID:$PGID /app
-    chown -R $PUID:$PGID /data/logos
+    # Needs to own ALL of /data except db, we handle that below
+    chown -R $PUID:$PGID /data
 
     # Permissions
     chown -R postgres:postgres /data/db

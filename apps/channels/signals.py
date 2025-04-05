@@ -1,11 +1,14 @@
 # apps/channels/signals.py
 
-from django.db.models.signals import m2m_changed, pre_save, post_save
+from django.db.models.signals import m2m_changed, pre_save, post_save, post_delete
 from django.dispatch import receiver
-from .models import Channel, Stream, ChannelProfile, ChannelProfileMembership
+from django.utils.timezone import now
+from celery.result import AsyncResult
+from .models import Channel, Stream, ChannelProfile, ChannelProfileMembership, Recording
 from apps.m3u.models import M3UAccount
 from apps.epg.tasks import parse_programs_for_tvg_id
-import logging
+import logging, requests, time
+from .tasks import run_recording
 
 logger = logging.getLogger(__name__)
 
@@ -62,3 +65,42 @@ def create_profile_memberships(sender, instance, created, **kwargs):
             ChannelProfileMembership(channel_profile=instance, channel=channel)
             for channel in channels
         ])
+
+def schedule_recording_task(instance):
+    eta = instance.start_time
+    task = run_recording.apply_async(
+        args=[instance.channel_id, str(instance.start_time), str(instance.end_time)],
+        eta=eta
+    )
+    return task.id
+
+def revoke_task(task_id):
+    if task_id:
+        AsyncResult(task_id).revoke()
+
+@receiver(pre_save, sender=Recording)
+def revoke_old_task_on_update(sender, instance, **kwargs):
+    if not instance.pk:
+        return  # New instance
+    try:
+        old = Recording.objects.get(pk=instance.pk)
+        if old.task_id and (
+            old.start_time != instance.start_time or
+            old.end_time != instance.end_time or
+            old.channel_id != instance.channel_id
+        ):
+            revoke_task(old.task_id)
+            instance.task_id = None
+    except Recording.DoesNotExist:
+        pass
+
+@receiver(post_save, sender=Recording)
+def schedule_task_on_save(sender, instance, created, **kwargs):
+    if not instance.task_id and instance.start_time > now():
+        task_id = schedule_recording_task(instance)
+        instance.task_id = task_id
+        instance.save(update_fields=['task_id'])
+
+@receiver(post_delete, sender=Recording)
+def revoke_task_on_delete(sender, instance, **kwargs):
+    revoke_task(instance.task_id)

@@ -404,3 +404,12 @@ class Logo(models.Model):
 
     def __str__(self):
         return self.name
+
+class Recording(models.Model):
+    channel = models.ForeignKey("Channel", on_delete=models.CASCADE, related_name="recordings")
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.channel.name} - {self.start_time} to {self.end_time}"

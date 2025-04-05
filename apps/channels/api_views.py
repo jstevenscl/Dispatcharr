@@ -10,8 +10,8 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 import os, json, requests
 
-from .models import Stream, Channel, ChannelGroup, Logo, ChannelProfile, ChannelProfileMembership
-from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer, LogoSerializer, ChannelProfileMembershipSerializer, BulkChannelProfileMembershipSerializer, ChannelProfileSerializer
+from .models import Stream, Channel, ChannelGroup, Logo, ChannelProfile, ChannelProfileMembership, Recording
+from .serializers import StreamSerializer, ChannelSerializer, ChannelGroupSerializer, LogoSerializer, ChannelProfileMembershipSerializer, BulkChannelProfileMembershipSerializer, ChannelProfileSerializer, RecordingSerializer
 from .tasks import match_epg_channels
 import django_filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -565,3 +565,8 @@ class BulkUpdateChannelMembershipAPIView(APIView):
             return Response({"status": "success"}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class RecordingViewSet(viewsets.ModelViewSet):
+    queryset = Recording.objects.all()
+    serializer_class = RecordingSerializer
+    permission_classes = [IsAuthenticated]

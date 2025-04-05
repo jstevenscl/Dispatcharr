@@ -140,7 +140,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         logo_id: `${channel.logo?.id}`,
       });
 
-      console.log(channel);
       setChannelStreams(channel.streams);
     } else {
       formik.resetForm();

@@ -10,6 +10,7 @@ from .api_views import (
     ChannelProfileViewSet,
     UpdateChannelMembershipAPIView,
     BulkUpdateChannelMembershipAPIView,
+    RecordingViewSet,
 )
 
 app_name = 'channels'  # for DRF routing
@@ -20,6 +21,7 @@ router.register(r'groups', ChannelGroupViewSet, basename='channel-group')
 router.register(r'channels', ChannelViewSet, basename='channel')
 router.register(r'logos', LogoViewSet, basename='logo')
 router.register(r'profiles', ChannelProfileViewSet, basename='profile')
+router.register(r'recordings', RecordingViewSet, basename='recording')
 
 urlpatterns = [
     # Bulk delete is a single APIView, not a ViewSet

@@ -1034,4 +1034,19 @@ export default class API {
       .getState()
       .updateProfileChannels(channelIds, profileId, enabled);
   }
+
+  static async createRecording(values) {
+    const response = await fetch(`${host}/api/channels/recordings/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(values),
+    });
+
+    const retval = await response.json();
+
+    return retval;
+  }
 }

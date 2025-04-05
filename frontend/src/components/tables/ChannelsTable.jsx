@@ -4,6 +4,7 @@ import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
+import RecordingForm from '../forms/Recording';
 import { TableHelper } from '../../helpers';
 import utils from '../../utils';
 import logo from '../../images/logo.png';
@@ -23,6 +24,8 @@ import {
   Copy,
   CircleCheck,
   ScanEye,
+  EllipsisVertical,
+  CircleEllipsis,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -42,6 +45,7 @@ import {
   Center,
   Container,
   Switch,
+  Menu,
 } from '@mantine/core';
 
 const ChannelStreams = ({ channel, isExpanded }) => {
@@ -250,8 +254,13 @@ const ChannelsTable = ({ }) => {
     channelsPageSelection,
   } = useChannelsStore();
 
+  const {
+    environment: { env_mode },
+  } = useSettingsStore();
+
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [recordingModalOpen, setRecordingModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
   const [channelGroupOptions, setChannelGroupOptions] = useState([]);
   const [selectedProfile, setSelectedProfile] = useState(
@@ -259,6 +268,8 @@ const ChannelsTable = ({ }) => {
   );
   const [channelsEnabledHeaderSwitch, setChannelsEnabledHeaderSwitch] =
     useState(false);
+  const [moreActionsAnchorEl, setMoreActionsAnchorEl] = useState(null);
+  const [actionsOpenRow, setActionsOpenRow] = useState(null);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
@@ -322,30 +333,22 @@ const ChannelsTable = ({ }) => {
         id: 'enabled',
         Header: () => {
           if (Object.values(rowSelection).length == 0) {
-            return (
-              <Container style={{ paddingLeft: 15 }}>
-                <ScanEye size="16" />
-              </Container>
-            );
+            return <ScanEye size="16" style={{ marginRight: 8 }} />;
           }
 
           return (
-            <Container style={{ paddingLeft: 8 }}>
-              <Switch
-                size="xs"
-                checked={
-                  selectedProfileId == '0' || channelsEnabledHeaderSwitch
-                }
-                onChange={() => {
-                  console.log(channelsPageSelection);
-                  toggleChannelEnabled(
-                    channelsPageSelection.map((row) => row.id),
-                    !channelsEnabledHeaderSwitch
-                  );
-                }}
-                disabled={selectedProfileId == '0'}
-              />
-            </Container>
+            <Switch
+              size="xs"
+              checked={selectedProfileId == '0' || channelsEnabledHeaderSwitch}
+              onChange={() => {
+                console.log(channelsPageSelection);
+                toggleChannelEnabled(
+                  channelsPageSelection.map((row) => row.id),
+                  !channelsEnabledHeaderSwitch
+                );
+              }}
+              disabled={selectedProfileId == '0'}
+            />
           );
         },
         enableSorting: false,
@@ -357,25 +360,32 @@ const ChannelsTable = ({ }) => {
           return selectedProfileChannels.find((channel) => row.id == channel.id)
             .enabled;
         },
-        size: 20,
         mantineTableHeadCellProps: {
-          // align: 'center',
+          align: 'right',
           style: {
             backgroundColor: '#3F3F46',
-            minWidth: '20px',
-            width: '50px !important',
-            justifyContent: 'center',
-            // paddingLeft: 8,
-            paddingRight: 0,
+            width: '40px',
+            minWidth: '40px',
+            maxWidth: '40px',
+            //   // minWidth: '20px',
+            //   // width: '50px !important',
+            //   // justifyContent: 'center',
+            padding: 0,
+            //   // paddingLeft: 8,
+            //   // paddingRight: 0,
           },
         },
         mantineTableBodyCellProps: {
-          // align: 'center',
+          align: 'right',
           style: {
-            minWidth: '20px',
-            justifyContent: 'center',
-            paddingLeft: 0,
-            paddingRight: 0,
+            width: '40px',
+            minWidth: '40px',
+            maxWidth: '40px',
+            //   // minWidth: '20px',
+            //   // justifyContent: 'center',
+            //   // paddingLeft: 0,
+            //   // paddingRight: 0,
+            padding: 0,
           },
         },
         Cell: ({ row, cell }) => (
@@ -391,25 +401,27 @@ const ChannelsTable = ({ }) => {
       },
       {
         header: '#',
-        size: 30,
+        size: 50,
+        maxSize: 50,
         accessorKey: 'channel_number',
         mantineTableHeadCellProps: {
-          style: {
-            backgroundColor: '#3F3F46',
-            minWidth: '20px',
-            justifyContent: 'center',
-            paddingLeft: 15,
-            paddingRight: 0,
-          },
+          align: 'right',
+          //   //   style: {
+          //   //     backgroundColor: '#3F3F46',
+          //   //     // minWidth: '20px',
+          //   //     // justifyContent: 'center',
+          //   //     // paddingLeft: 15,
+          //   //     paddingRight: 0,
+          //   //   },
         },
         mantineTableBodyCellProps: {
-          align: 'center',
-          style: {
-            minWidth: '20px',
-            justifyContent: 'center',
-            paddingLeft: 0,
-            paddingRight: 0,
-          },
+          align: 'right',
+          //   //   style: {
+          //   //     minWidth: '20px',
+          //   //     // justifyContent: 'center',
+          //   //     paddingLeft: 0,
+          //   //     paddingRight: 0,
+          //   //   },
         },
       },
       {
@@ -481,6 +493,9 @@ const ChannelsTable = ({ }) => {
         size: 55,
         mantineTableBodyCellProps: {
           align: 'center',
+          style: {
+            maxWidth: '55px',
+          },
         },
         Cell: ({ cell }) => (
           <Grid
@@ -532,6 +547,11 @@ const ChannelsTable = ({ }) => {
 
   const deleteChannel = async (id) => {
     await API.deleteChannel(id);
+  };
+
+  const createRecording = (channel) => {
+    setChannel(channel);
+    setRecordingModalOpen(true);
   };
 
   function handleWatchStream(channelNumber) {
@@ -600,6 +620,11 @@ const ChannelsTable = ({ }) => {
   const closeChannelForm = () => {
     setChannel(null);
     setChannelModalOpen(false);
+  };
+
+  const closeRecordingForm = () => {
+    // setChannel(null);
+    setRecordingModalOpen(false);
   };
 
   useEffect(() => {
@@ -699,6 +724,11 @@ const ChannelsTable = ({ }) => {
     );
   };
 
+  const handleMoreActionsClick = (event, rowId) => {
+    setMoreActionsAnchorEl(event.currentTarget);
+    setActionsOpenRow(rowId);
+  };
+
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -734,27 +764,30 @@ const ChannelsTable = ({ }) => {
     enableExpandAll: false,
     displayColumnDefOptions: {
       'mrt-row-select': {
-        // size: 20,
+        size: 10,
+        maxSize: 10,
         mantineTableHeadCellProps: {
-          // align: 'center',
+          align: 'right',
           style: {
-            paddingLeft: 7,
-            width: '30px',
-            minWidth: '30px',
+            paddding: 0,
+            // paddingLeft: 7,
+            width: '20px',
+            minWidth: '20px',
             backgroundColor: '#3F3F46',
           },
         },
         mantineTableBodyCellProps: {
-          align: 'center',
+          align: 'right',
           style: {
-            // paddingLeft: 10,
-            width: '30px',
-            minWidth: '30px',
+            paddingLeft: 0,
+            width: '20px',
+            minWidth: '20px',
           },
         },
       },
       'mrt-row-expand': {
         size: 20,
+        maxSize: 20,
         header: '',
         mantineTableHeadCellProps: {
           style: {
@@ -762,6 +795,7 @@ const ChannelsTable = ({ }) => {
             paddingLeft: 2,
             width: '20px',
             minWidth: '20px',
+            maxWidth: '20px',
             backgroundColor: '#3F3F46',
           },
         },
@@ -771,14 +805,19 @@ const ChannelsTable = ({ }) => {
             paddingLeft: 2,
             width: '20px',
             minWidth: '20px',
+            maxWidth: '20px',
           },
         },
       },
       'mrt-row-actions': {
-        size: 60,
+        size: 85,
+        maxWidth: 85,
         mantineTableHeadCellProps: {
+          align: 'center',
           style: {
-            paddingLeft: 10,
+            minWidth: '85px',
+            maxWidth: '85px',
+            paddingRight: 40,
             fontWeight: 'normal',
             color: 'rgb(207,207,207)',
             backgroundColor: '#3F3F46',
@@ -786,6 +825,9 @@ const ChannelsTable = ({ }) => {
         },
         mantineTableBodyCellProps: {
           style: {
+            minWidth: '85px',
+            maxWidth: '85px',
+            paddingLeft: 0,
             paddingRight: 10,
           },
         },
@@ -810,7 +852,7 @@ const ChannelsTable = ({ }) => {
         <Center>
           <Tooltip label="Edit Channel">
             <ActionIcon
-              size="sm"
+              size="xs"
               variant="transparent"
               color={theme.tailwind.yellow[3]}
               onClick={() => {
@@ -823,7 +865,7 @@ const ChannelsTable = ({ }) => {
 
           <Tooltip label="Delete Channel">
             <ActionIcon
-              size="sm"
+              size="xs"
               variant="transparent"
               color={theme.tailwind.red[6]}
               onClick={() => deleteChannel(row.original.id)}
@@ -834,7 +876,7 @@ const ChannelsTable = ({ }) => {
 
           <Tooltip label="Preview Channel">
             <ActionIcon
-              size="sm"
+              size="xs"
               variant="transparent"
               color={theme.tailwind.green[5]}
               onClick={() => handleWatchStream(row.original.uuid)}
@@ -842,6 +884,41 @@ const ChannelsTable = ({ }) => {
               <CirclePlay size="18" />
             </ActionIcon>
           </Tooltip>
+
+          {env_mode == 'dev' && (
+            <Menu>
+              <Menu.Target>
+                <ActionIcon
+                  onClick={(event) =>
+                    handleMoreActionsClick(event, row.original.id)
+                  }
+                  variant="transparent"
+                  size="sm"
+                >
+                  <CircleEllipsis size="18" />
+                </ActionIcon>
+              </Menu.Target>
+
+              <Menu.Dropdown>
+                <Menu.Item
+                  onClick={() => createRecording(row.original)}
+                  leftSection={
+                    <div
+                      style={{
+                        borderRadius: '50%',
+                        width: '10px',
+                        height: '10px',
+                        display: 'flex',
+                        backgroundColor: 'red',
+                      }}
+                    ></div>
+                  }
+                >
+                  Record
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
         </Center>
       </Box>
     ),
@@ -1169,6 +1246,12 @@ const ChannelsTable = ({ }) => {
         channel={channel}
         isOpen={channelModalOpen}
         onClose={closeChannelForm}
+      />
+
+      <RecordingForm
+        channel={channel}
+        isOpen={recordingModalOpen}
+        onClose={closeRecordingForm}
       />
     </Box>
   );
