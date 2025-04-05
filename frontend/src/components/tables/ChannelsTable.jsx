@@ -180,7 +180,7 @@ const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
 const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
 
-const CreateProfilePopover = ({}) => {
+const CreateProfilePopover = ({ }) => {
   const [opened, setOpened] = useState(false);
   const [name, setName] = useState('');
   const theme = useMantineTheme();
@@ -237,7 +237,7 @@ const CreateProfilePopover = ({}) => {
   );
 };
 
-const ChannelsTable = ({}) => {
+const ChannelsTable = ({ }) => {
   const {
     channels,
     isLoading: channelsLoading,
@@ -520,7 +520,7 @@ const ChannelsTable = ({}) => {
   const rowVirtualizerInstanceRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([]);
+  const [sorting, setSorting] = useState([{ id: 'channel_number', desc: false }]);
 
   const editChannel = async (ch = null) => {
     setChannel(ch);
