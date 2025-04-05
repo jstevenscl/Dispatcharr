@@ -16,7 +16,7 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 import time
 import json
-from core.utils import acquire_task_lock, release_task_lock
+from core.utils import RedisClient, acquire_task_lock, release_task_lock
 from core.models import CoreSettings
 from asgiref.sync import async_to_sync
 
