@@ -109,7 +109,7 @@ def generate_epg(request, profile_name=None):
         xml_lines.append('  </channel>')
 
     for channel in channels:
-        channel_id = channel.epg_data.tvg_id if channel.epg_data else f"default-{channel.id}"
+        channel_id = channel.channel_number or channel.id
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         if not channel.epg_data:
             xml_lines = xml_lines + generate_dummy_epg(display_name, channel_id)
