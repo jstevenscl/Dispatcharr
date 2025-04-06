@@ -12,34 +12,36 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     DISPATCHARR_BUILD=1
 
+# Set the working directory
+WORKDIR /app
+
+# Copy the application source code from the parent directory
+COPY . /app/
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
-        gcc \
-        git \
-        libpcre3 \
-        libpcre3-dev \
-        python3-dev \
-        wget && \
-    echo "=== setting up nodejs ===" && \
-    curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh && \
-    bash /tmp/nodesource_setup.sh && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        nodejs && \
+    build-essential \
+    curl \
+    gcc \
+    git \
+    libpcre3 \
+    libpcre3-dev \
+    python3-dev \
+    wget && \
     python -m pip install virtualenv && \
     virtualenv /dispatcharrpy && \
     git clone -b ${BRANCH} ${REPO_URL} /app && \
     cd /app && \
     rm -rf .git && \
     cd /app && \
-    pip install --no-cache-dir -r requirements.txt && \
-    python manage.py collectstatic --noinput && \
-    cd /app/frontend && \
-    npm install --legacy-peer-deps && \
-    npm run build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
+    pip install --no-cache-dir -r requirements.txt
+
+# Use a dedicated Node.js stage for frontend building
+FROM node:20-slim AS frontend-builder
+WORKDIR /app/frontend
+COPY --from=builder /app /app
+RUN npm install --legacy-peer-deps && \
+    npm run build
 
 FROM python:3.13-slim
 
@@ -51,20 +53,24 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
 # Copy the virtual environment and application from the builder stage
 COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
+COPY --from=frontend-builder /app/frontend /app/frontend
+
+# Run collectstatic after frontend assets are copied
+RUN cd /app && python manage.py collectstatic --noinput
 
 # Install base dependencies with memory optimization
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl \
-        ffmpeg \
-        libpcre3 \
-        libpq-dev \
-        nginx \
-        procps \
-        streamlink \
-        wget \
-        gnupg2 \
-        lsb-release && \
+    curl \
+    ffmpeg \
+    libpcre3 \
+    libpq-dev \
+    nginx \
+    procps \
+    streamlink \
+    wget \
+    gnupg2 \
+    lsb-release && \
     cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

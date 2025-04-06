@@ -9,7 +9,12 @@ SECRET_KEY = 'REPLACE_ME_WITH_A_REAL_SECRET'
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_DB = os.environ.get("REDIS_DB", "0")
 
-DEBUG = True
+# Set DEBUG to True for development, False for production
+if os.environ.get('DISPATCHARR_DEBUG', 'False').lower() == 'true':
+    DEBUG = True
+else:
+    DEBUG = False
+
 ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
