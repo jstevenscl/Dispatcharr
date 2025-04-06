@@ -11,10 +11,7 @@ sed -i "s/NGINX_PORT/${DISPATCHARR_PORT}/g" /etc/nginx/sites-enabled/default
 # if this script is running as root
 if [ "$(id -u)" = "0" ]; then
     touch /app/uwsgi.sock
-    chown -R $PUID:$PGID /app
     chown $PUID:$PGID /app/uwsgi.sock
-
-    chown -R $PUID:$PGID /app
     # Needs to own ALL of /data except db, we handle that below
     chown -R $PUID:$PGID /data
 
