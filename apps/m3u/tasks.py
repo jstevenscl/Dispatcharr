@@ -314,12 +314,12 @@ def refresh_m3u_groups(account_id, use_cache=False):
     return extinf_data, groups
 
 @shared_task
-def refresh_single_m3u_account(account_id, use_cache=False):
+def refresh_single_m3u_account(account_id):
     """Splits M3U processing into chunks and dispatches them as parallel tasks."""
     if not acquire_task_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
 
-    redis_client = RedisClient.get_client()
+    # redis_client = RedisClient.get_client()
     # Record start time
     start_time = time.time()
     send_progress_update(0, account_id)
@@ -337,7 +337,7 @@ def refresh_single_m3u_account(account_id, use_cache=False):
     groups = None
 
     cache_path = os.path.join(m3u_dir, f"{account_id}.json")
-    if use_cache and os.path.exists(cache_path):
+    if os.path.exists(cache_path):
         with open(cache_path, 'r') as file:
             data = json.load(file)
 
@@ -408,6 +408,10 @@ def refresh_single_m3u_account(account_id, use_cache=False):
     # Aggressive garbage collection
     del existing_groups, extinf_data, groups, batches
     gc.collect()
+
+    # Clean up cache file since we've fully processed it
+    if os.path.exists(cache_path):
+        os.remove(cache_path)
 
     release_task_lock('refresh_single_m3u_account', account_id)
 
