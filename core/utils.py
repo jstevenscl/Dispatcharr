@@ -160,7 +160,7 @@ def send_websocket_event(event, success, data):
         }
     )
 
-class SentenceTransformer
+class SentenceTransformer:
     _instance = None
 
     @classmethod
