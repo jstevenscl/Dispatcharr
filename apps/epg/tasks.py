@@ -53,6 +53,9 @@ def refresh_epg_data(source_id):
     release_task_lock('refresh_epg_data', source_id)
 
 def fetch_xmltv(source):
+    if not source.url:
+        return
+
     logger.info(f"Fetching XMLTV data from source: {source.name}")
     try:
         response = requests.get(source.url, timeout=30)

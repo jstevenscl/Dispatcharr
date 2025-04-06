@@ -63,13 +63,12 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
         await API.updatePlaylist({
           id: playlist.id,
           ...values,
-          uploaded_file: file,
+          file,
         });
       } else {
-        setLoadingText('Fetching groups');
         newPlaylist = await API.addPlaylist({
           ...values,
-          uploaded_file: file,
+          file,
         });
 
         notifications.show({
@@ -160,10 +159,10 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
             />
 
             <FileInput
-              id="uploaded_file"
+              id="file"
               label="Upload files"
               placeholder="Upload files"
-              value={formik.uploaded_file}
+              value={formik.file}
               onChange={handleFileChange}
             />
           </Stack>

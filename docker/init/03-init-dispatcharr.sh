@@ -2,6 +2,10 @@
 
 mkdir -p /data/logos
 mkdir -p /data/recordings
+mkdir -p /data/uploads/m3us
+mkdir -p /data/uploads/epgs
+mkdir -p /data/m3us
+mkdir -p /data/epgs
 mkdir -p /app/logo_cache
 mkdir -p /app/media
 

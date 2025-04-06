@@ -22,7 +22,7 @@ export const WebsocketProvider = ({ children }) => {
     useChannelsStore();
   const { fetchPlaylists, setRefreshProgress, setProfilePreview } =
     usePlaylistsStore();
-  const { fetchEPGData } = useEPGsStore();
+  const { fetchEPGData, fetchEPGs } = useEPGsStore();
 
   const ws = useRef(null);
 
@@ -57,6 +57,22 @@ export const WebsocketProvider = ({ children }) => {
     socket.onmessage = async (event) => {
       event = JSON.parse(event.data);
       switch (event.data.type) {
+        case 'epg_file':
+          fetchEPGs();
+          notifications.show({
+            title: 'EPG File Detected',
+            message: `Processing ${event.data.filename}`,
+          });
+          break;
+
+        case 'm3u_file':
+          fetchPlaylists();
+          notifications.show({
+            title: 'M3U File Detected',
+            message: `Processing ${event.data.filename}`,
+          });
+          break;
+
         case 'm3u_group_refresh':
           fetchChannelGroups();
           fetchPlaylists();

@@ -7,6 +7,8 @@ from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.core.cache import cache
+import os
+from rest_framework.decorators import action
 
 # Import all models, including UserAgent.
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
@@ -28,6 +30,29 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
     queryset = M3UAccount.objects.prefetch_related('channel_group')
     serializer_class = M3UAccountSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        file_name = file.name
+        file_path = os.path.join('/data/uploads/m3us', file_name)
+
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+
+        new_obj_data = request.data.copy()
+        new_obj_data['file_path'] = file_path
+
+        serializer = self.get_serializer(data=new_obj_data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class M3UFilterViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U filters"""

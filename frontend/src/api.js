@@ -500,14 +500,14 @@ export default class API {
 
   static async addPlaylist(values) {
     let body = null;
-    if (values.uploaded_file) {
+    if (values.file) {
       body = new FormData();
       for (const prop in values) {
         body.append(prop, values[prop]);
       }
     } else {
       body = { ...values };
-      delete body.uploaded_file;
+      delete body.file;
       body = JSON.stringify(body);
     }
 
@@ -515,7 +515,7 @@ export default class API {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
-        ...(values.uploaded_file
+        ...(values.file
           ? {}
           : {
               'Content-Type': 'application/json',

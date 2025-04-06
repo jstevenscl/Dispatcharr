@@ -63,7 +63,7 @@ class M3UAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = M3UAccount
         fields = [
-            'id', 'name', 'server_url', 'uploaded_file', 'server_group',
+            'id', 'name', 'server_url', 'file_path', 'server_group',
             'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked',
             'channel_groups', 'refresh_interval'
         ]

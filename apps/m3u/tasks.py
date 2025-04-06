@@ -4,6 +4,7 @@ import re
 import requests
 import os
 import gc
+import gzip, zipfile
 from celery.app.control import Inspect
 from celery.result import AsyncResult
 from celery import shared_task, current_app, group
@@ -38,26 +39,40 @@ def fetch_m3u_lines(account, use_cache=False):
             logger.info(f"Fetching from URL {account.server_url}")
             try:
                 response = requests.get(account.server_url, headers=headers, stream=True)
-                response.raise_for_status()  # This will raise an HTTPError if the status is not 200
+                response.raise_for_status()
                 with open(file_path, 'wb') as file:
-                    # Stream the content in chunks and write to the file
-                    for chunk in response.iter_content(chunk_size=8192):  # You can adjust the chunk size
-                        if chunk:  # Ensure chunk is not empty
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
                             file.write(chunk)
             except requests.exceptions.RequestException as e:
                 logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
-                return []  # Return an empty list in case of error
+                return []
 
         with open(file_path, 'r', encoding='utf-8') as f:
             return f.readlines()
-    elif account.uploaded_file:
+    elif account.file_path:
         try:
-            # Open the file and return the lines as a list or iterator
-            with open(account.uploaded_file.path, 'r', encoding='utf-8') as f:
-                return f.readlines()  # Ensure you return lines from the file, not the file object
-        except IOError as e:
-            logger.error(f"Error opening file {account.uploaded_file.path}: {e}")
-            return []  # Return an empty list in case of error
+            if account.file_path.endswith('.gz'):
+                with gzip.open(account.file_path, 'rt', encoding='utf-8') as f:
+                    return f.readlines()
+
+            elif account.file_path.endswith('.zip'):
+                with zipfile.ZipFile(account.file_path, 'r') as zip_file:
+                    for name in zip_file.namelist():
+                        if name.endswith('.m3u'):
+                            with zip_file.open(name) as f:
+                                return [line.decode('utf-8') for line in f.readlines()]
+                    logger.warning(f"No .m3u file found in ZIP archive: {account.file_path}")
+                    return []
+
+            else:
+                with open(account.file_path, 'r', encoding='utf-8') as f:
+                    return f.readlines()
+
+        except (IOError, OSError, zipfile.BadZipFile, gzip.BadGzipFile) as e:
+            logger.error(f"Error opening file {account.file_path}: {e}")
+            return []
+
 
     # Return an empty list if neither server_url nor uploaded_file is available
     return []
@@ -247,11 +262,13 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     except Exception as e:
         logger.error(f"Bulk create failed: {str(e)}")
 
+    retval = f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
+
     # Aggressive garbage collection
     del streams_to_create, streams_to_update, stream_hash, existing_streams
     gc.collect()
 
-    return f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
+    return retval
 
 def cleanup_streams(account_id):
     account = M3UAccount.objects.get(id=account_id, is_active=True)

@@ -20,8 +20,8 @@ class M3UAccount(models.Model):
         null=True,
         help_text="The base URL of the M3U server (optional if a file is uploaded)"
     )
-    uploaded_file = models.FileField(
-        upload_to='m3u_uploads/',
+    file_path = models.CharField(
+        max_length=255,
         blank=True,
         null=True
     )

@@ -1,8 +1,9 @@
-import logging
+import logging, os
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.utils import timezone
@@ -25,6 +26,29 @@ class EPGSourceViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         logger.debug("Listing all EPG sources.")
         return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        file_name = file.name
+        file_path = os.path.join('/data/uploads/epgs', file_name)
+
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+
+        new_obj_data = request.data.copy()
+        new_obj_data['file_path'] = file_path
+
+        serializer = self.get_serializer(data=new_obj_data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 # ─────────────────────────────
 # 2) Program API (CRUD)
