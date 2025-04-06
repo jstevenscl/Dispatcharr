@@ -4,11 +4,11 @@ import os
 import re
 import requests
 import time
+import gc
 from datetime import datetime
 
 from celery import shared_task
 from rapidfuzz import fuzz
-from sentence_transformers import util
 from django.conf import settings
 from django.db import transaction
 from django.utils.text import slugify
@@ -67,6 +67,8 @@ def match_epg_channels():
       4) If a match is found, we set channel.tvg_id
       5) Summarize and log results.
     """
+    from sentence_transformers import util
+
     logger.info("Starting EPG matching logic...")
 
     st_model = SentenceTransformer.get_model()
@@ -222,6 +224,8 @@ def match_epg_channels():
         }
     )
 
+    SentenceTransformer.clear()
+    gc.collect()
     return f"Done. Matched {total_matched} channel(s)."
 
 @shared_task

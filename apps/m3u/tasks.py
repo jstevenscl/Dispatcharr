@@ -3,6 +3,7 @@ import logging
 import re
 import requests
 import os
+import gc
 from celery.app.control import Inspect
 from celery.result import AsyncResult
 from celery import shared_task, current_app, group
@@ -160,21 +161,15 @@ def process_groups(account, group_names):
     )
 
 @shared_task
-def process_m3u_batch(account_id, batch, group_names, hash_keys):
+def process_m3u_batch(account_id, batch, groups, hash_keys):
     """Processes a batch of M3U streams using bulk operations."""
     account = M3UAccount.objects.get(id=account_id)
-    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(
-        m3u_account__m3u_account=account,  # Filter by the M3UAccount
-        m3u_account__enabled=True  # Filter by the enabled flag in the join table
-    )}
 
     streams_to_create = []
     streams_to_update = []
     stream_hashes = {}
 
     # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
-    redis_client = RedisClient.get_client()
-
     logger.debug(f"Processing batch of {len(batch)}")
     for stream_info in batch:
         name, url = stream_info["name"], stream_info["url"]
@@ -182,7 +177,7 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
         group_title = stream_info["attributes"].get("group-title", "Default Group")
 
         # Filter out disabled groups for this account
-        if group_title not in existing_groups:
+        if group_title not in groups:
             logger.debug(f"Skipping stream in disabled group: {group_title}")
             continue
 
@@ -199,18 +194,18 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
 
         try:
             stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
-            if redis_client.exists(f"m3u_refresh:{stream_hash}"):
-                # duplicate already processed by another batch
-                continue
+            # if redis_client.exists(f"m3u_refresh:{stream_hash}"):
+            #     # duplicate already processed by another batch
+            #     continue
 
-            redis_client.set(f"m3u_refresh:{stream_hash}", "true")
+            # redis_client.set(f"m3u_refresh:{stream_hash}", "true")
             stream_props = {
                 "name": name,
                 "url": url,
                 "logo_url": tvg_logo,
                 "tvg_id": tvg_id,
                 "m3u_account": account,
-                "channel_group": existing_groups[group_title],
+                "channel_group_id": int(groups.get(group_title)),
                 "stream_hash": stream_hash,
                 "custom_properties": json.dumps(stream_info["attributes"]),
             }
@@ -226,15 +221,13 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
     for stream_hash, stream_props in stream_hashes.items():
         if stream_hash in existing_streams:
             obj = existing_streams[stream_hash]
-            changed = False
-            for key, value in stream_props.items():
-                if hasattr(obj, key) and getattr(obj, key) == value:
-                    continue
-                changed = True
-                setattr(obj, key, value)
+            existing_attr = {field.name: getattr(obj, field.name) for field in Stream._meta.fields if field != 'channel_group_id'}
+            changed = any(existing_attr[key] != value for key, value in stream_props.items() if key != 'channel_group_id')
 
-            obj.last_seen = timezone.now()
             if changed:
+                for key, value in stream_props.items():
+                    setattr(obj, key, value)
+                obj.last_seen = timezone.now()
                 streams_to_update.append(obj)
                 del existing_streams[stream_hash]
             else:
@@ -244,15 +237,19 @@ def process_m3u_batch(account_id, batch, group_names, hash_keys):
             streams_to_create.append(Stream(**stream_props))
 
     try:
-        if streams_to_create:
-            Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
-        if streams_to_update:
-            Stream.objects.bulk_update(streams_to_update, stream_props.keys())
-        if len(existing_streams.keys()) > 0:
-            Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
+        with transaction.atomic():
+            if streams_to_create:
+                Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
+            if streams_to_update:
+                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys})
+            # if len(existing_streams.keys()) > 0:
+            #     Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
         logger.error(f"Bulk create failed: {str(e)}")
 
+    # Aggressive garbage collection
+    del streams_to_create, streams_to_update, stream_hash, existing_streams
+    gc.collect()
 
     return f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
 
@@ -276,12 +273,9 @@ def cleanup_streams(account_id):
 
     logger.info(f"Cleanup complete")
 
-def refresh_m3u_groups(account_id):
+def refresh_m3u_groups(account_id, use_cache=False):
     if not acquire_task_lock('refresh_m3u_account_groups', account_id):
         return f"Task already running for account_id={account_id}.", None
-
-    # Record start time
-    start_time = time.time()
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
@@ -289,13 +283,10 @@ def refresh_m3u_groups(account_id):
         release_task_lock('refresh_m3u_account_groups', account_id)
         return f"M3UAccount with ID={account_id} not found or inactive.", None
 
-    send_progress_update(0, account_id)
-
-    lines = fetch_m3u_lines(account)
     extinf_data = []
     groups = set(["Default Group"])
 
-    for line in lines:
+    for line in fetch_m3u_lines(account, use_cache):
         line = line.strip()
         if line.startswith("#EXTINF"):
             parsed = parse_extinf_line(line)
@@ -365,9 +356,14 @@ def refresh_single_m3u_account(account_id, use_cache=False):
 
     hash_keys = CoreSettings.get_m3u_hash_key().split(",")
 
+    existing_groups = {group.name: group.id for group in ChannelGroup.objects.filter(
+        m3u_account__m3u_account=account,  # Filter by the M3UAccount
+        m3u_account__enabled=True  # Filter by the enabled flag in the join table
+    )}
+
     # Break into batches and process in parallel
     batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
-    task_group = group(process_m3u_batch.s(account_id, batch, groups, hash_keys) for batch in batches)
+    task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
 
     total_batches = len(batches)
     completed_batches = 0
@@ -409,15 +405,19 @@ def refresh_single_m3u_account(account_id, use_cache=False):
 
     print(f"Function took {elapsed_time} seconds to execute.")
 
+    # Aggressive garbage collection
+    del existing_groups, extinf_data, groups, batches
+    gc.collect()
+
     release_task_lock('refresh_single_m3u_account', account_id)
 
-    cursor = 0
-    while True:
-        cursor, keys = redis_client.scan(cursor, match=f"m3u_refresh:*", count=BATCH_SIZE)
-        if keys:
-            redis_client.delete(*keys)  # Delete the matching keys
-        if cursor == 0:
-            break
+    # cursor = 0
+    # while True:
+    #     cursor, keys = redis_client.scan(cursor, match=f"m3u_refresh:*", count=BATCH_SIZE)
+    #     if keys:
+    #         redis_client.delete(*keys)  # Delete the matching keys
+    #     if cursor == 0:
+    #         break
 
     return f"Dispatched jobs complete."
 

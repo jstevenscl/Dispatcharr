@@ -59,7 +59,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
       channel_groups: groupStates,
     });
     setIsLoading(false);
-
+    API.refreshPlaylist(playlist.id);
     onClose();
   };
 

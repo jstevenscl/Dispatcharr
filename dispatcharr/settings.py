@@ -30,7 +30,6 @@ INSTALLED_APPS = [
     'apps.proxy.ts_proxy',
     'core',
     'drf_yasg',
-    'daphne',
     'channels',
     'django.contrib.admin',
     'django.contrib.auth',

@@ -14,7 +14,7 @@ def refresh_account_on_save(sender, instance, created, **kwargs):
     if it is active or newly created.
     """
     if created:
-        refresh_single_m3u_account.delay(instance.id)
+        refresh_m3u_groups(instance.id)
 
 @receiver(post_save, sender=M3UAccount)
 def create_or_update_refresh_task(sender, instance, **kwargs):

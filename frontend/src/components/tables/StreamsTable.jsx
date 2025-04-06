@@ -49,10 +49,7 @@ const StreamsTable = ({}) => {
   const [rowSelection, setRowSelection] = useState([]);
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [moreActionsAnchorEl, setMoreActionsAnchorEl] = useState(null);
   const [groupOptions, setGroupOptions] = useState([]);
-  const [m3uOptions, setM3uOptions] = useState([]);
-  const [actionsOpenRow, setActionsOpenRow] = useState(null);
   const [initialDataCount, setInitialDataCount] = useState(null);
 
   const [data, setData] = useState([]); // Holds fetched data
@@ -62,7 +59,6 @@ const StreamsTable = ({}) => {
   const [isLoading, setIsLoading] = useState(true);
   const [sorting, setSorting] = useState([{ id: 'name', desc: '' }]);
   const [selectedStreamIds, setSelectedStreamIds] = useState([]);
-  const [unselectedStreamIds, setUnselectedStreamIds] = useState([]);
   // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
@@ -74,7 +70,6 @@ const StreamsTable = ({}) => {
     m3u_account: '',
   });
   const debouncedFilters = useDebounce(filters, 500);
-  const hasData = data.length > 0;
 
   const navigate = useNavigate();
 
@@ -91,8 +86,6 @@ const StreamsTable = ({}) => {
     environment: { env_mode },
   } = useSettingsStore();
   const { showVideo } = useVideoStore();
-
-  const isMoreActionsOpen = Boolean(moreActionsAnchorEl);
 
   // Access the row virtualizer instance (optional)
   const rowVirtualizerInstanceRef = useRef(null);
@@ -354,16 +347,6 @@ const StreamsTable = ({}) => {
     });
   };
 
-  const handleMoreActionsClick = (event, rowId) => {
-    setMoreActionsAnchorEl(event.currentTarget);
-    setActionsOpenRow(rowId);
-  };
-
-  const handleMoreActionsClose = () => {
-    setMoreActionsAnchorEl(null);
-    setActionsOpenRow(null);
-  };
-
   const onRowSelectionChange = (updater) => {
     setRowSelection((prevRowSelection) => {
       const newRowSelection =
@@ -550,13 +533,7 @@ const StreamsTable = ({}) => {
 
         <Menu>
           <Menu.Target>
-            <ActionIcon
-              onClick={(event) =>
-                handleMoreActionsClick(event, row.original.id)
-              }
-              variant="transparent"
-              size="sm"
-            >
+            <ActionIcon variant="transparent" size="sm">
               <EllipsisVertical size="18" />
             </ActionIcon>
           </Menu.Target>

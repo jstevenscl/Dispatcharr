@@ -8,6 +8,7 @@ from redis.exceptions import ConnectionError, TimeoutError
 from django.core.cache import cache
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,17 @@ class SentenceTransformer:
             # If not present locally, download:
             if not os.path.exists(os.path.join(MODEL_PATH, "config.json")):
                 logger.info(f"Local model not found in {MODEL_PATH}; downloading from {SENTENCE_MODEL_NAME}...")
-                st_model = st(SENTENCE_MODEL_NAME, cache_folder=MODEL_PATH)
+                cls._instance = st(SENTENCE_MODEL_NAME, cache_folder=MODEL_PATH)
             else:
                 logger.info(f"Loading local model from {MODEL_PATH}")
-                st_model = st(MODEL_PATH)
+                cls._instance = st(MODEL_PATH)
+
+        return cls._instance
+
+    @classmethod
+    def clear(cls):
+        """Clear the model instance and release memory."""
+        if cls._instance is not None:
+            del cls._instance
+            cls._instance = None
+            gc.collect()

@@ -58,7 +58,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
       let newPlaylist;
-      console.log(values);
       if (playlist?.id) {
         await API.updatePlaylist({
           id: playlist.id,
@@ -66,6 +65,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           uploaded_file: file,
         });
       } else {
+        setLoadingText('Fetching groups');
         newPlaylist = await API.addPlaylist({
           ...values,
           uploaded_file: file,
@@ -75,7 +75,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
         // Don't prompt for group filters, but keeping this here
         // in case we want to revive it
-        newPlaylist = null;
       }
 
       resetForm();

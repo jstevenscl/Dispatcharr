@@ -268,8 +268,6 @@ const ChannelsTable = ({}) => {
   );
   const [channelsEnabledHeaderSwitch, setChannelsEnabledHeaderSwitch] =
     useState(false);
-  const [moreActionsAnchorEl, setMoreActionsAnchorEl] = useState(null);
-  const [actionsOpenRow, setActionsOpenRow] = useState(null);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
@@ -720,11 +718,6 @@ const ChannelsTable = ({}) => {
     );
   };
 
-  const handleMoreActionsClick = (event, rowId) => {
-    setMoreActionsAnchorEl(event.currentTarget);
-    setActionsOpenRow(rowId);
-  };
-
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -884,13 +877,7 @@ const ChannelsTable = ({}) => {
           {env_mode == 'dev' && (
             <Menu>
               <Menu.Target>
-                <ActionIcon
-                  onClick={(event) =>
-                    handleMoreActionsClick(event, row.original.id)
-                  }
-                  variant="transparent"
-                  size="sm"
-                >
+                <ActionIcon variant="transparent" size="sm">
                   <CircleEllipsis size="18" />
                 </ActionIcon>
               </Menu.Target>
