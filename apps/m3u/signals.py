@@ -2,9 +2,9 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import M3UAccount
-from .tasks import refresh_m3u_groups
+from .tasks import refresh_single_m3u_account, refresh_m3u_groups
 from django_celery_beat.models import PeriodicTask, IntervalSchedule
-import json, gc
+import json
 
 @receiver(post_save, sender=M3UAccount)
 def refresh_account_on_save(sender, instance, created, **kwargs):
@@ -14,11 +14,7 @@ def refresh_account_on_save(sender, instance, created, **kwargs):
     if it is active or newly created.
     """
     if created:
-        extinf_data, groups = refresh_m3u_groups(instance.id)
-
-        # Aggresive GC since we pulled in the whole file
-        del extinf_data, groups
-        gc.collect()
+        refresh_m3u_groups.delay(instance.id)
 
 @receiver(post_save, sender=M3UAccount)
 def create_or_update_refresh_task(sender, instance, **kwargs):

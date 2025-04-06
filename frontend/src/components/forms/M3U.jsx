@@ -23,6 +23,7 @@ import {
 import M3UGroupFilter from './M3UGroupFilter';
 import useChannelsStore from '../../store/channels';
 import usePlaylistsStore from '../../store/playlists';
+import { notifications } from '@mantine/notifications';
 
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   const theme = useMantineTheme();
@@ -71,10 +72,15 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           uploaded_file: file,
         });
 
-        await fetchChannelGroups();
+        notifications.show({
+          title: 'Fetching M3U Groups',
+          message: 'Filter out groups or refresh M3U once complete.',
+          // color: 'green.5',
+        });
 
         // Don't prompt for group filters, but keeping this here
         // in case we want to revive it
+        newPlaylist = null;
       }
 
       resetForm();

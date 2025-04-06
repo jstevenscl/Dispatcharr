@@ -273,7 +273,8 @@ def cleanup_streams(account_id):
 
     logger.info(f"Cleanup complete")
 
-def refresh_m3u_groups(account_id, use_cache=False):
+@shared_task
+def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
     if not acquire_task_lock('refresh_m3u_account_groups', account_id):
         return f"Task already running for account_id={account_id}.", None
 
@@ -311,6 +312,16 @@ def refresh_m3u_groups(account_id, use_cache=False):
 
     release_task_lock('refresh_m3u_account_groups', account_id)
 
+    if not full_refresh:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            'updates',
+            {
+                'type': 'update',
+                "data": {"success": True, "type": "m3u_group_refresh", "account": account_id}
+            }
+        )
+
     return extinf_data, groups
 
 @shared_task
@@ -346,7 +357,7 @@ def refresh_single_m3u_account(account_id):
 
     if not extinf_data:
         try:
-            extinf_data, groups = refresh_m3u_groups(account_id)
+            extinf_data, groups = refresh_m3u_groups(account_id, full_refresh=True)
             if not extinf_data or not groups:
                 release_task_lock('refresh_single_m3u_account', account_id)
                 return "Failed to update m3u account, task may already be running"

@@ -57,6 +57,17 @@ export const WebsocketProvider = ({ children }) => {
     socket.onmessage = async (event) => {
       event = JSON.parse(event.data);
       switch (event.data.type) {
+        case 'm3u_group_refresh':
+          fetchChannelGroups();
+          fetchPlaylists();
+
+          notifications.show({
+            title: 'Group processing finished!',
+            message: 'Refresh M3U or filter out groups to pull in streams.',
+            color: 'green.5',
+          });
+          break;
+
         case 'm3u_refresh':
           if (event.data.success) {
             fetchStreams();

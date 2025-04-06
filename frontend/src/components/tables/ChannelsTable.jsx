@@ -26,6 +26,7 @@ import {
   ScanEye,
   EllipsisVertical,
   CircleEllipsis,
+  CopyMinus,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -540,6 +541,9 @@ const ChannelsTable = ({}) => {
   };
 
   const deleteChannel = async (id) => {
+    if (channelsPageSelection.length > 0) {
+      return deleteChannels();
+    }
     await API.deleteChannel(id);
   };
 
@@ -858,8 +862,18 @@ const ChannelsTable = ({}) => {
               variant="transparent"
               color={theme.tailwind.red[6]}
               onClick={() => deleteChannel(row.original.id)}
+              disabled={
+                channelsPageSelection.length > 0 &&
+                !channelsPageSelection
+                  .map((row) => row.id)
+                  .includes(row.original.id)
+              }
             >
-              <SquareMinus size="18" />
+              {channelsPageSelection.length === 0 ? (
+                <SquareMinus size="18" />
+              ) : (
+                <CopyMinus size="18" />
+              )}
             </ActionIcon>
           </Tooltip>
 
