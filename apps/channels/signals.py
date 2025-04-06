@@ -9,6 +9,8 @@ from apps.m3u.models import M3UAccount
 from apps.epg.tasks import parse_programs_for_tvg_id
 import logging, requests, time
 from .tasks import run_recording
+from django.utils.timezone import now, is_aware, make_aware
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +98,32 @@ def revoke_old_task_on_update(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Recording)
 def schedule_task_on_save(sender, instance, created, **kwargs):
-    if not instance.task_id and instance.start_time > now():
-        task_id = schedule_recording_task(instance)
-        instance.task_id = task_id
-        instance.save(update_fields=['task_id'])
+    try:
+        if not instance.task_id:
+            start_time = instance.start_time
+
+            # Make both datetimes aware (in UTC)
+            if not is_aware(start_time):
+                print("Start time was not aware, making aware")
+                start_time = make_aware(start_time)
+
+            current_time = now()
+
+            # Debug log
+            print(f"Start time: {start_time}, Now: {current_time}")
+
+            # Optionally allow slight fudge factor (1 second) to ensure scheduling happens
+            if start_time > current_time - timedelta(seconds=1):
+                print("Scheduling recording task!")
+                task_id = schedule_recording_task(instance)
+                instance.task_id = task_id
+                instance.save(update_fields=['task_id'])
+            else:
+                print("Start time is in the past. Not scheduling.")
+    except Exception as e:
+        import traceback
+        print("Error in post_save signal:", e)
+        traceback.print_exc()
 
 @receiver(post_delete, sender=Recording)
 def revoke_task_on_delete(sender, instance, **kwargs):

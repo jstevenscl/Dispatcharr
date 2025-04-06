@@ -127,6 +127,20 @@ export const WebsocketProvider = ({ children }) => {
           setProfilePreview(event.data.search_preview, event.data.result);
           break;
 
+        case 'recording_started':
+          notifications.show({
+            title: 'Recording started!',
+            message: `Started recording channel ${event.data.channel}`,
+          });
+          break;
+
+        case 'recording_ended':
+          notifications.show({
+            title: 'Recording finished!',
+            message: `Stopped recording channel ${event.data.channel}`,
+          });
+          break;
+
         default:
           console.error(`Unknown websocket event type: ${event.type}`);
           break;

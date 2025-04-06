@@ -17,6 +17,9 @@ from apps.channels.models import Channel
 from apps.epg.models import EPGData, EPGSource
 from core.models import CoreSettings
 
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from core.utils import SentenceTransformer
@@ -238,6 +241,16 @@ def run_recording(channel_id, start_time_str, end_time_str):
     duration_seconds = int((end_time - start_time).total_seconds())
     filename = f'{slugify(channel.name)}-{start_time.strftime("%Y-%m-%d_%H-%M-%S")}.mp4'
 
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        "updates",
+        {
+            "type": "update",
+            "data": {"success": True, "type": "recording_started", "channel": channel.name}
+        },
+    )
+
     logger.info(f"Starting recording for channel {channel.name}")
     with requests.get(f"http://localhost:5656/proxy/ts/stream/{channel.uuid}", headers={
         'User-Agent': 'Dispatcharr-DVR',
@@ -254,6 +267,14 @@ def run_recording(channel_id, start_time_str, end_time_str):
                     break
                 # Write the chunk to the file
                 file.write(chunk)
+
+        async_to_sync(channel_layer.group_send)(
+            "updates",
+            {
+                "type": "update",
+                "data": {"success": True, "type": "recording_ended", "channel": channel.name}
+            },
+        )
 
         # After the loop, the file and response are closed automatically.
         logger.info(f"Finished recording for channel {channel.name}")

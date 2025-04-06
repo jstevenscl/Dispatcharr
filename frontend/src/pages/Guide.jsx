@@ -158,6 +158,15 @@ export default function TVChannelGuide({ startDate, endDate }) {
     return guideChannels.find((ch) => ch.epg_data?.tvg_id === tvgId);
   }
 
+  const record = (program) => {
+    const channel = findChannelByTvgId(program.tvg_id);
+    API.createRecording({
+      channel: `${channel.id}`,
+      start_time: program.start_time,
+      end_time: program.end_time,
+    });
+  };
+
   // The “Watch Now” click => show floating video
   const { showVideo } = useVideoStore(); // or useVideoStore()
   function handleWatchStream(program) {
@@ -457,6 +466,13 @@ export default function TVChannelGuide({ startDate, endDate }) {
             {now.isAfter(dayjs(selectedProgram.start_time)) &&
               now.isBefore(dayjs(selectedProgram.end_time)) && (
                 <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+                  <Button
+                    variant="transparent"
+                    color="gray"
+                    onClick={() => record(selectedProgram)}
+                  >
+                    Record
+                  </Button>
                   <Button
                     variant="transparent"
                     color="gray"

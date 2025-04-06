@@ -4,6 +4,8 @@ from apps.epg.serializers import EPGDataSerializer
 from core.models import StreamProfile
 from apps.epg.models import EPGData
 from django.urls import reverse
+from rest_framework import serializers
+from django.utils import timezone
 
 class LogoSerializer(serializers.ModelSerializer):
     cache_url = serializers.SerializerMethodField()
@@ -239,3 +241,20 @@ class RecordingSerializer(serializers.ModelSerializer):
         model = Recording
         fields = '__all__'
         read_only_fields = ['task_id']
+
+    def validate(self, data):
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+
+        now = timezone.now()  # timezone-aware current time
+
+        if end_time < now:
+            raise serializers.ValidationError("End time must be in the future.")
+
+        if start_time < now:
+            # Optional: Adjust start_time if it's in the past but end_time is in the future
+            data['start_time'] = now  # or: timezone.now() + timedelta(seconds=1)
+        if end_time <= data['start_time']:
+            raise serializers.ValidationError("End time must be after start time.")
+
+        return data
