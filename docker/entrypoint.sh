@@ -108,36 +108,47 @@ cd /app
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 
-sed -i 's/protected-mode yes/protected-mode no/g' /etc/redis/redis.conf
-su - $POSTGRES_USER -c "redis-server --protected-mode no &"
-redis_pid=$(pgrep redis)
-echo "✅ redis started with PID $redis_pid"
-pids+=("$redis_pid")
+uwsgi_file="/app/docker/uwsgi.ini"
+if [ "$DISPATCHARR_ENV" = "dev" ]; then
+    uwsgi_file="/app/docker/uwsgi.dev.ini"
+fi
 
-echo "🚀 Starting gunicorn..."
-su - $POSTGRES_USER -c "cd /app && gunicorn dispatcharr.asgi:application \
-  --bind 0.0.0.0:5656 \
-  --worker-class uvicorn.workers.UvicornWorker \
-  --workers 2 \
-  --threads 1 \
-  --timeout 600 \
-  --keep-alive 30 \
-  --access-logfile - \
-  --error-logfile - &"
-gunicorn_pid=$(pgrep gunicorn | sort | head -n1)
-echo "✅ gunicorn started with PID $gunicorn_pid"
-pids+=("$gunicorn_pid")
+echo "🚀 Starting uwsgi..."
+su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
+uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
+echo "✅ uwsgi started with PID $uwsgi_pid"
+pids+=("$uwsgi_pid")
 
-echo "Starting celery and beat..."
-su - $POSTGRES_USER -c "cd /app && celery -A dispatcharr worker -l info --autoscale=8,2 &"
-celery_pid=$(pgrep celery | sort | head -n1)
-echo "✅ celery started with PID $celery_pid"
-pids+=("$celery_pid")
+# sed -i 's/protected-mode yes/protected-mode no/g' /etc/redis/redis.conf
+# su - $POSTGRES_USER -c "redis-server --protected-mode no &"
+# redis_pid=$(pgrep redis)
+# echo "✅ redis started with PID $redis_pid"
+# pids+=("$redis_pid")
 
-su - $POSTGRES_USER -c "cd /app && celery -A dispatcharr beat -l info &"
-beat_pid=$(pgrep beat | sort | head -n1)
-echo "✅ celery beat started with PID $beat_pid"
-pids+=("$beat_pid")
+# echo "🚀 Starting gunicorn..."
+# su - $POSTGRES_USER -c "cd /app && gunicorn dispatcharr.asgi:application \
+#   --bind 0.0.0.0:5656 \
+#   --worker-class uvicorn.workers.UvicornWorker \
+#   --workers 2 \
+#   --threads 1 \
+#   --timeout 0 \
+#   --keep-alive 30 \
+#   --access-logfile - \
+#   --error-logfile - &"
+# gunicorn_pid=$(pgrep gunicorn | sort | head -n1)
+# echo "✅ gunicorn started with PID $gunicorn_pid"
+# pids+=("$gunicorn_pid")
+
+# echo "Starting celery and beat..."
+# su - $POSTGRES_USER -c "cd /app && celery -A dispatcharr worker -l info --autoscale=8,2 &"
+# celery_pid=$(pgrep celery | sort | head -n1)
+# echo "✅ celery started with PID $celery_pid"
+# pids+=("$celery_pid")
+
+# su - $POSTGRES_USER -c "cd /app && celery -A dispatcharr beat -l info &"
+# beat_pid=$(pgrep beat | sort | head -n1)
+# echo "✅ celery beat started with PID $beat_pid"
+# pids+=("$beat_pid")
 
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then

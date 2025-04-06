@@ -11,6 +11,8 @@ drf-yasg>=1.20.0
 streamlink
 python-vlc
 yt-dlp
+gevent==24.11.1
+daphne
 django-cors-headers
 djangorestframework-simplejwt
 m3u8

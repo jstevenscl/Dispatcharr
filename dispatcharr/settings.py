@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'apps.proxy.apps.ProxyConfig',
     'apps.proxy.ts_proxy',
     'core',
+    'daphne',
     'drf_yasg',
     'channels',
     'django.contrib.admin',
