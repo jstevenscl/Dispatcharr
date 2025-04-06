@@ -19,7 +19,7 @@ from core.models import CoreSettings
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from core.apps import st_model
+from core.utils import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ def match_epg_channels():
       5) Summarize and log results.
     """
     logger.info("Starting EPG matching logic...")
+
+    st_model = SentenceTransformer.get_model()
 
     # Attempt to retrieve a "preferred-region" if configured
     try:
