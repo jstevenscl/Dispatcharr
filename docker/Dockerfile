@@ -12,12 +12,6 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     DISPATCHARR_BUILD=1
 
-# Set the working directory
-WORKDIR /app
-
-# Copy the application source code from the parent directory
-COPY . /app/
-
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
