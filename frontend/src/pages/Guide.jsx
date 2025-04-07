@@ -16,6 +16,7 @@ import {
   Text,
   Paper,
   Grid,
+  Group,
 } from '@mantine/core';
 import './guide.css';
 
@@ -31,12 +32,13 @@ const MODAL_WIDTH = 600;
 const MODAL_HEIGHT = 400;
 
 export default function TVChannelGuide({ startDate, endDate }) {
-  const { channels } = useChannelsStore();
+  const { channels, recordings } = useChannelsStore();
 
   const [programs, setPrograms] = useState([]);
   const [guideChannels, setGuideChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
   const [selectedProgram, setSelectedProgram] = useState(null);
+  const [recording, setRecording] = useState(null);
   const [loading, setLoading] = useState(true);
   const {
     environment: { env_mode },
@@ -70,6 +72,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       );
 
       setGuideChannels(filteredChannels);
+      console.log(fetched);
       setPrograms(fetched);
       setLoading(false);
     };
@@ -158,13 +161,17 @@ export default function TVChannelGuide({ startDate, endDate }) {
     return guideChannels.find((ch) => ch.epg_data?.tvg_id === tvgId);
   }
 
-  const record = (program) => {
+  const record = async (program) => {
     const channel = findChannelByTvgId(program.tvg_id);
-    API.createRecording({
+    await API.createRecording({
       channel: `${channel.id}`,
       start_time: program.start_time,
       end_time: program.end_time,
+      custom_properties: JSON.stringify({
+        program,
+      }),
     });
+    notifications.show({ title: 'Recording scheduled' });
   };
 
   // The “Watch Now” click => show floating video
@@ -190,6 +197,18 @@ export default function TVChannelGuide({ startDate, endDate }) {
   // On program click, open the details modal
   function handleProgramClick(program, event) {
     setSelectedProgram(program);
+    setRecording(
+      recordings.find((recording) => {
+        if (recording.custom_properties) {
+          const customProps = JSON.parse(recording.custom_properties);
+          if (customProps.program && customProps.program.id == program.id) {
+            return recording;
+          }
+        }
+
+        return null;
+      })
+    );
   }
 
   // Close the modal
@@ -206,6 +225,16 @@ export default function TVChannelGuide({ startDate, endDate }) {
     const durationMinutes = programEnd.diff(programStart, 'minute');
     const leftPx = (startOffsetMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
     const widthPx = (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+    const recording = recordings.find((recording) => {
+      if (recording.custom_properties) {
+        const customProps = JSON.parse(recording.custom_properties);
+        if (customProps.program && customProps.program.id == program.id) {
+          return recording;
+        }
+      }
+
+      return null;
+    });
 
     // Highlight if currently live
     const isLive = now.isAfter(programStart) && now.isBefore(programEnd);
@@ -250,7 +279,20 @@ export default function TVChannelGuide({ startDate, endDate }) {
           }}
         >
           <Text size="md" style={{ fontWeight: 'bold' }}>
-            {program.title}
+            <Group gap="xs">
+              {recording && (
+                <div
+                  style={{
+                    borderRadius: '50%',
+                    width: '10px',
+                    height: '10px',
+                    display: 'flex',
+                    backgroundColor: 'red',
+                  }}
+                ></div>
+              )}
+              {program.title}
+            </Group>
           </Text>
           <Text size="sm" noWrap>
             {programStart.format('h:mma')} - {programEnd.format('h:mma')}
@@ -464,13 +506,15 @@ export default function TVChannelGuide({ startDate, endDate }) {
             </Text>
             {/* Only show the Watch button if currently live */}
             <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-              <Button
-                variant="transparent"
-                color="gray"
-                onClick={() => record(selectedProgram)}
-              >
-                Record
-              </Button>
+              {!recording && (
+                <Button
+                  variant="transparent"
+                  color="gray"
+                  onClick={() => record(selectedProgram)}
+                >
+                  Record
+                </Button>
+              )}
 
               {now.isAfter(dayjs(selectedProgram.start_time)) &&
                 now.isBefore(dayjs(selectedProgram.end_time)) && (

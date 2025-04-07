@@ -13,6 +13,7 @@ import M3U from './pages/M3U';
 import EPG from './pages/EPG';
 import Guide from './pages/Guide';
 import Stats from './pages/Stats';
+import DVR from './pages/DVR';
 import Settings from './pages/Settings';
 import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
@@ -127,6 +128,7 @@ const App = () => {
                           element={<StreamProfiles />}
                         />
                         <Route path="/guide" element={<Guide />} />
+                        <Route path="/dvr" element={<DVR />} />
                         <Route path="/stats" element={<Stats />} />
                         <Route path="/settings" element={<Settings />} />
                       </>

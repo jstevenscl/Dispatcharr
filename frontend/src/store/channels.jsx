@@ -16,6 +16,7 @@ const useChannelsStore = create((set, get) => ({
   activeChannels: {},
   activeClients: {},
   logos: {},
+  recordings: [],
   isLoading: false,
   error: null,
 
@@ -370,6 +371,18 @@ const useChannelsStore = create((set, get) => ({
         activeClients: newClients,
       };
     });
+  },
+
+  fetchRecordings: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      set({
+        recordings: await api.getRecordings(),
+      });
+    } catch (error) {
+      console.error('Failed to fetch recordings:', error);
+      set({ error: 'Failed to load recordings.', isLoading: false });
+    }
   },
 }));
 
