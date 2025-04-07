@@ -43,6 +43,9 @@ def scan_and_process_files():
         if not os.path.isfile(filepath):
             continue
 
+        if not filename.endswith('.m3u') and not filename.endswith('.m3u8'):
+            continue
+
         mtime = os.path.getmtime(filepath)
         age = now - mtime
         redis_key = REDIS_PREFIX + filepath
@@ -83,6 +86,9 @@ def scan_and_process_files():
         filepath = os.path.join(EPG_WATCH_DIR, filename)
 
         if not os.path.isfile(filepath):
+            continue
+
+        if not filename.endswith('.xml') and not filename.endswith('.gz'):
             continue
 
         mtime = os.path.getmtime(filepath)
