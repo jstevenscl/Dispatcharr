@@ -82,13 +82,6 @@ postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 
-uwsgi_file="/app/docker/uwsgi.ini"
-if [ "$DISPATCHARR_ENV" = "dev" ] && [ "$DISPATCHARR_DEBUG" != "true" ]; then
-    uwsgi_file="/app/docker/uwsgi.dev.ini"
-elif [ "$DISPATCHARR_DEBUG" = "true" ]; then
-    uwsgi_file="/app/docker/uwsgi.debug.ini"
-fi
-
 if [[ "$DISPATCHARR_ENV" = "dev" ]]; then
     . /app/docker/init/99-init-dev.sh
     echo "Starting frontend dev environment"
@@ -108,12 +101,18 @@ cd /app
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 
-uwsgi_file="/app/docker/uwsgi.ini"
-if [ "$DISPATCHARR_ENV" = "dev" ]; then
+# Select proper uwsgi config based on environment
+if [ "$DISPATCHARR_ENV" = "dev" ] && [ "$DISPATCHARR_DEBUG" != "true" ]; then
+    echo "🚀 Starting uwsgi in dev mode..."
     uwsgi_file="/app/docker/uwsgi.dev.ini"
+elif [ "$DISPATCHARR_DEBUG" = "true" ]; then
+    echo "🚀 Starting uwsgi in debug mode..."
+    uwsgi_file="/app/docker/uwsgi.debug.ini"
+else
+    echo "🚀 Starting uwsgi in production mode..."
+    uwsgi_file="/app/docker/uwsgi.ini"
 fi
 
-echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
 uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
