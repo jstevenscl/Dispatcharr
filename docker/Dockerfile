@@ -48,7 +48,7 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
 # Copy the virtual environment and application from the builder stage
 COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
-COPY --from=frontend-builder /app/frontend /app/frontend
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Run collectstatic after frontend assets are copied
 RUN cd /app && python manage.py collectstatic --noinput

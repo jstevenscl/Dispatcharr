@@ -1,22 +1,7 @@
 // Modal.js
-import React, { useState, useEffect } from 'react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
+import React from 'react';
 import API from '../../api';
-import useEPGsStore from '../../store/epgs';
-import {
-  LoadingOverlay,
-  TextInput,
-  Button,
-  Checkbox,
-  Modal,
-  Flex,
-  NativeSelect,
-  NumberInput,
-  Space,
-  Select,
-  Alert,
-} from '@mantine/core';
+import { Button, Modal, Flex, Select, Alert } from '@mantine/core';
 import useChannelsStore from '../../store/channels';
 import { DateTimePicker } from '@mantine/dates';
 import { CircleAlert } from 'lucide-react';
@@ -61,6 +46,8 @@ const DVR = ({ recording = null, channel = null, isOpen, onClose }) => {
       ...values,
       channel: channel_id,
     });
+
+    form.reset();
     onClose();
   };
 
@@ -110,7 +97,12 @@ const DVR = ({ recording = null, channel = null, isOpen, onClose }) => {
         />
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-          <Button type="submit" variant="contained" size="small">
+          <Button
+            type="submit"
+            variant="contained"
+            size="small"
+            disabled={form.submitting}
+          >
             Submit
           </Button>
         </Flex>

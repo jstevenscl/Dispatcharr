@@ -892,7 +892,7 @@ const ChannelsTable = ({}) => {
             <Menu>
               <Menu.Target>
                 <ActionIcon variant="transparent" size="sm">
-                  <CircleEllipsis size="18" />
+                  <EllipsisVertical size="18" />
                 </ActionIcon>
               </Menu.Target>
 

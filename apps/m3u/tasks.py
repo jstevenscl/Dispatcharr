@@ -430,6 +430,7 @@ def refresh_single_m3u_account(account_id):
 
     # Calculate elapsed time
     elapsed_time = end_time - start_time
+    account.save(update_fields=['updated_at'])
 
     print(f"Function took {elapsed_time} seconds to execute.")
 

@@ -17,6 +17,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
+import dayjs from 'dayjs';
 
 const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
@@ -42,6 +43,11 @@ const EPGsTable = () => {
       {
         header: 'URL / API Key',
         accessorKey: 'max_streams',
+        enableSorting: false,
+      },
+      {
+        header: 'Updated',
+        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
         enableSorting: false,
       },
     ],

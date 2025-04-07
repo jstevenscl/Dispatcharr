@@ -503,7 +503,7 @@ const StreamsTable = ({}) => {
       <>
         <Tooltip label="Add to Channel">
           <ActionIcon
-            size="sm"
+            size="xs"
             color={theme.tailwind.blue[6]}
             variant="transparent"
             onClick={() => addStreamToChannel(row.original.id)}
@@ -522,7 +522,7 @@ const StreamsTable = ({}) => {
 
         <Tooltip label="Create New Channel">
           <ActionIcon
-            size="sm"
+            size="xs"
             color={theme.tailwind.green[5]}
             variant="transparent"
             onClick={() => createChannelFromStream(row.original)}
@@ -533,7 +533,7 @@ const StreamsTable = ({}) => {
 
         <Menu>
           <Menu.Target>
-            <ActionIcon variant="transparent" size="sm">
+            <ActionIcon variant="transparent" size="xs">
               <EllipsisVertical size="18" />
             </ActionIcon>
           </Menu.Target>
