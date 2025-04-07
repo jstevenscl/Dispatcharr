@@ -5,6 +5,7 @@ from apps.epg.models import ProgramData
 from django.utils import timezone
 from datetime import datetime, timedelta
 import re
+import html  # Add this import for XML escaping
 
 def generate_m3u(request, profile_name=None):
     """
@@ -59,9 +60,9 @@ def generate_dummy_epg(name, channel_id, num_days=7, interval_hours=4):
             start_str = start_time.strftime("%Y%m%d%H%M%S") + " 0000"
             stop_str = stop_time.strftime("%Y%m%d%H%M%S") + " 0000"
 
-            # Create the XML-like programme entry
+            # Create the XML-like programme entry with escaped name
             xml_lines.append(f'<programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
-            xml_lines.append(f'    <title lang="en">{name}</title>')
+            xml_lines.append(f'    <title lang="en">{html.escape(name)}</title>')
             xml_lines.append(f'</programme>')
 
     return xml_lines
@@ -91,7 +92,7 @@ def generate_epg(request, profile_name=None):
         channel_id = channel.channel_number or channel.id
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         xml_lines.append(f'  <channel id="{channel_id}">')
-        xml_lines.append(f'    <display-name>{display_name}</display-name>')
+        xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
 
         # Add channel logo if available
         if channel.logo:
@@ -104,7 +105,7 @@ def generate_epg(request, profile_name=None):
                 base_url = request.build_absolute_uri('/')[:-1]
                 logo_url = f"{base_url}{logo_uri}"
 
-            xml_lines.append(f'    <icon src="{logo_url}" />')
+            xml_lines.append(f'    <icon src="{html.escape(logo_url)}" />')
 
         xml_lines.append('  </channel>')
 
@@ -119,15 +120,15 @@ def generate_epg(request, profile_name=None):
                 start_str = prog.start_time.strftime("%Y%m%d%H%M%S %z")
                 stop_str = prog.end_time.strftime("%Y%m%d%H%M%S %z")
                 xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
-                xml_lines.append(f'    <title>{prog.title}</title>')
+                xml_lines.append(f'    <title>{html.escape(prog.title)}</title>')
 
                 # Add subtitle if available
                 if prog.sub_title:
-                    xml_lines.append(f'    <sub-title>{prog.sub_title}</sub-title>')
+                    xml_lines.append(f'    <sub-title>{html.escape(prog.sub_title)}</sub-title>')
 
                 # Add description if available
                 if prog.description:
-                    xml_lines.append(f'    <desc>{prog.description}</desc>')
+                    xml_lines.append(f'    <desc>{html.escape(prog.description)}</desc>')
 
                 # Process custom properties if available
                 if prog.custom_properties:
@@ -138,7 +139,7 @@ def generate_epg(request, profile_name=None):
                         # Add categories if available
                         if 'categories' in custom_data and custom_data['categories']:
                             for category in custom_data['categories']:
-                                xml_lines.append(f'    <category>{category}</category>')
+                                xml_lines.append(f'    <category>{html.escape(category)}</category>')
 
                         # Handle episode numbering - multiple formats supported
                         # Standard episode number if available
@@ -147,7 +148,7 @@ def generate_epg(request, profile_name=None):
 
                         # Handle onscreen episode format (like S06E128)
                         if 'onscreen_episode' in custom_data:
-                            xml_lines.append(f'    <episode-num system="onscreen">{custom_data["onscreen_episode"]}</episode-num>')
+                            xml_lines.append(f'    <episode-num system="onscreen">{html.escape(custom_data["onscreen_episode"])}</episode-num>')
 
                         # Add season and episode numbers in xmltv_ns format if available
                         if 'season' in custom_data and 'episode' in custom_data:
@@ -158,8 +159,8 @@ def generate_epg(request, profile_name=None):
                         # Add rating if available
                         if 'rating' in custom_data:
                             rating_system = custom_data.get('rating_system', 'TV Parental Guidelines')
-                            xml_lines.append(f'    <rating system="{rating_system}">')
-                            xml_lines.append(f'      <value>{custom_data["rating"]}</value>')
+                            xml_lines.append(f'    <rating system="{html.escape(rating_system)}">')
+                            xml_lines.append(f'      <value>{html.escape(custom_data["rating"])}</value>')
                             xml_lines.append(f'    </rating>')
 
                         # Add actors/directors/writers if available
@@ -168,22 +169,22 @@ def generate_epg(request, profile_name=None):
                             for role, people in custom_data['credits'].items():
                                 if isinstance(people, list):
                                     for person in people:
-                                        xml_lines.append(f'      <{role}>{person}</{role}>')
+                                        xml_lines.append(f'      <{role}>{html.escape(person)}</{role}>')
                                 else:
-                                    xml_lines.append(f'      <{role}>{people}</{role}>')
+                                    xml_lines.append(f'      <{role}>{html.escape(people)}</{role}>')
                             xml_lines.append(f'    </credits>')
 
                         # Add program date/year if available
                         if 'year' in custom_data:
-                            xml_lines.append(f'    <date>{custom_data["year"]}</date>')
+                            xml_lines.append(f'    <date>{html.escape(custom_data["year"])}</date>')
 
                         # Add country if available
                         if 'country' in custom_data:
-                            xml_lines.append(f'    <country>{custom_data["country"]}</country>')
+                            xml_lines.append(f'    <country>{html.escape(custom_data["country"])}</country>')
 
                         # Add icon if available
                         if 'icon' in custom_data:
-                            xml_lines.append(f'    <icon src="{custom_data["icon"]}" />')
+                            xml_lines.append(f'    <icon src="{html.escape(custom_data["icon"])}" />')
 
                         # Add special flags as proper tags
                         if custom_data.get('previously_shown', False):
@@ -196,7 +197,7 @@ def generate_epg(request, profile_name=None):
                             xml_lines.append(f'    <new />')
 
                     except Exception as e:
-                        xml_lines.append(f'    <!-- Error parsing custom properties: {str(e)} -->')
+                        xml_lines.append(f'    <!-- Error parsing custom properties: {html.escape(str(e))} -->')
 
                 xml_lines.append('  </programme>')
 
