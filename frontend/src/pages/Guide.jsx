@@ -463,16 +463,17 @@ export default function TVChannelGuide({ startDate, endDate }) {
               {selectedProgram.description || 'No description available.'}
             </Text>
             {/* Only show the Watch button if currently live */}
-            {now.isAfter(dayjs(selectedProgram.start_time)) &&
-              now.isBefore(dayjs(selectedProgram.end_time)) && (
-                <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-                  <Button
-                    variant="transparent"
-                    color="gray"
-                    onClick={() => record(selectedProgram)}
-                  >
-                    Record
-                  </Button>
+            <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+              <Button
+                variant="transparent"
+                color="gray"
+                onClick={() => record(selectedProgram)}
+              >
+                Record
+              </Button>
+
+              {now.isAfter(dayjs(selectedProgram.start_time)) &&
+                now.isBefore(dayjs(selectedProgram.end_time)) && (
                   <Button
                     variant="transparent"
                     color="gray"
@@ -480,8 +481,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
                   >
                     Watch Now
                   </Button>
-                </Flex>
-              )}
+                )}
+            </Flex>
           </>
         )}
       </Modal>

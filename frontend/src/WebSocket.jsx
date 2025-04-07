@@ -29,7 +29,7 @@ export const WebsocketProvider = ({ children }) => {
   useEffect(() => {
     let wsUrl = `${window.location.host}/ws/`;
     if (import.meta.env.DEV) {
-      wsUrl = `${window.location.hostname}:5656/ws/`;
+      wsUrl = `${window.location.hostname}:8001/ws/`;
     }
 
     if (window.location.protocol.match(/https/)) {
