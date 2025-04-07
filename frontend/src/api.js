@@ -500,7 +500,9 @@ export default class API {
 
   static async addPlaylist(values) {
     let body = null;
+    let endpoint = `${host}/api/m3u/accounts/`;
     if (values.file) {
+      endpoint = `${host}/api/m3u/accounts/upload/`;
       body = new FormData();
       for (const prop in values) {
         body.append(prop, values[prop]);
@@ -511,7 +513,7 @@ export default class API {
       body = JSON.stringify(body);
     }
 
-    const response = await fetch(`${host}/api/m3u/accounts/`, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
