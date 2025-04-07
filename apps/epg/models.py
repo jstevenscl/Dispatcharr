@@ -17,6 +17,14 @@ class EPGSource(models.Model):
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
     )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Time when this source was created"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Time when this source was last updated"
+    )
 
     def __str__(self):
         return self.name

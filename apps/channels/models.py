@@ -410,6 +410,7 @@ class Recording(models.Model):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     task_id = models.CharField(max_length=255, null=True, blank=True)
+    custom_properties = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.channel.name} - {self.start_time} to {self.end_time}"

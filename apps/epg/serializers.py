@@ -4,10 +4,11 @@ from apps.channels.models import Channel
 
 class EPGSourceSerializer(serializers.ModelSerializer):
     epg_data_ids = serializers.SerializerMethodField()
+    read_only_fields = ['created_at', 'updated_at']
 
     class Meta:
         model = EPGSource
-        fields = ['id', 'name', 'source_type', 'url', 'api_key', 'is_active', 'epg_data_ids', 'refresh_interval']
+        fields = ['id', 'name', 'source_type', 'url', 'api_key', 'is_active', 'epg_data_ids', 'refresh_interval', 'created_at', 'updated_at']
 
     def get_epg_data_ids(self, obj):
         return  list(obj.epgs.values_list('id', flat=True))

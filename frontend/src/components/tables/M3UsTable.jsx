@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { SquareMinus, SquarePen, RefreshCcw, Check, X } from 'lucide-react';
 import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
+import dayjs from 'dayjs';
 
 const M3UTable = () => {
   const [playlist, setPlaylist] = useState(null);
@@ -69,6 +70,11 @@ const M3UTable = () => {
             {cell.getValue() ? <Check color="green" /> : <X color="red" />}
           </Box>
         ),
+      },
+      {
+        header: 'Updated',
+        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        enableSorting: false,
       },
     ],
     []

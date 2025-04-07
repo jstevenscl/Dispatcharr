@@ -1035,6 +1035,19 @@ export default class API {
       .updateProfileChannels(channelIds, profileId, enabled);
   }
 
+  static async getRecordings() {
+    const response = await fetch(`${host}/api/channels/recordings/`, {
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const retval = await response.json();
+
+    return retval;
+  }
+
   static async createRecording(values) {
     const response = await fetch(`${host}/api/channels/recordings/`, {
       method: 'POST',
@@ -1046,7 +1059,20 @@ export default class API {
     });
 
     const retval = await response.json();
+    useChannelsStore.getState().fetchRecordings();
 
     return retval;
+  }
+
+  static async deleteRecording(id) {
+    const response = await fetch(`${host}/api/channels/recordings/${id}/`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    useChannelsStore.getState().fetchRecordings();
   }
 }

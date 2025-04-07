@@ -50,6 +50,8 @@ def refresh_epg_data(source_id):
     elif source.source_type == 'schedules_direct':
         fetch_schedules_direct(source)
 
+    source.save(update_fields=['updated_at'])
+
     release_task_lock('refresh_epg_data', source_id)
 
 def fetch_xmltv(source):

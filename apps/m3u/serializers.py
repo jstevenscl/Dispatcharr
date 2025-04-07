@@ -56,7 +56,7 @@ class M3UAccountSerializer(serializers.ModelSerializer):
         required=True
     )
     profiles = M3UAccountProfileSerializer(many=True, read_only=True)
-    read_only_fields = ['locked']
+    read_only_fields = ['locked', 'created_at', 'updated_at']
     # channel_groups = serializers.SerializerMethodField()
     channel_groups = ChannelGroupM3UAccountSerializer(source='channel_group', many=True, required=False)
 

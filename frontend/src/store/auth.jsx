@@ -36,6 +36,7 @@ const useAuthStore = create((set, get) => ({
       useChannelsStore.getState().fetchChannelGroups(),
       useChannelsStore.getState().fetchLogos(),
       useChannelsStore.getState().fetchChannelProfiles(),
+      useChannelsStore.getState().fetchRecordings(),
       useUserAgentsStore.getState().fetchUserAgents(),
       usePlaylistsStore.getState().fetchPlaylists(),
       useEPGsStore.getState().fetchEPGs(),
