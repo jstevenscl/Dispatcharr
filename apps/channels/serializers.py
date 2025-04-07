@@ -18,7 +18,7 @@ class LogoSerializer(serializers.ModelSerializer):
         # return f"/api/channels/logos/{obj.id}/cache/"
         request = self.context.get('request')
         if request:
-            return request.build_absolute_uri(reverse('api:channels:logo-cache', args=[obj.id]))  # Use 'logo-cache'
+            return request.build_absolute_uri(reverse('api:channels:logo-cache', args=[obj.id]))
         return reverse('api:channels:logo-cache', args=[obj.id])
 
 #
