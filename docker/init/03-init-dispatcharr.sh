@@ -16,9 +16,7 @@ sed -i "s/NGINX_PORT/${DISPATCHARR_PORT}/g" /etc/nginx/sites-enabled/default
 if [ "$(id -u)" = "0" ]; then
     # Needs to own ALL of /data except db, we handle that below
     chown -R $PUID:$PGID /data
-
-    chown -R $PUID:$PGID /app/logo_cache
-    chown -R $PUID:$PGID /app/media
+    chown -R $PUID:$PGID /app
 
     # Permissions
     chown -R postgres:postgres /data/db
