@@ -265,7 +265,7 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     retval = f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
 
     # Aggressive garbage collection
-    del streams_to_create, streams_to_update, stream_hash, existing_streams
+    del streams_to_create, streams_to_update, stream_hashes, existing_streams
     gc.collect()
 
     return retval
