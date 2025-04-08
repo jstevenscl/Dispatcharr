@@ -198,11 +198,11 @@ export default function TVChannelGuide({ startDate, endDate }) {
     }
   }, [programs, start, now, initialScrollComplete]);
 
-  // Update “now” every 60s
+  // Update “now” every second
   useEffect(() => {
     const interval = setInterval(() => {
       setNow(dayjs());
-    }, 60000);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
