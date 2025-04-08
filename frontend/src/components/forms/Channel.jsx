@@ -66,7 +66,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const handleLogoChange = async (files) => {
     if (files.length === 1) {
-      console.log(files[0]);
       const retval = await API.uploadLogo(files[0]);
       await fetchLogos();
       setLogoPreview(retval.cache_url);

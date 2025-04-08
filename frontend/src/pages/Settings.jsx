@@ -1,13 +1,10 @@
 import React, { useEffect } from 'react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
-
 import API from '../api';
 import useSettingsStore from '../store/settings';
 import useUserAgentsStore from '../store/userAgents';
-
 import useStreamProfilesStore from '../store/streamProfiles';
 import { Button, Center, Flex, Paper, Select, Title } from '@mantine/core';
+import { isNotEmpty, useForm } from '@mantine/form';
 
 const SettingsPage = () => {
   const { settings } = useSettingsStore();
@@ -265,58 +262,51 @@ const SettingsPage = () => {
     { value: 'zw', label: 'ZW' },
   ];
 
-  console.log(settings);
-  const formik = useFormik({
+  const form = useForm({
+    mode: 'uncontrolled',
     initialValues: {
-      'default-user-agent': `${settings['default-user-agent'].id}`,
-      'default-stream-profile': `${settings['default-stream-profile'].id}`,
-      'preferred-region': settings['preferred-region']?.value || 'us',
+      'default-user-agent': '',
+      'default-stream-profile': '',
+      'preferred-region': '',
     },
-    validationSchema: Yup.object({
-      'default-user-agent': Yup.string().required('User-Agent is required'),
-      'default-stream-profile': Yup.string().required(
-        'Stream Profile is required'
-      ),
-      'preferred-region': Yup.string().required('Region is required'),
-    }),
-    onSubmit: async (values, { setSubmitting, resetForm }) => {
-      console.log(values);
-      const changedSettings = {};
-      for (const settingKey in values) {
-        // If the user changed the setting’s value from what’s in the DB:
-        if (String(values[settingKey]) !== String(settings[settingKey].value)) {
-          changedSettings[settingKey] = values[settingKey];
-        }
-      }
 
-      // Update each changed setting in the backend
-      for (const updatedKey in changedSettings) {
-        await API.updateSetting({
-          ...settings[updatedKey],
-          value: changedSettings[updatedKey],
-        });
-      }
-
-      setSubmitting(false);
-      // Don’t necessarily resetForm, in case the user wants to see new values
+    validate: {
+      'default-user-agent': isNotEmpty('Select a channel'),
+      'default-stream-profile': isNotEmpty('Select a start time'),
+      'preferred-region': isNotEmpty('Select an end time'),
     },
   });
 
-  // Initialize form values once settings / userAgents / profiles are loaded
   useEffect(() => {
-    formik.setValues(
-      Object.values(settings).reduce((acc, setting) => {
-        // If the setting’s value is numeric, parse it
-        // Otherwise, just store as string
-        const possibleNumber = parseInt(setting.value, 10);
-        acc[setting.key] = isNaN(possibleNumber)
-          ? setting.value
-          : possibleNumber;
-        return acc;
-      }, {})
-    );
-    // eslint-disable-next-line
-  }, [settings, userAgents, streamProfiles]);
+    if (settings) {
+      form.setInitialValues(
+        Object.entries(settings).reduce((acc, [key, value]) => {
+          // Modify each value based on its own properties
+          acc[key] = value.value;
+          return acc;
+        }, {})
+      );
+    }
+  }, [settings]);
+
+  const onSubmit = async () => {
+    const values = form.getValues();
+    const changedSettings = {};
+    for (const settingKey in values) {
+      // If the user changed the setting’s value from what’s in the DB:
+      if (String(values[settingKey]) !== String(settings[settingKey].value)) {
+        changedSettings[settingKey] = values[settingKey];
+      }
+    }
+
+    // Update each changed setting in the backend
+    for (const updatedKey in changedSettings) {
+      await API.updateSetting({
+        ...settings[updatedKey],
+        value: changedSettings[updatedKey],
+      });
+    }
+  };
 
   return (
     <Center
@@ -331,24 +321,13 @@ const SettingsPage = () => {
         <Title order={4} align="center">
           Settings
         </Title>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault(); // Prevents default form behavior
-            console.log('Form submission triggered');
-            console.log('Formik Errors before submit:', formik.errors);
-            formik.handleSubmit(e);
-            console.log('After formik.handleSubmit call');
-          }}
-        >
+        <form onSubmit={form.onSubmit(onSubmit)}>
           <Select
+            {...form.getInputProps('default-user-agent')}
+            key={form.key('default-user-agent')}
             id={settings['default-user-agent']?.id}
             name={settings['default-user-agent']?.key}
             label={settings['default-user-agent']?.name}
-            value={formik.values['default-user-agent'] || ''}
-            onChange={(value) => {
-              formik.setFieldValue('default-user-agent', value);
-            }}
-            error={formik.errors['default-user-agent']}
             data={userAgents.map((option) => ({
               value: `${option.id}`,
               label: option.name,
@@ -356,27 +335,22 @@ const SettingsPage = () => {
           />
 
           <Select
+            {...form.getInputProps('default-stream-profile')}
+            key={form.key('default-stream-profile')}
             id={settings['default-stream-profile']?.id}
             name={settings['default-stream-profile']?.key}
             label={settings['default-stream-profile']?.name}
-            value={formik.values['default-stream-profile'] || ''}
-            onChange={(value) => {
-              formik.setFieldValue('default-stream-profile', value);
-            }}
-            error={formik.errors['default-stream-profile']}
             data={streamProfiles.map((option) => ({
               value: `${option.id}`,
               label: option.name,
             }))}
           />
           <Select
+            {...form.getInputProps('preferred-region')}
+            key={form.key('preferred-region')}
             id={settings['preferred-region']?.id || 'preferred-region'}
             name={settings['preferred-region']?.key || 'preferred-region'}
             label={settings['preferred-region']?.name || 'Preferred Region'}
-            value={formik.values['preferred-region'] || ''}
-            onChange={(value) => {
-              formik.setFieldValue('preferred-region', value);
-            }}
             data={regionChoices.map((r) => ({
               label: r.label,
               value: `${r.value}`,
@@ -384,7 +358,7 @@ const SettingsPage = () => {
           />
 
           <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-            <Button type="submit" disabled={formik.isSubmitting} size="sm">
+            <Button type="submit" disabled={form.submitting} size="sm">
               Submit
             </Button>
           </Flex>

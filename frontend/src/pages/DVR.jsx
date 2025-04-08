@@ -48,6 +48,8 @@ const RecordingCard = ({ recording }) => {
     recordingName = customProps.program.title;
   }
 
+  console.log(recording);
+
   return (
     <Card
       shadow="sm"
@@ -59,7 +61,7 @@ const RecordingCard = ({ recording }) => {
         backgroundColor: '#27272A',
       }}
     >
-      <Flex justify="space-between" align="center">
+      <Flex justify="space-between" align="center" style={{ paddingBottom: 5 }}>
         <Group>
           <Text fw={500}>{recordingName}</Text>
         </Group>
@@ -77,11 +79,23 @@ const RecordingCard = ({ recording }) => {
         </Center>
       </Flex>
 
-      <Text size="sm">Channel: {channels[recording.channel].name}</Text>
-      <Text size="sm">
-        Start: {dayjs(recording.start_time).format('MMMM D, YYYY h:MMa')}
-        End: {dayjs(recording.end_time).format('MMMM D, YYYY h:MMa')}
-      </Text>
+      <Group justify="space-between">
+        <Text size="sm">Channel:</Text>
+        <Text size="sm">{channels[recording.channel].name}</Text>
+      </Group>
+
+      <Group justify="space-between">
+        <Text size="sm">Start:</Text>
+        <Text size="sm">
+          {dayjs(new Date(recording.start_time)).format('MMMM D, YYYY h:MMa')}
+        </Text>
+      </Group>
+      <Group justify="space-between">
+        <Text size="sm">End:</Text>
+        <Text size="sm">
+          {dayjs(new Date(recording.end_time)).format('MMMM D, YYYY h:MMa')}
+        </Text>
+      </Group>
     </Card>
   );
 };

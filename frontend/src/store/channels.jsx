@@ -109,22 +109,30 @@ const useChannelsStore = create((set, get) => ({
     set((state) => {
       const channelsByUUID = {};
       const logos = {};
+      const profileChannels = [];
+
       const channelsByID = newChannels.reduce((acc, channel) => {
         acc[channel.id] = channel;
         channelsByUUID[channel.uuid] = channel.id;
         if (channel.logo) {
           logos[channel.logo.id] = channel.logo;
         }
+
+        profileChannels.push({
+          id: channel.id,
+          enabled: true,
+        });
+
         return acc;
       }, {});
-      const profileChannels = newChannels.map((channel) => ({
-        id: channel.id,
-        enabled: true,
-      }));
+
       const profiles = { ...state.profiles };
       Object.values(profiles).forEach((item) => {
-        item.channels.concat(profileChannels); // Append a new channel object
+        item.channels = item.channels.concat(profileChannels); // Append a new channel object
       });
+
+      console.log(profileChannels);
+      console.log(profiles);
 
       return {
         channels: {

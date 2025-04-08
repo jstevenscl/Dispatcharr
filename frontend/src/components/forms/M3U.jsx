@@ -188,7 +188,9 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               name="user_agent"
               label="User-Agent"
               value={formik.values.user_agent}
-              onChange={formik.handleChange}
+              onChange={(value) => {
+                formik.setValues('user_agent', value);
+              }}
               error={formik.errors.user_agent ? formik.touched.user_agent : ''}
               data={userAgents.map((ua) => ({
                 label: ua.name,

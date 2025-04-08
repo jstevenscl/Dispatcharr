@@ -502,7 +502,7 @@ export default class API {
     let body = null;
     let endpoint = `${host}/api/m3u/accounts/`;
     if (values.file) {
-      endpoint = `${host}/api/m3u/accounts/upload/`;
+      // endpoint = `${host}/api/m3u/accounts/upload/`;
       body = new FormData();
       for (const prop in values) {
         body.append(prop, values[prop]);

@@ -381,6 +381,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
         channel_logos = {logo.url: logo for logo in Logo.objects.filter(url__in=[url for url in logo_map if url is not None])}
 
+        profiles = ChannelProfile.objects.all()
+        channel_profile_memberships = []
         if channels_to_create:
             with transaction.atomic():
                 created_channels = Channel.objects.bulk_create(channels_to_create)
@@ -390,7 +392,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
                     if logo_url:
                         channel.logo = channel_logos[logo_url]
                     update.append(channel)
+                    channel_profile_memberships = channel_profile_memberships + [
+                       ChannelProfileMembership(channel_profile=profile, channel=channel)
+                        for profile in profiles
+                    ]
 
+                ChannelProfileMembership.objects.bulk_create(channel_profile_memberships)
                 Channel.objects.bulk_update(update, ['logo'])
 
                 for channel, stream_ids in zip(created_channels, streams_map):

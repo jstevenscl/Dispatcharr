@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.core.cache import cache
 import os
 from rest_framework.decorators import action
+from django.conf import settings
 
 # Import all models, including UserAgent.
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
@@ -24,6 +25,8 @@ from .serializers import (
 )
 
 from .tasks import refresh_single_m3u_account, refresh_m3u_accounts
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 
 class M3UAccountViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U accounts"""
@@ -31,28 +34,60 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
     serializer_class = M3UAccountSerializer
     permission_classes = [IsAuthenticated]
 
-    @action(detail=False, methods=['post'])
-    def upload(self, request):
-        if 'file' not in request.FILES:
-            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+    def create(self, request, *args, **kwargs):
+        # Handle file upload first, if any
+        file_path = None
+        if 'file' in request.FILES:
+            file = request.FILES['file']
+            file_name = file.name
+            file_path = os.path.join('/data/uploads/m3us', file_name)
 
-        file = request.FILES['file']
-        file_name = file.name
-        file_path = os.path.join('/data/uploads/m3us', file_name)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, 'wb+') as destination:
-            for chunk in file.chunks():
-                destination.write(chunk)
+            # Add file_path to the request data so it's available during creation
+            request.data._mutable = True  # Allow modification of the request data
+            request.data['file_path'] = file_path  # Include the file path if a file was uploaded
+            request.data.pop('server_url')
+            request.data._mutable = False  # Make the request data immutable again
 
-        new_obj_data = request.data.copy()
-        new_obj_data['file_path'] = file_path
+        # Now call super().create() to create the instance
+        response = super().create(request, *args, **kwargs)
 
-        serializer = self.get_serializer(data=new_obj_data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        # After the instance is created, return the response
+        return response
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        # Handle file upload first, if any
+        file_path = None
+        if 'file' in request.FILES:
+            file = request.FILES['file']
+            file_name = file.name
+            file_path = os.path.join('/data/uploads/m3us', file_name)
+
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+
+            # Add file_path to the request data so it's available during creation
+            request.data._mutable = True  # Allow modification of the request data
+            request.data['file_path'] = file_path  # Include the file path if a file was uploaded
+            request.data.pop('server_url')
+            request.data._mutable = False  # Make the request data immutable again
+
+            if instance.file_path and os.path.exists(instance.file_path):
+                os.remove(instance.file_path)
+
+        # Now call super().create() to create the instance
+        response = super().update(request, *args, **kwargs)
+
+        # After the instance is created, return the response
+        return response
 
 class M3UFilterViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U filters"""
