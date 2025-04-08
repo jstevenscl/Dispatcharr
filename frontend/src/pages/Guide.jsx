@@ -306,6 +306,25 @@ export default function TVChannelGuide({ startDate, endDate }) {
     }
   };
 
+  // Handle wheel events on the timeline for horizontal scrolling
+  const handleTimelineWheel = (e) => {
+    if (timelineRef.current) {
+      // Prevent the default vertical scroll
+      e.preventDefault();
+
+      // Determine scroll amount (with shift key for faster scrolling)
+      const scrollAmount = e.shiftKey ? 250 : 125;
+
+      // Scroll horizontally based on wheel direction
+      timelineRef.current.scrollLeft += e.deltaY > 0 ? scrollAmount : -scrollAmount;
+
+      // Sync the main content scroll position
+      if (guideRef.current) {
+        guideRef.current.scrollLeft = timelineRef.current.scrollLeft;
+      }
+    }
+  };
+
   // Renders each program block
   function renderProgram(program, channelStart) {
     const programKey = `${program.tvg_id}-${program.start_time}`;
@@ -600,6 +619,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 position: 'relative',
               }}
               onScroll={handleTimelineScroll}
+              onWheel={handleTimelineWheel} // Add wheel event handler
             >
               <Box
                 style={{
