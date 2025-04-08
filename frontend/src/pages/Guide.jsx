@@ -325,6 +325,52 @@ export default function TVChannelGuide({ startDate, endDate }) {
     }
   };
 
+  // Function to handle timeline time clicks with 15-minute snapping
+  const handleTimeClick = (clickedTime, event) => {
+    if (timelineRef.current && guideRef.current) {
+      // Calculate where in the hour block the click happened
+      const hourBlockElement = event.currentTarget;
+      const rect = hourBlockElement.getBoundingClientRect();
+      const clickPositionX = event.clientX - rect.left; // Position within the hour block
+      const percentageAcross = clickPositionX / rect.width; // 0 to 1 value
+
+      // Calculate the minute within the hour based on click position
+      const minuteWithinHour = Math.floor(percentageAcross * 60);
+
+      // Create a new time object with the calculated minute
+      const exactTime = clickedTime.minute(minuteWithinHour);
+
+      // Determine the nearest 15-minute interval (0, 15, 30, 45)
+      let snappedMinute;
+      if (minuteWithinHour < 7.5) {
+        snappedMinute = 0;
+      } else if (minuteWithinHour < 22.5) {
+        snappedMinute = 15;
+      } else if (minuteWithinHour < 37.5) {
+        snappedMinute = 30;
+      } else if (minuteWithinHour < 52.5) {
+        snappedMinute = 45;
+      } else {
+        // If we're past 52.5 minutes, snap to the next hour
+        snappedMinute = 0;
+        clickedTime = clickedTime.add(1, 'hour');
+      }
+
+      // Create the snapped time
+      const snappedTime = clickedTime.minute(snappedMinute);
+
+      // Calculate the offset from the start of the timeline to the snapped time
+      const snappedOffset = snappedTime.diff(start, 'minute');
+
+      // Convert to pixels
+      const scrollPosition = (snappedOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+
+      // Scroll both containers to the snapped position
+      timelineRef.current.scrollLeft = scrollPosition;
+      guideRef.current.scrollLeft = scrollPosition;
+    }
+  };
+
   // Renders each program block
   function renderProgram(program, channelStart) {
     const programKey = `${program.tvg_id}-${program.start_time}`;
@@ -638,7 +684,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
                       position: 'relative',
                       color: '#a0aec0',
                       borderRight: '1px solid #4a5568',
+                      cursor: 'pointer', // Add pointer cursor to indicate clickable
                     }}
+                    onClick={(e) => handleTimeClick(time, e)} // Pass the event to get click position
                   >
                     <Text
                       size="sm"
