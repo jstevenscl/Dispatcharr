@@ -67,27 +67,28 @@ class ProgramViewSet(viewsets.ModelViewSet):
 # 3) EPG Grid View
 # ─────────────────────────────
 class EPGGridAPIView(APIView):
-    """Returns all programs airing in the next 24 hours including currently running ones"""
+    """Returns all programs airing in the next 24 hours including currently running ones and recent ones"""
 
     @swagger_auto_schema(
-        operation_description="Retrieve currently running and upcoming EPG programs for the next 24 hours",
+        operation_description="Retrieve programs from the previous hour, currently running and upcoming for the next 24 hours",
         responses={200: ProgramDataSerializer(many=True)}
     )
     def get(self, request, format=None):
         # Use current time instead of midnight
         now = timezone.now()
+        one_hour_ago = now - timedelta(hours=1)
         twenty_four_hours_later = now + timedelta(hours=24)
-        logger.debug(f"EPGGridAPIView: Querying programs between {now} and {twenty_four_hours_later}.")
+        logger.debug(f"EPGGridAPIView: Querying programs between {one_hour_ago} and {twenty_four_hours_later}.")
 
-        # Use select_related to prefetch EPGData and include currently running programs
+        # Use select_related to prefetch EPGData and include programs from the last hour
         programs = ProgramData.objects.select_related('epg').filter(
-            # Programs that end after now (currently running or future)
-            end_time__gt=now,
-            # AND either start before the end time window OR end before the end time window
+            # Programs that end after one hour ago (includes recently ended programs)
+            end_time__gt=one_hour_ago,
+            # AND start before the end time window
             start_time__lt=twenty_four_hours_later
         )
         count = programs.count()
-        logger.debug(f"EPGGridAPIView: Found {count} program(s), including currently running shows.")
+        logger.debug(f"EPGGridAPIView: Found {count} program(s), including recently ended, currently running, and upcoming shows.")
         serializer = ProgramDataSerializer(programs, many=True)
         return Response({'data': serializer.data}, status=status.HTTP_200_OK)
 
