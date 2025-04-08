@@ -357,6 +357,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
           color: '#fff',
           padding: 20,
           position: 'sticky',
+          top: 0,
+          zIndex: 1000,
         }}
       >
         <Title order={3} style={{ fontWeight: 'bold' }}>
@@ -365,154 +367,122 @@ export default function TVChannelGuide({ startDate, endDate }) {
         <Text>{now.format('dddd, MMMM D, YYYY • h:mm A')}</Text>
       </Flex>
 
-      {/* Main layout */}
-      <Grid direction="row" style={{ padding: 8 }}>
-        {/* Channel Logos Column */}
-        <Box style={{ backgroundColor: '#2d3748', color: '#fff' }}>
-          <Box
-            style={{
-              width: CHANNEL_WIDTH,
-              height: '40px',
-              borderBottom: '1px solid #4a5568',
-            }}
-          />
-          {guideChannels.map((channel) => (
-            <Box
-              key={channel.name}
-              style={{
-                display: 'flex',
-                height: PROGRAM_HEIGHT,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderBottom: '1px solid #4a5568',
-              }}
-            >
-              <Flex
-                direction="column"
-                align="center"
-                justify="center"
-                style={{
-                  width: CHANNEL_WIDTH,
-                  maxWidth: CHANNEL_WIDTH * 0.8,
-                  maxHeight: PROGRAM_HEIGHT * 0.9,
-                }}
-              >
-                <img
-                  src={channel.logo?.cache_url || logo}
-                  alt={channel.name}
-                  style={{
-                    width: '100%',
-                    height: 'auto',
-                    objectFit: 'contain',
-                    maxHeight: PROGRAM_HEIGHT * 0.65,
-                  }}
-                />
-                <Text
-                  size="sm"
-                  weight={600}
-                  style={{
-                    marginTop: 4,
-                    backgroundColor: '#2C3E50',
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    fontSize: '0.85em'
-                  }}
-                >
-                  {channel.channel_number || '-'}
-                </Text>
-              </Flex>
-            </Box>
-          ))}
-        </Box>
-
-        {/* Timeline & Program Blocks */}
+      {/* Guide container with headers and scrollable content */}
+      <Box style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
+        {/* Main scrollable container that will scroll both headers and content */}
         <Box
           ref={guideRef}
           style={{
             flex: 1,
-            overflowX: 'auto',
-            overflowY: 'auto',
+            overflow: 'auto',
+            position: 'relative',
           }}
         >
-          {/* Sticky timeline header */}
-          <Box
-            style={{
-              display: 'flex',
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              backgroundColor: '#171923',
-              borderBottom: '1px solid #4a5568',
-            }}
-          >
-            <Box style={{ flex: 1, display: 'flex' }}>
-              {hourTimeline.map((time, hourIndex) => (
-                <Box
-                  key={time.format()}
-                  style={{
-                    width: HOUR_WIDTH,
-                    height: '40px',
-                    position: 'relative',
-                    color: '#a0aec0',
-                    borderRight: '1px solid #4a5568',
-                  }}
-                >
-                  <Text
-                    size="sm"
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: hourIndex === 0 ? 4 : 'calc(50% - 16px)',
-                      transform: 'translateY(-50%)',
-                    }}
-                  >
-                    {time.format('h:mma')}
-                  </Text>
-                  <Box
-                    style={{
-                      position: 'absolute',
-                      bottom: 0,
-                      top: 0,
-                      width: '100%',
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(4, 1fr)',
-                      alignItems: 'end',
-                    }}
-                  >
-                    {[0, 1, 2, 3].map((i) => (
-                      <Box
-                        key={i}
-                        style={{
-                          width: '1px',
-                          height: '10px',
-                          backgroundColor: '#718096',
-                          marginRight: i < 3 ? HOUR_WIDTH / 4 - 1 + 'px' : 0,
-                        }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-
-          {/* Now line */}
-          <Box style={{ position: 'relative' }}>
+          {/* Content wrapper with min-width to ensure scroll range */}
+          <Box style={{ minWidth: hourTimeline.length * HOUR_WIDTH + CHANNEL_WIDTH, position: 'relative' }}>
+            {/* Now line - positioned absolutely within content */}
             {nowPosition >= 0 && (
               <Box
                 style={{
                   position: 'absolute',
-                  left: nowPosition,
+                  left: nowPosition + CHANNEL_WIDTH,
                   top: 0,
-                  bottom: 0,
+                  height: '100%',
                   width: '2px',
                   backgroundColor: '#38b2ac',
                   zIndex: 15,
+                  pointerEvents: 'none', // Allow clicking through the line
                 }}
               />
             )}
 
-            {/* Channel rows */}
+            {/* Fixed header row - sticky top, scrolls horizontally with content */}
+            <Box
+              style={{
+                display: 'flex',
+                position: 'sticky',
+                top: 0,
+                zIndex: 100,
+                backgroundColor: '#171923',
+              }}
+            >
+              {/* Logo header - sticky in both directions */}
+              <Box
+                style={{
+                  width: CHANNEL_WIDTH,
+                  minWidth: CHANNEL_WIDTH,
+                  flexShrink: 0,
+                  height: '40px',
+                  backgroundColor: '#2d3748',
+                  borderBottom: '1px solid #4a5568',
+                  borderRight: '1px solid #4a5568',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 200,
+                }}
+              />
+
+              {/* Timeline header - scrolls horizontally with content */}
+              <Box
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  backgroundColor: '#171923',
+                  borderBottom: '1px solid #4a5568',
+                  overflow: 'hidden',
+                }}
+              >
+                {hourTimeline.map((time, hourIndex) => (
+                  <Box
+                    key={time.format()}
+                    style={{
+                      width: HOUR_WIDTH,
+                      height: '40px',
+                      position: 'relative',
+                      color: '#a0aec0',
+                      borderRight: '1px solid #4a5568',
+                    }}
+                  >
+                    <Text
+                      size="sm"
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: hourIndex === 0 ? 4 : 'calc(50% - 16px)',
+                        transform: 'translateY(-50%)',
+                      }}
+                    >
+                      {time.format('h:mma')}
+                    </Text>
+                    <Box
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        top: 0,
+                        width: '100%',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        alignItems: 'end',
+                      }}
+                    >
+                      {[0, 1, 2, 3].map((i) => (
+                        <Box
+                          key={i}
+                          style={{
+                            width: '1px',
+                            height: '10px',
+                            backgroundColor: '#718096',
+                            marginRight: i < 3 ? HOUR_WIDTH / 4 - 1 + 'px' : 0,
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+
+            {/* Channel rows with logos and programs */}
             {guideChannels.map((channel) => {
               const channelPrograms = programs.filter(
                 (p) => p.tvg_id === channel.epg_data?.tvg_id
@@ -522,11 +492,62 @@ export default function TVChannelGuide({ startDate, endDate }) {
                   key={channel.name}
                   style={{
                     display: 'flex',
-                    position: 'relative',
-                    minHeight: PROGRAM_HEIGHT,
+                    height: PROGRAM_HEIGHT,
                     borderBottom: '1px solid #4a5568',
                   }}
                 >
+                  {/* Channel logo - sticky horizontally */}
+                  <Box
+                    style={{
+                      width: CHANNEL_WIDTH,
+                      minWidth: CHANNEL_WIDTH,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#2d3748',
+                      borderRight: '1px solid #4a5568',
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 10,
+                    }}
+                  >
+                    <Flex
+                      direction="column"
+                      align="center"
+                      justify="center"
+                      style={{
+                        maxWidth: CHANNEL_WIDTH * 0.8,
+                        maxHeight: PROGRAM_HEIGHT * 0.9,
+                      }}
+                    >
+                      <img
+                        src={channel.logo?.cache_url || logo}
+                        alt={channel.name}
+                        style={{
+                          width: '100%',
+                          height: 'auto',
+                          objectFit: 'contain',
+                          maxHeight: PROGRAM_HEIGHT * 0.65,
+                        }}
+                      />
+                      <Text
+                        size="sm"
+                        weight={600}
+                        style={{
+                          marginTop: 4,
+                          backgroundColor: '#2C3E50',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          fontSize: '0.85em'
+                        }}
+                      >
+                        {channel.channel_number || '-'}
+                      </Text>
+                    </Flex>
+                  </Box>
+
+                  {/* Programs for this channel */}
                   <Box style={{ flex: 1, position: 'relative' }}>
                     {channelPrograms.map((prog) => renderProgram(prog, start))}
                   </Box>
@@ -535,7 +556,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
             })}
           </Box>
         </Box>
-      </Grid>
+      </Box>
 
       {/* Modal for program details */}
       <Modal
