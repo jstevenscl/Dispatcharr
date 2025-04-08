@@ -17,7 +17,12 @@ import {
   Paper,
   Grid,
   Group,
+  TextInput,
+  Select,
+  ActionIcon,
+  Tooltip,
 } from '@mantine/core';
+import { Search, X, Clock } from 'lucide-react';
 import './guide.css';
 
 /** Layout constants */
@@ -32,15 +37,22 @@ const MODAL_WIDTH = 600;
 const MODAL_HEIGHT = 400;
 
 export default function TVChannelGuide({ startDate, endDate }) {
-  const { channels, recordings } = useChannelsStore();
+  const { channels, recordings, channelGroups, profiles } = useChannelsStore();
 
   const [programs, setPrograms] = useState([]);
   const [guideChannels, setGuideChannels] = useState([]);
+  const [filteredChannels, setFilteredChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [recording, setRecording] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialScrollComplete, setInitialScrollComplete] = useState(false);
+
+  // New filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('all');
+  const [selectedProfileId, setSelectedProfileId] = useState('all');
+
   const {
     environment: { env_mode },
   } = useSettingsStore();
@@ -75,6 +87,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       );
 
       setGuideChannels(filteredChannels);
+      setFilteredChannels(filteredChannels); // Initialize filtered channels
       console.log(fetched);
       setPrograms(fetched);
       setLoading(false);
@@ -82,6 +95,43 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
     fetchPrograms();
   }, [channels]);
+
+  // Apply filters when search, group, or profile changes
+  useEffect(() => {
+    if (!guideChannels.length) return;
+
+    let result = [...guideChannels];
+
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(channel =>
+        channel.name.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply channel group filter
+    if (selectedGroupId !== 'all') {
+      result = result.filter(channel =>
+        channel.channel_group?.id === parseInt(selectedGroupId)
+      );
+    }
+
+    // Apply profile filter
+    if (selectedProfileId !== 'all') {
+      // Get the profile's enabled channels
+      const profileChannels = profiles[selectedProfileId]?.channels || [];
+      const enabledChannelIds = profileChannels
+        .filter(pc => pc.enabled)
+        .map(pc => pc.id);
+
+      result = result.filter(channel =>
+        enabledChannelIds.includes(channel.id)
+      );
+    }
+
+    setFilteredChannels(result);
+  }, [searchQuery, selectedGroupId, selectedProfileId, guideChannels, profiles]);
 
   // Use start/end from props or default to "today at midnight" +24h
   const defaultStart = dayjs(startDate || dayjs().startOf('day'));
@@ -223,6 +273,19 @@ export default function TVChannelGuide({ startDate, endDate }) {
     setSelectedProgram(null);
   }
 
+  // Function to scroll to current time - matches initial loading position
+  const scrollToNow = () => {
+    if (guideRef.current && nowPosition >= 0) {
+      // Round the current time to the nearest half-hour mark
+      const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
+      const nowOffset = roundedNow.diff(start, 'minute');
+      const scrollPosition =
+        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
+
+      guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
+    }
+  };
+
   // Renders each program block
   function renderProgram(program, channelStart) {
     const programKey = `${program.tvg_id}-${program.start_time}`;
@@ -341,6 +404,47 @@ export default function TVChannelGuide({ startDate, endDate }) {
     );
   }
 
+  // Create group options for dropdown
+  const groupOptions = useMemo(() => {
+    const options = [{ value: 'all', label: 'All Channel Groups' }];
+
+    if (channelGroups) {
+      Object.values(channelGroups).forEach(group => {
+        options.push({
+          value: group.id.toString(),
+          label: group.name
+        });
+      });
+    }
+
+    return options;
+  }, [channelGroups]);
+
+  // Create profile options for dropdown
+  const profileOptions = useMemo(() => {
+    const options = [{ value: 'all', label: 'All Profiles' }];
+
+    if (profiles) {
+      Object.values(profiles).forEach(profile => {
+        if (profile.id !== '0') { // Skip the 'All' default profile
+          options.push({
+            value: profile.id.toString(),
+            label: profile.name
+          });
+        }
+      });
+    }
+
+    return options;
+  }, [profiles]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedGroupId('all');
+    setSelectedProfileId('all');
+  };
+
   return (
     <Box
       className="tv-guide"
@@ -355,24 +459,86 @@ export default function TVChannelGuide({ startDate, endDate }) {
     >
       {/* Sticky top bar */}
       <Flex
-        justify="space-between"
+        direction="column"
         style={{
           backgroundColor: '#2d3748',
           color: '#fff',
-          padding: 20,
+          padding: '12px 20px',
           position: 'sticky',
           top: 0,
           zIndex: 1000,
         }}
       >
-        <Title order={3} style={{ fontWeight: 'bold' }}>
-          TV Guide
-        </Title>
-        <Text>{now.format('dddd, MMMM D, YYYY • h:mm A')}</Text>
+        {/* Title and current time */}
+        <Flex justify="space-between" align="center" mb={12}>
+          <Title order={3} style={{ fontWeight: 'bold' }}>
+            TV Guide
+          </Title>
+          <Flex align="center" gap="md">
+            <Text>{now.format('dddd, MMMM D, YYYY • h:mm A')}</Text>
+            <Tooltip label="Jump to current time">
+              <ActionIcon
+                onClick={scrollToNow}
+                variant="filled"
+                size="md"
+                radius="xl"
+                color="teal"
+              >
+                <Clock size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Flex>
+        </Flex>
+
+        {/* Filter controls */}
+        <Flex gap="md" align="center">
+          <TextInput
+            placeholder="Search channels..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '250px' }} // Reduced width from flex: 1
+            leftSection={<Search size={16} />}
+            rightSection={
+              searchQuery ? (
+                <ActionIcon onClick={() => setSearchQuery('')} variant="subtle" color="gray" size="sm">
+                  <X size={14} />
+                </ActionIcon>
+              ) : null
+            }
+          />
+
+          <Select
+            placeholder="Filter by group"
+            data={groupOptions}
+            value={selectedGroupId}
+            onChange={setSelectedGroupId}
+            style={{ width: '220px' }}
+            clearable={false}
+          />
+
+          <Select
+            placeholder="Filter by profile"
+            data={profileOptions}
+            value={selectedProfileId}
+            onChange={setSelectedProfileId}
+            style={{ width: '180px' }}
+            clearable={false}
+          />
+
+          {(searchQuery !== '' || selectedGroupId !== 'all' || selectedProfileId !== 'all') && (
+            <Button variant="subtle" onClick={clearFilters} size="sm" compact>
+              Clear Filters
+            </Button>
+          )}
+
+          <Text size="sm" color="dimmed">
+            {filteredChannels.length} {filteredChannels.length === 1 ? 'channel' : 'channels'}
+          </Text>
+        </Flex>
       </Flex>
 
       {/* Guide container with headers and scrollable content */}
-      <Box style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
+      <Box style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
         {/* Main scrollable container that will scroll both headers and content */}
         <Box
           ref={guideRef}
@@ -487,78 +653,93 @@ export default function TVChannelGuide({ startDate, endDate }) {
             </Box>
 
             {/* Channel rows with logos and programs */}
-            {guideChannels.map((channel) => {
-              const channelPrograms = programs.filter(
-                (p) => p.tvg_id === channel.epg_data?.tvg_id
-              );
-              return (
-                <Box
-                  key={channel.name}
-                  style={{
-                    display: 'flex',
-                    height: PROGRAM_HEIGHT,
-                    borderBottom: '1px solid #4a5568',
-                  }}
-                >
-                  {/* Channel logo - sticky horizontally */}
+            {filteredChannels.length > 0 ? (
+              filteredChannels.map((channel) => {
+                const channelPrograms = programs.filter(
+                  (p) => p.tvg_id === channel.epg_data?.tvg_id
+                );
+                return (
                   <Box
+                    key={channel.name}
                     style={{
-                      width: CHANNEL_WIDTH,
-                      minWidth: CHANNEL_WIDTH,
-                      flexShrink: 0,
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: '#2d3748',
-                      borderRight: '1px solid #4a5568',
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 10,
+                      height: PROGRAM_HEIGHT,
+                      borderBottom: '1px solid #4a5568',
                     }}
                   >
-                    <Flex
-                      direction="column"
-                      align="center"
-                      justify="center"
+                    {/* Channel logo - sticky horizontally */}
+                    <Box
                       style={{
-                        maxWidth: CHANNEL_WIDTH * 0.8,
-                        maxHeight: PROGRAM_HEIGHT * 0.9,
+                        width: CHANNEL_WIDTH,
+                        minWidth: CHANNEL_WIDTH,
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#2d3748',
+                        borderRight: '1px solid #4a5568',
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 10,
                       }}
                     >
-                      <img
-                        src={channel.logo?.cache_url || logo}
-                        alt={channel.name}
+                      <Flex
+                        direction="column"
+                        align="center"
+                        justify="center"
                         style={{
-                          width: '100%',
-                          height: 'auto',
-                          objectFit: 'contain',
-                          maxHeight: PROGRAM_HEIGHT * 0.65,
-                        }}
-                      />
-                      <Text
-                        size="sm"
-                        weight={600}
-                        style={{
-                          marginTop: 4,
-                          backgroundColor: '#2d3748', // Changed from '#2C3E50' to match parent background
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          fontSize: '0.85em',
-                          border: '1px solid #4a5568', // Added subtle border for distinction
+                          maxWidth: CHANNEL_WIDTH * 0.8,
+                          maxHeight: PROGRAM_HEIGHT * 0.9,
                         }}
                       >
-                        {channel.channel_number || '-'}
-                      </Text>
-                    </Flex>
-                  </Box>
+                        <img
+                          src={channel.logo?.cache_url || logo}
+                          alt={channel.name}
+                          style={{
+                            width: '100%',
+                            height: 'auto',
+                            objectFit: 'contain',
+                            maxHeight: PROGRAM_HEIGHT * 0.65,
+                          }}
+                        />
+                        <Text
+                          size="sm"
+                          weight={600}
+                          style={{
+                            marginTop: 4,
+                            backgroundColor: '#2d3748',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            fontSize: '0.85em',
+                            border: '1px solid #4a5568',
+                          }}
+                        >
+                          {channel.channel_number || '-'}
+                        </Text>
+                      </Flex>
+                    </Box>
 
-                  {/* Programs for this channel */}
-                  <Box style={{ flex: 1, position: 'relative' }}>
-                    {channelPrograms.map((prog) => renderProgram(prog, start))}
+                    {/* Programs for this channel */}
+                    <Box style={{ flex: 1, position: 'relative' }}>
+                      {channelPrograms.map((prog) => renderProgram(prog, start))}
+                    </Box>
                   </Box>
-                </Box>
-              );
-            })}
+                );
+              })
+            ) : (
+              <Box
+                style={{
+                  padding: '30px',
+                  textAlign: 'center',
+                  color: '#a0aec0',
+                }}
+              >
+                <Text size="lg">No channels match your filters</Text>
+                <Button variant="subtle" onClick={clearFilters} mt={10}>
+                  Clear Filters
+                </Button>
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>
