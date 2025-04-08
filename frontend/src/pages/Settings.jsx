@@ -279,7 +279,7 @@ const SettingsPage = () => {
 
   useEffect(() => {
     if (settings) {
-      form.setInitialValues(
+      form.setValues(
         Object.entries(settings).reduce((acc, [key, value]) => {
           // Modify each value based on its own properties
           acc[key] = value.value;
@@ -323,6 +323,7 @@ const SettingsPage = () => {
         </Title>
         <form onSubmit={form.onSubmit(onSubmit)}>
           <Select
+            searchable
             {...form.getInputProps('default-user-agent')}
             key={form.key('default-user-agent')}
             id={settings['default-user-agent']?.id}
@@ -335,6 +336,7 @@ const SettingsPage = () => {
           />
 
           <Select
+            searchable
             {...form.getInputProps('default-stream-profile')}
             key={form.key('default-stream-profile')}
             id={settings['default-stream-profile']?.id}
@@ -346,6 +348,7 @@ const SettingsPage = () => {
             }))}
           />
           <Select
+            searchable
             {...form.getInputProps('preferred-region')}
             key={form.key('preferred-region')}
             id={settings['preferred-region']?.id || 'preferred-region'}
