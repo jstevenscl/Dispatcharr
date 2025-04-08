@@ -67,23 +67,27 @@ class ProgramViewSet(viewsets.ModelViewSet):
 # 3) EPG Grid View
 # ─────────────────────────────
 class EPGGridAPIView(APIView):
-    """Returns all programs airing in the next 12 hours"""
+    """Returns all programs airing in the next 24 hours including currently running ones"""
 
     @swagger_auto_schema(
-        operation_description="Retrieve upcoming EPG programs within the next 12 hours",
+        operation_description="Retrieve currently running and upcoming EPG programs for the next 24 hours",
         responses={200: ProgramDataSerializer(many=True)}
     )
     def get(self, request, format=None):
-        # Get current date and reset time to midnight (00:00)
-        now = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        twelve_hours_later = now + timedelta(hours=24)
-        logger.debug(f"EPGGridAPIView: Querying programs between {now} and {twelve_hours_later}.")
-        # Use select_related to prefetch EPGData (no channel relation now)
+        # Use current time instead of midnight
+        now = timezone.now()
+        twenty_four_hours_later = now + timedelta(hours=24)
+        logger.debug(f"EPGGridAPIView: Querying programs between {now} and {twenty_four_hours_later}.")
+
+        # Use select_related to prefetch EPGData and include currently running programs
         programs = ProgramData.objects.select_related('epg').filter(
-            start_time__gte=now, start_time__lte=twelve_hours_later
+            # Programs that end after now (currently running or future)
+            end_time__gt=now,
+            # AND either start before the end time window OR end before the end time window
+            start_time__lt=twenty_four_hours_later
         )
         count = programs.count()
-        logger.debug(f"EPG`Grid`APIView: Found {count} program(s).")
+        logger.debug(f"EPGGridAPIView: Found {count} program(s), including currently running shows.")
         serializer = ProgramDataSerializer(programs, many=True)
         return Response({'data': serializer.data}, status=status.HTTP_200_OK)
 
