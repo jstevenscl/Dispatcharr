@@ -48,6 +48,11 @@ const useEPGsStore = create((set) => ({
       epgs: { ...state.epgs, [epg.id]: epg },
     })),
 
+  updateEPG: (epg) =>
+    set((state) => ({
+      epgs: { ...state.epgs, [epg.id]: epg },
+    })),
+
   removeEPGs: (epgIds) =>
     set((state) => {
       const updatedEPGs = { ...state.epgs };

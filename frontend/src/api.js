@@ -642,14 +642,14 @@ export default class API {
 
   static async addEPG(values) {
     let body = null;
-    if (values.epg_file) {
+    if (values.files) {
       body = new FormData();
       for (const prop in values) {
         body.append(prop, values[prop]);
       }
     } else {
       body = { ...values };
-      delete body.epg_file;
+      delete body.file;
       body = JSON.stringify(body);
     }
 
@@ -669,6 +669,47 @@ export default class API {
     const retval = await response.json();
     if (retval.id) {
       useEPGsStore.getState().addEPG(retval);
+    }
+
+    return retval;
+  }
+
+  static async updateEPG(values) {
+    const { id, ...payload } = values;
+
+    let body = null;
+    if (payload.files) {
+      body = new FormData();
+      for (const prop in payload) {
+        if (prop == 'url') {
+          continue;
+        }
+        body.append(prop, payload[prop]);
+      }
+    } else {
+      delete payload.file;
+      if (!payload.url) {
+        delete payload.url;
+      }
+      body = JSON.stringify(payload);
+    }
+
+    const response = await fetch(`${host}/api/epg/sources/${id}/`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${await API.getAuthToken()}`,
+        ...(values.epg_file
+          ? {}
+          : {
+              'Content-Type': 'application/json',
+            }),
+      },
+      body,
+    });
+
+    const retval = await response.json();
+    if (retval.id) {
+      useEPGsStore.getState().updateEPG(retval);
     }
 
     return retval;

@@ -1,7 +1,5 @@
 // Modal.js
 import React, { useState, useEffect } from 'react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
 import API from '../../api';
 import useEPGsStore from '../../store/epgs';
 import {
@@ -15,6 +13,7 @@ import {
   NumberInput,
   Space,
 } from '@mantine/core';
+import { isNotEmpty, useForm } from '@mantine/form';
 
 const EPG = ({ epg = null, isOpen, onClose }) => {
   const epgs = useEPGsStore((state) => state.epgs);
@@ -27,7 +26,8 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
     }
   };
 
-  const formik = useFormik({
+  const form = useForm({
+    mode: 'uncontrolled',
     initialValues: {
       name: '',
       source_type: 'xmltv',
@@ -36,30 +36,33 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
       is_active: true,
       refresh_interval: 24,
     },
-    validationSchema: Yup.object({
-      name: Yup.string().required('Name is required'),
-      source_type: Yup.string().required('Source type is required'),
-    }),
-    onSubmit: async (values, { setSubmitting, resetForm }) => {
-      if (epg?.id) {
-        await API.updateEPG({ id: epg.id, ...values, epg_file: file });
-      } else {
-        await API.addEPG({
-          ...values,
-          epg_file: file,
-        });
-      }
 
-      resetForm();
-      setFile(null);
-      setSubmitting(false);
-      onClose();
+    validate: {
+      name: isNotEmpty('Please select a name'),
+      source_type: isNotEmpty('Source type cannot be empty'),
     },
   });
 
+  const onSubmit = async () => {
+    const values = form.getValues();
+
+    if (epg?.id) {
+      await API.updateEPG({ id: epg.id, ...values, file });
+    } else {
+      await API.addEPG({
+        ...values,
+        file,
+      });
+    }
+
+    form.reset();
+    setFile(null);
+    onClose();
+  };
+
   useEffect(() => {
     if (epg) {
-      formik.setValues({
+      form.setValues({
         name: epg.name,
         source_type: epg.source_type,
         url: epg.url,
@@ -68,7 +71,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
         refresh_interval: epg.refresh_interval,
       });
     } else {
-      formik.resetForm();
+      form.reset();
     }
   }, [epg]);
 
@@ -78,43 +81,37 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
 
   return (
     <Modal opened={isOpen} onClose={onClose} title="EPG Source">
-      <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={form.onSubmit(onSubmit)}>
         <TextInput
           id="name"
           name="name"
           label="Name"
-          value={formik.values.name}
-          onChange={formik.handleChange}
-          error={formik.touched.name && Boolean(formik.errors.name)}
+          {...form.getInputProps('name')}
+          key={form.key('name')}
         />
 
         <TextInput
           id="url"
           name="url"
           label="URL"
-          value={formik.values.url}
-          onChange={formik.handleChange}
-          error={formik.touched.url && Boolean(formik.errors.url)}
+          {...form.getInputProps('url')}
+          key={form.key('url')}
         />
 
         <TextInput
           id="api_key"
           name="api_key"
           label="API Key"
-          value={formik.values.api_key}
-          onChange={formik.handleChange}
-          error={formik.touched.api_key && Boolean(formik.errors.api_key)}
+          {...form.getInputProps('api_key')}
+          key={form.key('api_key')}
         />
 
         <NativeSelect
           id="source_type"
           name="source_type"
           label="Source Type"
-          value={formik.values.source_type}
-          onChange={formik.handleChange}
-          error={
-            formik.touched.source_type && Boolean(formik.errors.source_type)
-          }
+          {...form.getInputProps('source_type')}
+          key={form.key('source_type')}
           data={[
             {
               label: 'XMLTV',
@@ -129,20 +126,15 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
 
         <NumberInput
           label="Refresh Interval (hours)"
-          value={formik.values.refresh_interval}
-          onChange={formik.handleChange}
-          error={
-            formik.errors.refresh_interval
-              ? formik.touched.refresh_interval
-              : ''
-          }
+          {...form.getInputProps('refresh_interval')}
+          key={form.key('refresh_interval')}
         />
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
           <Button
             type="submit"
             variant="contained"
-            disabled={formik.isSubmitting}
+            disabled={form.submiting}
             size="small"
           >
             Submit

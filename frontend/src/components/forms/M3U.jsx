@@ -1,7 +1,5 @@
 // Modal.js
 import React, { useState, useEffect } from 'react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
 import API from '../../api';
 import useUserAgentsStore from '../../store/userAgents';
 import M3UProfiles from './M3UProfiles';
