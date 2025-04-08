@@ -6,7 +6,7 @@ export default defineConfig({
   // The base URL for the build, adjust this to match your desired path
   plugins: [react()],
 
-  publicDir: '/data',
+  // publicDir: '/data',
 
   server: {
     port: 9191,
