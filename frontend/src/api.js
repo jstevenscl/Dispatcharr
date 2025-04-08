@@ -500,9 +500,7 @@ export default class API {
 
   static async addPlaylist(values) {
     let body = null;
-    let endpoint = `${host}/api/m3u/accounts/`;
     if (values.file) {
-      // endpoint = `${host}/api/m3u/accounts/upload/`;
       body = new FormData();
       for (const prop in values) {
         body.append(prop, values[prop]);
@@ -513,7 +511,7 @@ export default class API {
       body = JSON.stringify(body);
     }
 
-    const response = await fetch(endpoint, {
+    const response = await fetch(`${host}/api/m3u/accounts/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
@@ -574,13 +572,37 @@ export default class API {
 
   static async updatePlaylist(values) {
     const { id, ...payload } = values;
+
+    let body = null;
+    if (payload.file) {
+      delete payload.server_url;
+
+      body = new FormData();
+      for (const prop in values) {
+        body.append(prop, values[prop]);
+      }
+    } else {
+      delete payload.file;
+      if (!payload.server_url) {
+        delete payload.sever_url;
+      }
+
+      body = { ...payload };
+      delete body.file;
+      body = JSON.stringify(body);
+    }
+
     const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
+        ...(values.file
+          ? {}
+          : {
+              'Content-Type': 'application/json',
+            }),
       },
-      body: JSON.stringify(payload),
+      body,
     });
 
     const retval = await response.json();

@@ -19,11 +19,13 @@ import {
   Divider,
   Stack,
   Group,
+  Switch,
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
 import useChannelsStore from '../../store/channels';
 import usePlaylistsStore from '../../store/playlists';
 import { notifications } from '@mantine/notifications';
+import { isNotEmpty, useForm } from '@mantine/form';
 
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   const theme = useMantineTheme();
@@ -43,7 +45,8 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     }
   };
 
-  const formik = useFormik({
+  const form = useForm({
+    mode: 'uncontrolled',
     initialValues: {
       name: '',
       server_url: '',
@@ -52,66 +55,68 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
       max_streams: 0,
       refresh_interval: 24,
     },
-    validationSchema: Yup.object({
-      name: Yup.string().required('Name is required'),
-      user_agent: Yup.string().required('User-Agent is required'),
-      max_streams: Yup.string().required('Max streams is required'),
-    }),
-    onSubmit: async (values, { setSubmitting, resetForm }) => {
-      let newPlaylist;
-      if (playlist?.id) {
-        await API.updatePlaylist({
-          id: playlist.id,
-          ...values,
-          file,
-        });
-      } else {
-        newPlaylist = await API.addPlaylist({
-          ...values,
-          file,
-        });
 
-        notifications.show({
-          title: 'Fetching M3U Groups',
-          message: 'Filter out groups or refresh M3U once complete.',
-          // color: 'green.5',
-        });
-
-        // Don't prompt for group filters, but keeping this here
-        // in case we want to revive it
-        newPlaylist = null;
-      }
-
-      resetForm();
-      setFile(null);
-      setSubmitting(false);
-      onClose(newPlaylist);
+    validate: {
+      name: isNotEmpty('Please select a name'),
+      user_agent: isNotEmpty('Please select a user-agent'),
+      refresh_interval: isNotEmpty('Please specify a refresh interval'),
     },
   });
+
+  useEffect(() => {
+    if (playlist) {
+      console.log(playlist);
+      form.setValues({
+        name: playlist.name,
+        server_url: playlist.server_url,
+        max_streams: playlist.max_streams,
+        user_agent: `${playlist.user_agent}`,
+        is_active: playlist.is_active,
+        refresh_interval: playlist.refresh_interval,
+      });
+    }
+  }, [playlist]);
+
+  const onSubmit = async () => {
+    const values = form.getValues();
+
+    let newPlaylist;
+    if (playlist?.id) {
+      await API.updatePlaylist({
+        id: playlist.id,
+        ...values,
+        file,
+      });
+    } else {
+      newPlaylist = await API.addPlaylist({
+        ...values,
+        file,
+      });
+
+      notifications.show({
+        title: 'Fetching M3U Groups',
+        message: 'Filter out groups or refresh M3U once complete.',
+        // color: 'green.5',
+      });
+
+      // Don't prompt for group filters, but keeping this here
+      // in case we want to revive it
+      newPlaylist = null;
+    }
+
+    form.reset();
+    setFile(null);
+    onClose(newPlaylist);
+  };
 
   const closeGroupFilter = () => {
     setGroupFilterModalOpen(false);
     if (playlistCreated) {
-      formik.resetForm();
+      form.reset();
       setFile(null);
       onClose();
     }
   };
-
-  useEffect(() => {
-    if (playlist) {
-      formik.setValues({
-        name: playlist.name,
-        server_url: playlist.server_url,
-        max_streams: playlist.max_streams,
-        user_agent: playlist.user_agent,
-        is_active: playlist.is_active,
-        refresh_interval: playlist.refresh_interval,
-      });
-    } else {
-      formik.resetForm();
-    }
-  }, [playlist]);
 
   useEffect(() => {
     if (playlistCreated) {
@@ -126,12 +131,12 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   return (
     <Modal size={700} opened={isOpen} onClose={onClose} title="M3U Account">
       <LoadingOverlay
-        visible={formik.isSubmitting}
+        visible={form.submitting}
         overlayBlur={2}
         loaderProps={loadingText ? { children: loadingText } : {}}
       />
 
-      <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={form.onSubmit(onSubmit)}>
         <Group justify="space-between" align="top">
           <Stack gap="5" style={{ flex: 1 }}>
             <TextInput
@@ -139,10 +144,8 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               id="name"
               name="name"
               label="Name"
-              value={formik.values.name}
-              onChange={formik.handleChange}
-              error={formik.touched.name && Boolean(formik.errors.name)}
-              helperText={formik.touched.name && formik.errors.name}
+              {...form.getInputProps('name')}
+              key={form.key('name')}
             />
 
             <TextInput
@@ -150,19 +153,15 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               id="server_url"
               name="server_url"
               label="URL"
-              value={formik.values.server_url}
-              onChange={formik.handleChange}
-              error={
-                formik.touched.server_url && Boolean(formik.errors.server_url)
-              }
-              helperText={formik.touched.server_url && formik.errors.server_url}
+              {...form.getInputProps('server_url')}
+              key={form.key('server_url')}
             />
 
             <FileInput
               id="file"
               label="Upload files"
               placeholder="Upload files"
-              value={formik.file}
+              // value={formik.file}
               onChange={handleFileChange}
             />
           </Stack>
@@ -176,22 +175,16 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               name="max_streams"
               label="Max Streams"
               placeholder="0 = Unlimited"
-              value={formik.values.max_streams}
-              onChange={formik.handleChange}
-              error={
-                formik.errors.max_streams ? formik.touched.max_streams : ''
-              }
+              {...form.getInputProps('max_streams')}
+              key={form.key('max_streams')}
             />
 
             <Select
               id="user_agent"
               name="user_agent"
               label="User-Agent"
-              value={formik.values.user_agent}
-              onChange={(value) => {
-                formik.setValues('user_agent', value);
-              }}
-              error={formik.errors.user_agent ? formik.touched.user_agent : ''}
+              {...form.getInputProps('user_agent')}
+              key={form.key('user_agent')}
               data={userAgents.map((ua) => ({
                 label: ua.name,
                 value: `${ua.id}`,
@@ -200,24 +193,14 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
             <NumberInput
               label="Refresh Interval (hours)"
-              value={formik.values.refresh_interval}
-              onChange={(value) => {
-                formik.setFieldValue('refresh_interval', value);
-              }}
-              error={
-                formik.errors.refresh_interval
-                  ? formik.touched.refresh_interval
-                  : ''
-              }
+              {...form.getInputProps('refresh_interval')}
+              key={form.key('refresh_interval')}
             />
 
             <Checkbox
               label="Is Active"
-              name="is_active"
-              checked={formik.values.is_active}
-              onChange={(e) =>
-                formik.setFieldValue('is_active', e.target.checked)
-              }
+              {...form.getInputProps('is_active', { type: 'checkbox' })}
+              key={form.key('is_active')}
             />
           </Stack>
         </Group>
@@ -247,8 +230,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
           <Button
             type="submit"
             variant="filled"
-            // color={theme.custom.colors.buttonPrimary}
-            disabled={formik.isSubmitting}
+            disabled={form.submitting}
             size="sm"
           >
             Save
