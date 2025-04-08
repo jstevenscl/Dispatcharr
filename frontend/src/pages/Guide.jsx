@@ -354,14 +354,14 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 borderBottom: '1px solid #4a5568',
               }}
             >
-              <Box
+              <Flex
+                direction="column"
+                align="center"
+                justify="center"
                 style={{
                   width: CHANNEL_WIDTH,
-                  display: 'flex',
-                  p: 1,
-                  justifyContent: 'center',
                   maxWidth: CHANNEL_WIDTH * 0.8,
-                  maxHeight: PROGRAM_HEIGHT * 0.8,
+                  maxHeight: PROGRAM_HEIGHT * 0.9,
                 }}
               >
                 <img
@@ -371,9 +371,23 @@ export default function TVChannelGuide({ startDate, endDate }) {
                     width: '100%',
                     height: 'auto',
                     objectFit: 'contain',
+                    maxHeight: PROGRAM_HEIGHT * 0.65,
                   }}
                 />
-              </Box>
+                <Text
+                  size="sm"
+                  weight={600}
+                  style={{
+                    marginTop: 4,
+                    backgroundColor: '#2C3E50',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    fontSize: '0.85em'
+                  }}
+                >
+                  {channel.channel_number || '-'}
+                </Text>
+              </Flex>
             </Box>
           ))}
         </Box>
