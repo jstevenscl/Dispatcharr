@@ -269,6 +269,14 @@ class Channel(models.Model):
     def __str__(self):
         return f"{self.channel_number} - {self.name}"
 
+    @classmethod
+    def get_next_available_channel_number(cls, starting_from=1):
+        used_numbers = set(cls.objects.all().values_list('channel_number', flat=True))
+        n = starting_from
+        while n in used_numbers:
+            n += 1
+        return n
+
     # @TODO: honor stream's stream profile
     def get_stream_profile(self):
         stream_profile = self.stream_profile

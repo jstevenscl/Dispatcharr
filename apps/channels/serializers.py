@@ -117,6 +117,7 @@ class BulkChannelProfileMembershipSerializer(serializers.Serializer):
 #
 class ChannelSerializer(serializers.ModelSerializer):
     # Show nested group data, or ID
+    channel_number = serializers.IntegerField(allow_null=True, required=False)
     channel_group = ChannelGroupSerializer(read_only=True)
     channel_group_id = serializers.PrimaryKeyRelatedField(
         queryset=ChannelGroup.objects.all(),
@@ -187,6 +188,8 @@ class ChannelSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         stream_ids = validated_data.pop('streams', [])
+        channel_number = validated_data.pop('channel_number', Channel.get_next_available_channel_number())
+        validated_data["channel_number"] = channel_number
         channel = Channel.objects.create(**validated_data)
 
         # Add streams in the specified order

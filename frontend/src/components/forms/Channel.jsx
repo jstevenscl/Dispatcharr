@@ -28,6 +28,7 @@ import {
   Popover,
   ScrollArea,
   Tooltip,
+  NumberInput,
 } from '@mantine/core';
 import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
@@ -78,7 +79,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
       name: '',
-      channel_number: '',
+      channel_number: 0,
       channel_group_id: '',
       stream_profile_id: '0',
       tvg_id: '',
@@ -87,7 +88,6 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     },
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
-      channel_number: Yup.string().required('Invalid channel number').min(0),
       channel_group_id: Yup.string().required('Channel group is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
@@ -97,6 +97,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
       if (!values.logo_id || values.logo_id === 'undefined') {
         delete values.logo_id;
+      }
+
+      if (!values.channel_number) {
+        delete values.channel_number;
       }
 
       if (channel?.id) {
@@ -446,10 +450,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
             <Divider size="sm" orientation="vertical" />
 
             <Stack gap="5" style={{ flex: 1 }} justify="flex-start">
-              <TextInput
+              <NumberInput
                 id="channel_number"
                 name="channel_number"
-                label="Channel #"
+                label="Channel # (blank to auto-assign)"
                 value={formik.values.channel_number}
                 onChange={formik.handleChange}
                 error={
@@ -483,7 +487,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     label={
                       <Group style={{ width: '100%' }}>
                         <Box>EPG</Box>
-                        <Button size="xs">Use Dummy</Button>
+                        <Button size="xs" variant="transparent">
+                          Use Dummy
+                        </Button>
                       </Group>
                     }
                     readOnly

@@ -568,6 +568,9 @@ export default class API {
     });
 
     usePlaylistsStore.getState().removePlaylists([id]);
+    // @TODO: MIGHT need to optimize this later if someone has thousands of channels
+    // but I'm feeling laze right now
+    useChannelsStore.getState().fetchChannels();
   }
 
   static async updatePlaylist(values) {

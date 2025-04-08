@@ -42,7 +42,7 @@ const EPGsTable = () => {
       },
       {
         header: 'URL / API Key',
-        accessorKey: 'max_streams',
+        accessorKey: 'url',
         enableSorting: false,
       },
       {

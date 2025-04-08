@@ -17,35 +17,35 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
     Create or update a Celery Beat periodic task when an EPGSource is created/updated.
     """
     task_name = f"epg_source-refresh-{instance.id}"
-
     interval, _ = IntervalSchedule.objects.get_or_create(
-        every=24,
+        every=int(instance.refresh_interval),
         period=IntervalSchedule.HOURS
     )
 
-    if not instance.refresh_task:
-        refresh_task = PeriodicTask.objects.create(
-            name=task_name,
-            interval=interval,
-            task="apps.epg.tasks.refresh_epg_data",
-            kwargs=json.dumps({"source_id": instance.id}),
-            enabled=instance.refresh_interval != 0,
-        )
-        EPGSource.objects.filter(id=instance.id).update(refresh_task=refresh_task)
-    else:
-        task = instance.refresh_task
-        updated_fields = []
+    task, created = PeriodicTask.objects.get_or_create(name=task_name, defaults={
+        "interval": interval,
+        "task": "apps.epg.tasks.refresh_epg_data",
+        "kwargs": json.dumps({"source_id": instance.id}),
+        "enabled": instance.refresh_interval != 0,
+    })
 
-        if task.enabled != (instance.refresh_interval != 0):
-            task.enabled = instance.refresh_interval != 0
-            updated_fields.append("enabled")
+    update_fields = []
+    if created:
+        task.interval = interval
 
-        if task.interval != interval:
-            task.interval = interval
-            updated_fields.append("interval")
+    if task.interval != interval:
+        task.interval = interval
+        update_fields.append("interval")
+    if task.enabled != (instance.refresh_interval != 0):
+        task.enabled = instance.refresh_interval != 0
+        update_fields.append("enabled")
 
-        if updated_fields:
-            task.save(update_fields=updated_fields)
+    if update_fields:
+        task.save(update_fields=update_fields)
+
+    if instance.refresh_task != task:
+        instance.refresh_task = task
+        instance.save(update_fields=update_fields)
 
 @receiver(post_delete, sender=EPGSource)
 def delete_refresh_task(sender, instance, **kwargs):
@@ -53,5 +53,4 @@ def delete_refresh_task(sender, instance, **kwargs):
     Delete the associated Celery Beat periodic task when a Channel is deleted.
     """
     if instance.refresh_task:
-        instance.refresh_task.interval.delete()
         instance.refresh_task.delete()

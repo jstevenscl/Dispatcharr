@@ -127,13 +127,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
     serializer_class = ChannelSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_next_available_channel_number(self, starting_from=1):
-        used_numbers = set(Channel.objects.all().values_list('channel_number', flat=True))
-        n = starting_from
-        while n in used_numbers:
-            n += 1
-        return n
-
     @swagger_auto_schema(
         method='post',
         operation_description="Auto-assign channel_number in bulk by an ordered list of channel IDs.",
@@ -208,7 +201,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         if channel_number is None:
             provided_number = request.data.get('channel_number')
             if provided_number is None:
-                channel_number = self.get_next_available_channel_number()
+                channel_number = Channel.get_next_available_channel_number()
             else:
                 try:
                     channel_number = int(provided_number)
