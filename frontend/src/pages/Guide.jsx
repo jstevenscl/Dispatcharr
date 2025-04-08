@@ -58,6 +58,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   } = useSettingsStore();
 
   const guideRef = useRef(null);
+  const timelineRef = useRef(null); // New ref for timeline scrolling
 
   // Load program data once
   useEffect(() => {
@@ -185,13 +186,16 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
   // Scroll to the nearest half-hour mark ONLY on initial load
   useEffect(() => {
-    if (guideRef.current && programs.length > 0 && !initialScrollComplete) {
+    if (guideRef.current && timelineRef.current && programs.length > 0 && !initialScrollComplete) {
       // Round the current time to the nearest half-hour mark
       const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
       const nowOffset = roundedNow.diff(start, 'minute');
       const scrollPosition =
         (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
-      guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
+
+      const scrollPos = Math.max(scrollPosition, 0);
+      guideRef.current.scrollLeft = scrollPos;
+      timelineRef.current.scrollLeft = scrollPos; // Sync timeline scroll
 
       // Mark initial scroll as complete
       setInitialScrollComplete(true);
@@ -275,14 +279,30 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
   // Function to scroll to current time - matches initial loading position
   const scrollToNow = () => {
-    if (guideRef.current && nowPosition >= 0) {
+    if (guideRef.current && timelineRef.current && nowPosition >= 0) {
       // Round the current time to the nearest half-hour mark
       const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
       const nowOffset = roundedNow.diff(start, 'minute');
       const scrollPosition =
         (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
 
-      guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
+      const scrollPos = Math.max(scrollPosition, 0);
+      guideRef.current.scrollLeft = scrollPos;
+      timelineRef.current.scrollLeft = scrollPos; // Sync timeline scroll
+    }
+  };
+
+  // Sync scrolling between timeline and main content
+  const handleTimelineScroll = () => {
+    if (timelineRef.current && guideRef.current) {
+      guideRef.current.scrollLeft = timelineRef.current.scrollLeft;
+    }
+  };
+
+  // Sync scrolling between main content and timeline
+  const handleGuideScroll = () => {
+    if (guideRef.current && timelineRef.current) {
+      timelineRef.current.scrollLeft = guideRef.current.scrollLeft;
     }
   };
 
@@ -539,67 +559,54 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
       {/* Guide container with headers and scrollable content */}
       <Box style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
-        {/* Main scrollable container that will scroll both headers and content */}
+        {/* Logo header - Sticky, non-scrollable */}
         <Box
-          ref={guideRef}
           style={{
-            flex: 1,
-            overflow: 'auto',
-            position: 'relative',
+            display: 'flex',
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
           }}
         >
-          {/* Content wrapper with min-width to ensure scroll range */}
-          <Box style={{ minWidth: hourTimeline.length * HOUR_WIDTH + CHANNEL_WIDTH, position: 'relative' }}>
-            {/* Now line - positioned absolutely within content */}
-            {nowPosition >= 0 && (
-              <Box
-                style={{
-                  position: 'absolute',
-                  left: nowPosition + CHANNEL_WIDTH,
-                  top: 0,
-                  height: '100%',
-                  width: '2px',
-                  backgroundColor: '#38b2ac',
-                  zIndex: 15,
-                  pointerEvents: 'none', // Allow clicking through the line
-                }}
-              />
-            )}
+          {/* Logo header cell - sticky in both directions */}
+          <Box
+            style={{
+              width: CHANNEL_WIDTH,
+              minWidth: CHANNEL_WIDTH,
+              flexShrink: 0,
+              height: '40px',
+              backgroundColor: '#2d3748',
+              borderBottom: '1px solid #4a5568',
+              borderRight: '1px solid #4a5568',
+              position: 'sticky',
+              left: 0,
+              zIndex: 200,
+            }}
+          />
 
-            {/* Fixed header row - sticky top, scrolls horizontally with content */}
+          {/* Timeline header with its own scrollbar */}
+          <Box
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
             <Box
+              ref={timelineRef}
               style={{
-                display: 'flex',
-                position: 'sticky',
-                top: 0,
-                zIndex: 100,
-                backgroundColor: '#171923',
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                position: 'relative',
               }}
+              onScroll={handleTimelineScroll}
             >
-              {/* Logo header - sticky in both directions */}
               <Box
                 style={{
-                  width: CHANNEL_WIDTH,
-                  minWidth: CHANNEL_WIDTH,
-                  flexShrink: 0,
-                  height: '40px',
-                  backgroundColor: '#2d3748',
-                  borderBottom: '1px solid #4a5568',
-                  borderRight: '1px solid #4a5568',
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 200,
-                }}
-              />
-
-              {/* Timeline header - scrolls horizontally with content */}
-              <Box
-                style={{
-                  flex: 1,
                   display: 'flex',
                   backgroundColor: '#171923',
                   borderBottom: '1px solid #4a5568',
-                  overflow: 'hidden',
+                  width: hourTimeline.length * HOUR_WIDTH,
                 }}
               >
                 {hourTimeline.map((time, hourIndex) => (
@@ -651,6 +658,42 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 ))}
               </Box>
             </Box>
+          </Box>
+        </Box>
+
+        {/* Main scrollable container for program content */}
+        <Box
+          ref={guideRef}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden', // Hide horizontal scrollbar here
+            position: 'relative',
+          }}
+          onScroll={handleGuideScroll}
+        >
+          {/* Content wrapper with min-width to ensure scroll range */}
+          <Box style={{
+            width: hourTimeline.length * HOUR_WIDTH + CHANNEL_WIDTH,
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Now line - positioned absolutely within content */}
+            {nowPosition >= 0 && (
+              <Box
+                style={{
+                  position: 'absolute',
+                  left: nowPosition + CHANNEL_WIDTH,
+                  top: 0,
+                  height: '100%',
+                  width: '2px',
+                  backgroundColor: '#38b2ac',
+                  zIndex: 15,
+                  pointerEvents: 'none', // Allow clicking through the line
+                }}
+              />
+            )}
 
             {/* Channel rows with logos and programs */}
             {filteredChannels.length > 0 ? (
@@ -683,6 +726,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         zIndex: 10,
                       }}
                     >
+                      {/* Logo content - unchanged */}
                       <Flex
                         direction="column"
                         align="center"
