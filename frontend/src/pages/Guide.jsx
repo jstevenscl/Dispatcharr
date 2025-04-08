@@ -40,6 +40,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [recording, setRecording] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialScrollComplete, setInitialScrollComplete] = useState(false);
   const {
     environment: { env_mode },
   } = useSettingsStore();
@@ -132,17 +133,20 @@ export default function TVChannelGuide({ startDate, endDate }) {
     return hours;
   }, [start, end]);
 
-  // Scroll to the nearest half-hour mark on load
+  // Scroll to the nearest half-hour mark ONLY on initial load
   useEffect(() => {
-    if (guideRef.current) {
+    if (guideRef.current && programs.length > 0 && !initialScrollComplete) {
       // Round the current time to the nearest half-hour mark
       const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
       const nowOffset = roundedNow.diff(start, 'minute');
       const scrollPosition =
         (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
       guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
+
+      // Mark initial scroll as complete
+      setInitialScrollComplete(true);
     }
-  }, [programs, now, start]);
+  }, [programs, start, now, initialScrollComplete]);
 
   // Update “now” every 60s
   useEffect(() => {
@@ -604,3 +608,4 @@ export default function TVChannelGuide({ startDate, endDate }) {
     </Box>
   );
 }
+
