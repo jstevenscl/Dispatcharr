@@ -64,9 +64,11 @@ export default function TVChannelGuide({ startDate, endDate }) {
       const programIds = [...new Set(fetched.map((p) => p.tvg_id))];
 
       // Filter your Redux/Zustand channels by matching tvg_id
-      const filteredChannels = Object.values(channels).filter((ch) =>
-        programIds.includes(ch.epg_data?.tvg_id)
-      );
+      const filteredChannels = Object.values(channels)
+        .filter((ch) => programIds.includes(ch.epg_data?.tvg_id))
+        // Add sorting by channel_number
+        .sort((a, b) => (a.channel_number || Infinity) - (b.channel_number || Infinity));
+
       console.log(
         `found ${filteredChannels.length} channels with matching tvg_ids`
       );
