@@ -132,16 +132,17 @@ export default function TVChannelGuide({ startDate, endDate }) {
     return hours;
   }, [start, end]);
 
-  // Scroll to "now" on load
+  // Scroll to the nearest half-hour mark on load
   useEffect(() => {
     if (guideRef.current) {
-      const nowOffset = dayjs().diff(start, 'minute');
+      // Round the current time to the nearest half-hour mark
+      const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
+      const nowOffset = roundedNow.diff(start, 'minute');
       const scrollPosition =
-        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH -
-        MINUTE_BLOCK_WIDTH;
+        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
       guideRef.current.scrollLeft = Math.max(scrollPosition, 0);
     }
-  }, [programs]);
+  }, [programs, now, start]);
 
   // Update “now” every 60s
   useEffect(() => {
@@ -241,6 +242,13 @@ export default function TVChannelGuide({ startDate, endDate }) {
     // Highlight if currently live
     const isLive = now.isAfter(programStart) && now.isBefore(programEnd);
 
+    // Determine if the program has ended
+    const isPast = now.isAfter(programEnd);
+
+    // Calculate how much of the program is cut off
+    const cutOffMinutes = Math.max(0, channelStart.diff(programStart, 'minute'));
+    const cutOffPx = (cutOffMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+
     return (
       <Box
         className="guide-program-container"
@@ -256,49 +264,74 @@ export default function TVChannelGuide({ startDate, endDate }) {
       >
         <Paper
           elevation={2}
-          className={`guide-program ${isLive ? 'live' : 'not-live'}`}
+          className={`guide-program ${isLive ? 'live' : isPast ? 'past' : 'not-live'}`}
           style={{
-            //   position: 'relative',
-            //   left: 2,
             width: widthPx - 4,
-            //   top: 2,
             height: PROGRAM_HEIGHT - 4,
-            //   padding: 10,
-            //   overflow: 'hidden',
-            //   whiteSpace: 'nowrap',
-            //   textOverflow: 'ellipsis',
-            //   borderRadius: '8px',
-            // background: isLive
-            //   ? 'linear-gradient(to right, #1e3a8a, #2c5282)'
-            //   : 'linear-gradient(to right, #2d3748, #2d3748)',
-            //   color: '#fff',
-            //   transition: 'background 0.3s ease',
-            //   '&:hover': {
-            //     background: isLive
-            //       ? 'linear-gradient(to right, #1e3a8a, #2a4365)'
-            //       : 'linear-gradient(to right, #2d3748, #1a202c)',
-            //   },
+            overflow: 'hidden',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            padding: '8px', // Add padding for better readability
+            backgroundColor: isLive
+              ? '#2d3748' // Default live program color
+              : isPast
+                ? '#4a5568' // Slightly darker color for past programs
+                : '#2c5282', // Default color for upcoming programs
+            color: isPast ? '#a0aec0' : '#fff', // Dim text color for past programs
           }}
         >
-          <Text size="md" style={{ fontWeight: 'bold' }}>
-            <Group gap="xs">
-              {recording && (
-                <div
-                  style={{
-                    borderRadius: '50%',
-                    width: '10px',
-                    height: '10px',
-                    display: 'flex',
-                    backgroundColor: 'red',
-                  }}
-                ></div>
-              )}
-              {program.title}
-            </Group>
-          </Text>
-          <Text size="sm" noWrap>
-            {programStart.format('h:mma')} - {programEnd.format('h:mma')}
-          </Text>
+          <Box>
+            <Text
+              size="md"
+              style={{
+                fontWeight: 'bold',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+              }}
+            >
+              <Group gap="xs">
+                {recording && (
+                  <div
+                    style={{
+                      borderRadius: '50%',
+                      width: '10px',
+                      height: '10px',
+                      display: 'flex',
+                      backgroundColor: 'red',
+                    }}
+                  ></div>
+                )}
+                {program.title}
+              </Group>
+            </Text>
+            <Text
+              size="sm"
+              style={{
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+              }}
+            >
+              {programStart.format('h:mma')} - {programEnd.format('h:mma')}
+            </Text>
+          </Box>
+          {program.description && (
+            <Text
+              size="xs"
+              style={{
+                marginTop: '4px',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden',
+                color: isPast ? '#718096' : '#cbd5e0', // Dim description for past programs
+              }}
+            >
+              {program.description}
+            </Text>
+          )}
         </Paper>
       </Box>
     );
