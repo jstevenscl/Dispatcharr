@@ -23,7 +23,7 @@ import './guide.css';
 /** Layout constants */
 const CHANNEL_WIDTH = 120; // Width of the channel/logo column
 const PROGRAM_HEIGHT = 90; // Height of each channel row
-const HOUR_WIDTH = 300; // The width for a 1-hour block
+const HOUR_WIDTH = 450; // Increased from 300 to 450 to make each program wider
 const MINUTE_INCREMENT = 15; // For positioning programs every 15 min
 const MINUTE_BLOCK_WIDTH = HOUR_WIDTH / (60 / MINUTE_INCREMENT);
 
@@ -536,10 +536,11 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         weight={600}
                         style={{
                           marginTop: 4,
-                          backgroundColor: '#2C3E50',
+                          backgroundColor: '#2d3748', // Changed from '#2C3E50' to match parent background
                           padding: '2px 6px',
                           borderRadius: 4,
-                          fontSize: '0.85em'
+                          fontSize: '0.85em',
+                          border: '1px solid #4a5568', // Added subtle border for distinction
                         }}
                       >
                         {channel.channel_number || '-'}
