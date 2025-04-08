@@ -63,7 +63,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
   useEffect(() => {
     if (playlist) {
-      console.log(playlist);
       form.setValues({
         name: playlist.name,
         server_url: playlist.server_url,
@@ -72,6 +71,8 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
         is_active: playlist.is_active,
         refresh_interval: playlist.refresh_interval,
       });
+    } else {
+      form.reset();
     }
   }, [playlist]);
 
