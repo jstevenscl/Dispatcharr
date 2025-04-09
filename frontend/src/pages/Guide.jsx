@@ -169,12 +169,50 @@ export default function TVChannelGuide({ startDate, endDate }) {
     return times;
   }, [start, end]);
 
-  // Hourly marks
+  // Format day label using relative terms when possible (Today, Tomorrow, etc)
+  const formatDayLabel = (time) => {
+    const today = dayjs().startOf('day');
+    const tomorrow = today.add(1, 'day');
+    const dayAfterTomorrow = today.add(2, 'day');
+    const weekLater = today.add(7, 'day');
+
+    const day = time.startOf('day');
+
+    if (day.isSame(today, 'day')) {
+      return 'Today';
+    } else if (day.isSame(tomorrow, 'day')) {
+      return 'Tomorrow';
+    } else if (day.isBefore(weekLater)) {
+      // Within a week, show day name
+      return time.format('dddd');
+    } else {
+      // Beyond a week, show month and day
+      return time.format('MMM D');
+    }
+  };
+
+  // Hourly marks with day labels
   const hourTimeline = useMemo(() => {
     const hours = [];
     let current = start;
+    let currentDay = null;
+
     while (current.isBefore(end)) {
-      hours.push(current);
+      // Check if we're entering a new day
+      const day = current.startOf('day');
+      const isNewDay = !currentDay || !day.isSame(currentDay, 'day');
+
+      if (isNewDay) {
+        currentDay = day;
+      }
+
+      // Add day information to our hour object
+      hours.push({
+        time: current,
+        isNewDay,
+        dayLabel: formatDayLabel(current)
+      });
+
       current = current.add(1, 'hour');
     }
     return hours;
@@ -800,55 +838,99 @@ export default function TVChannelGuide({ startDate, endDate }) {
                   width: hourTimeline.length * HOUR_WIDTH,
                 }}
               >
-                {hourTimeline.map((time, hourIndex) => (
-                  <Box
-                    key={time.format()}
-                    style={{
-                      width: HOUR_WIDTH,
-                      height: '40px',
-                      position: 'relative',
-                      color: '#a0aec0',
-                      borderRight: '1px solid #4a5568',
-                      cursor: 'pointer', // Add pointer cursor to indicate clickable
-                    }}
-                    onClick={(e) => handleTimeClick(time, e)} // Pass the event to get click position
-                  >
-                    <Text
-                      size="sm"
-                      style={{
-                        position: 'absolute',
-                        top: '50%',
-                        left: hourIndex === 0 ? 4 : 'calc(50% - 16px)',
-                        transform: 'translateY(-50%)',
-                      }}
-                    >
-                      {time.format('h:mma')}
-                    </Text>
+                {hourTimeline.map((hourData, hourIndex) => {
+                  const { time, isNewDay, dayLabel } = hourData;
+
+                  return (
                     <Box
+                      key={time.format()}
                       style={{
-                        position: 'absolute',
-                        bottom: 0,
-                        top: 0,
-                        width: '100%',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(4, 1fr)',
-                        alignItems: 'end',
+                        width: HOUR_WIDTH,
+                        height: '40px',
+                        position: 'relative',
+                        color: '#a0aec0',
+                        borderRight: '1px solid #4a5568',
+                        cursor: 'pointer',
+                        borderLeft: isNewDay ? '2px solid #4299e1' : 'none', // Highlight day boundaries
+                        backgroundColor: isNewDay ? 'rgba(66, 153, 225, 0.05)' : '#171923', // Subtle background for new days
                       }}
+                      onClick={(e) => handleTimeClick(time, e)}
                     >
-                      {[0, 1, 2, 3].map((i) => (
-                        <Box
-                          key={i}
+                      {/* Remove the special day label for new days since we'll show day for all hours */}
+
+                      {/* Position time label at the left border of each hour block */}
+                      <Text
+                        size="sm"
+                        style={{
+                          position: 'absolute',
+                          top: '8px', // Consistent positioning for all hours
+                          left: '4px',
+                          transform: 'none',
+                          borderRadius: '2px',
+                          lineHeight: 1.2,
+                          textAlign: 'left',
+                        }}
+                      >
+                        {/* Show day above time for every hour using the same format */}
+                        <Text
+                          span
+                          size="xs"
                           style={{
-                            width: '1px',
-                            height: '10px',
-                            backgroundColor: '#718096',
-                            marginRight: i < 3 ? HOUR_WIDTH / 4 - 1 + 'px' : 0,
+                            display: 'block',
+                            opacity: 0.7,
+                            fontWeight: isNewDay ? 600 : 400, // Still emphasize day transitions
+                            color: isNewDay ? '#4299e1' : undefined,
                           }}
-                        />
-                      ))}
+                        >
+                          {formatDayLabel(time)} {/* Use same formatDayLabel function for all hours */}
+                        </Text>
+                        {time.format('h:mm')}
+                        <Text span size="xs" ml={1} opacity={0.7}>
+                          {time.format('A')}
+                        </Text>
+                      </Text>
+
+                      {/* Hour boundary marker - more visible */}
+                      <Box
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: '1px',
+                          backgroundColor: '#4a5568',
+                          zIndex: 10,
+                        }}
+                      />
+
+                      {/* Quarter hour tick marks */}
+                      <Box
+                        style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          width: '100%',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '0 1px',
+                        }}
+                      >
+                        {[15, 30, 45].map((minute) => (
+                          <Box
+                            key={minute}
+                            style={{
+                              width: '1px',
+                              height: '8px',
+                              backgroundColor: '#718096',
+                              position: 'absolute',
+                              bottom: 0,
+                              left: `${(minute / 60) * 100}%`,
+                            }}
+                          />
+                        ))}
+                      </Box>
                     </Box>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             </Box>
           </Box>
