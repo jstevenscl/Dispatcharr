@@ -11,7 +11,7 @@ from sentence_transformers import SentenceTransformer as st
 
 # Load the sentence-transformers model once at the module level
 SENTENCE_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-MODEL_PATH = os.path.join("/app/media", "models", "all-MiniLM-L6-v2")
+MODEL_PATH = os.path.join("/app", "models", "all-MiniLM-L6-v2")
 
 # Thresholds
 BEST_FUZZY_THRESHOLD = 85
