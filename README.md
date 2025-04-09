@@ -47,9 +47,9 @@ docker run -d \
 
 | Use Case                | File                                                       | Description |
 |-------------------------|------------------------------------------------------------|-------------|
-| **All-in-One Deployment**   | [docker-compose-aio.yml](docker/docker-compose-aio.yml)    | ⭐ Recommended! A simple, all-in-one solution — everything runs in a single container for quick setup. |
+| **All-in-One Deployment**   | [docker-compose.aio.yml](docker/docker-compose. aio.yml)    | ⭐ Recommended! A simple, all-in-one solution — everything runs in a single container for quick setup. |
 | **Modular Deployment**       | [docker-compose.yml](docker/docker-compose.yml)            | Separate containers for Dispatcharr, Celery, and Postgres — perfect if you want more granular control. |
-| **Development Environment** | [docker-compose-dev.yml](docker/docker-compose-dev.yml)    | Developer-friendly setup with pre-configured ports and settings for contributing and testing. |
+| **Development Environment** | [docker-compose.dev.yml](docker/docker-compose.dev.yml)    | Developer-friendly setup with pre-configured ports and settings for contributing and testing. |
 
 ---
 
