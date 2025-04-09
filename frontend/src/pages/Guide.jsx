@@ -644,6 +644,16 @@ export default function TVChannelGuide({ startDate, endDate }) {
     setSelectedProfileId('all');
   };
 
+  // Handle group selection changes, ensuring null becomes 'all'
+  const handleGroupChange = (value) => {
+    setSelectedGroupId(value || 'all');
+  };
+
+  // Handle profile selection changes, ensuring null becomes 'all'
+  const handleProfileChange = (value) => {
+    setSelectedProfileId(value || 'all');
+  };
+
   return (
     <Box
       className="tv-guide"
@@ -711,18 +721,18 @@ export default function TVChannelGuide({ startDate, endDate }) {
             placeholder="Filter by group"
             data={groupOptions}
             value={selectedGroupId}
-            onChange={setSelectedGroupId}
+            onChange={handleGroupChange} // Use the new handler
             style={{ width: '220px' }}
-            clearable={false}
+            clearable={true} // Allow clearing the selection
           />
 
           <Select
             placeholder="Filter by profile"
             data={profileOptions}
             value={selectedProfileId}
-            onChange={setSelectedProfileId}
+            onChange={handleProfileChange} // Use the new handler
             style={{ width: '180px' }}
-            clearable={false}
+            clearable={true} // Allow clearing the selection
           />
 
           {(searchQuery !== '' || selectedGroupId !== 'all' || selectedProfileId !== 'all') && (
