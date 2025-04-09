@@ -591,21 +591,33 @@ export default function TVChannelGuide({ startDate, endDate }) {
     );
   }
 
-  // Create group options for dropdown
+  // Create group options for dropdown - but only include groups used by guide channels
   const groupOptions = useMemo(() => {
     const options = [{ value: 'all', label: 'All Channel Groups' }];
 
-    if (channelGroups) {
-      Object.values(channelGroups).forEach(group => {
-        options.push({
-          value: group.id.toString(),
-          label: group.name
-        });
+    if (channelGroups && guideChannels.length > 0) {
+      // Get unique channel group IDs from the channels that have program data
+      const usedGroupIds = new Set();
+      guideChannels.forEach(channel => {
+        if (channel.channel_group?.id) {
+          usedGroupIds.add(channel.channel_group.id);
+        }
       });
+
+      // Only add groups that are actually used by channels in the guide
+      Object.values(channelGroups)
+        .filter(group => usedGroupIds.has(group.id))
+        .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
+        .forEach(group => {
+          options.push({
+            value: group.id.toString(),
+            label: group.name
+          });
+        });
     }
 
     return options;
-  }, [channelGroups]);
+  }, [channelGroups, guideChannels]);
 
   // Create profile options for dropdown
   const profileOptions = useMemo(() => {
