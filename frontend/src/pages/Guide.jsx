@@ -10,31 +10,27 @@ import useSettingsStore from '../store/settings';
 import {
   Title,
   Box,
-  Modal,
   Flex,
   Button,
   Text,
   Paper,
-  Grid,
   Group,
   TextInput,
   Select,
   ActionIcon,
   Tooltip,
+  Transition,
 } from '@mantine/core';
-import { Search, X, Clock } from 'lucide-react';
+import { Search, X, Clock, Video, Calendar } from 'lucide-react';
 import './guide.css';
 
 /** Layout constants */
 const CHANNEL_WIDTH = 120; // Width of the channel/logo column
 const PROGRAM_HEIGHT = 90; // Height of each channel row
+const EXPANDED_PROGRAM_HEIGHT = 180; // Height for expanded program rows
 const HOUR_WIDTH = 450; // Increased from 300 to 450 to make each program wider
 const MINUTE_INCREMENT = 15; // For positioning programs every 15 min
 const MINUTE_BLOCK_WIDTH = HOUR_WIDTH / (60 / MINUTE_INCREMENT);
-
-// Modal size constants
-const MODAL_WIDTH = 600;
-const MODAL_HEIGHT = 400;
 
 export default function TVChannelGuide({ startDate, endDate }) {
   const { channels, recordings, channelGroups, profiles } = useChannelsStore();
@@ -43,8 +39,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [guideChannels, setGuideChannels] = useState([]);
   const [filteredChannels, setFilteredChannels] = useState([]);
   const [now, setNow] = useState(dayjs());
-  const [selectedProgram, setSelectedProgram] = useState(null);
-  const [recording, setRecording] = useState(null);
+  const [expandedProgramId, setExpandedProgramId] = useState(null); // Track expanded program
+  const [recordingForProgram, setRecordingForProgram] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialScrollComplete, setInitialScrollComplete] = useState(false);
 
@@ -250,32 +246,74 @@ export default function TVChannelGuide({ startDate, endDate }) {
     }
 
     showVideo(vidUrl);
-
-    // Optionally close the modal
-    setSelectedProgram(null);
   }
 
-  // On program click, open the details modal
+  // On program click, toggle the expanded state
   function handleProgramClick(program, event) {
-    setSelectedProgram(program);
-    setRecording(
-      recordings.find((recording) => {
-        if (recording.custom_properties) {
-          const customProps = JSON.parse(recording.custom_properties);
-          if (customProps.program && customProps.program.id == program.id) {
-            return recording;
-          }
+    // Prevent event from bubbling up to parent elements
+    event.stopPropagation();
+
+    // Get the program's start time and calculate its position
+    const programStart = dayjs(program.start_time);
+    const startOffsetMinutes = programStart.diff(start, 'minute');
+    const leftPx = (startOffsetMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+
+    // Calculate desired scroll position (account for channel column width)
+    const desiredScrollPosition = Math.max(0, leftPx - 20); // 20px buffer
+
+    // If already expanded, collapse it
+    if (expandedProgramId === program.id) {
+      setExpandedProgramId(null);
+      setRecordingForProgram(null);
+      return;
+    }
+
+    // Otherwise expand this program
+    setExpandedProgramId(program.id);
+
+    // Check if this program has a recording
+    const programRecording = recordings.find((recording) => {
+      if (recording.custom_properties) {
+        const customProps = JSON.parse(recording.custom_properties);
+        if (customProps.program && customProps.program.id == program.id) {
+          return true;
         }
+      }
+      return false;
+    });
 
-        return null;
-      })
-    );
+    setRecordingForProgram(programRecording);
+
+    // Scroll to show the start of the program if it's not already fully visible
+    if (guideRef.current && timelineRef.current) {
+      const currentScrollPosition = guideRef.current.scrollLeft;
+
+      // Check if we need to scroll (if program start is before current view or too close to edge)
+      if (desiredScrollPosition < currentScrollPosition ||
+        leftPx - currentScrollPosition < 100) { // 100px from left edge
+
+        // Smooth scroll to the program's start
+        guideRef.current.scrollTo({
+          left: desiredScrollPosition,
+          behavior: 'smooth'
+        });
+
+        // Also sync the timeline scroll
+        timelineRef.current.scrollTo({
+          left: desiredScrollPosition,
+          behavior: 'smooth'
+        });
+      }
+    }
   }
 
-  // Close the modal
-  function handleCloseModal() {
-    setSelectedProgram(null);
-  }
+  // Close the expanded program when clicking elsewhere
+  const handleClickOutside = () => {
+    if (expandedProgramId) {
+      setExpandedProgramId(null);
+      setRecordingForProgram(null);
+    }
+  };
 
   // Function to scroll to current time - matches initial loading position
   const scrollToNow = () => {
@@ -380,6 +418,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
     const durationMinutes = programEnd.diff(programStart, 'minute');
     const leftPx = (startOffsetMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
     const widthPx = (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+
+    // Check if we have a recording for this program
     const recording = recordings.find((recording) => {
       if (recording.custom_properties) {
         const customProps = JSON.parse(recording.custom_properties);
@@ -387,7 +427,6 @@ export default function TVChannelGuide({ startDate, endDate }) {
           return recording;
         }
       }
-
       return null;
     });
 
@@ -397,9 +436,20 @@ export default function TVChannelGuide({ startDate, endDate }) {
     // Determine if the program has ended
     const isPast = now.isAfter(programEnd);
 
+    // Check if this program is expanded
+    const isExpanded = expandedProgramId === program.id;
+
     // Calculate how much of the program is cut off
     const cutOffMinutes = Math.max(0, channelStart.diff(programStart, 'minute'));
     const cutOffPx = (cutOffMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+
+    // Set the height based on expanded state
+    const rowHeight = isExpanded ? EXPANDED_PROGRAM_HEIGHT : PROGRAM_HEIGHT;
+
+    // Determine expanded width - if program is short, ensure it has a minimum expanded width
+    // This will allow it to overlap programs to the right
+    const MIN_EXPANDED_WIDTH = 450; // Minimum width in pixels when expanded
+    const expandedWidthPx = Math.max(widthPx, MIN_EXPANDED_WIDTH);
 
     return (
       <Box
@@ -409,34 +459,45 @@ export default function TVChannelGuide({ startDate, endDate }) {
           position: 'absolute',
           left: leftPx,
           top: 0,
-          width: widthPx,
+          width: isExpanded ? expandedWidthPx : widthPx, // Expand right for short programs
+          height: rowHeight - 4, // Adjust for the parent row padding
           cursor: 'pointer',
+          zIndex: isExpanded ? 25 : 5, // Increase z-index when expanded
+          transition: isExpanded ? 'height 0.2s ease, width 0.2s ease' : 'height 0.2s ease',
         }}
         onClick={(e) => handleProgramClick(program, e)}
       >
         <Paper
-          elevation={2}
-          className={`guide-program ${isLive ? 'live' : isPast ? 'past' : 'not-live'}`}
+          elevation={isExpanded ? 4 : 2}
+          className={`guide-program ${isLive ? 'live' : isPast ? 'past' : 'not-live'} ${isExpanded ? 'expanded' : ''}`}
           style={{
-            width: widthPx - 4,
-            height: PROGRAM_HEIGHT - 4,
+            width: "100%", // Fill container width (which may be expanded)
+            height: '100%',
             overflow: 'hidden',
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'space-between',
-            padding: '8px', // Add padding for better readability
-            backgroundColor: isLive
-              ? '#2d3748' // Default live program color
-              : isPast
-                ? '#4a5568' // Slightly darker color for past programs
-                : '#2c5282', // Default color for upcoming programs
+            justifyContent: isExpanded ? 'flex-start' : 'space-between',
+            padding: isExpanded ? '12px' : '8px',
+            backgroundColor: isExpanded
+              ? isLive
+                ? '#1a365d' // Darker blue when expanded and live
+                : isPast
+                  ? '#2d3748' // Darker gray when expanded and past
+                  : '#1e40af' // Darker blue when expanded and upcoming
+              : isLive
+                ? '#2d3748' // Default live program color
+                : isPast
+                  ? '#4a5568' // Slightly darker color for past programs
+                  : '#2c5282', // Default color for upcoming programs
             color: isPast ? '#a0aec0' : '#fff', // Dim text color for past programs
+            boxShadow: isExpanded ? '0 4px 8px rgba(0,0,0,0.4)' : 'none',
+            transition: 'all 0.2s ease',
           }}
         >
           <Box>
             <Text
-              size="md"
+              size={isExpanded ? "lg" : "md"}
               style={{
                 fontWeight: 'bold',
                 whiteSpace: 'nowrap',
@@ -470,19 +531,60 @@ export default function TVChannelGuide({ startDate, endDate }) {
               {programStart.format('h:mma')} - {programEnd.format('h:mma')}
             </Text>
           </Box>
+
+          {/* Description is always shown but expands when row is expanded */}
           {program.description && (
             <Text
               size="xs"
               style={{
                 marginTop: '4px',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
-                overflow: 'hidden',
-                color: isPast ? '#718096' : '#cbd5e0', // Dim description for past programs
+                whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                textOverflow: isExpanded ? 'clip' : 'ellipsis',
+                overflow: isExpanded ? 'auto' : 'hidden',
+                color: isPast ? '#718096' : '#cbd5e0',
+                maxHeight: isExpanded ? '80px' : 'unset',
               }}
             >
               {program.description}
             </Text>
+          )}
+
+          {/* Expanded content */}
+          {isExpanded && (
+            <Box style={{ marginTop: 'auto' }}>
+              <Flex gap="md" justify="flex-end" mt={8}>
+                {/* Only show Record button if not already recording AND not in the past */}
+                {!recording && !isPast && (
+                  <Button
+                    leftSection={<Calendar size={14} />}
+                    variant="filled"
+                    color="red"
+                    size="xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      record(program);
+                    }}
+                  >
+                    Record
+                  </Button>
+                )}
+
+                {isLive && (
+                  <Button
+                    leftSection={<Video size={14} />}
+                    variant="filled"
+                    color="blue"
+                    size="xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleWatchStream(program);
+                    }}
+                  >
+                    Watch Now
+                  </Button>
+                )}
+              </Flex>
+            </Box>
           )}
         </Paper>
       </Box>
@@ -541,6 +643,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
         color: '#fff',
         fontFamily: 'Roboto, sans-serif',
       }}
+      onClick={handleClickOutside} // Close expanded program when clicking outside
     >
       {/* Sticky top bar */}
       <Flex
@@ -642,7 +745,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
               height: '40px',
               backgroundColor: '#2d3748',
               borderBottom: '1px solid #4a5568',
-              borderRight: '1px solid #4a5568',
+              borderRight: '1px solid #4a5568', // Increased border width
               position: 'sticky',
               left: 0,
               zIndex: 200,
@@ -735,7 +838,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'hidden', // Hide horizontal scrollbar here
+            overflowX: 'auto', // Changed from 'hidden' to 'auto' to enable horizontal scrolling
             position: 'relative',
           }}
           onScroll={handleGuideScroll}
@@ -769,17 +872,25 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 const channelPrograms = programs.filter(
                   (p) => p.tvg_id === channel.epg_data?.tvg_id
                 );
+                // Check if any program in this channel is expanded
+                const hasExpandedProgram = channelPrograms.some(prog => prog.id === expandedProgramId);
+                const rowHeight = hasExpandedProgram ? EXPANDED_PROGRAM_HEIGHT : PROGRAM_HEIGHT;
+
                 return (
                   <Box
                     key={channel.name}
                     style={{
                       display: 'flex',
-                      height: PROGRAM_HEIGHT,
-                      borderBottom: '1px solid #4a5568',
+                      height: rowHeight,
+                      borderBottom: '1px solid #4a5568', // Increased border width for better visibility
+                      transition: 'height 0.2s ease',
+                      position: 'relative', // Added for proper stacking
+                      overflow: 'visible', // Changed from 'hidden' to 'visible' to allow expanded programs to overflow
                     }}
                   >
                     {/* Channel logo - sticky horizontally */}
                     <Box
+                      className="channel-logo"
                       style={{
                         width: CHANNEL_WIDTH,
                         minWidth: CHANNEL_WIDTH,
@@ -788,20 +899,24 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: '#2d3748',
-                        borderRight: '1px solid #4a5568',
+                        borderRight: '1px solid #4a5568', // Increased border width for visibility
+                        borderBottom: '1px solid #4a5568', // Match the row border
+                        boxShadow: '2px 0 5px rgba(0,0,0,0.2)', // Added shadow for depth
                         position: 'sticky',
                         left: 0,
-                        zIndex: 10,
+                        zIndex: 30, // Higher than expanded programs to prevent overlap
+                        height: rowHeight,
+                        transition: 'height 0.2s ease',
                       }}
                     >
-                      {/* Logo content - unchanged */}
+                      {/* Logo content */}
                       <Flex
                         direction="column"
                         align="center"
                         justify="center"
                         style={{
                           maxWidth: CHANNEL_WIDTH * 0.8,
-                          maxHeight: PROGRAM_HEIGHT * 0.9,
+                          maxHeight: rowHeight * 0.9,
                         }}
                       >
                         <img
@@ -811,7 +926,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                             width: '100%',
                             height: 'auto',
                             objectFit: 'contain',
-                            maxHeight: PROGRAM_HEIGHT * 0.65,
+                            maxHeight: rowHeight * 0.65,
                           }}
                         />
                         <Text
@@ -832,7 +947,13 @@ export default function TVChannelGuide({ startDate, endDate }) {
                     </Box>
 
                     {/* Programs for this channel */}
-                    <Box style={{ flex: 1, position: 'relative' }}>
+                    <Box style={{
+                      flex: 1,
+                      position: 'relative',
+                      height: rowHeight,
+                      transition: 'height 0.2s ease',
+                      paddingLeft: 0, // Remove any padding that might push content
+                    }}>
                       {channelPrograms.map((prog) => renderProgram(prog, start))}
                     </Box>
                   </Box>
@@ -856,48 +977,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
         </Box>
       </Box>
 
-      {/* Modal for program details */}
-      <Modal
-        title={selectedProgram ? selectedProgram.title : ''}
-        opened={Boolean(selectedProgram)}
-        onClose={handleCloseModal}
-        yOffset="25vh"
-      >
-        {selectedProgram && (
-          <>
-            <Text size="sm">
-              {dayjs(selectedProgram.start_time).format('h:mma')} -{' '}
-              {dayjs(selectedProgram.end_time).format('h:mma')}
-            </Text>
-            <Text style={{ mt: 2, color: '#fff' }}>
-              {selectedProgram.description || 'No description available.'}
-            </Text>
-            {/* Only show the Watch button if currently live */}
-            <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-              {!recording && (
-                <Button
-                  variant="transparent"
-                  color="gray"
-                  onClick={() => record(selectedProgram)}
-                >
-                  Record
-                </Button>
-              )}
-
-              {now.isAfter(dayjs(selectedProgram.start_time)) &&
-                now.isBefore(dayjs(selectedProgram.end_time)) && (
-                  <Button
-                    variant="transparent"
-                    color="gray"
-                    onClick={() => handleWatchStream(selectedProgram)}
-                  >
-                    Watch Now
-                  </Button>
-                )}
-            </Flex>
-          </>
-        )}
-      </Modal>
+      {/* Modal removed since we're using expanded rows instead */}
     </Box>
   );
 }

@@ -7,9 +7,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   border-radius: 8px;
-  background: linear-gradient(to right, #2d3748, #2d3748); /* Default background */
+  background: linear-gradient(to right, #2d3748, #2d3748);
+  /* Default background */
   color: #fff;
-  transition: background 0.3s ease;
+  transition: all 0.2s ease-out;
 }
 
 .tv-guide .guide-program-container .guide-program.live {
@@ -22,4 +23,47 @@
 
 .tv-guide .guide-program-container .guide-program.not-live:hover {
   background: linear-gradient(to right, #2d3748, #1a202c);
+}
+
+/* New styles for expanded programs */
+.tv-guide .guide-program-container .guide-program.expanded {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  z-index: 26;
+  /* Above other programs but below channel logo */
+}
+
+.tv-guide .guide-program-container .guide-program.expanded.live {
+  background: linear-gradient(to right, #1a365d, #1e40af);
+}
+
+.tv-guide .guide-program-container .guide-program.expanded.not-live {
+  background: linear-gradient(to right, #1a365d, #1e3a8a);
+}
+
+.tv-guide .guide-program-container .guide-program.expanded.past {
+  background: linear-gradient(to right, #2d3748, #4a5568);
+}
+
+/* Ensure channel logo is always on top */
+.tv-guide .channel-logo {
+  z-index: 30;
+  position: relative;
+  position: sticky !important;
+  left: 0;
+  z-index: 30;
+}
+
+/* Give focus to expanded elements */
+.tv-guide .guide-program-container {
+  transform-origin: left center;
+  transition: all 0.2s ease-out;
+}
+
+.tv-guide .guide-program-container.expanded {
+  z-index: 25;
+}
+
+/* Make sure the main scrolling container establishes the right stacking context */
+.tv-guide {
+  position: relative;
 }
