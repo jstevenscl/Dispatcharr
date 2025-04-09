@@ -838,7 +838,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'auto', // Changed from 'hidden' to 'auto' to enable horizontal scrolling
+            overflowX: 'hidden',
             position: 'relative',
           }}
           onScroll={handleGuideScroll}
