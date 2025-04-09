@@ -455,7 +455,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
     const startOffsetMinutes = programStart.diff(channelStart, 'minute');
     const durationMinutes = programEnd.diff(programStart, 'minute');
     const leftPx = (startOffsetMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
-    const widthPx = (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+
+    // Calculate width with a small gap (2px on each side)
+    const gapSize = 2;
+    const widthPx = (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - (gapSize * 2);
 
     // Check if we have a recording for this program
     const recording = recordings.find((recording) => {
@@ -495,9 +498,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
         key={programKey}
         style={{
           position: 'absolute',
-          left: leftPx,
+          left: leftPx + gapSize, // Add gap to left position
           top: 0,
-          width: isExpanded ? expandedWidthPx : widthPx, // Expand right for short programs
+          width: isExpanded ? expandedWidthPx : widthPx, // Width already has gap factored in
           height: rowHeight - 4, // Adjust for the parent row padding
           cursor: 'pointer',
           zIndex: isExpanded ? 25 : 5, // Increase z-index when expanded
