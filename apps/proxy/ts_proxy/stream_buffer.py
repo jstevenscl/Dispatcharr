@@ -94,7 +94,7 @@ class StreamBuffer:
                         writes_done += 1
 
             if writes_done > 0:
-                logger.debug(f"Added {writes_done} optimized chunks ({self.target_chunk_size} bytes each) to Redis")
+                logger.debug(f"Added {writes_done} chunks ({self.target_chunk_size} bytes each) to Redis for channel {self.channel_id} at index {self.index}")
 
             return True
 

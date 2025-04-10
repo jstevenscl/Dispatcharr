@@ -5,6 +5,10 @@ class BaseConfig:
     CHUNK_SIZE = 8192
     CLIENT_POLL_INTERVAL = 0.1
     MAX_RETRIES = 3
+    RETRY_WAIT_INTERVAL = 0.5  # seconds to wait between retries
+    CONNECTION_TIMEOUT = 10  # seconds to wait for initial connection
+    MAX_STREAM_SWITCHES = 10  # Maximum number of stream switch attempts before giving up
+    BUFFER_CHUNK_SIZE = 188 * 1361  # ~256KB
     # Redis settings
     REDIS_CHUNK_TTL = 60  # Number in seconds - Chunks expire after 1 minute
 
@@ -23,10 +27,6 @@ class HLSConfig(BaseConfig):
 
 class TSConfig(BaseConfig):
     """Configuration settings for TS proxy"""
-
-    # Connection settings
-    CONNECTION_TIMEOUT = 10  # seconds to wait for initial connection
-    MAX_RETRIES = 3         # maximum connection retry attempts
 
     # Buffer settings
     INITIAL_BEHIND_CHUNKS = 4  # How many chunks behind to start a client (4 chunks = ~1MB)
@@ -52,8 +52,7 @@ class TSConfig(BaseConfig):
     # TS packets are 188 bytes
     # Make chunk size a multiple of TS packet size for perfect alignment
     # ~1MB is ideal for streaming (matches typical media buffer sizes)
-    BUFFER_CHUNK_SIZE = 188 * 1361  # ~256KB
 
-    # Maximum number of stream switch attempts before giving up
-    MAX_STREAM_SWITCHES = 10
+
+
 

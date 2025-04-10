@@ -70,3 +70,8 @@ class ConfigHelper:
     def max_stream_switches():
         """Get maximum number of stream switch attempts"""
         return ConfigHelper.get('MAX_STREAM_SWITCHES', 10)
+
+    @staticmethod
+    def retry_wait_interval():
+        """Get wait interval between connection retries in seconds"""
+        return ConfigHelper.get('RETRY_WAIT_INTERVAL', 0.5)  # Default to 0.5 second

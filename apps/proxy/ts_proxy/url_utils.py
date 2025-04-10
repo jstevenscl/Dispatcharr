@@ -34,40 +34,53 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool, Optional[int]]
     Returns:
         Tuple[str, str, bool, Optional[int]]: (stream_url, user_agent, transcode_flag, profile_id)
     """
-    # Get channel and related objects
-    channel = get_stream_object(channel_id)
-    stream_id, profile_id = channel.get_stream()
+    try:
+        channel = get_stream_object(channel_id)
 
-    if stream_id is None or profile_id is None:
-        logger.error(f"No stream assigned to channel {channel_id}")
+        # Get stream and profile for this channel
+        # Note: get_stream now returns 3 values (stream_id, profile_id, error_reason)
+        stream_id, profile_id, error_reason = channel.get_stream()
+
+        if not stream_id or not profile_id:
+            logger.error(f"No stream available for channel {channel_id}: {error_reason}")
+            return None, None, False, None
+
+        # Look up the Stream and Profile objects
+        try:
+            stream = Stream.objects.get(id=stream_id)
+            profile = M3UAccountProfile.objects.get(id=profile_id)
+        except (Stream.DoesNotExist, M3UAccountProfile.DoesNotExist) as e:
+            logger.error(f"Error getting stream or profile: {e}")
+            return None, None, False, None
+
+        # Get the M3U account profile for URL pattern
+        m3u_profile = profile
+
+        # Get the appropriate user agent
+        m3u_account = M3UAccount.objects.get(id=m3u_profile.m3u_account.id)
+        stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
+
+        if stream_user_agent is None:
+            stream_user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
+            logger.debug(f"No user agent found for account, using default: {stream_user_agent}")
+
+        # Generate stream URL based on the selected profile
+        input_url = stream.url
+        stream_url = transform_url(input_url, m3u_profile.search_pattern, m3u_profile.replace_pattern)
+
+        # Check if transcoding is needed
+        stream_profile = channel.get_stream_profile()
+        if stream_profile.is_proxy() or stream_profile is None:
+            transcode = False
+        else:
+            transcode = True
+
+        stream_profile_id = stream_profile.id
+
+        return stream_url, stream_user_agent, transcode, stream_profile_id
+    except Exception as e:
+        logger.error(f"Error generating stream URL: {e}")
         return None, None, False, None
-
-    # Get the M3U account profile for URL pattern
-    stream = get_object_or_404(Stream, pk=stream_id)
-    m3u_profile = get_object_or_404(M3UAccountProfile, pk=profile_id)
-
-    # Get the appropriate user agent
-    m3u_account = M3UAccount.objects.get(id=m3u_profile.m3u_account.id)
-    stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
-
-    if stream_user_agent is None:
-        stream_user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
-        logger.debug(f"No user agent found for account, using default: {stream_user_agent}")
-
-    # Generate stream URL based on the selected profile
-    input_url = stream.url
-    stream_url = transform_url(input_url, m3u_profile.search_pattern, m3u_profile.replace_pattern)
-
-    # Check if transcoding is needed
-    stream_profile = channel.get_stream_profile()
-    if stream_profile.is_proxy() or stream_profile is None:
-        transcode = False
-    else:
-        transcode = True
-
-    stream_profile_id = stream_profile.id
-
-    return stream_url, stream_user_agent, transcode, stream_profile_id
 
 def transform_url(input_url: str, search_pattern: str, replace_pattern: str) -> str:
     """
@@ -140,9 +153,9 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
                 # Use first available profile
                 m3u_profile_id = profiles.first().id
         else:
-            stream_id, m3u_profile_id = channel.get_stream()
+            stream_id, m3u_profile_id, error_reason = channel.get_stream()
             if stream_id is None or m3u_profile_id is None:
-                return {'error': 'No stream assigned to channel'}
+                return {'error': error_reason or 'No stream assigned to channel'}
 
         # Get the stream and profile objects directly
         stream = get_object_or_404(Stream, pk=stream_id)

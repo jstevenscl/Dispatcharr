@@ -86,8 +86,41 @@ def stream_ts(request, channel_id):
             # Initialize the channel (but don't wait for completion)
             logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
 
-            # Use the utility function to get stream URL and settings
-            stream_url, stream_user_agent, transcode, profile_value = generate_stream_url(channel_id)
+            # Use max retry attempts and connection timeout from config
+            max_retries = ConfigHelper.max_retries()
+            retry_timeout = ConfigHelper.connection_timeout()
+            wait_start_time = time.time()
+
+            stream_url = None
+            stream_user_agent = None
+            transcode = False
+            profile_value = None
+            error_reason = None
+
+            # Try to get a stream with configured retries
+            for attempt in range(max_retries):
+                stream_url, stream_user_agent, transcode, profile_value = generate_stream_url(channel_id)
+
+                if stream_url is not None:
+                    logger.info(f"[{client_id}] Successfully obtained stream for channel {channel_id}")
+                    break
+
+                # If we failed because there are no streams assigned, don't retry
+                _, _, error_reason = channel.get_stream()
+                if error_reason and 'maximum connection limits' not in error_reason:
+                    logger.warning(f"[{client_id}] Can't retry - error not related to connection limits: {error_reason}")
+                    break
+
+                # Don't exceed the overall connection timeout
+                if time.time() - wait_start_time > retry_timeout:
+                    logger.warning(f"[{client_id}] Connection wait timeout exceeded ({retry_timeout}s)")
+                    break
+
+                # Wait before retrying (using exponential backoff with a cap)
+                wait_time = min(0.5 * (2 ** attempt), 2.0)  # Caps at 2 seconds
+                logger.info(f"[{client_id}] Waiting {wait_time:.1f}s for a connection to become available (attempt {attempt+1}/{max_retries})")
+                time.sleep(wait_time)
+
             if stream_url is None:
                 # Make sure to release any stream locks that might have been acquired
                 if hasattr(channel, 'streams') and channel.streams.exists():
@@ -98,10 +131,16 @@ def stream_ts(request, channel_id):
                         except Exception as e:
                             logger.error(f"[{client_id}] Error releasing stream: {e}")
 
-                return JsonResponse({'error': 'No available streams for this channel'}, status=404)
+                # Get the specific error message if available
+                wait_duration = f"{int(time.time() - wait_start_time)}s"
+                error_msg = error_reason if error_reason else 'No available streams for this channel'
+                return JsonResponse({
+                    'error': error_msg,
+                    'waited': wait_duration
+                }, status=503)  # 503 Service Unavailable is appropriate here
 
             # Get the stream ID from the channel
-            stream_id, m3u_profile_id = channel.get_stream()
+            stream_id, m3u_profile_id, _ = channel.get_stream()
             logger.info(f"Channel {channel_id} using stream ID {stream_id}, m3u account profile ID {m3u_profile_id}")
 
             # Generate transcode command if needed

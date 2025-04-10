@@ -288,31 +288,61 @@ class Channel(models.Model):
     def get_stream(self):
         """
         Finds an available stream for the requested channel and returns the selected stream and profile.
+
+        Returns:
+            Tuple[Optional[int], Optional[int], Optional[str]]: (stream_id, profile_id, error_reason)
         """
         redis_client = RedisClient.get_client()
+        error_reason = None
 
-        # 2. Check if a stream is already active for this channel
-        stream_id = redis_client.get(f"channel_stream:{self.id}")
-        if stream_id:
-            stream_id = int(stream_id)
-            profile_id = redis_client.get(f"stream_profile:{stream_id}")
-            if profile_id:
-                profile_id = int(profile_id)
-                return stream_id, profile_id
+        # Check if this channel has any streams
+        if not self.streams.exists():
+            error_reason = "No streams assigned to channel"
+            return None, None, error_reason
 
-        # 3. Iterate through channel streams and their profiles
+        # Check if a stream is already active for this channel
+        stream_id_bytes = redis_client.get(f"channel_stream:{self.id}")
+        if stream_id_bytes:
+            try:
+                stream_id = int(stream_id_bytes)
+                profile_id_bytes = redis_client.get(f"stream_profile:{stream_id}")
+                if profile_id_bytes:
+                    try:
+                        profile_id = int(profile_id_bytes)
+                        return stream_id, profile_id, None
+                    except (ValueError, TypeError):
+                        logger.debug(f"Invalid profile ID retrieved from Redis: {profile_id_bytes}")
+            except (ValueError, TypeError):
+                logger.debug(f"Invalid stream ID retrieved from Redis: {stream_id_bytes}")
+
+        # No existing active stream, attempt to assign a new one
+        has_streams_but_maxed_out = False
+        has_active_profiles = False
+
+        # Iterate through channel streams and their profiles
         for stream in self.streams.all().order_by('channelstream__order'):
             # Retrieve the M3U account associated with the stream.
             m3u_account = stream.m3u_account
+            if not m3u_account:
+                logger.debug(f"Stream {stream.id} has no M3U account")
+                continue
+
             m3u_profiles = m3u_account.profiles.all()
             default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
+
+            if not default_profile:
+                logger.debug(f"M3U account {m3u_account.id} has no default profile")
+                continue
+
             profiles = [default_profile] + [obj for obj in m3u_profiles if not obj.is_default]
 
             for profile in profiles:
-                logger.info(profile)
                 # Skip inactive profiles
-                if profile.is_active == False:
+                if not profile.is_active:
+                    logger.debug(f"Skipping inactive profile {profile.id}")
                     continue
+
+                has_active_profiles = True
 
                 profile_connections_key = f"profile_connections:{profile.id}"
                 current_connections = int(redis_client.get(profile_connections_key) or 0)
@@ -321,16 +351,27 @@ class Channel(models.Model):
                 if profile.max_streams == 0 or current_connections < profile.max_streams:
                     # Start a new stream
                     redis_client.set(f"channel_stream:{self.id}", stream.id)
-                    redis_client.set(f"stream_profile:{stream.id}", profile.id)  # Store only the matched profile
+                    redis_client.set(f"stream_profile:{stream.id}", profile.id)
 
                     # Increment connection count for profiles with limits
                     if profile.max_streams > 0:
                         redis_client.incr(profile_connections_key)
 
-                    return stream.id, profile.id  # Return newly assigned stream and matched profile
+                    return stream.id, profile.id, None  # Return newly assigned stream and matched profile
+                else:
+                    # This profile is at max connections
+                    has_streams_but_maxed_out = True
+                    logger.debug(f"Profile {profile.id} at max connections: {current_connections}/{profile.max_streams}")
 
-        # 4. No available streams
-        return None, None
+        # No available streams - determine specific reason
+        if has_streams_but_maxed_out:
+            error_reason = "All M3U profiles have reached maximum connection limits"
+        elif has_active_profiles:
+            error_reason = "No compatible profile found for any assigned stream"
+        else:
+            error_reason = "No active profiles found for any assigned stream"
+
+        return None, None, error_reason
 
     def release_stream(self):
         """
