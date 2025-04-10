@@ -44,6 +44,12 @@ jobs:
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "lowercase=$REPO_OWNER" >> $GITHUB_OUTPUT
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
@@ -63,9 +69,13 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64,linux/arm/v7  # Multi-arch support for releases
           tags: |
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:latest
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.update_version.outputs.new_version }}
+          build-args: |
+            BRANCH=main  # Always use main branch for releases
+            REPO_URL=https://github.com/${{ github.repository }}
           file: ./docker/Dockerfile
 
       - name: Create GitHub Release
