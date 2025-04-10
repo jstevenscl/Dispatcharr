@@ -122,11 +122,32 @@ def match_epg_channels():
         return f"Failed to process EPG matching: {stderr}"
 
     result = json.loads(stdout)
-    channels_to_update = result["channels_to_update"]
+    # This returns lists of dicts, not model objects
+    channels_to_update_dicts = result["channels_to_update"]
     matched_channels = result["matched_channels"]
 
-    if channels_to_update:
-        Channel.objects.bulk_update(channels_to_update, ['epg_data'])
+    # Convert your dict-based 'channels_to_update' into real Channel objects
+    if channels_to_update_dicts:
+        # Extract IDs of the channels that need updates
+        channel_ids = [d["id"] for d in channels_to_update_dicts]
+
+        # Fetch them from DB
+        channels_qs = Channel.objects.filter(id__in=channel_ids)
+        channels_list = list(channels_qs)
+
+        # Build a map from channel_id -> epg_data_id (or whatever fields you need)
+        epg_mapping = {
+            d["id"]: d["epg_data_id"] for d in channels_to_update_dicts
+        }
+
+        # Populate each Channel object with the updated epg_data_id
+        for channel_obj in channels_list:
+            # The script sets 'epg_data_id' in the returned dict
+            # We either assign directly, or fetch the EPGData instance if needed.
+            channel_obj.epg_data_id = epg_mapping.get(channel_obj.id)
+
+        # Now we have real model objects, so bulk_update will work
+        Channel.objects.bulk_update(channels_list, ["epg_data"])
 
     total_matched = len(matched_channels)
     if total_matched:
@@ -148,6 +169,7 @@ def match_epg_channels():
     )
 
     return f"Done. Matched {total_matched} channel(s)."
+
 
 @shared_task
 def run_recording(channel_id, start_time_str, end_time_str):
