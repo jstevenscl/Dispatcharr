@@ -69,12 +69,12 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64,linux/arm/v7  # Multi-arch support for releases
+          platforms: linux/amd64,linux/arm64 #,linux/arm/v7  # Multi-arch support for releases
           tags: |
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:latest
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.update_version.outputs.new_version }}
           build-args: |
-            BRANCH=main  # Always use main branch for releases
+            BRANCH=${{ github.ref_name }}
             REPO_URL=https://github.com/${{ github.repository }}
           file: ./docker/Dockerfile
 
