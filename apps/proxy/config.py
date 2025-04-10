@@ -53,6 +53,12 @@ class TSConfig(BaseConfig):
     # Make chunk size a multiple of TS packet size for perfect alignment
     # ~1MB is ideal for streaming (matches typical media buffer sizes)
 
+    # Stream health and recovery settings
+    MAX_HEALTH_RECOVERY_ATTEMPTS = 2     # Maximum times to attempt recovery for a single stream
+    MAX_RECONNECT_ATTEMPTS = 3           # Maximum reconnects to try before switching streams
+    MIN_STABLE_TIME_BEFORE_RECONNECT = 30  # Minimum seconds a stream must be stable to try reconnect
+    FAILOVER_GRACE_PERIOD = 20           # Extra time (seconds) to allow for stream switching before disconnecting clients
+
 
 
 

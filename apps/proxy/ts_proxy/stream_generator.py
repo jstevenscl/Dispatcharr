@@ -335,14 +335,24 @@ class StreamGenerator:
 
     def _is_timeout(self):
         """Check if the stream has timed out."""
+        # Get a more generous timeout for stream switching
+        stream_timeout = getattr(Config, 'STREAM_TIMEOUT', 10)
+        failover_grace_period = getattr(Config, 'FAILOVER_GRACE_PERIOD', 20)
+        total_timeout = stream_timeout + failover_grace_period
+
         # Disconnect after long inactivity
-        if time.time() - self.last_yield_time > Config.STREAM_TIMEOUT:
+        if time.time() - self.last_yield_time > total_timeout:
             if self.stream_manager and not self.stream_manager.healthy:
-                logger.warning(f"[{self.client_id}] No data for {Config.STREAM_TIMEOUT}s and stream unhealthy, disconnecting")
+                # Check if stream manager is actively switching or reconnecting
+                if (hasattr(self.stream_manager, 'url_switching') and self.stream_manager.url_switching):
+                    logger.info(f"[{self.client_id}] Stream switching in progress, giving more time")
+                    return False
+
+                logger.warning(f"[{self.client_id}] No data for {total_timeout}s and stream unhealthy, disconnecting")
                 return True
             elif not self.is_owner_worker and self.consecutive_empty > 100:
                 # Non-owner worker without data for too long
-                logger.warning(f"[{self.client_id}] Non-owner worker with no data for {Config.STREAM_TIMEOUT}s, disconnecting")
+                logger.warning(f"[{self.client_id}] Non-owner worker with no data for {total_timeout}s, disconnecting")
                 return True
         return False
 
