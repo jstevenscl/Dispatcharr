@@ -155,8 +155,8 @@ export default class API {
         ...(channel.logo_file
           ? {}
           : {
-              'Content-Type': 'application/json',
-            }),
+            'Content-Type': 'application/json',
+          }),
       },
       body: body,
     });
@@ -220,8 +220,8 @@ export default class API {
         ...(values.logo_file
           ? {}
           : {
-              'Content-Type': 'application/json',
-            }),
+            'Content-Type': 'application/json',
+          }),
       },
       body: body,
     });
@@ -518,8 +518,8 @@ export default class API {
         ...(values.file
           ? {}
           : {
-              'Content-Type': 'application/json',
-            }),
+            'Content-Type': 'application/json',
+          }),
       },
       body,
     });
@@ -602,8 +602,8 @@ export default class API {
         ...(values.file
           ? {}
           : {
-              'Content-Type': 'application/json',
-            }),
+            'Content-Type': 'application/json',
+          }),
       },
       body,
     });
@@ -663,8 +663,8 @@ export default class API {
         ...(values.epg_file
           ? {}
           : {
-              'Content-Type': 'application/json',
-            }),
+            'Content-Type': 'application/json',
+          }),
       },
       body,
     });
@@ -704,8 +704,8 @@ export default class API {
         ...(values.epg_file
           ? {}
           : {
-              'Content-Type': 'application/json',
-            }),
+            'Content-Type': 'application/json',
+          }),
       },
       body,
     });

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ListOrdered,
@@ -26,6 +26,7 @@ import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
 import useSettingsStore from '../store/settings';
+import API from '../api';
 
 const NavLink = ({ item, isActive, collapsed }) => {
   return (
@@ -64,6 +65,24 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const { channels } = useChannelsStore();
   const { environment } = useSettingsStore();
   const publicIPRef = useRef(null);
+  const [appVersion, setAppVersion] = useState({ version: '', build: '' });
+
+  // Fetch environment settings including version on component mount
+  useEffect(() => {
+    const fetchEnvironment = async () => {
+      try {
+        const envData = await API.getEnvironmentSettings();
+        setAppVersion({
+          version: envData.version || '',
+          build: envData.build || ''
+        });
+      } catch (error) {
+        console.error('Failed to fetch environment settings:', error);
+      }
+    };
+
+    fetchEnvironment();
+  }, []);
 
   // Navigation Items
   const navItems = [
@@ -224,6 +243,11 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           )}
         </Group>
       </Box>
+      {!collapsed && (
+        <Text size="xs" color="dimmed">
+          v{appVersion.version}{appVersion.build !== '0' ? `-${appVersion.build}` : ''}
+        </Text>
+      )}
     </AppShell.Navbar>
   );
 };

@@ -42,6 +42,9 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def environment(request):
+    # Import version information
+    from version import __version__, __build__
+
     public_ip = None
     local_ip = None
     country_code = None
@@ -83,4 +86,6 @@ def environment(request):
         'country_code': country_code,
         'country_name': country_name,
         'env_mode': "dev" if os.getenv('DISPATCHARR_ENV') == "dev" else "prod",
+        'version': __version__,
+        'build': __build__,
     })
