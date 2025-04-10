@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main, dev ]
 
+# Add explicit permissions for the workflow
+permissions:
+  contents: read
+  packages: write    # For publishing to GitHub Container Registry
+
 jobs:
   build:
     runs-on: ubuntu-latest
