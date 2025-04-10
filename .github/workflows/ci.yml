@@ -1,0 +1,47 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Update build number
+        run: |
+          python scripts/increment_build.py
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version info
+        id: version
+        run: |
+          VERSION=$(python -c "import version; print(version.__version__)")
+          BUILD=$(python -c "import version; print(version.__build__)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+          echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/dispatcharr:${{ github.ref == 'refs/heads/main' && 'latest' || 'dev' }}
+            ghcr.io/${{ github.repository_owner }}/dispatcharr:${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
+            ghcr.io/${{ github.repository_owner }}/dispatcharr:${{ steps.version.outputs.sha_short }}
+          file: ./docker/Dockerfile
