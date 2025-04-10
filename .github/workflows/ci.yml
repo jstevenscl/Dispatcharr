@@ -41,7 +41,7 @@ jobs:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/dispatcharr:${{ github.ref == 'refs/heads/main' && 'latest' || 'dev' }}
-            ghcr.io/${{ github.repository_owner }}/dispatcharr:${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
-            ghcr.io/${{ github.repository_owner }}/dispatcharr:${{ steps.version.outputs.sha_short }}
+            ghcr.io/${{ github.repository_owner != '' && github.repository_owner | lower || 'dispatcharr' }}/dispatcharr:${{ github.ref == 'refs/heads/main' && 'latest' || 'dev' }}
+            ghcr.io/${{ github.repository_owner != '' && github.repository_owner | lower || 'dispatcharr' }}/dispatcharr:${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
+            ghcr.io/${{ github.repository_owner != '' && github.repository_owner | lower || 'dispatcharr' }}/dispatcharr:${{ steps.version.outputs.sha_short }}
           file: ./docker/Dockerfile
