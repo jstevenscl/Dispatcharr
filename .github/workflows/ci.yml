@@ -35,11 +35,37 @@ jobs:
           echo "build=$BUILD" >> $GITHUB_OUTPUT
           echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
-      - name: Set lowercase repo owner
-        id: repo_owner
+      - name: Set repository and image metadata
+        id: meta
         run: |
+          # Get lowercase repository owner
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "lowercase=$REPO_OWNER" >> $GITHUB_OUTPUT
+          echo "repo_owner=$REPO_OWNER" >> $GITHUB_OUTPUT
+
+          # Get repository name
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d '/' -f 2 | tr '[:upper:]' '[:lower:]')
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+
+          # Determine branch name
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "branch_tag=latest" >> $GITHUB_OUTPUT
+            echo "is_main=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "branch_tag=dev" >> $GITHUB_OUTPUT
+            echo "is_main=false" >> $GITHUB_OUTPUT
+          else
+            # For other branches, use the branch name
+            BRANCH=$(echo "${{ github.ref }}" | sed 's/refs\/heads\///' | sed 's/[^a-zA-Z0-9]/-/g')
+            echo "branch_tag=$BRANCH" >> $GITHUB_OUTPUT
+            echo "is_main=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Determine if this is from a fork
+          if [[ "${{ github.event.pull_request.head.repo.fork }}" == "true" ]]; then
+            echo "is_fork=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_fork=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
@@ -47,7 +73,10 @@ jobs:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ github.ref == 'refs/heads/main' && 'latest' || 'dev' }}
-            ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
-            ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.version.outputs.sha_short }}
+            ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.meta.outputs.branch_tag }}
+            ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
+            ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.version.outputs.sha_short }}
+          build-args: |
+            BRANCH=${{ github.ref_name }}
+            REPO_URL=https://github.com/${{ github.repository }}
           file: ./docker/Dockerfile
