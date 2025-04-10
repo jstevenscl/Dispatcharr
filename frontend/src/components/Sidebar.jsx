@@ -26,6 +26,7 @@ import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
 import useSettingsStore from '../store/settings';
+import useAuthStore from '../store/auth'; // Add this import
 import API from '../api';
 
 const NavLink = ({ item, isActive, collapsed }) => {
@@ -64,6 +65,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const location = useLocation();
   const { channels } = useChannelsStore();
   const { environment } = useSettingsStore();
+  const { isAuthenticated } = useAuthStore(); // Add this line to get authentication state
   const publicIPRef = useRef(null);
   const [appVersion, setAppVersion] = useState({ version: '', build: '' });
 
@@ -197,55 +199,59 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}
       >
-        <Group>
-          {!collapsed && (
-            <TextInput
-              label="Public IP"
-              ref={publicIPRef}
-              value={environment.public_ip}
-              leftSection={
-                environment.country_code && (
-                  <img
-                    src={`https://flagcdn.com/16x12/${environment.country_code.toLowerCase()}.png`}
-                    alt={environment.country_name || environment.country_code}
-                    title={environment.country_name || environment.country_code}
-                  />
-                )
-              }
-              rightSection={
-                <ActionIcon
-                  variant="transparent"
-                  color="gray.9"
-                  onClick={copyPublicIP}
-                >
-                  <Copy />
-                </ActionIcon>
-              }
-            />
-          )}
+        {isAuthenticated && (
+          <Group>
+            {!collapsed && (
+              <TextInput
+                label="Public IP"
+                ref={publicIPRef}
+                value={environment.public_ip}
+                leftSection={
+                  environment.country_code && (
+                    <img
+                      src={`https://flagcdn.com/16x12/${environment.country_code.toLowerCase()}.png`}
+                      alt={environment.country_name || environment.country_code}
+                      title={environment.country_name || environment.country_code}
+                    />
+                  )
+                }
+                rightSection={
+                  <ActionIcon
+                    variant="transparent"
+                    color="gray.9"
+                    onClick={copyPublicIP}
+                  >
+                    <Copy />
+                  </ActionIcon>
+                }
+              />
+            )}
 
-          <Avatar src="https://via.placeholder.com/40" radius="xl" />
-          {!collapsed && (
-            <Group
-              style={{
-                flex: 1,
-                justifyContent: 'space-between',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <Text size="sm" color="white">
-                John Doe
-              </Text>
-              <Text size="sm" color="white">
-                •••
-              </Text>
-            </Group>
-          )}
-        </Group>
+            <Avatar src="https://via.placeholder.com/40" radius="xl" />
+            {!collapsed && (
+              <Group
+                style={{
+                  flex: 1,
+                  justifyContent: 'space-between',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Text size="sm" color="white">
+                  John Doe
+                </Text>
+                <Text size="sm" color="white">
+                  •••
+                </Text>
+              </Group>
+            )}
+          </Group>
+        )}
       </Box>
+
+      {/* Version is always shown when sidebar is expanded, regardless of auth status */}
       {!collapsed && (
-        <Text size="xs" color="dimmed">
-          v{appVersion.version}{appVersion.build !== '0' ? `-${appVersion.build}` : ''}
+        <Text size="xs" style={{ padding: '0 16px 16px' }} c="dimmed">
+          v{appVersion?.version || '0.0.0'}{appVersion?.build !== '0' ? `-${appVersion?.build}` : ''}
         </Text>
       )}
     </AppShell.Navbar>
