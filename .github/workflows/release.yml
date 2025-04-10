@@ -36,13 +36,13 @@ jobs:
         run: |
           python scripts/bump_version.py ${{ github.event.inputs.version_type }}
           NEW_VERSION=$(python -c "import version; print(f'{version.__version__}')")
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set lowercase repo owner
         id: repo_owner
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "lowercase=$REPO_OWNER" >> $GITHUB_OUTPUT
+          echo "lowercase=${REPO_OWNER}" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -79,11 +79,10 @@ jobs:
           file: ./docker/Dockerfile
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.update_version.outputs.new_version }}
-          release_name: Release v${{ steps.update_version.outputs.new_version }}
+          name: Release v${{ steps.update_version.outputs.new_version }}
           draft: false
           prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
