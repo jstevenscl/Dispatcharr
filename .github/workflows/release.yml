@@ -33,6 +33,12 @@ jobs:
           NEW_VERSION=$(python -c "import version; print(f'{version.__version__}')")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Set lowercase repo owner
+        id: repo_owner
+        run: |
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "lowercase=$REPO_OWNER" >> $GITHUB_OUTPUT
+
       - name: Commit and Tag
         run: |
           git add version.py
@@ -46,8 +52,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner != '' && github.repository_owner | lower || 'dispatcharr' }}/dispatcharr:latest
-            ghcr.io/${{ github.repository_owner != '' && github.repository_owner | lower || 'dispatcharr' }}/dispatcharr:${{ steps.update_version.outputs.new_version }}
+            ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:latest
+            ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.update_version.outputs.new_version }}
           file: ./docker/Dockerfile
 
       - name: Create GitHub Release
