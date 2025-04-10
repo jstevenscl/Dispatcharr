@@ -24,7 +24,7 @@ def get_stream_object(id: str):
         logger.info(f"Fetching stream hash {id}")
         return get_object_or_404(Stream, stream_hash=id)
 
-def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
+def generate_stream_url(channel_id: str) -> Tuple[str, str, bool, Optional[int]]:
     """
     Generate the appropriate stream URL for a channel based on its profile settings.
 
@@ -32,7 +32,7 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
         channel_id: The UUID of the channel
 
     Returns:
-        Tuple[str, str, bool]: (stream_url, user_agent, transcode_flag)
+        Tuple[str, str, bool, Optional[int]]: (stream_url, user_agent, transcode_flag, profile_id)
     """
     # Get channel and related objects
     channel = get_stream_object(channel_id)
@@ -40,7 +40,7 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool]:
 
     if stream_id is None or profile_id is None:
         logger.error(f"No stream assigned to channel {channel_id}")
-        return None, None, False
+        return None, None, False, None
 
     # Get the M3U account profile for URL pattern
     stream = get_object_or_404(Stream, pk=stream_id)

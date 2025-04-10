@@ -89,7 +89,16 @@ def stream_ts(request, channel_id):
             # Use the utility function to get stream URL and settings
             stream_url, stream_user_agent, transcode, profile_value = generate_stream_url(channel_id)
             if stream_url is None:
-                return JsonResponse({'error': 'Channel not available'}, status=404)
+                # Make sure to release any stream locks that might have been acquired
+                if hasattr(channel, 'streams') and channel.streams.exists():
+                    for stream in channel.streams.all():
+                        try:
+                            stream.release_stream()
+                            logger.info(f"[{client_id}] Released stream {stream.id} for channel {channel_id}")
+                        except Exception as e:
+                            logger.error(f"[{client_id}] Error releasing stream: {e}")
+
+                return JsonResponse({'error': 'No available streams for this channel'}, status=404)
 
             # Get the stream ID from the channel
             stream_id, m3u_profile_id = channel.get_stream()

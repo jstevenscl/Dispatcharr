@@ -490,6 +490,21 @@ class StreamManager:
         # Add at the beginning of your stop method
         self.stopping = True
 
+        # Release stream resources if we're the owner
+        if self.current_stream_id and hasattr(self, 'worker_id') and self.worker_id:
+            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                owner_key = RedisKeys.channel_owner(self.channel_id)
+                current_owner = self.buffer.redis_client.get(owner_key)
+
+                if current_owner and current_owner.decode('utf-8') == self.worker_id:
+                    try:
+                        from apps.channels.models import Stream
+                        stream = Stream.objects.get(pk=self.current_stream_id)
+                        stream.release_stream()
+                        logger.info(f"Released stream {self.current_stream_id} for channel {self.channel_id}")
+                    except Exception as e:
+                        logger.error(f"Error releasing stream {self.current_stream_id}: {e}")
+
         # Cancel all buffer check timers
         for timer in list(self._buffer_check_timers):
             try:

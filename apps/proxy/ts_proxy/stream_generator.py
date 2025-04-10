@@ -354,6 +354,33 @@ class StreamGenerator:
         total_clients = 0
         proxy_server = ProxyServer.get_instance()
 
+        # Release M3U profile stream allocation if this is the last client
+        stream_released = False
+        if proxy_server.redis_client:
+            try:
+                metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                metadata = proxy_server.redis_client.hgetall(metadata_key)
+                if metadata:
+                    stream_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_ID)
+                    if stream_id_bytes:
+                        stream_id = int(stream_id_bytes.decode('utf-8'))
+
+                        # Check if we're the last client
+                        if self.channel_id in proxy_server.client_managers:
+                            client_count = proxy_server.client_managers[self.channel_id].get_total_client_count()
+                            # Only the last client or owner should release the stream
+                            if client_count <= 1 and proxy_server.am_i_owner(self.channel_id):
+                                from apps.channels.models import Stream
+                                try:
+                                    stream = Stream.objects.get(pk=stream_id)
+                                    stream.release_stream()
+                                    stream_released = True
+                                    logger.debug(f"[{self.client_id}] Released stream {stream_id} for channel {self.channel_id}")
+                                except Exception as e:
+                                    logger.error(f"[{self.client_id}] Error releasing stream {stream_id}: {e}")
+            except Exception as e:
+                logger.error(f"[{self.client_id}] Error checking stream data for release: {e}")
+
         if self.channel_id in proxy_server.client_managers:
             client_manager = proxy_server.client_managers[self.channel_id]
             local_clients = client_manager.remove_client(self.client_id)
@@ -361,7 +388,8 @@ class StreamGenerator:
             logger.info(f"[{self.client_id}] Disconnected after {elapsed:.2f}s (local: {local_clients}, total: {total_clients})")
 
             # Schedule channel shutdown if no clients left
-            self._schedule_channel_shutdown_if_needed(local_clients)
+            if not stream_released:  # Only if we haven't already released the stream
+                self._schedule_channel_shutdown_if_needed(local_clients)
 
     def _schedule_channel_shutdown_if_needed(self, local_clients):
         """
