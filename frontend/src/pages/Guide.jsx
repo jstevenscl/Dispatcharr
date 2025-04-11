@@ -56,6 +56,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const guideRef = useRef(null);
   const timelineRef = useRef(null); // New ref for timeline scrolling
 
+  // Add new state to track hovered logo
+  const [hoveredChannelId, setHoveredChannelId] = useState(null);
+
   // Load program data once
   useEffect(() => {
     if (!Object.keys(channels).length === 0) {
@@ -283,6 +286,21 @@ export default function TVChannelGuide({ startDate, endDate }) {
       vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
     }
 
+    showVideo(vidUrl);
+  }
+
+  // Function to handle logo click to play channel
+  function handleLogoClick(channel, event) {
+    // Prevent event from bubbling up
+    event.stopPropagation();
+
+    // Build a playable stream URL for the channel
+    let vidUrl = `/proxy/ts/stream/${channel.uuid}`;
+    if (env_mode === 'dev') {
+      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+    }
+
+    // Use the existing showVideo function
     showVideo(vidUrl);
   }
 
@@ -1014,38 +1032,83 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         zIndex: 30, // Higher than expanded programs to prevent overlap
                         height: rowHeight,
                         transition: 'height 0.2s ease',
+                        cursor: 'pointer', // Add cursor pointer to indicate clickable
+                        position: 'relative', // Remove duplicate, keep only this one
                       }}
+                      onClick={(e) => handleLogoClick(channel, e)}
+                      onMouseEnter={() => setHoveredChannelId(channel.id)}
+                      onMouseLeave={() => setHoveredChannelId(null)}
                     >
-                      {/* Logo content */}
+                      {/* Play icon overlay - visible on hover (moved outside to cover entire box) */}
+                      {hoveredChannelId === channel.id && (
+                        <Flex
+                          align="center"
+                          justify="center"
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            width: '100%',
+                            height: '100%',
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            zIndex: 10,
+                            animation: 'fadeIn 0.2s',
+                          }}
+                        >
+                          <Video size={24} color="#fff" />
+                        </Flex>
+                      )}
+
+                      {/* Logo content - restructured for better positioning */}
                       <Flex
                         direction="column"
                         align="center"
-                        justify="center"
+                        justify="space-between" // Changed from center to space-between
                         style={{
-                          maxWidth: CHANNEL_WIDTH * 0.8,
-                          maxHeight: rowHeight * 0.9,
+                          width: '100%',
+                          height: '100%',
+                          padding: '2px 2px',
+                          boxSizing: 'border-box',
+                          zIndex: 5,
                         }}
                       >
-                        <img
-                          src={channel.logo?.cache_url || logo}
-                          alt={channel.name}
+                        {/* Logo container with fixed height */}
+                        <Box
                           style={{
                             width: '100%',
-                            height: 'auto',
-                            objectFit: 'contain',
-                            maxHeight: rowHeight * 0.65,
+                            height: `${rowHeight * 0.65}px`, // Fixed height based on row height
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
                           }}
-                        />
+                        >
+                          <img
+                            src={channel.logo?.cache_url || logo}
+                            alt={channel.name}
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '100%',
+                              objectFit: 'contain',
+                            }}
+                          />
+                        </Box>
+
+                        {/* Channel number - pinned to bottom with padding */}
                         <Text
                           size="sm"
                           weight={600}
                           style={{
-                            marginTop: 4,
+                            marginTop: 'auto', // Push to bottom
+                            marginBottom: '4px', // Bottom padding
                             backgroundColor: '#2d3748',
                             padding: '2px 6px',
                             borderRadius: 4,
                             fontSize: '0.85em',
                             border: '1px solid #4a5568',
+                            alignSelf: 'center', // Center horizontally
                           }}
                         >
                           {channel.channel_number || '-'}
