@@ -44,6 +44,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Increment Build Number
+        if: steps.check_actor.outputs.is_bot != 'true'
+        id: increment_build
+        run: |
+          python scripts/increment_build.py
+          BUILD=$(python -c "import version; print(version.__build__)")
+          echo "build=${BUILD}" >> $GITHUB_OUTPUT
+
+      - name: Commit Build Number Update
+        if: steps.check_actor.outputs.is_bot != 'true'
+        run: |
+          git add version.py
+          git commit -m "Increment build number to ${{ steps.increment_build.outputs.build }} [skip ci]"
+          git push
+
       - name: Extract version info
         id: version
         run: |
@@ -84,21 +99,6 @@ jobs:
           else
             echo "is_fork=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Increment Build Number
-        if: steps.check_actor.outputs.is_bot != 'true'
-        id: increment_build
-        run: |
-          python scripts/increment_build.py
-          BUILD=$(python -c "import version; print(version.__build__)")
-          echo "build=${BUILD}" >> $GITHUB_OUTPUT
-
-      - name: Commit Build Number Update
-        if: steps.check_actor.outputs.is_bot != 'true'
-        run: |
-          git add version.py
-          git commit -m "Increment build number to ${{ steps.increment_build.outputs.build }} [skip ci]"
-          git push
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
