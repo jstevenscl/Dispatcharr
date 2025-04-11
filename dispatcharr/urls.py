@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
-from django.conf.urls.static import static, serve
+from django.conf.urls.static import static
 from django.views.generic import TemplateView, RedirectView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -53,12 +53,15 @@ urlpatterns = [
     # Optionally, serve the raw Swagger JSON
     path('swagger.json', schema_view.without_ui(cache_timeout=0), name='schema-json'),
 
-    # Catch-all React route (this is for the frontend routing to index.html)
+    # Catch-all routes should always be last
     path('', TemplateView.as_view(template_name='index.html')),  # React entry point
-    # path('<path:unused_path>', TemplateView.as_view(template_name='index.html')),  # Handle all non-API routes
+    path('<path:unused_path>', TemplateView.as_view(template_name='index.html')),
 
-    # Serve static files dynamically
-    path('static/<path:path>', serve, {'document_root': settings.STATIC_ROOT}),  # This serves static files
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)  # Serve static files in development
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+urlpatterns += websocket_urlpatterns
+
+# Serve static files for development (React's JS, CSS, etc.)
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
