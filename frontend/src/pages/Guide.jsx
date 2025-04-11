@@ -836,10 +836,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
           {(searchQuery !== '' ||
             selectedGroupId !== 'all' ||
             selectedProfileId !== 'all') && (
-            <Button variant="subtle" onClick={clearFilters} size="sm" compact>
-              Clear Filters
-            </Button>
-          )}
+              <Button variant="subtle" onClick={clearFilters} size="sm" compact>
+                Clear Filters
+              </Button>
+            )}
 
           <Text size="sm" color="dimmed">
             {filteredChannels.length}{' '}
@@ -1058,7 +1058,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
                 return (
                   <Box
-                    key={channel.name}
+                    key={channel.id}
                     style={{
                       display: 'flex',
                       height: rowHeight,
