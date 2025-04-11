@@ -20,6 +20,7 @@ import {
   Group,
   Center,
   SimpleGrid,
+  Text,
 } from '@mantine/core';
 import useChannelsStore from '../../store/channels';
 import { CircleCheck, CircleX } from 'lucide-react';
@@ -90,7 +91,12 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   }
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="M3U Group Filter" size="xl">
+    <Modal
+      opened={isOpen}
+      onClose={onClose}
+      title="M3U Group Filter"
+      size={1000}
+    >
       <LoadingOverlay visible={isLoading} overlayBlur={2} />
       <Stack>
         <Flex gap="sm">
@@ -120,10 +126,16 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                 checked={group.enabled}
                 onClick={() => toggleGroupEnabled(group.channel_group)}
                 radius="xl"
-                leftSection={group.enabled ? <CircleCheck /> : <CircleX />}
+                leftSection={
+                  group.enabled ? (
+                    <CircleCheck size={20} />
+                  ) : (
+                    <CircleX size={20} />
+                  )
+                }
                 justify="left"
               >
-                {group.name}
+                <Text size="xs">{group.name}</Text>
               </Button>
             ))}
         </SimpleGrid>
