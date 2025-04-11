@@ -52,6 +52,7 @@ class DiscoverAPIView(APIView):
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
+                "TunerCount": 10,
             }
         else:
             data = {
@@ -63,6 +64,7 @@ class DiscoverAPIView(APIView):
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
+                "TunerCount": 10,
             }
         return JsonResponse(data)
 
