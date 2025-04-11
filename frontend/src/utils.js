@@ -51,3 +51,9 @@ export function useDebounce(value, delay = 500) {
 
   return debouncedValue;
 }
+
+export function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}

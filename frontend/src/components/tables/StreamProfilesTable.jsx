@@ -17,6 +17,7 @@ import {
   useMantineTheme,
   Center,
   Switch,
+  Stack,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { SquareMinus, SquarePen, Check, X, Eye, EyeOff } from 'lucide-react';
@@ -212,19 +213,19 @@ const StreamProfiles = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 120px)',
+        height: 'calc(60vh - 100px)',
         overflowY: 'auto',
       },
     },
   });
 
   return (
-    <Box>
+    <Stack gap={0} style={{ width: '49%', padding: 0 }}>
       <Flex
         style={{
           display: 'flex',
           alignItems: 'center',
-          paddingBottom: 10,
+          // paddingBottom: 10,
         }}
         gap={15}
       >
@@ -305,7 +306,7 @@ const StreamProfiles = () => {
         isOpen={profileModalOpen}
         onClose={closeStreamProfileForm}
       />
-    </Box>
+    </Stack>
   );
 };
 

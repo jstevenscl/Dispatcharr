@@ -9,13 +9,11 @@ import {
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import Channels from './pages/Channels';
-import M3U from './pages/M3U';
-import EPG from './pages/EPG';
+import ContentSources from './pages/ContentSources';
 import Guide from './pages/Guide';
 import Stats from './pages/Stats';
 import DVR from './pages/DVR';
 import Settings from './pages/Settings';
-import StreamProfiles from './pages/StreamProfiles';
 import useAuthStore from './store/auth';
 import FloatingVideo from './components/FloatingVideo';
 import { WebsocketProvider } from './WebSocket';
@@ -87,73 +85,67 @@ const App = () => {
       withGlobalStyles
       withNormalizeCSS
     >
-      <WebsocketProvider>
-        <Notifications containerWidth={350} />
-        <Router>
-          <AppShell
-            header={{
-              height: 0,
-            }}
-            navbar={{
-              width: open ? drawerWidth : miniDrawerWidth,
-            }}
-          >
-            <Sidebar
-              drawerWidth
-              miniDrawerWidth
-              collapsed={!open}
-              toggleDrawer={toggleDrawer}
-            />
+      <Router>
+        <AppShell
+          header={{
+            height: 0,
+          }}
+          navbar={{
+            width: open ? drawerWidth : miniDrawerWidth,
+          }}
+        >
+          <Sidebar
+            drawerWidth
+            miniDrawerWidth
+            collapsed={!open}
+            toggleDrawer={toggleDrawer}
+          />
 
-            <AppShell.Main>
-              <Box
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  // transition: 'margin-left 0.3s',
-                  backgroundColor: '#18181b',
-                  height: '100vh',
-                  color: 'white',
-                }}
-              >
-                <Box sx={{ p: 2, flex: 1, overflow: 'auto' }}>
-                  <Routes>
-                    {isAuthenticated ? (
-                      <>
-                        <Route path="/channels" element={<Channels />} />
-                        <Route path="/m3u" element={<M3U />} />
-                        <Route path="/epg" element={<EPG />} />
-                        <Route
-                          path="/stream-profiles"
-                          element={<StreamProfiles />}
-                        />
-                        <Route path="/guide" element={<Guide />} />
-                        <Route path="/dvr" element={<DVR />} />
-                        <Route path="/stats" element={<Stats />} />
-                        <Route path="/settings" element={<Settings />} />
-                      </>
-                    ) : (
-                      <Route path="/login" element={<Login needsSuperuser />} />
-                    )}
-                    <Route
-                      path="*"
-                      element={
-                        <Navigate
-                          to={isAuthenticated ? defaultRoute : '/login'}
-                          replace
-                        />
-                      }
-                    />
-                  </Routes>
-                </Box>
+          <AppShell.Main>
+            <Box
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                // transition: 'margin-left 0.3s',
+                backgroundColor: '#18181b',
+                height: '100vh',
+                color: 'white',
+              }}
+            >
+              <Box sx={{ p: 2, flex: 1, overflow: 'auto' }}>
+                <Routes>
+                  {isAuthenticated ? (
+                    <>
+                      <Route path="/channels" element={<Channels />} />
+                      <Route path="/sources" element={<ContentSources />} />
+                      <Route path="/guide" element={<Guide />} />
+                      <Route path="/dvr" element={<DVR />} />
+                      <Route path="/stats" element={<Stats />} />
+                      <Route path="/settings" element={<Settings />} />
+                    </>
+                  ) : (
+                    <Route path="/login" element={<Login needsSuperuser />} />
+                  )}
+                  <Route
+                    path="*"
+                    element={
+                      <Navigate
+                        to={isAuthenticated ? defaultRoute : '/login'}
+                        replace
+                      />
+                    }
+                  />
+                </Routes>
               </Box>
-            </AppShell.Main>
-          </AppShell>
-          <M3URefreshNotification />
-        </Router>
+            </Box>
+          </AppShell.Main>
+        </AppShell>
+        <M3URefreshNotification />
+        <Notifications containerWidth={350} />
+        <WebsocketProvider />
+      </Router>
 
-        <FloatingVideo />
-      </WebsocketProvider>
+      <FloatingVideo />
     </MantineProvider>
   );
 };

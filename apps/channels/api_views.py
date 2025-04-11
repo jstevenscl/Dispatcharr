@@ -122,10 +122,54 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
 # ─────────────────────────────────────────────────────────
 # 3) Channel Management (CRUD)
 # ─────────────────────────────────────────────────────────
+class ChannelPagination(PageNumberPagination):
+    page_size = 25  # Default page size
+    page_size_query_param = 'page_size'  # Allow clients to specify page size
+    max_page_size = 10000  # Prevent excessive page sizes
+
+class ChannelFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_expr='icontains')
+    channel_group_name = OrInFilter(field_name="channel_group__name", lookup_expr="icontains")
+
+    class Meta:
+        model = Channel
+        fields = ['name', 'channel_group_name',]
+
 class ChannelViewSet(viewsets.ModelViewSet):
     queryset = Channel.objects.all()
     serializer_class = ChannelSerializer
     permission_classes = [IsAuthenticated]
+    # pagination_class = ChannelPagination
+
+    # filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    # filterset_class = ChannelFilter
+    # search_fields = ['name', 'channel_group__name']
+    # ordering_fields = ['channel_number', 'name', 'channel_group__name']
+    # ordering = ['-channel_number']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        channel_group = self.request.query_params.get('channel_group')
+        if channel_group:
+            group_names = channel_group.split(',')
+            qs = qs.filter(channel_group__name__in=group_names)
+
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='ids')
+    def get_ids(self, request, *args, **kwargs):
+        # Get the filtered queryset
+        queryset = self.get_queryset()
+
+        # Apply filtering, search, and ordering
+        queryset = self.filter_queryset(queryset)
+
+        # Return only the IDs from the queryset
+        channel_ids = queryset.values_list('id', flat=True)
+
+        # Return the response with the list of IDs
+        return Response(list(channel_ids))
 
     @swagger_auto_schema(
         method='post',

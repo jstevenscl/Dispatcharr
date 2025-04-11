@@ -26,9 +26,63 @@ const M3UTable = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
   const [playlistCreated, setPlaylistCreated] = useState(false);
 
-  const { playlists, setRefreshProgress } = usePlaylistsStore();
+  const { playlists, refreshProgress, setRefreshProgress } =
+    usePlaylistsStore();
 
   const theme = useMantineTheme();
+
+  const generateStatusString = (data) => {
+    if (data.progress == 100) {
+      return 'Idle';
+    }
+
+    switch (data.action) {
+      case 'downloading':
+        return buildDownloadingStats(data);
+
+      case 'processing_groups':
+        return 'Processing groups...';
+
+      default:
+        return buildParsingStats(data);
+    }
+  };
+
+  const buildDownloadingStats = (data) => {
+    if (data.progress == 100) {
+      // fetchChannelGroups();
+      // fetchPlaylists();
+      return 'Download complete!';
+    }
+
+    if (data.progress == 0) {
+      return 'Downloading...';
+    }
+
+    return (
+      <Box>
+        <Text size="xs">Downloading: {parseInt(data.progress)}%</Text>
+        {/* <Text size="xs">Speed: {parseInt(data.speed)} KB/s</Text>
+        <Text size="xs">Time Remaining: {parseInt(data.time_remaining)}</Text> */}
+      </Box>
+    );
+  };
+
+  const buildParsingStats = (data) => {
+    if (data.progress == 100) {
+      // fetchStreams();
+      // fetchChannelGroups();
+      // fetchEPGData();
+      // fetchPlaylists();
+      return 'Parsing complete!';
+    }
+
+    if (data.progress == 0) {
+      return 'Parsing...';
+    }
+
+    return `Parsing: ${data.progress}%`;
+  };
 
   const columns = useMemo(
     //column definitions...
@@ -58,6 +112,20 @@ const M3UTable = () => {
         size: 200,
       },
       {
+        header: 'Status',
+        accessorFn: (row) => {
+          if (!row.id) {
+            return '';
+          }
+          if (!refreshProgress[row.id]) {
+            return 'Idle';
+          }
+
+          return generateStatusString(refreshProgress[row.id]);
+        },
+        size: 200,
+      },
+      {
         header: 'Active',
         accessorKey: 'is_active',
         size: 100,
@@ -77,7 +145,7 @@ const M3UTable = () => {
         enableSorting: false,
       },
     ],
-    []
+    [refreshProgress]
   );
 
   //optionally access the underlying virtualizer instance
@@ -190,7 +258,7 @@ const M3UTable = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(40vh - 0px)',
+        height: 'calc(40vh - 10px)',
       },
     },
   });

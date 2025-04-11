@@ -1,17 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/auth';
-import {
-  Paper,
-  Title,
-  TextInput,
-  Button,
-  Checkbox,
-  Modal,
-  Box,
-  Center,
-  Stack,
-} from '@mantine/core';
+import { Paper, Title, TextInput, Button, Center, Stack } from '@mantine/core';
 
 const LoginForm = () => {
   const { login, isAuthenticated, initData } = useAuthStore(); // Get login function from AuthContext

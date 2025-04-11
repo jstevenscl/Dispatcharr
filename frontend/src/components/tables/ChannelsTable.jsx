@@ -399,6 +399,12 @@ const ChannelsTable = ({}) => {
         size: 50,
         maxSize: 50,
         accessorKey: 'channel_number',
+        sortingFn: (a, b, columnId) => {
+          return (
+            parseInt(a.original.channel_number) -
+            parseInt(b.original.channel_number)
+          );
+        },
         mantineTableHeadCellProps: {
           align: 'right',
           //   //   style: {
@@ -469,11 +475,11 @@ const ChannelsTable = ({}) => {
               placeholder="Group"
               searchable
               size="xs"
-              nothingFound="No options"
-              // onChange={(e, value) => {
-              //   e.stopPropagation();
-              //   handleGroupChange(value);
-              // }}
+              nothingFoundMessage="No options"
+              onChange={(value) => {
+                // e.stopPropagation();
+                handleFilterChange(column.id, value);
+              }}
               data={channelGroupOptions}
               variant="unstyled"
               className="table-input-header"
@@ -485,16 +491,15 @@ const ChannelsTable = ({}) => {
         header: '',
         accessorKey: 'logo',
         enableSorting: false,
-        size: 55,
+        size: 75,
         mantineTableBodyCellProps: {
           align: 'center',
           style: {
-            maxWidth: '55px',
+            maxWidth: '75px',
           },
         },
         Cell: ({ cell }) => (
           <Grid
-            container
             direction="row"
             sx={{
               justifyContent: 'center',
@@ -541,6 +546,7 @@ const ChannelsTable = ({}) => {
   };
 
   const deleteChannel = async (id) => {
+    setRowSelection([]);
     if (channelsPageSelection.length > 0) {
       return deleteChannels();
     }
@@ -745,10 +751,6 @@ const ChannelsTable = ({}) => {
       sorting: [
         {
           id: 'channel_number',
-          desc: false,
-        },
-        {
-          id: 'name',
           desc: false,
         },
       ],

@@ -71,16 +71,17 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
 
   // Fetch environment settings including version on component mount
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
     const fetchEnvironment = async () => {
-      try {
-        const envData = await API.getEnvironmentSettings();
-      } catch (error) {
-        console.error('Failed to fetch environment settings:', error);
-      }
+      API.getEnvironmentSettings();
     };
 
     fetchEnvironment();
-  }, []);
+  }, [isAuthenticated]);
+
   // Fetch version information on component mount (regardless of authentication)
   useEffect(() => {
     const fetchVersion = async () => {
@@ -88,7 +89,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
         const versionData = await API.getVersion();
         setAppVersion({
           version: versionData.version || '',
-          build: versionData.build || ''
+          build: versionData.build || '',
         });
       } catch (error) {
         console.error('Failed to fetch version information:', error);
@@ -106,8 +107,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       path: '/channels',
       badge: `(${Object.keys(channels).length})`,
     },
-    { label: 'M3U', icon: <Play size={20} />, path: '/m3u' },
-    { label: 'EPG', icon: <Database size={20} />, path: '/epg' },
+    { label: 'M3U & EPG Manager', icon: <Play size={20} />, path: '/sources' },
     {
       label: 'Stream Profiles',
       icon: <SlidersHorizontal size={20} />,
@@ -223,7 +223,9 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                     <img
                       src={`https://flagcdn.com/16x12/${environment.country_code.toLowerCase()}.png`}
                       alt={environment.country_name || environment.country_code}
-                      title={environment.country_name || environment.country_code}
+                      title={
+                        environment.country_name || environment.country_code
+                      }
                     />
                   )
                 }
@@ -263,7 +265,8 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       {/* Version is always shown when sidebar is expanded, regardless of auth status */}
       {!collapsed && (
         <Text size="xs" style={{ padding: '0 16px 16px' }} c="dimmed">
-          v{appVersion?.version || '0.0.0'}{appVersion?.build !== '0' ? `-${appVersion?.build}` : ''}
+          v{appVersion?.version || '0.0.0'}
+          {appVersion?.build !== '0' ? `-${appVersion?.build}` : ''}
         </Text>
       )}
     </AppShell.Navbar>

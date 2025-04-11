@@ -40,10 +40,36 @@ def fetch_m3u_lines(account, use_cache=False):
             try:
                 response = requests.get(account.server_url, headers=headers, stream=True)
                 response.raise_for_status()
+
+                total_size = int(response.headers.get('Content-Length', 0))
+                downloaded = 0
+                start_time = time.time()
+                last_update_time = start_time
+
                 with open(file_path, 'wb') as file:
+                    send_m3u_update(account.id, "downloading", 0)
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             file.write(chunk)
+
+                            downloaded += len(chunk)
+                            elapsed_time = time.time() - start_time
+
+                            # Calculate download speed in KB/s
+                            speed = downloaded / elapsed_time / 1024  # in KB/s
+
+                            # Calculate progress percentage
+                            progress = (downloaded / total_size) * 100
+
+                            # Time remaining (in seconds)
+                            time_remaining = (total_size - downloaded) / (speed * 1024)
+
+                            current_time = time.time()
+                            if current_time - last_update_time >= 0.5:
+                                last_update_time = current_time
+                                send_m3u_update(account.id, "downloading", progress, speed=speed, elapsed_time=elapsed_time, time_remaining=time_remaining)
+
+                send_m3u_update(account.id, "downloading", 100)
             except requests.exceptions.RequestException as e:
                 logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
                 return []
@@ -317,6 +343,8 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
             # Associate URL with the last EXTINF line
             extinf_data[-1]["url"] = line
 
+    send_m3u_update(account_id, "processing_groups", 0)
+
     groups = list(groups)
     cache_path = os.path.join(m3u_dir, f"{account_id}.json")
     with open(cache_path, 'w', encoding='utf-8') as f:
@@ -328,6 +356,8 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
     process_groups(account, groups)
 
     release_task_lock('refresh_m3u_account_groups', account_id)
+
+    send_m3u_update(account_id, "processing_groups", 100)
 
     if not full_refresh:
         channel_layer = get_channel_layer()
@@ -350,7 +380,6 @@ def refresh_single_m3u_account(account_id):
     # redis_client = RedisClient.get_client()
     # Record start time
     start_time = time.time()
-    send_progress_update(0, account_id)
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
@@ -415,7 +444,7 @@ def refresh_single_m3u_account(account_id):
                 if progress == 100:
                     progress = 99
 
-                send_progress_update(progress, account_id)
+                send_m3u_update(account_id, "parsing", progress)
 
                 # Optionally remove completed task from the group to prevent processing it again
                 result.remove(async_result)
@@ -424,7 +453,7 @@ def refresh_single_m3u_account(account_id):
 
     # Run cleanup
     cleanup_streams(account_id)
-    send_progress_update(100, account_id)
+    send_m3u_update(account_id, "parsing", 100)
 
     end_time = time.time()
 
@@ -454,12 +483,24 @@ def refresh_single_m3u_account(account_id):
 
     return f"Dispatched jobs complete."
 
-def send_progress_update(progress, account_id):
+def send_m3u_update(account_id, action, progress, **kwargs):
+    # Start with the base data dictionary
+    data = {
+        "progress": progress,
+        "type": "m3u_refresh",
+        "account": account_id,
+        "action": action,
+    }
+
+    # Add the additional key-value pairs from kwargs
+    data.update(kwargs)
+
+    # Now, send the updated data dictionary
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
         'updates',
         {
             'type': 'update',
-            "data": {"progress": progress, "type": "m3u_refresh", "account": account_id}
+            'data': data
         }
     )
