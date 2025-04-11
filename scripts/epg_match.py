@@ -52,7 +52,8 @@ def process_data(input_data):
         if chan["tvg_id"]:
             epg_match = [epg["id"] for epg in epg_data if epg["tvg_id"] == chan["tvg_id"]]
             if epg_match:
-                chan["epg_data_id"] = epg_match[0]["id"]
+                # Fix: Access the first element directly since epg_match contains the IDs themselves
+                chan["epg_data_id"] = epg_match[0]  # Directly use the integer ID
                 eprint(f"Channel {chan['id']} '{chan['name']}' => EPG found by tvg_id={chan['tvg_id']}")
                 channels_to_update.append(chan)
                 continue
