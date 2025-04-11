@@ -38,6 +38,11 @@ export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
 export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
 
+# Extract version information from version.py
+export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
+export DISPATCHARR_BUILD=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__build__)")
+echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}-${DISPATCHARR_BUILD}"
+
 # READ-ONLY - don't let users change these
 export POSTGRES_DIR=/data/db
 
@@ -58,6 +63,8 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_BUILD=$DISPATCHARR_BUILD" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
