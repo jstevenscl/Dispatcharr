@@ -167,6 +167,7 @@ const EPGsTable = () => {
           size="sm" // Makes the button smaller
           color="blue.5" // Red color for delete actions
           onClick={() => refreshEPG(row.original.id)}
+          disabled={!row.original.is_active}
         >
           <RefreshCcw size="18" /> {/* Small icon size */}
         </ActionIcon>

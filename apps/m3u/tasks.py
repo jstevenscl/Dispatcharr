@@ -383,6 +383,10 @@ def refresh_single_m3u_account(account_id):
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
+        if not account.is_active:
+            logger.info(f"Account {account_id} is not active, skipping.")
+            return
+
         filters = list(account.filters.all())
     except M3UAccount.DoesNotExist:
         release_task_lock('refresh_single_m3u_account', account_id)

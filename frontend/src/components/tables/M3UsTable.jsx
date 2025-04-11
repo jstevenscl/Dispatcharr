@@ -263,6 +263,7 @@ const M3UTable = () => {
           size="sm"
           color="blue.5"
           onClick={() => refreshPlaylist(row.original.id)}
+          disabled={!row.original.is_active}
         >
           <RefreshCcw size="18" />
         </ActionIcon>
