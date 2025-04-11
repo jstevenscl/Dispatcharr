@@ -13,6 +13,7 @@ import {
   Button,
   Flex,
   useMantineTheme,
+  Switch,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
@@ -25,9 +26,15 @@ const EPGsTable = () => {
   const [rowSelection, setRowSelection] = useState([]);
 
   const { epgs } = useEPGsStore();
-  console.log(epgs);
 
   const theme = useMantineTheme();
+
+  const toggleActive = async (epg) => {
+    await API.updateEPG({
+      ...epg,
+      is_active: !epg.is_active,
+    });
+  };
 
   const columns = useMemo(
     //column definitions...
@@ -44,6 +51,24 @@ const EPGsTable = () => {
         header: 'URL / API Key',
         accessorKey: 'url',
         enableSorting: false,
+      },
+      {
+        header: 'Active',
+        accessorKey: 'is_active',
+        size: 100,
+        sortingFn: 'basic',
+        mantineTableBodyCellProps: {
+          align: 'left',
+        },
+        Cell: ({ row, cell }) => (
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Switch
+              size="xs"
+              checked={cell.getValue()}
+              onChange={() => toggleActive(row.original)}
+            />
+          </Box>
+        ),
       },
       {
         header: 'Updated',

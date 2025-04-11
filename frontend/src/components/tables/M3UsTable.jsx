@@ -13,6 +13,7 @@ import {
   Box,
   ActionIcon,
   Tooltip,
+  Switch,
 } from '@mantine/core';
 import { SquareMinus, SquarePen, RefreshCcw, Check, X } from 'lucide-react';
 import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
@@ -84,6 +85,13 @@ const M3UTable = () => {
     return `Parsing: ${data.progress}%`;
   };
 
+  const toggleActive = async (playlist) => {
+    await API.updatePlaylist({
+      ...playlist,
+      is_active: !playlist.is_active,
+    });
+  };
+
   const columns = useMemo(
     //column definitions...
     () => [
@@ -133,9 +141,13 @@ const M3UTable = () => {
         mantineTableBodyCellProps: {
           align: 'left',
         },
-        Cell: ({ cell }) => (
+        Cell: ({ row, cell }) => (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <Check color="green" /> : <X color="red" />}
+            <Switch
+              size="xs"
+              checked={cell.getValue()}
+              onChange={() => toggleActive(row.original)}
+            />
           </Box>
         ),
       },

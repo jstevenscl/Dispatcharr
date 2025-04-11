@@ -712,6 +712,7 @@ export default class API {
         if (!payload.url) {
           delete payload.url;
         }
+        body = payload;
       }
 
       const response = await request(`${host}/api/epg/sources/${id}/`, {
