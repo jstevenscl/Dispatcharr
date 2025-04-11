@@ -53,7 +53,8 @@ class M3UAccountSerializer(serializers.ModelSerializer):
     # Include user_agent as a mandatory field using its primary key.
     user_agent = serializers.PrimaryKeyRelatedField(
         queryset=UserAgent.objects.all(),
-        required=True
+        required=False,
+        allow_null=True,
     )
     profiles = M3UAccountProfileSerializer(many=True, read_only=True)
     read_only_fields = ['locked', 'created_at', 'updated_at']
