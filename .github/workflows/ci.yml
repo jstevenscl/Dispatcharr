@@ -16,6 +16,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Check if commit is from GitHub Actions
+        id: check_actor
+        run: |
+          if [[ "${{ github.actor }}" == "github-actions" ]]; then
+            echo "is_bot=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_bot=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Update build number
         run: |
@@ -71,12 +88,21 @@ jobs:
           else
             echo "is_fork=false" >> $GITHUB_OUTPUT
           fi
+
       - name: Increment Build Number
+        if: steps.check_actor.outputs.is_bot != 'true'
         id: increment_build
         run: |
           python scripts/increment_build.py
           BUILD=$(python -c "import version; print(version.__build__)")
           echo "build=${BUILD}" >> $GITHUB_OUTPUT
+
+      - name: Commit Build Number Update
+        if: steps.check_actor.outputs.is_bot != 'true'
+        run: |
+          git add version.py
+          git commit -m "Increment build number to ${{ steps.increment_build.outputs.build }} [skip ci]"
+          git push
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
