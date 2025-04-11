@@ -14,6 +14,7 @@ from apps.m3u.models import M3UAccount
 from apps.epg.models import EPGSource
 from apps.m3u.tasks import refresh_single_m3u_account
 from apps.epg.tasks import refresh_epg_data
+from .models import CoreSettings
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ def scan_and_process_files():
 
         m3u_account, _ = M3UAccount.objects.get_or_create(file_path=filepath, defaults={
             "name": filename,
+            "is_active": CoreSettings.get_auto_import_mapped_files(),
         })
 
         redis_client.set(redis_key, mtime, ex=REDIS_TTL)
@@ -117,11 +119,17 @@ def scan_and_process_files():
         epg_source, _ = EPGSource.objects.get_or_create(file_path=filepath, defaults={
             "name": filename,
             "source_type": "xmltv",
+            "is_active": CoreSettings.get_auto_import_mapped_files(),
         })
 
+        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+
+        if not epg_source.is_active:
+            logger.info("EPG source is inactive, skipping.")
+            continue
+
         refresh_epg_data.delay(epg_source.id)  # Trigger Celery task
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
 
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(

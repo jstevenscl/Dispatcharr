@@ -12,6 +12,8 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
+  Text,
   Title,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
@@ -280,6 +282,7 @@ const SettingsPage = () => {
       'default-user-agent': '',
       'default-stream-profile': '',
       'preferred-region': '',
+      'auto-import-mapped-files': true,
     },
 
     validate: {
@@ -294,6 +297,15 @@ const SettingsPage = () => {
       form.setValues(
         Object.entries(settings).reduce((acc, [key, value]) => {
           // Modify each value based on its own properties
+          switch (value.value) {
+            case 'true':
+              value.value = true;
+              break;
+            case 'false':
+              value.value = false;
+              break;
+          }
+
           acc[key] = value.value;
           return acc;
         }, {})
@@ -307,7 +319,7 @@ const SettingsPage = () => {
     for (const settingKey in values) {
       // If the user changed the setting’s value from what’s in the DB:
       if (String(values[settingKey]) !== String(settings[settingKey].value)) {
-        changedSettings[settingKey] = values[settingKey];
+        changedSettings[settingKey] = `${values[settingKey]}`;
       }
     }
 
@@ -373,13 +385,29 @@ const SettingsPage = () => {
               }))}
             />
 
+            <Group justify="space-between" style={{ paddingTop: 5 }}>
+              <Text size="sm" fw={500}>
+                Auto-Import Mapped Files
+              </Text>
+              <Switch
+                {...form.getInputProps('auto-import-mapped-files', {
+                  type: 'checkbox',
+                })}
+                key={form.key('auto-import-mapped-files')}
+                id={
+                  settings['auto-import-mapped-files']?.id ||
+                  'auto-import-mapped-files'
+                }
+              />
+            </Group>
+
             <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
               <Button
                 type="submit"
                 disabled={form.submitting}
                 variant="default"
               >
-                Save
+                Submit
               </Button>
             </Flex>
           </form>
