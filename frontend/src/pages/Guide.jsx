@@ -80,7 +80,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
       const filteredChannels = Object.values(channels)
         .filter((ch) => programIds.includes(ch.epg_data?.tvg_id))
         // Add sorting by channel_number
-        .sort((a, b) => (a.channel_number || Infinity) - (b.channel_number || Infinity));
+        .sort(
+          (a, b) =>
+            (a.channel_number || Infinity) - (b.channel_number || Infinity)
+        );
 
       console.log(
         `found ${filteredChannels.length} channels with matching tvg_ids`
@@ -105,15 +108,15 @@ export default function TVChannelGuide({ startDate, endDate }) {
     // Apply search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(channel =>
+      result = result.filter((channel) =>
         channel.name.toLowerCase().includes(query)
       );
     }
 
     // Apply channel group filter
     if (selectedGroupId !== 'all') {
-      result = result.filter(channel =>
-        channel.channel_group?.id === parseInt(selectedGroupId)
+      result = result.filter(
+        (channel) => channel.channel_group?.id === parseInt(selectedGroupId)
       );
     }
 
@@ -122,16 +125,22 @@ export default function TVChannelGuide({ startDate, endDate }) {
       // Get the profile's enabled channels
       const profileChannels = profiles[selectedProfileId]?.channels || [];
       const enabledChannelIds = profileChannels
-        .filter(pc => pc.enabled)
-        .map(pc => pc.id);
+        .filter((pc) => pc.enabled)
+        .map((pc) => pc.id);
 
-      result = result.filter(channel =>
+      result = result.filter((channel) =>
         enabledChannelIds.includes(channel.id)
       );
     }
 
     setFilteredChannels(result);
-  }, [searchQuery, selectedGroupId, selectedProfileId, guideChannels, profiles]);
+  }, [
+    searchQuery,
+    selectedGroupId,
+    selectedProfileId,
+    guideChannels,
+    profiles,
+  ]);
 
   // Use start/end from props or default to "today at midnight" +24h
   const defaultStart = dayjs(startDate || dayjs().startOf('day'));
@@ -213,7 +222,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       hours.push({
         time: current,
         isNewDay,
-        dayLabel: formatDayLabel(current)
+        dayLabel: formatDayLabel(current),
       });
 
       current = current.add(1, 'hour');
@@ -223,12 +232,21 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
   // Scroll to the nearest half-hour mark ONLY on initial load
   useEffect(() => {
-    if (guideRef.current && timelineRef.current && programs.length > 0 && !initialScrollComplete) {
+    if (
+      guideRef.current &&
+      timelineRef.current &&
+      programs.length > 0 &&
+      !initialScrollComplete
+    ) {
       // Round the current time to the nearest half-hour mark
-      const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
+      const roundedNow =
+        now.minute() < 30
+          ? now.startOf('hour')
+          : now.startOf('hour').add(30, 'minute');
       const nowOffset = roundedNow.diff(start, 'minute');
       const scrollPosition =
-        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
+        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH -
+        MINUTE_BLOCK_WIDTH;
 
       const scrollPos = Math.max(scrollPosition, 0);
       guideRef.current.scrollLeft = scrollPos;
@@ -345,19 +363,22 @@ export default function TVChannelGuide({ startDate, endDate }) {
       const currentScrollPosition = guideRef.current.scrollLeft;
 
       // Check if we need to scroll (if program start is before current view or too close to edge)
-      if (desiredScrollPosition < currentScrollPosition ||
-        leftPx - currentScrollPosition < 100) { // 100px from left edge
+      if (
+        desiredScrollPosition < currentScrollPosition ||
+        leftPx - currentScrollPosition < 100
+      ) {
+        // 100px from left edge
 
         // Smooth scroll to the program's start
         guideRef.current.scrollTo({
           left: desiredScrollPosition,
-          behavior: 'smooth'
+          behavior: 'smooth',
         });
 
         // Also sync the timeline scroll
         timelineRef.current.scrollTo({
           left: desiredScrollPosition,
-          behavior: 'smooth'
+          behavior: 'smooth',
         });
       }
     }
@@ -375,10 +396,14 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const scrollToNow = () => {
     if (guideRef.current && timelineRef.current && nowPosition >= 0) {
       // Round the current time to the nearest half-hour mark
-      const roundedNow = now.minute() < 30 ? now.startOf('hour') : now.startOf('hour').add(30, 'minute');
+      const roundedNow =
+        now.minute() < 30
+          ? now.startOf('hour')
+          : now.startOf('hour').add(30, 'minute');
       const nowOffset = roundedNow.diff(start, 'minute');
       const scrollPosition =
-        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - MINUTE_BLOCK_WIDTH;
+        (nowOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH -
+        MINUTE_BLOCK_WIDTH;
 
       const scrollPos = Math.max(scrollPosition, 0);
       guideRef.current.scrollLeft = scrollPos;
@@ -410,7 +435,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
       const scrollAmount = e.shiftKey ? 250 : 125;
 
       // Scroll horizontally based on wheel direction
-      timelineRef.current.scrollLeft += e.deltaY > 0 ? scrollAmount : -scrollAmount;
+      timelineRef.current.scrollLeft +=
+        e.deltaY > 0 ? scrollAmount : -scrollAmount;
 
       // Sync the main content scroll position
       if (guideRef.current) {
@@ -457,7 +483,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
       const snappedOffset = snappedTime.diff(start, 'minute');
 
       // Convert to pixels
-      const scrollPosition = (snappedOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
+      const scrollPosition =
+        (snappedOffset / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
 
       // Scroll both containers to the snapped position
       timelineRef.current.scrollLeft = scrollPosition;
@@ -476,7 +503,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
     // Calculate width with a small gap (2px on each side)
     const gapSize = 2;
-    const widthPx = (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - (gapSize * 2);
+    const widthPx =
+      (durationMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH - gapSize * 2;
 
     // Check if we have a recording for this program
     const recording = recordings.find((recording) => {
@@ -499,7 +527,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
     const isExpanded = expandedProgramId === program.id;
 
     // Calculate how much of the program is cut off
-    const cutOffMinutes = Math.max(0, channelStart.diff(programStart, 'minute'));
+    const cutOffMinutes = Math.max(
+      0,
+      channelStart.diff(programStart, 'minute')
+    );
     const cutOffPx = (cutOffMinutes / MINUTE_INCREMENT) * MINUTE_BLOCK_WIDTH;
 
     // Set the height based on expanded state
@@ -522,7 +553,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
           height: rowHeight - 4, // Adjust for the parent row padding
           cursor: 'pointer',
           zIndex: isExpanded ? 25 : 5, // Increase z-index when expanded
-          transition: isExpanded ? 'height 0.2s ease, width 0.2s ease' : 'height 0.2s ease',
+          transition: isExpanded
+            ? 'height 0.2s ease, width 0.2s ease'
+            : 'height 0.2s ease',
         }}
         onClick={(e) => handleProgramClick(program, e)}
       >
@@ -530,7 +563,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
           elevation={isExpanded ? 4 : 2}
           className={`guide-program ${isLive ? 'live' : isPast ? 'past' : 'not-live'} ${isExpanded ? 'expanded' : ''}`}
           style={{
-            width: "100%", // Fill container width (which may be expanded)
+            width: '100%', // Fill container width (which may be expanded)
             height: '100%',
             overflow: 'hidden',
             position: 'relative',
@@ -542,12 +575,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
               ? isLive
                 ? '#1a365d' // Darker blue when expanded and live
                 : isPast
-                  ? '#2d3748' // Darker gray when expanded and past
+                  ? '#18181B' // Darker gray when expanded and past
                   : '#1e40af' // Darker blue when expanded and upcoming
               : isLive
-                ? '#2d3748' // Default live program color
+                ? '#18181B' // Default live program color
                 : isPast
-                  ? '#4a5568' // Slightly darker color for past programs
+                  ? '#27272A' // Slightly darker color for past programs
                   : '#2c5282', // Default color for upcoming programs
             color: isPast ? '#a0aec0' : '#fff', // Dim text color for past programs
             boxShadow: isExpanded ? '0 4px 8px rgba(0,0,0,0.4)' : 'none',
@@ -556,7 +589,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
         >
           <Box>
             <Text
-              size={isExpanded ? "lg" : "md"}
+              size={isExpanded ? 'lg' : 'md'}
               style={{
                 fontWeight: 'bold',
                 whiteSpace: 'nowrap',
@@ -657,7 +690,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
     if (channelGroups && guideChannels.length > 0) {
       // Get unique channel group IDs from the channels that have program data
       const usedGroupIds = new Set();
-      guideChannels.forEach(channel => {
+      guideChannels.forEach((channel) => {
         if (channel.channel_group?.id) {
           usedGroupIds.add(channel.channel_group.id);
         }
@@ -665,12 +698,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
       // Only add groups that are actually used by channels in the guide
       Object.values(channelGroups)
-        .filter(group => usedGroupIds.has(group.id))
+        .filter((group) => usedGroupIds.has(group.id))
         .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
-        .forEach(group => {
+        .forEach((group) => {
           options.push({
             value: group.id.toString(),
-            label: group.name
+            label: group.name,
           });
         });
     }
@@ -683,11 +716,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
     const options = [{ value: 'all', label: 'All Profiles' }];
 
     if (profiles) {
-      Object.values(profiles).forEach(profile => {
-        if (profile.id !== '0') { // Skip the 'All' default profile
+      Object.values(profiles).forEach((profile) => {
+        if (profile.id !== '0') {
+          // Skip the 'All' default profile
           options.push({
             value: profile.id.toString(),
-            label: profile.name
+            label: profile.name,
           });
         }
       });
@@ -720,7 +754,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
         overflow: 'hidden',
         width: '100%',
         height: '100%',
-        backgroundColor: '#1a202c',
+        // backgroundColor: 'rgb(39, 39, 42)',
         color: '#fff',
         fontFamily: 'Roboto, sans-serif',
       }}
@@ -730,7 +764,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       <Flex
         direction="column"
         style={{
-          backgroundColor: '#2d3748',
+          // backgroundColor: '#424242',
           color: '#fff',
           padding: '12px 20px',
           position: 'sticky',
@@ -769,7 +803,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
             leftSection={<Search size={16} />}
             rightSection={
               searchQuery ? (
-                <ActionIcon onClick={() => setSearchQuery('')} variant="subtle" color="gray" size="sm">
+                <ActionIcon
+                  onClick={() => setSearchQuery('')}
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                >
                   <X size={14} />
                 </ActionIcon>
               ) : null
@@ -794,20 +833,29 @@ export default function TVChannelGuide({ startDate, endDate }) {
             clearable={true} // Allow clearing the selection
           />
 
-          {(searchQuery !== '' || selectedGroupId !== 'all' || selectedProfileId !== 'all') && (
+          {(searchQuery !== '' ||
+            selectedGroupId !== 'all' ||
+            selectedProfileId !== 'all') && (
             <Button variant="subtle" onClick={clearFilters} size="sm" compact>
               Clear Filters
             </Button>
           )}
 
           <Text size="sm" color="dimmed">
-            {filteredChannels.length} {filteredChannels.length === 1 ? 'channel' : 'channels'}
+            {filteredChannels.length}{' '}
+            {filteredChannels.length === 1 ? 'channel' : 'channels'}
           </Text>
         </Flex>
       </Flex>
 
       {/* Guide container with headers and scrollable content */}
-      <Box style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
+      <Box
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(100vh - 120px)',
+        }}
+      >
         {/* Logo header - Sticky, non-scrollable */}
         <Box
           style={{
@@ -824,9 +872,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
               minWidth: CHANNEL_WIDTH,
               flexShrink: 0,
               height: '40px',
-              backgroundColor: '#2d3748',
-              borderBottom: '1px solid #4a5568',
-              borderRight: '1px solid #4a5568', // Increased border width
+              backgroundColor: '#18181B',
+              borderBottom: '1px solid #27272A',
+              borderRight: '1px solid #27272A', // Increased border width
               position: 'sticky',
               left: 0,
               zIndex: 200,
@@ -854,8 +902,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
               <Box
                 style={{
                   display: 'flex',
-                  backgroundColor: '#171923',
-                  borderBottom: '1px solid #4a5568',
+                  backgroundColor: '#1E2A27',
+                  borderBottom: '1px solid #27272A',
                   width: hourTimeline.length * HOUR_WIDTH,
                 }}
               >
@@ -870,10 +918,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         height: '40px',
                         position: 'relative',
                         color: '#a0aec0',
-                        borderRight: '1px solid #4a5568',
+                        borderRight: '1px solid #8DAFAA',
                         cursor: 'pointer',
-                        borderLeft: isNewDay ? '2px solid #4299e1' : 'none', // Highlight day boundaries
-                        backgroundColor: isNewDay ? 'rgba(66, 153, 225, 0.05)' : '#171923', // Subtle background for new days
+                        borderLeft: isNewDay ? '2px solid #3BA882' : 'none', // Highlight day boundaries
+                        backgroundColor: isNewDay ? '#1E2A27' : '#1B2421', // Subtle background for new days
                       }}
                       onClick={(e) => handleTimeClick(time, e)}
                     >
@@ -900,10 +948,11 @@ export default function TVChannelGuide({ startDate, endDate }) {
                             display: 'block',
                             opacity: 0.7,
                             fontWeight: isNewDay ? 600 : 400, // Still emphasize day transitions
-                            color: isNewDay ? '#4299e1' : undefined,
+                            color: isNewDay ? '#3BA882' : undefined,
                           }}
                         >
-                          {formatDayLabel(time)} {/* Use same formatDayLabel function for all hours */}
+                          {formatDayLabel(time)}{' '}
+                          {/* Use same formatDayLabel function for all hours */}
                         </Text>
                         {time.format('h:mm')}
                         <Text span size="xs" ml={1} opacity={0.7}>
@@ -919,7 +968,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                           top: 0,
                           bottom: 0,
                           width: '1px',
-                          backgroundColor: '#4a5568',
+                          backgroundColor: '#27272A',
                           zIndex: 10,
                         }}
                       />
@@ -969,12 +1018,14 @@ export default function TVChannelGuide({ startDate, endDate }) {
           onScroll={handleGuideScroll}
         >
           {/* Content wrapper with min-width to ensure scroll range */}
-          <Box style={{
-            width: hourTimeline.length * HOUR_WIDTH + CHANNEL_WIDTH,
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
+          <Box
+            style={{
+              width: hourTimeline.length * HOUR_WIDTH + CHANNEL_WIDTH,
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
             {/* Now line - positioned absolutely within content */}
             {nowPosition >= 0 && (
               <Box
@@ -998,8 +1049,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
                   (p) => p.tvg_id === channel.epg_data?.tvg_id
                 );
                 // Check if any program in this channel is expanded
-                const hasExpandedProgram = channelPrograms.some(prog => prog.id === expandedProgramId);
-                const rowHeight = hasExpandedProgram ? EXPANDED_PROGRAM_HEIGHT : PROGRAM_HEIGHT;
+                const hasExpandedProgram = channelPrograms.some(
+                  (prog) => prog.id === expandedProgramId
+                );
+                const rowHeight = hasExpandedProgram
+                  ? EXPANDED_PROGRAM_HEIGHT
+                  : PROGRAM_HEIGHT;
 
                 return (
                   <Box
@@ -1007,7 +1062,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                     style={{
                       display: 'flex',
                       height: rowHeight,
-                      borderBottom: '0px solid #4a5568', // Increased border width for better visibility
+                      borderBottom: '0px solid #27272A', // Increased border width for better visibility
                       transition: 'height 0.2s ease',
                       position: 'relative', // Added for proper stacking
                       overflow: 'visible', // Changed from 'hidden' to 'visible' to allow expanded programs to overflow
@@ -1023,9 +1078,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: '#2d3748',
-                        borderRight: '1px solid #4a5568', // Increased border width for visibility
-                        borderBottom: '1px solid #4a5568', // Match the row border
+                        backgroundColor: '#18181B',
+                        borderRight: '1px solid #27272A', // Increased border width for visibility
+                        borderBottom: '1px solid #27272A', // Match the row border
                         boxShadow: '2px 0 5px rgba(0,0,0,0.2)', // Added shadow for depth
                         position: 'sticky',
                         left: 0,
@@ -1057,7 +1112,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
                             animation: 'fadeIn 0.2s',
                           }}
                         >
-                          <Play size={32} color="#fff" fill="#fff" /> {/* Changed from Video to Play and increased size */}
+                          <Play size={32} color="#fff" fill="#fff" />{' '}
+                          {/* Changed from Video to Play and increased size */}
                         </Flex>
                       )}
 
@@ -1108,11 +1164,11 @@ export default function TVChannelGuide({ startDate, endDate }) {
                             bottom: '4px',
                             left: '50%',
                             transform: 'translateX(-50%)',
-                            backgroundColor: '#2d3748',
+                            backgroundColor: '#18181B',
                             padding: '2px 8px',
                             borderRadius: 4,
                             fontSize: '0.85em',
-                            border: '1px solid #4a5568',
+                            border: '1px solid #27272A',
                             height: '24px',
                             display: 'flex',
                             alignItems: 'center',
@@ -1126,14 +1182,18 @@ export default function TVChannelGuide({ startDate, endDate }) {
                     </Box>
 
                     {/* Programs for this channel */}
-                    <Box style={{
-                      flex: 1,
-                      position: 'relative',
-                      height: rowHeight,
-                      transition: 'height 0.2s ease',
-                      paddingLeft: 0, // Remove any padding that might push content
-                    }}>
-                      {channelPrograms.map((prog) => renderProgram(prog, start))}
+                    <Box
+                      style={{
+                        flex: 1,
+                        position: 'relative',
+                        height: rowHeight,
+                        transition: 'height 0.2s ease',
+                        paddingLeft: 0, // Remove any padding that might push content
+                      }}
+                    >
+                      {channelPrograms.map((prog) =>
+                        renderProgram(prog, start)
+                      )}
                     </Box>
                   </Box>
                 );
@@ -1160,4 +1220,3 @@ export default function TVChannelGuide({ startDate, endDate }) {
     </Box>
   );
 }
-

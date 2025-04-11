@@ -33,6 +33,7 @@ import duration from 'dayjs/plugin/duration';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Sparkline } from '@mantine/charts';
 import useStreamProfilesStore from '../store/streamProfiles';
+import { useLocation } from 'react-router-dom';
 
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
@@ -75,6 +76,8 @@ const getStartDate = (uptime) => {
 
 // Create a separate component for each channel card to properly handle the hook
 const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
+  const location = useLocation();
+
   const clientsColumns = useMemo(
     () => [
       {
@@ -90,7 +93,9 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
   const channelClientsTable = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns: clientsColumns,
-    data: clients.filter(client => client.channel.channel_id === channel.channel_id),
+    data: clients.filter(
+      (client) => client.channel.channel_id === channel.channel_id
+    ),
     enablePagination: false,
     enableTopToolbar: false,
     enableBottomToolbar: false,
@@ -140,6 +145,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
     },
   });
 
+  if (location.pathname != '/stats') {
+    return <></>;
+  }
+
   return (
     <Card
       key={channel.channel_id}
@@ -154,11 +163,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
     >
       <Stack style={{ position: 'relative' }}>
         <Group justify="space-between">
-          <img
-            src={channel.logo_url || logo}
-            width="30"
-            alt="channel logo"
-          />
+          <img src={channel.logo_url || logo} width="30" alt="channel logo" />
 
           <Group>
             <Box>

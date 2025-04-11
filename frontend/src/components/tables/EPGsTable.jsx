@@ -149,7 +149,7 @@ const EPGsTable = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(40vh - 0px)',
+        height: 'calc(40vh - 10px)',
       },
     },
     displayColumnDefOptions: {

@@ -140,16 +140,13 @@ const StreamsTable = ({}) => {
               placeholder="Group"
               searchable
               size="xs"
-              nothingFound="No options"
+              nothingFoundMessage="No options"
               onClick={handleSelectClick}
               onChange={handleGroupChange}
               data={groupOptions}
               variant="unstyled"
               className="table-input-header custom-multiselect"
               clearable
-              valueComponent={({ value }) => {
-                return <div>foo</div>; // Override to display custom text
-              }}
             />
           </Box>
         ),
@@ -176,7 +173,7 @@ const StreamsTable = ({}) => {
               placeholder="M3U"
               searchable
               size="xs"
-              nothingFound="No options"
+              nothingFoundMessage="No options"
               onClick={handleSelectClick}
               onChange={handleM3UChange}
               data={playlists.map((playlist) => ({
@@ -568,24 +565,47 @@ const StreamsTable = ({}) => {
     },
     displayColumnDefOptions: {
       'mrt-row-actions': {
-        size: 30,
         mantineTableHeadCellProps: {
+          align: 'left',
           style: {
-            paddingLeft: 4,
-            backgroundColor: '#3F3F46',
+            minWidth: '65px',
+            maxWidth: '65px',
+            paddingLeft: 10,
             fontWeight: 'normal',
             color: 'rgb(207,207,207)',
+            backgroundColor: '#3F3F46',
           },
         },
         mantineTableBodyCellProps: {
           style: {
-            paddingLeft: 0,
-            paddingRight: 0,
+            minWidth: '65px',
+            maxWidth: '65px',
+            // paddingLeft: 0,
+            // paddingRight: 10,
           },
         },
       },
       'mrt-row-select': {
-        size: 20,
+        size: 10,
+        maxSize: 10,
+        mantineTableHeadCellProps: {
+          align: 'right',
+          style: {
+            paddding: 0,
+            // paddingLeft: 7,
+            width: '20px',
+            minWidth: '20px',
+            backgroundColor: '#3F3F46',
+          },
+        },
+        mantineTableBodyCellProps: {
+          align: 'right',
+          style: {
+            paddingLeft: 0,
+            width: '20px',
+            minWidth: '20px',
+          },
+        },
       },
     },
   });

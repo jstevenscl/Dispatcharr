@@ -65,11 +65,11 @@ const usePlaylistsStore = create((set) => ({
       // @TODO: remove playlist profiles here
     })),
 
-  setRefreshProgress: (id, progress) =>
+  setRefreshProgress: (data) =>
     set((state) => ({
       refreshProgress: {
         ...state.refreshProgress,
-        [id]: progress,
+        [data.account]: data,
       },
     })),
 

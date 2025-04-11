@@ -3,8 +3,20 @@ import API from '../api';
 import useSettingsStore from '../store/settings';
 import useUserAgentsStore from '../store/userAgents';
 import useStreamProfilesStore from '../store/streamProfiles';
-import { Button, Center, Flex, Paper, Select, Title } from '@mantine/core';
+import {
+  Box,
+  Button,
+  Center,
+  Flex,
+  Group,
+  Paper,
+  Select,
+  Stack,
+  Title,
+} from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
+import UserAgentsTable from '../components/tables/UserAgentsTable';
+import StreamProfilesTable from '../components/tables/StreamProfilesTable';
 
 const SettingsPage = () => {
   const { settings } = useSettingsStore();
@@ -309,65 +321,81 @@ const SettingsPage = () => {
   };
 
   return (
-    <Center
-      style={{
-        height: '100vh',
-      }}
-    >
-      <Paper
-        elevation={3}
-        style={{ padding: 30, width: '100%', maxWidth: 400 }}
+    <Stack>
+      <Center
+        style={{
+          height: '40vh',
+        }}
       >
-        <Title order={4} align="center">
-          Settings
-        </Title>
-        <form onSubmit={form.onSubmit(onSubmit)}>
-          <Select
-            searchable
-            {...form.getInputProps('default-user-agent')}
-            key={form.key('default-user-agent')}
-            id={settings['default-user-agent']?.id}
-            name={settings['default-user-agent']?.key}
-            label={settings['default-user-agent']?.name}
-            data={userAgents.map((option) => ({
-              value: `${option.id}`,
-              label: option.name,
-            }))}
-          />
+        <Paper
+          elevation={3}
+          style={{ padding: 20, width: '100%', maxWidth: 400 }}
+        >
+          <Title order={4} align="center">
+            Settings
+          </Title>
+          <form onSubmit={form.onSubmit(onSubmit)}>
+            <Select
+              searchable
+              {...form.getInputProps('default-user-agent')}
+              key={form.key('default-user-agent')}
+              id={settings['default-user-agent']?.id}
+              name={settings['default-user-agent']?.key}
+              label={settings['default-user-agent']?.name}
+              data={userAgents.map((option) => ({
+                value: `${option.id}`,
+                label: option.name,
+              }))}
+            />
 
-          <Select
-            searchable
-            {...form.getInputProps('default-stream-profile')}
-            key={form.key('default-stream-profile')}
-            id={settings['default-stream-profile']?.id}
-            name={settings['default-stream-profile']?.key}
-            label={settings['default-stream-profile']?.name}
-            data={streamProfiles.map((option) => ({
-              value: `${option.id}`,
-              label: option.name,
-            }))}
-          />
-          <Select
-            searchable
-            {...form.getInputProps('preferred-region')}
-            key={form.key('preferred-region')}
-            id={settings['preferred-region']?.id || 'preferred-region'}
-            name={settings['preferred-region']?.key || 'preferred-region'}
-            label={settings['preferred-region']?.name || 'Preferred Region'}
-            data={regionChoices.map((r) => ({
-              label: r.label,
-              value: `${r.value}`,
-            }))}
-          />
+            <Select
+              searchable
+              {...form.getInputProps('default-stream-profile')}
+              key={form.key('default-stream-profile')}
+              id={settings['default-stream-profile']?.id}
+              name={settings['default-stream-profile']?.key}
+              label={settings['default-stream-profile']?.name}
+              data={streamProfiles.map((option) => ({
+                value: `${option.id}`,
+                label: option.name,
+              }))}
+            />
+            <Select
+              searchable
+              {...form.getInputProps('preferred-region')}
+              key={form.key('preferred-region')}
+              id={settings['preferred-region']?.id || 'preferred-region'}
+              name={settings['preferred-region']?.key || 'preferred-region'}
+              label={settings['preferred-region']?.name || 'Preferred Region'}
+              data={regionChoices.map((r) => ({
+                label: r.label,
+                value: `${r.value}`,
+              }))}
+            />
 
-          <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-            <Button type="submit" disabled={form.submitting} size="sm">
-              Submit
-            </Button>
-          </Flex>
-        </form>
-      </Paper>
-    </Center>
+            <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+              <Button
+                type="submit"
+                disabled={form.submitting}
+                variant="default"
+              >
+                Save
+              </Button>
+            </Flex>
+          </form>
+        </Paper>
+      </Center>
+
+      <Group
+        justify="space-around"
+        align="top"
+        style={{ width: '100%' }}
+        gap={0}
+      >
+        <StreamProfilesTable />
+        <UserAgentsTable />
+      </Group>
+    </Stack>
   );
 };
 

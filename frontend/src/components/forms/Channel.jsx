@@ -487,7 +487,13 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     label={
                       <Group style={{ width: '100%' }}>
                         <Box>EPG</Box>
-                        <Button size="xs" variant="transparent">
+                        <Button
+                          size="xs"
+                          variant="transparent"
+                          onClick={() =>
+                            formik.setFieldValue('epg_data_id', null)
+                          }
+                        >
                           Use Dummy
                         </Button>
                       </Group>

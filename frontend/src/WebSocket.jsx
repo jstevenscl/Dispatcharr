@@ -4,12 +4,15 @@ import React, {
   useRef,
   createContext,
   useContext,
+  useMemo,
 } from 'react';
 import useStreamsStore from './store/streams';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from './store/channels';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
+import { Box, Button, Stack } from '@mantine/core';
+import API from './api';
 
 export const WebsocketContext = createContext(false, null, () => {});
 
@@ -23,6 +26,7 @@ export const WebsocketProvider = ({ children }) => {
   const { fetchPlaylists, setRefreshProgress, setProfilePreview } =
     usePlaylistsStore();
   const { fetchEPGData, fetchEPGs } = useEPGsStore();
+  const { playlists } = usePlaylistsStore();
 
   const ws = useRef(null);
 
@@ -79,27 +83,28 @@ export const WebsocketProvider = ({ children }) => {
 
           notifications.show({
             title: 'Group processing finished!',
-            message: 'Refresh M3U or filter out groups to pull in streams.',
+            autoClose: 5000,
+            message: (
+              <Stack>
+                Refresh M3U or filter out groups to pull in streams.
+                <Button
+                  size="xs"
+                  variant="default"
+                  onClick={() => {
+                    API.refreshPlaylist(event.data.account);
+                    setRefreshProgress(event.data.account, 0);
+                  }}
+                >
+                  Refresh Now
+                </Button>
+              </Stack>
+            ),
             color: 'green.5',
           });
           break;
 
         case 'm3u_refresh':
-          if (event.data.success) {
-            fetchStreams();
-            notifications.show({
-              message: event.data.message,
-              color: 'green.5',
-            });
-          } else if (event.data.progress !== undefined) {
-            if (event.data.progress == 100) {
-              fetchStreams();
-              fetchChannelGroups();
-              fetchEPGData();
-              fetchPlaylists();
-            }
-            setRefreshProgress(event.data.account, event.data.progress);
-          }
+          setRefreshProgress(event.data);
           break;
 
         case 'channel_stats':
@@ -154,7 +159,9 @@ export const WebsocketProvider = ({ children }) => {
     };
   }, []);
 
-  const ret = [isReady, ws.current?.send.bind(ws.current), val];
+  const ret = useMemo(() => {
+    return [isReady, ws.current?.send.bind(ws.current), val];
+  }, [isReady, val]);
 
   return (
     <WebsocketContext.Provider value={ret}>
