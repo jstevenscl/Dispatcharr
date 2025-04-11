@@ -108,7 +108,6 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       badge: `(${Object.keys(channels).length})`,
     },
     { label: 'M3U & EPG Manager', icon: <Play size={20} />, path: '/sources' },
-    { label: 'EPG', icon: <Database size={20} />, path: '/epg' },
     {
       label: 'Stream Profiles',
       icon: <SlidersHorizontal size={20} />,
