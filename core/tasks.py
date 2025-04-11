@@ -69,9 +69,14 @@ def scan_and_process_files():
             "name": filename,
         })
 
+        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+
+        if not m3u_account.is_active:
+            logger.info("M3U account is inactive, skipping.")
+            continue
+
         refresh_single_m3u_account.delay(m3u_account.id)
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
 
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
