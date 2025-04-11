@@ -42,6 +42,10 @@ def refresh_epg_data(source_id):
         return
 
     source = EPGSource.objects.get(id=source_id)
+    if not source.is_active:
+        logger.info(f"EPG source {source_id} is not active. Skipping.")
+        return
+
     logger.info(f"Processing EPGSource: {source.name} (type: {source.source_type})")
     if source.source_type == 'xmltv':
         fetch_xmltv(source)
