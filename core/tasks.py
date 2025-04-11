@@ -68,7 +68,7 @@ def scan_and_process_files():
 
         m3u_account, _ = M3UAccount.objects.get_or_create(file_path=filepath, defaults={
             "name": filename,
-            "is_active": CoreSettings.get_auto_import_mapped_files(),
+            "is_active": True if CoreSettings.get_auto_import_mapped_files() == "true" else False,
         })
 
         redis_client.set(redis_key, mtime, ex=REDIS_TTL)
@@ -119,7 +119,7 @@ def scan_and_process_files():
         epg_source, _ = EPGSource.objects.get_or_create(file_path=filepath, defaults={
             "name": filename,
             "source_type": "xmltv",
-            "is_active": CoreSettings.get_auto_import_mapped_files(),
+            "is_active": True if CoreSettings.get_auto_import_mapped_files() == "true" else False,
         })
 
         redis_client.set(redis_key, mtime, ex=REDIS_TTL)
