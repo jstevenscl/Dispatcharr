@@ -29,6 +29,7 @@ import {
   ScrollArea,
   Tooltip,
   NumberInput,
+  Image,
 } from '@mantine/core';
 import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
@@ -39,6 +40,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const theme = useMantineTheme();
 
   const listRef = useRef(null);
+  const logoListRef = useRef(null);
 
   const { channelGroups, logos, fetchLogos } = useChannelsStore();
   const streams = useStreamsStore((state) => state.streams);
@@ -50,8 +52,11 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const [channelStreams, setChannelStreams] = useState([]);
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
   const [epgPopoverOpened, setEpgPopoverOpened] = useState(false);
+  const [logoPopoverOpened, setLogoPopoverOpened] = useState(false);
   const [selectedEPG, setSelectedEPG] = useState({});
   const [tvgFilter, setTvgFilter] = useState('');
+  const [logoFilter, setLogoFilter] = useState('');
+  const [logoOptions, setLogoOptions] = useState([]);
 
   const addStream = (stream) => {
     const streamSet = new Set(channelStreams);
@@ -120,6 +125,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       setLogoPreview(null);
       setSubmitting(false);
       setTvgFilter('');
+      setLogoFilter('');
       onClose();
     },
   });
@@ -147,8 +153,13 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     } else {
       formik.resetForm();
       setTvgFilter('');
+      setLogoFilter('');
     }
   }, [channel, tvgsById]);
+
+  useEffect(() => {
+    setLogoOptions([{ id: '0', name: 'Default' }].concat(Object.values(logos)));
+  }, [logos]);
 
   const renderLogoOption = ({ option, checked }) => {
     return (
@@ -298,6 +309,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         tvg.tvg_id.toLowerCase().includes(tvgFilter.toLowerCase())
     );
 
+  const filteredLogos = logoOptions.filter((logo) =>
+    logo.name.toLowerCase().includes(logoFilter.toLowerCase())
+  );
+
   return (
     <>
       <Modal
@@ -388,24 +403,67 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
             <Stack justify="flex-start" style={{ flex: 1 }}>
               <Group justify="space-between">
-                <Select
-                  id="logo_id"
-                  name="logo_id"
-                  label="Logo"
-                  searchable
-                  value={formik.values.logo_id}
-                  onChange={(value) => {
-                    formik.setFieldValue('logo_id', value);
-                  }}
-                  error={formik.errors.logo_id ? formik.touched.logo_id : ''}
-                  size="xs"
-                  data={Object.values(logos).map((logo) => ({
-                    label: logo.name,
-                    value: `${logo.id}`,
-                  }))}
-                  renderOption={renderLogoOption}
-                  comboboxProps={{ width: 75, position: 'bottom-start' }}
-                />
+                <Popover
+                  opened={logoPopoverOpened}
+                  onChange={setLogoPopoverOpened}
+                  // position="bottom-start"
+                  withArrow
+                >
+                  <Popover.Target>
+                    <TextInput
+                      id="logo_id"
+                      name="logo_id"
+                      label="Logo"
+                      readOnly
+                      value={logos[formik.values.logo_id]?.name || 'Default'}
+                      onClick={() => setLogoPopoverOpened(true)}
+                      size="xs"
+                    />
+                  </Popover.Target>
+
+                  <Popover.Dropdown onMouseDown={(e) => e.stopPropagation()}>
+                    <Group>
+                      <TextInput
+                        placeholder="Filter"
+                        value={logoFilter}
+                        onChange={(event) =>
+                          setLogoFilter(event.currentTarget.value)
+                        }
+                        mb="xs"
+                        size="xs"
+                      />
+                    </Group>
+
+                    <ScrollArea style={{ height: 200 }}>
+                      <List
+                        height={200} // Set max height for visible items
+                        itemCount={filteredLogos.length}
+                        itemSize={20} // Adjust row height for each item
+                        width="100%"
+                        ref={logoListRef}
+                      >
+                        {({ index, style }) => (
+                          <div style={style}>
+                            <Center>
+                              <img
+                                src={filteredLogos[index].cache_url || logo}
+                                height="20"
+                                style={{ maxWidth: 80 }}
+                                onClick={() => {
+                                  formik.setFieldValue(
+                                    'logo_id',
+                                    filteredLogos[index].id
+                                  );
+                                }}
+                              />
+                            </Center>
+                          </div>
+                        )}
+                      </List>
+                    </ScrollArea>
+                  </Popover.Dropdown>
+                </Popover>
+
                 <img
                   src={
                     logos[formik.values.logo_id]
