@@ -57,3 +57,6 @@ export function sleep(ms) {
     setTimeout(resolve, ms);
   });
 }
+
+export const getDescendantProp = (obj, path) =>
+  path.split('.').reduce((acc, part) => acc && acc[part], obj);

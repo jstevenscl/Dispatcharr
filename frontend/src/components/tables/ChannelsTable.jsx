@@ -6,7 +6,7 @@ import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import RecordingForm from '../forms/Recording';
 import { TableHelper } from '../../helpers';
-import utils from '../../utils';
+import { getDescendantProp } from '../../utils';
 import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
@@ -47,6 +47,7 @@ import {
   Container,
   Switch,
   Menu,
+  MultiSelect,
 } from '@mantine/core';
 
 const ChannelStreams = ({ channel, isExpanded }) => {
@@ -304,7 +305,11 @@ const ChannelsTable = ({}) => {
   const handleFilterChange = (columnId, value) => {
     setFilterValues((prev) => ({
       ...prev,
-      [columnId]: value ? value.toLowerCase() : '',
+      [columnId]: Array.isArray(value)
+        ? value
+        : value
+          ? value.toLowerCase()
+          : '',
     }));
   };
 
@@ -457,6 +462,7 @@ const ChannelsTable = ({}) => {
       },
       {
         header: 'Group',
+        accessorKey: 'channel_group.name',
         accessorFn: (row) => row.channel_group?.name || '',
         Cell: ({ cell }) => (
           <div
@@ -471,18 +477,17 @@ const ChannelsTable = ({}) => {
         ),
         Header: ({ column }) => (
           <Box onClick={(e) => e.stopPropagation()}>
-            <Select
+            <MultiSelect
               placeholder="Group"
               searchable
               size="xs"
               nothingFoundMessage="No options"
               onChange={(value) => {
-                // e.stopPropagation();
                 handleFilterChange(column.id, value);
               }}
               data={channelGroupOptions}
               variant="unstyled"
-              className="table-input-header"
+              className="table-input-header custom-multiselect"
             />
           </Box>
         ),
@@ -696,11 +701,22 @@ const ChannelsTable = ({}) => {
   }, [rowSelection]);
 
   const filteredData = Object.values(channels).filter((row) =>
-    columns.every(({ accessorKey }) =>
-      filterValues[accessorKey]
-        ? row[accessorKey]?.toLowerCase().includes(filterValues[accessorKey])
-        : true
-    )
+    columns.every(({ accessorKey }) => {
+      if (!accessorKey) {
+        return true;
+      }
+
+      const filterValue = filterValues[accessorKey];
+      const rowValue = getDescendantProp(row, accessorKey);
+
+      if (Array.isArray(filterValue) && filterValue.length != 0) {
+        return filterValue.includes(rowValue);
+      } else if (filterValue) {
+        return rowValue?.toLowerCase().includes(filterValues[accessorKey]);
+      }
+
+      return true;
+    })
   );
 
   const deleteProfile = async (id) => {
