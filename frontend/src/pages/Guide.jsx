@@ -21,7 +21,7 @@ import {
   Tooltip,
   Transition,
 } from '@mantine/core';
-import { Search, X, Clock, Video, Calendar } from 'lucide-react';
+import { Search, X, Clock, Video, Calendar, Play } from 'lucide-react';
 import './guide.css';
 
 /** Layout constants */
@@ -1057,7 +1057,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                             animation: 'fadeIn 0.2s',
                           }}
                         >
-                          <Video size={24} color="#fff" />
+                          <Play size={32} color="#fff" fill="#fff" /> {/* Changed from Video to Play and increased size */}
                         </Flex>
                       )}
 
