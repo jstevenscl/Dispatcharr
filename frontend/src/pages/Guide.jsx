@@ -1065,24 +1065,27 @@ export default function TVChannelGuide({ startDate, endDate }) {
                       <Flex
                         direction="column"
                         align="center"
-                        justify="space-between" // Changed from center to space-between
+                        justify="space-between"
                         style={{
                           width: '100%',
                           height: '100%',
-                          padding: '2px 2px',
+                          padding: '4px',
                           boxSizing: 'border-box',
                           zIndex: 5,
+                          position: 'relative', // Add this for absolute positioning
                         }}
                       >
-                        {/* Logo container with fixed height */}
+                        {/* Logo container with padding */}
                         <Box
                           style={{
                             width: '100%',
-                            height: `${rowHeight * 0.65}px`, // Fixed height based on row height
+                            height: `${rowHeight - 32}px`, // Height minus channel number height
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             overflow: 'hidden',
+                            padding: '4px',
+                            marginBottom: '4px',
                           }}
                         >
                           <img
@@ -1096,19 +1099,25 @@ export default function TVChannelGuide({ startDate, endDate }) {
                           />
                         </Box>
 
-                        {/* Channel number - pinned to bottom with padding */}
+                        {/* Channel number - fixed position at bottom with consistent height */}
                         <Text
                           size="sm"
                           weight={600}
                           style={{
-                            marginTop: 'auto', // Push to bottom
-                            marginBottom: '4px', // Bottom padding
+                            position: 'absolute',
+                            bottom: '4px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
                             backgroundColor: '#2d3748',
-                            padding: '2px 6px',
+                            padding: '2px 8px',
                             borderRadius: 4,
                             fontSize: '0.85em',
                             border: '1px solid #4a5568',
-                            alignSelf: 'center', // Center horizontally
+                            height: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minWidth: '36px',
                           }}
                         >
                           {channel.channel_number || '-'}
