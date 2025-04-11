@@ -899,6 +899,17 @@ export default class API {
     return retval;
   }
 
+  static async getVersion() {
+    const response = await fetch(`${host}/api/core/version/`, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const retval = await response.json();
+    return retval;
+  }
+
   static async updateSetting(values) {
     const { id, ...payload } = values;
     const response = await fetch(`${host}/api/core/settings/${id}/`, {

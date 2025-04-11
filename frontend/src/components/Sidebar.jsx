@@ -74,10 +74,6 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
     const fetchEnvironment = async () => {
       try {
         const envData = await API.getEnvironmentSettings();
-        setAppVersion({
-          version: envData.version || '',
-          build: envData.build || ''
-        });
       } catch (error) {
         console.error('Failed to fetch environment settings:', error);
       }
@@ -85,7 +81,23 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
 
     fetchEnvironment();
   }, []);
+  // Fetch version information on component mount (regardless of authentication)
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const versionData = await API.getVersion();
+        setAppVersion({
+          version: versionData.version || '',
+          build: versionData.build || ''
+        });
+      } catch (error) {
+        console.error('Failed to fetch version information:', error);
+        // Keep using default values from useState initialization
+      }
+    };
 
+    fetchVersion();
+  }, []);
   // Navigation Items
   const navItems = [
     {
