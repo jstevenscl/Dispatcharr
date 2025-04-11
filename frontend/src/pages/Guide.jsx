@@ -989,7 +989,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                     style={{
                       display: 'flex',
                       height: rowHeight,
-                      borderBottom: '1px solid #4a5568', // Increased border width for better visibility
+                      borderBottom: '0px solid #4a5568', // Increased border width for better visibility
                       transition: 'height 0.2s ease',
                       position: 'relative', // Added for proper stacking
                       overflow: 'visible', // Changed from 'hidden' to 'visible' to allow expanded programs to overflow
