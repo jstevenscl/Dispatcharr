@@ -757,7 +757,7 @@ const StreamsTable = ({}) => {
                   variant="default"
                   radius="md"
                   size="md"
-                  onClick={() => navigate('/m3u')}
+                  onClick={() => navigate('/sources')}
                   style={{
                     backgroundColor: '#444',
                     color: '#d4d4d8',
