@@ -70,7 +70,8 @@ def fetch_m3u_lines(account, use_cache=False):
                             current_time = time.time()
                             if current_time - last_update_time >= 0.5:
                                 last_update_time = current_time
-                                send_m3u_update(account.id, "downloading", progress, speed=speed, elapsed_time=elapsed_time, time_remaining=time_remaining)
+                                if progress > 0:
+                                    send_m3u_update(account.id, "downloading", progress, speed=speed, elapsed_time=elapsed_time, time_remaining=time_remaining)
 
                 send_m3u_update(account.id, "downloading", 100)
             except requests.exceptions.RequestException as e:
