@@ -6,7 +6,7 @@ from django.http import JsonResponse, HttpResponseForbidden, HttpResponse
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
-from apps.channels.models import Channel
+from apps.channels.models import Channel, ChannelProfile
 from .models import HDHRDevice
 from .serializers import HDHRDeviceSerializer
 from django.contrib.auth.decorators import login_required
@@ -38,8 +38,12 @@ class DiscoverAPIView(APIView):
         operation_description="Retrieve HDHomeRun device discovery information",
         responses={200: openapi.Response("HDHR Discovery JSON")}
     )
-    def get(self, request):
-        base_url = request.build_absolute_uri('/hdhr/').rstrip('/')
+    def get(self, request, profile=None):
+        uri_parts = ["hdhr"]
+        if profile is not None:
+            uri_parts.append(profile)
+
+        base_url = request.build_absolute_uri(f'/{"/".join(uri_parts)}/').rstrip('/')
         device = HDHRDevice.objects.first()
 
         if not device:
@@ -52,6 +56,7 @@ class DiscoverAPIView(APIView):
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
+                "TunerCount": 10,
             }
         else:
             data = {
@@ -63,6 +68,7 @@ class DiscoverAPIView(APIView):
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
+                "TunerCount": 10,
             }
         return JsonResponse(data)
 
@@ -75,13 +81,23 @@ class LineupAPIView(APIView):
         operation_description="Retrieve the available channel lineup",
         responses={200: openapi.Response("Channel Lineup JSON")}
     )
-    def get(self, request):
-        channels = Channel.objects.all().order_by('channel_number')
+    def get(self, request, profile=None):
+        if profile is not None:
+            channel_profile = ChannelProfile.objects.get(name=profile)
+            channels = Channel.objects.filter(
+                channelprofilemembership__channel_profile=channel_profile,
+                channelprofilemembership__enabled=True
+            ).order_by('channel_number')
+        else:
+            channels = Channel.objects.all().order_by('channel_number')
+
         lineup = [
             {
                 "GuideNumber": str(ch.channel_number),
                 "GuideName": ch.name,
-                "URL": request.build_absolute_uri(f"/proxy/ts/stream/{ch.uuid}")
+                "URL": request.build_absolute_uri(f"/proxy/ts/stream/{ch.uuid}"),
+                "Guide_ID": str(ch.channel_number),
+                "Station": str(ch.channel_number),
             }
             for ch in channels
         ]
@@ -96,7 +112,7 @@ class LineupStatusAPIView(APIView):
         operation_description="Retrieve the HDHomeRun lineup status",
         responses={200: openapi.Response("Lineup Status JSON")}
     )
-    def get(self, request):
+    def get(self, request, profile=None):
         data = {
             "ScanInProgress": 0,
             "ScanPossible": 0,

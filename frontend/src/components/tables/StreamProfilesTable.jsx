@@ -17,6 +17,7 @@ import {
   useMantineTheme,
   Center,
   Switch,
+  Stack,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { SquareMinus, SquarePen, Check, X, Eye, EyeOff } from 'lucide-react';
@@ -49,6 +50,7 @@ const StreamProfiles = () => {
       {
         header: 'Parameters',
         accessorKey: 'parameters',
+        enableSorting: false,
         mantineTableBodyCellProps: {
           style: {
             whiteSpace: 'nowrap',
@@ -61,13 +63,21 @@ const StreamProfiles = () => {
       {
         header: 'Active',
         accessorKey: 'is_active',
-        size: 50,
+        size: 10,
+        enableSorting: false,
+        mantineTableHeadCellProps: {
+          align: 'right',
+        },
+        mantineTableBodyCellProps: {
+          align: 'right',
+        },
         Cell: ({ row, cell }) => (
           <Center>
             <Switch
               size="xs"
               checked={cell.getValue()}
               onChange={() => toggleProfileIsActive(row.original)}
+              disabled={row.original.locked}
             />
           </Center>
         ),
@@ -203,19 +213,19 @@ const StreamProfiles = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 120px)',
+        height: 'calc(60vh - 100px)',
         overflowY: 'auto',
       },
     },
   });
 
   return (
-    <Box>
+    <Stack gap={0} style={{ width: '49%', padding: 0 }}>
       <Flex
         style={{
           display: 'flex',
           alignItems: 'center',
-          paddingBottom: 10,
+          // paddingBottom: 10,
         }}
         gap={15}
       >
@@ -296,7 +306,7 @@ const StreamProfiles = () => {
         isOpen={profileModalOpen}
         onClose={closeStreamProfileForm}
       />
-    </Box>
+    </Stack>
   );
 };
 

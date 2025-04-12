@@ -13,34 +13,13 @@ import {
   Box,
   ActionIcon,
   Tooltip,
-  Select,
+  Switch,
 } from '@mantine/core';
-import {
-  Tv2,
-  ScreenShare,
-  Scroll,
-  SquareMinus,
-  Pencil,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  TvMinimalPlay,
-  SquarePen,
-  RefreshCcw,
-  Check,
-  X,
-} from 'lucide-react';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconDeviceDesktopSearch,
-  IconSelector,
-  IconSortAscendingNumbers,
-  IconSquarePlus,
-} from '@tabler/icons-react'; // Import custom icons
-import M3UGroupFilter from '../forms/M3UGroupFilter';
+import { SquareMinus, SquarePen, RefreshCcw, Check, X } from 'lucide-react';
+import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
+import dayjs from 'dayjs';
 
-const Example = () => {
+const M3UTable = () => {
   const [playlist, setPlaylist] = useState(null);
   const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
   const [groupFilterModalOpen, setGroupFilterModalOpen] = useState(false);
@@ -48,9 +27,70 @@ const Example = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
   const [playlistCreated, setPlaylistCreated] = useState(false);
 
-  const { playlists, setRefreshProgress } = usePlaylistsStore();
+  const { playlists, refreshProgress, setRefreshProgress } =
+    usePlaylistsStore();
 
   const theme = useMantineTheme();
+
+  const generateStatusString = (data) => {
+    if (data.progress == 100) {
+      return 'Idle';
+    }
+
+    switch (data.action) {
+      case 'downloading':
+        return buildDownloadingStats(data);
+
+      case 'processing_groups':
+        return 'Processing groups...';
+
+      default:
+        return buildParsingStats(data);
+    }
+  };
+
+  const buildDownloadingStats = (data) => {
+    if (data.progress == 100) {
+      // fetchChannelGroups();
+      // fetchPlaylists();
+      return 'Download complete!';
+    }
+
+    if (data.progress == 0) {
+      return 'Downloading...';
+    }
+
+    return (
+      <Box>
+        <Text size="xs">Downloading: {parseInt(data.progress)}%</Text>
+        {/* <Text size="xs">Speed: {parseInt(data.speed)} KB/s</Text>
+        <Text size="xs">Time Remaining: {parseInt(data.time_remaining)}</Text> */}
+      </Box>
+    );
+  };
+
+  const buildParsingStats = (data) => {
+    if (data.progress == 100) {
+      // fetchStreams();
+      // fetchChannelGroups();
+      // fetchEPGData();
+      // fetchPlaylists();
+      return 'Parsing complete!';
+    }
+
+    if (data.progress == 0) {
+      return 'Parsing...';
+    }
+
+    return `Parsing: ${data.progress}%`;
+  };
+
+  const toggleActive = async (playlist) => {
+    await API.updatePlaylist({
+      ...playlist,
+      is_active: !playlist.is_active,
+    });
+  };
 
   const columns = useMemo(
     //column definitions...
@@ -80,6 +120,20 @@ const Example = () => {
         size: 200,
       },
       {
+        header: 'Status',
+        accessorFn: (row) => {
+          if (!row.id) {
+            return '';
+          }
+          if (!refreshProgress[row.id]) {
+            return 'Idle';
+          }
+
+          return generateStatusString(refreshProgress[row.id]);
+        },
+        size: 200,
+      },
+      {
         header: 'Active',
         accessorKey: 'is_active',
         size: 100,
@@ -87,14 +141,23 @@ const Example = () => {
         mantineTableBodyCellProps: {
           align: 'left',
         },
-        Cell: ({ cell }) => (
+        Cell: ({ row, cell }) => (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            {cell.getValue() ? <Check color="green" /> : <X color="red" />}
+            <Switch
+              size="xs"
+              checked={cell.getValue()}
+              onChange={() => toggleActive(row.original)}
+            />
           </Box>
         ),
       },
+      {
+        header: 'Updated',
+        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        enableSorting: false,
+      },
     ],
-    []
+    [refreshProgress]
   );
 
   //optionally access the underlying virtualizer instance
@@ -116,7 +179,9 @@ const Example = () => {
   };
 
   const deletePlaylist = async (id) => {
+    setIsLoading(true);
     await API.deletePlaylist(id);
+    setIsLoading(false);
   };
 
   const closeModal = (newPlaylist = null) => {
@@ -198,6 +263,7 @@ const Example = () => {
           size="sm"
           color="blue.5"
           onClick={() => refreshPlaylist(row.original.id)}
+          disabled={!row.original.is_active}
         >
           <RefreshCcw size="18" />
         </ActionIcon>
@@ -205,7 +271,7 @@ const Example = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(40vh - 0px)',
+        height: 'calc(40vh - 10px)',
       },
     },
   });
@@ -282,4 +348,4 @@ const Example = () => {
   );
 };
 
-export default Example;
+export default M3UTable;

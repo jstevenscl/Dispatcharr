@@ -35,15 +35,10 @@ import {
   MultiSelect,
   useMantineTheme,
 } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconDeviceDesktopSearch,
-  IconSelector,
-  IconSortAscendingNumbers,
-  IconSquarePlus,
-} from '@tabler/icons-react';
+import { IconSquarePlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import useSettingsStore from '../../store/settings';
+import useVideoStore from '../../store/useVideoStore';
 
 const StreamsTable = ({}) => {
   const theme = useMantineTheme();
@@ -54,10 +49,7 @@ const StreamsTable = ({}) => {
   const [rowSelection, setRowSelection] = useState([]);
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [moreActionsAnchorEl, setMoreActionsAnchorEl] = useState(null);
   const [groupOptions, setGroupOptions] = useState([]);
-  const [m3uOptions, setM3uOptions] = useState([]);
-  const [actionsOpenRow, setActionsOpenRow] = useState(null);
   const [initialDataCount, setInitialDataCount] = useState(null);
 
   const [data, setData] = useState([]); // Holds fetched data
@@ -65,9 +57,8 @@ const StreamsTable = ({}) => {
   const [pageCount, setPageCount] = useState(0);
   const [paginationString, setPaginationString] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([]);
+  const [sorting, setSorting] = useState([{ id: 'name', desc: '' }]);
   const [selectedStreamIds, setSelectedStreamIds] = useState([]);
-  const [unselectedStreamIds, setUnselectedStreamIds] = useState([]);
   // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
@@ -79,7 +70,6 @@ const StreamsTable = ({}) => {
     m3u_account: '',
   });
   const debouncedFilters = useDebounce(filters, 500);
-  const hasData = data.length > 0;
 
   const navigate = useNavigate();
 
@@ -87,12 +77,15 @@ const StreamsTable = ({}) => {
    * Stores
    */
   const { playlists } = usePlaylistsStore();
-  const { channelGroups, channelsPageSelection } = useChannelsStore();
+  const { channelGroups, channelsPageSelection, fetchLogos } =
+    useChannelsStore();
   const channelSelectionStreams = useChannelsStore(
     (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
   );
-
-  const isMoreActionsOpen = Boolean(moreActionsAnchorEl);
+  const {
+    environment: { env_mode },
+  } = useSettingsStore();
+  const { showVideo } = useVideoStore();
 
   // Access the row virtualizer instance (optional)
   const rowVirtualizerInstanceRef = useRef(null);
@@ -110,9 +103,6 @@ const StreamsTable = ({}) => {
       {
         header: 'Name',
         accessorKey: 'name',
-        mantineTableHeadCellProps: {
-          style: { textAlign: 'center', backgroundColor: 'rgb(56, 58, 63)' }, // Center-align the header
-        },
         Header: ({ column }) => (
           <TextInput
             name="name"
@@ -123,9 +113,6 @@ const StreamsTable = ({}) => {
             size="xs"
             variant="unstyled"
             className="table-input-header"
-            style={{
-              paddingLeft: 10,
-            }}
           />
         ),
         Cell: ({ cell }) => (
@@ -142,20 +129,24 @@ const StreamsTable = ({}) => {
       },
       {
         header: 'Group',
-        accessorFn: (row) => channelGroups[row.channel_group].name,
+        accessorFn: (row) =>
+          channelGroups[row.channel_group]
+            ? channelGroups[row.channel_group].name
+            : '',
         size: 100,
         Header: ({ column }) => (
-          <Box onClick={handleSelectClick}>
+          <Box onClick={handleSelectClick} style={{ width: '100%' }}>
             <MultiSelect
               placeholder="Group"
               searchable
               size="xs"
-              nothingFound="No options"
+              nothingFoundMessage="No options"
               onClick={handleSelectClick}
               onChange={handleGroupChange}
               data={groupOptions}
               variant="unstyled"
-              className="table-input-header"
+              className="table-input-header custom-multiselect"
+              clearable
             />
           </Box>
         ),
@@ -182,7 +173,7 @@ const StreamsTable = ({}) => {
               placeholder="M3U"
               searchable
               size="xs"
-              nothingFound="No options"
+              nothingFoundMessage="No options"
               onClick={handleSelectClick}
               onChange={handleM3UChange}
               data={playlists.map((playlist) => ({
@@ -291,6 +282,7 @@ const StreamsTable = ({}) => {
       channel_number: null,
       stream_id: stream.id,
     });
+    fetchLogos();
   };
 
   // Bulk creation: create channels from selected streams in one API call
@@ -301,6 +293,7 @@ const StreamsTable = ({}) => {
         stream_id,
       }))
     );
+    fetchLogos();
     setIsLoading(false);
   };
 
@@ -349,16 +342,6 @@ const StreamsTable = ({}) => {
         ),
       ],
     });
-  };
-
-  const handleMoreActionsClick = (event, rowId) => {
-    setMoreActionsAnchorEl(event.currentTarget);
-    setActionsOpenRow(rowId);
-  };
-
-  const handleMoreActionsClose = () => {
-    setMoreActionsAnchorEl(null);
-    setActionsOpenRow(null);
   };
 
   const onRowSelectionChange = (updater) => {
@@ -428,6 +411,14 @@ const StreamsTable = ({}) => {
 
     setPagination(updater);
   };
+
+  function handleWatchStream(streamHash) {
+    let vidUrl = `/proxy/ts/stream/${streamHash}`;
+    if (env_mode == 'dev') {
+      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+    }
+    showVideo(vidUrl);
+  }
 
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
@@ -509,10 +500,11 @@ const StreamsTable = ({}) => {
       <>
         <Tooltip label="Add to Channel">
           <ActionIcon
-            size="sm"
-            color={theme.tailwind.blue[4]}
+            size="xs"
+            color={theme.tailwind.blue[6]}
             variant="transparent"
             onClick={() => addStreamToChannel(row.original.id)}
+            style={{ background: 'none' }}
             disabled={
               channelsPageSelection.length !== 1 ||
               (channelSelectionStreams &&
@@ -527,7 +519,7 @@ const StreamsTable = ({}) => {
 
         <Tooltip label="Create New Channel">
           <ActionIcon
-            size="sm"
+            size="xs"
             color={theme.tailwind.green[5]}
             variant="transparent"
             onClick={() => createChannelFromStream(row.original)}
@@ -538,13 +530,7 @@ const StreamsTable = ({}) => {
 
         <Menu>
           <Menu.Target>
-            <ActionIcon
-              onClick={(event) =>
-                handleMoreActionsClick(event, row.original.id)
-              }
-              variant="transparent"
-              size="sm"
-            >
+            <ActionIcon variant="transparent" size="xs">
               <EllipsisVertical size="18" />
             </ActionIcon>
           </Menu.Target>
@@ -562,23 +548,64 @@ const StreamsTable = ({}) => {
             >
               Delete Stream
             </Menu.Item>
+            <Menu.Item
+              onClick={() => handleWatchStream(row.original.stream_hash)}
+            >
+              Preview Stream
+            </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </>
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 167px)',
+        height: 'calc(100vh - 150px)',
         overflowY: 'auto',
       },
     },
     displayColumnDefOptions: {
       'mrt-row-actions': {
-        size: 30,
-        color: 'white',
+        mantineTableHeadCellProps: {
+          align: 'left',
+          style: {
+            minWidth: '65px',
+            maxWidth: '65px',
+            paddingLeft: 10,
+            fontWeight: 'normal',
+            color: 'rgb(207,207,207)',
+            backgroundColor: '#3F3F46',
+          },
+        },
+        mantineTableBodyCellProps: {
+          style: {
+            minWidth: '65px',
+            maxWidth: '65px',
+            // paddingLeft: 0,
+            // paddingRight: 10,
+          },
+        },
       },
       'mrt-row-select': {
-        size: 20,
+        size: 10,
+        maxSize: 10,
+        mantineTableHeadCellProps: {
+          align: 'right',
+          style: {
+            paddding: 0,
+            // paddingLeft: 7,
+            width: '20px',
+            minWidth: '20px',
+            backgroundColor: '#3F3F46',
+          },
+        },
+        mantineTableBodyCellProps: {
+          align: 'right',
+          style: {
+            paddingLeft: 0,
+            width: '20px',
+            minWidth: '20px',
+          },
+        },
       },
     },
   });
@@ -635,51 +662,74 @@ const StreamsTable = ({}) => {
         }}
       >
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
-        <Box
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            padding: 10,
-          }}
-        >
-          <Flex gap={6}>
-            <Button
-              leftSection={<SquareMinus size={18} />}
-              variant="default"
-              size="xs"
-              onClick={deleteStreams}
-              disabled={rowSelection.length === 0}
-            >
-              Remove
-            </Button>
+        <Group justify="space-between" style={{ paddingLeft: 10 }}>
+          <Box>
+            {selectedStreamIds.length > 0 && (
+              <Button
+                leftSection={<IconSquarePlus size={18} />}
+                variant="light"
+                size="xs"
+                onClick={addStreamsToChannel}
+                p={5}
+                color={theme.tailwind.green[5]}
+                style={{
+                  borderWidth: '1px',
+                  borderColor: theme.tailwind.green[5],
+                  color: 'white',
+                }}
+              >
+                Add Streams to Channel
+              </Button>
+            )}
+          </Box>
 
-            <Button
-              leftSection={<IconSquarePlus size={18} />}
-              variant="default"
-              size="xs"
-              onClick={createChannelsFromStreams}
-              p={5}
-            >
-              Create Channels
-            </Button>
+          <Box
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              padding: 10,
+            }}
+          >
+            <Flex gap={6}>
+              <Button
+                leftSection={<SquareMinus size={18} />}
+                variant="default"
+                size="xs"
+                onClick={deleteStreams}
+                disabled={selectedStreamIds.length == 0}
+              >
+                Remove
+              </Button>
 
-            <Button
-              leftSection={<IconSquarePlus size={18} />}
-              variant="light"
-              size="xs"
-              onClick={() => editStream()}
-              p={5}
-              color={theme.tailwind.green[5]}
-              style={{
-                borderWidth: '1px',
-                borderColor: theme.tailwind.green[5],
-                color: 'white',
-              }}
-            >
-              Add Stream
-            </Button>
-          </Flex>
-        </Box>
+              <Button
+                leftSection={<IconSquarePlus size={18} />}
+                variant="default"
+                size="xs"
+                onClick={createChannelsFromStreams}
+                p={5}
+                disabled={selectedStreamIds.length == 0}
+              >
+                Create Channels
+              </Button>
+
+              <Button
+                leftSection={<IconSquarePlus size={18} />}
+                variant="light"
+                size="xs"
+                onClick={() => editStream()}
+                p={5}
+                color={theme.tailwind.green[5]}
+                style={{
+                  borderWidth: '1px',
+                  borderColor: theme.tailwind.green[5],
+                  color: 'white',
+                }}
+              >
+                Create Stream
+              </Button>
+            </Flex>
+          </Box>
+        </Group>
 
         {initialDataCount === 0 && (
           <Center style={{ paddingTop: 20 }}>
@@ -707,7 +757,7 @@ const StreamsTable = ({}) => {
                   variant="default"
                   radius="md"
                   size="md"
-                  onClick={() => navigate('/m3u')}
+                  onClick={() => navigate('/sources')}
                   style={{
                     backgroundColor: '#444',
                     color: '#d4d4d8',

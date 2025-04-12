@@ -144,6 +144,7 @@ DEFAULT_USER_AGENT_KEY= slugify("Default User-Agent")
 DEFAULT_STREAM_PROFILE_KEY = slugify("Default Stream Profile")
 STREAM_HASH_KEY = slugify("M3U Hash Key")
 PREFERRED_REGION_KEY = slugify("Preferred Region")
+AUTO_IMPORT_MAPPED_FILES = slugify("Auto-Import Mapped Files")
 
 class CoreSettings(models.Model):
     key = models.CharField(
@@ -173,9 +174,18 @@ class CoreSettings(models.Model):
     def get_m3u_hash_key(cls):
         return cls.objects.get(key=STREAM_HASH_KEY).value
 
+    @classmethod
     def get_preferred_region(cls):
         """Retrieve the preferred region setting (or return None if not found)."""
         try:
             return cls.objects.get(key=PREFERRED_REGION_KEY).value
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_auto_import_mapped_files(cls):
+        """Retrieve the preferred region setting (or return None if not found)."""
+        try:
+            return cls.objects.get(key=AUTO_IMPORT_MAPPED_FILES).value
         except cls.DoesNotExist:
             return None

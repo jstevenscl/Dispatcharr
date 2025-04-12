@@ -13,19 +13,28 @@ import {
   Button,
   Flex,
   useMantineTheme,
+  Switch,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
+import dayjs from 'dayjs';
 
 const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
   const [epgModalOpen, setEPGModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
 
-  const epgs = useEPGsStore((state) => state.epgs);
+  const { epgs } = useEPGsStore();
 
   const theme = useMantineTheme();
+
+  const toggleActive = async (epg) => {
+    await API.updateEPG({
+      ...epg,
+      is_active: !epg.is_active,
+    });
+  };
 
   const columns = useMemo(
     //column definitions...
@@ -40,7 +49,31 @@ const EPGsTable = () => {
       },
       {
         header: 'URL / API Key',
-        accessorKey: 'max_streams',
+        accessorKey: 'url',
+        enableSorting: false,
+      },
+      {
+        header: 'Active',
+        accessorKey: 'is_active',
+        size: 100,
+        sortingFn: 'basic',
+        mantineTableBodyCellProps: {
+          align: 'left',
+        },
+        Cell: ({ row, cell }) => (
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Switch
+              size="xs"
+              checked={cell.getValue()}
+              onChange={() => toggleActive(row.original)}
+            />
+          </Box>
+        ),
+      },
+      {
+        header: 'Updated',
+        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        enableSorting: false,
       },
     ],
     []
@@ -93,7 +126,7 @@ const EPGsTable = () => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: epgs,
+    data: Object.values(epgs),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: false,
@@ -134,6 +167,7 @@ const EPGsTable = () => {
           size="sm" // Makes the button smaller
           color="blue.5" // Red color for delete actions
           onClick={() => refreshEPG(row.original.id)}
+          disabled={!row.original.is_active}
         >
           <RefreshCcw size="18" /> {/* Small icon size */}
         </ActionIcon>
@@ -141,7 +175,12 @@ const EPGsTable = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(40vh - 0px)',
+        height: 'calc(40vh - 10px)',
+      },
+    },
+    displayColumnDefOptions: {
+      'mrt-row-actions': {
+        size: 10,
       },
     },
   });

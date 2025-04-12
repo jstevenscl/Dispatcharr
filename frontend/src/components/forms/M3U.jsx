@@ -1,7 +1,5 @@
 // Modal.js
 import React, { useState, useEffect } from 'react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
 import API from '../../api';
 import useUserAgentsStore from '../../store/userAgents';
 import M3UProfiles from './M3UProfiles';
@@ -12,14 +10,24 @@ import {
   Checkbox,
   Modal,
   Flex,
-  NativeSelect,
+  Select,
   FileInput,
-  Space,
+  useMantineTheme,
+  NumberInput,
+  Divider,
+  Stack,
+  Group,
+  Switch,
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
 import useChannelsStore from '../../store/channels';
+import usePlaylistsStore from '../../store/playlists';
+import { notifications } from '@mantine/notifications';
+import { isNotEmpty, useForm } from '@mantine/form';
 
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
+  const theme = useMantineTheme();
+
   const { userAgents } = useUserAgentsStore();
   const { fetchChannelGroups } = useChannelsStore();
 
@@ -35,69 +43,83 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     }
   };
 
-  const formik = useFormik({
+  const form = useForm({
+    mode: 'uncontrolled',
     initialValues: {
       name: '',
       server_url: '',
-      user_agent: `${userAgents[0].id}`,
+      user_agent: '0',
       is_active: true,
       max_streams: 0,
+      refresh_interval: 24,
     },
-    validationSchema: Yup.object({
-      name: Yup.string().required('Name is required'),
-      user_agent: Yup.string().required('User-Agent is required'),
-      max_streams: Yup.string().required('Max streams is required'),
-    }),
-    onSubmit: async (values, { setSubmitting, resetForm }) => {
-      let newPlaylist;
-      if (playlist?.id) {
-        await API.updatePlaylist({
-          id: playlist.id,
-          ...values,
-          uploaded_file: file,
-        });
-      } else {
-        newPlaylist = await API.addPlaylist({
-          ...values,
-          uploaded_file: file,
-        });
 
-        await fetchChannelGroups();
-
-        // Don't prompt for group filters, but keeping this here
-        // in case we want to revive it
-        newPlaylist = null;
-      }
-
-      resetForm();
-      setFile(null);
-      setSubmitting(false);
-      onClose(newPlaylist);
+    validate: {
+      name: isNotEmpty('Please select a name'),
+      user_agent: isNotEmpty('Please select a user-agent'),
+      refresh_interval: isNotEmpty('Please specify a refresh interval'),
     },
   });
+
+  useEffect(() => {
+    if (playlist) {
+      form.setValues({
+        name: playlist.name,
+        server_url: playlist.server_url,
+        max_streams: playlist.max_streams,
+        user_agent: playlist.user_agent ? `${playlist.user_agent}` : '0',
+        is_active: playlist.is_active,
+        refresh_interval: playlist.refresh_interval,
+      });
+    } else {
+      form.reset();
+    }
+  }, [playlist]);
+
+  const onSubmit = async () => {
+    const values = form.getValues();
+
+    if (values.user_agent == '0') {
+      values.user_agent = null;
+    }
+
+    let newPlaylist;
+    if (playlist?.id) {
+      await API.updatePlaylist({
+        id: playlist.id,
+        ...values,
+        file,
+      });
+    } else {
+      newPlaylist = await API.addPlaylist({
+        ...values,
+        file,
+      });
+
+      notifications.show({
+        title: 'Fetching M3U Groups',
+        message: 'Filter out groups or refresh M3U once complete.',
+        // color: 'green.5',
+      });
+
+      // Don't prompt for group filters, but keeping this here
+      // in case we want to revive it
+      newPlaylist = null;
+    }
+
+    form.reset();
+    setFile(null);
+    onClose(newPlaylist);
+  };
 
   const closeGroupFilter = () => {
     setGroupFilterModalOpen(false);
     if (playlistCreated) {
-      formik.resetForm();
+      form.reset();
       setFile(null);
       onClose();
     }
   };
-
-  useEffect(() => {
-    if (playlist) {
-      formik.setValues({
-        name: playlist.name,
-        server_url: playlist.server_url,
-        max_streams: playlist.max_streams,
-        user_agent: playlist.user_agent,
-        is_active: playlist.is_active,
-      });
-    } else {
-      formik.resetForm();
-    }
-  }, [playlist]);
 
   useEffect(() => {
     if (playlistCreated) {
@@ -110,140 +132,130 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   }
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="M3U Account">
+    <Modal size={700} opened={isOpen} onClose={onClose} title="M3U Account">
       <LoadingOverlay
-        visible={formik.isSubmitting}
+        visible={form.submitting}
         overlayBlur={2}
         loaderProps={loadingText ? { children: loadingText } : {}}
       />
 
-      <div style={{ width: 400, position: 'relative' }}>
-        <form onSubmit={formik.handleSubmit}>
-          <TextInput
-            fullWidth
-            id="name"
-            name="name"
-            label="Name"
-            value={formik.values.name}
-            onChange={formik.handleChange}
-            error={formik.touched.name && Boolean(formik.errors.name)}
-            helperText={formik.touched.name && formik.errors.name}
-          />
+      <form onSubmit={form.onSubmit(onSubmit)}>
+        <Group justify="space-between" align="top">
+          <Stack gap="5" style={{ flex: 1 }}>
+            <TextInput
+              fullWidth
+              id="name"
+              name="name"
+              label="Name"
+              {...form.getInputProps('name')}
+              key={form.key('name')}
+            />
 
-          <TextInput
-            fullWidth
-            id="server_url"
-            name="server_url"
-            label="URL"
-            value={formik.values.server_url}
-            onChange={formik.handleChange}
-            error={
-              formik.touched.server_url && Boolean(formik.errors.server_url)
-            }
-            helperText={formik.touched.server_url && formik.errors.server_url}
-          />
+            <TextInput
+              fullWidth
+              id="server_url"
+              name="server_url"
+              label="URL"
+              {...form.getInputProps('server_url')}
+              key={form.key('server_url')}
+            />
 
-          <FileInput
-            id="uploaded_file"
-            label="Upload files"
-            placeholder="Upload files"
-            value={formik.uploaded_file}
-            onChange={handleFileChange}
-          />
+            <FileInput
+              id="file"
+              label="Upload files"
+              placeholder="Upload files"
+              // value={formik.file}
+              onChange={handleFileChange}
+            />
+          </Stack>
 
-          <TextInput
-            fullWidth
-            id="max_streams"
-            name="max_streams"
-            label="Max Streams"
-            placeholder="0 = Unlimited"
-            value={formik.values.max_streams}
-            onChange={formik.handleChange}
-            error={formik.errors.max_streams ? formik.touched.max_streams : ''}
-          />
+          <Divider size="sm" orientation="vertical" />
 
-          <NativeSelect
-            id="user_agent"
-            name="user_agent"
-            label="User-Agent"
-            value={formik.values.user_agent}
-            onChange={formik.handleChange}
-            error={formik.errors.user_agent ? formik.touched.user_agent : ''}
-            data={userAgents.map((ua) => ({
-              label: ua.name,
-              value: `${ua.id}`,
-            }))}
-          />
+          <Stack gap="5" style={{ flex: 1 }}>
+            <TextInput
+              fullWidth
+              id="max_streams"
+              name="max_streams"
+              label="Max Streams"
+              placeholder="0 = Unlimited"
+              {...form.getInputProps('max_streams')}
+              key={form.key('max_streams')}
+            />
 
-          <Space h="md" />
+            <Select
+              id="user_agent"
+              name="user_agent"
+              label="User-Agent"
+              {...form.getInputProps('user_agent')}
+              key={form.key('user_agent')}
+              data={[{ value: '0', label: '(use default)' }].concat(
+                userAgents.map((ua) => ({
+                  label: ua.name,
+                  value: `${ua.id}`,
+                }))
+              )}
+            />
 
-          <Checkbox
-            label="Is Active"
-            name="is_active"
-            checked={formik.values.is_active}
-            onChange={(e) =>
-              formik.setFieldValue('is_active', e.target.checked)
-            }
-          />
+            <NumberInput
+              label="Refresh Interval (hours)"
+              {...form.getInputProps('refresh_interval')}
+              key={form.key('refresh_interval')}
+            />
 
-          <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-            {playlist && (
-              <>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
-                  onClick={() => setGroupFilterModalOpen(true)}
-                >
-                  Groups
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
-                  onClick={() => setProfileModalOpen(true)}
-                >
-                  Profiles
-                </Button>
-              </>
-            )}
-            {!playlist && (
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={formik.isSubmitting}
-                size="sm"
-              >
-                Save & Select Groups
-              </Button>
-            )}
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={formik.isSubmitting}
-              size="sm"
-            >
-              Save
-            </Button>
-          </Flex>
+            <Checkbox
+              label="Is Active"
+              {...form.getInputProps('is_active', { type: 'checkbox' })}
+              key={form.key('is_active')}
+            />
+          </Stack>
+        </Group>
+
+        <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
           {playlist && (
             <>
-              <M3UProfiles
-                playlist={playlist}
-                isOpen={profileModalOpen}
-                onClose={() => setProfileModalOpen(false)}
-              />
-              <M3UGroupFilter
-                isOpen={groupFilterModalOpen}
-                playlist={playlist}
-                onClose={closeGroupFilter}
-              />
+              <Button
+                variant="filled"
+                // color={theme.custom.colors.buttonPrimary}
+                size="sm"
+                onClick={() => setGroupFilterModalOpen(true)}
+              >
+                Groups
+              </Button>
+              <Button
+                variant="filled"
+                // color={theme.custom.colors.buttonPrimary}
+                size="sm"
+                onClick={() => setProfileModalOpen(true)}
+              >
+                Profiles
+              </Button>
             </>
           )}
-        </form>
-      </div>
+
+          <Button
+            type="submit"
+            variant="filled"
+            disabled={form.submitting}
+            size="sm"
+          >
+            Save
+          </Button>
+        </Flex>
+        {playlist && (
+          <>
+            <M3UProfiles
+              playlist={playlist}
+              isOpen={profileModalOpen}
+              onClose={() => setProfileModalOpen(false)}
+            />
+            <M3UGroupFilter
+              isOpen={groupFilterModalOpen}
+              playlist={playlist}
+              onClose={closeGroupFilter}
+            />
+          </>
+        )}
+      </form>
     </Modal>
   );
 };

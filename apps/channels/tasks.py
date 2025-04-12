@@ -2,37 +2,27 @@
 import logging
 import os
 import re
+import requests
+import time
+import json
+import subprocess
+from datetime import datetime
 
 from celery import shared_task
-from rapidfuzz import fuzz
-from sentence_transformers import SentenceTransformer, util
-from django.conf import settings
-from django.db import transaction
+from django.utils.text import slugify
 
 from apps.channels.models import Channel
-from apps.epg.models import EPGData, EPGSource
+from apps.epg.models import EPGData
 from core.models import CoreSettings
-from apps.epg.tasks import parse_programs_for_tvg_id  # <-- we import our new helper
+
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+import tempfile
 
 logger = logging.getLogger(__name__)
-
-# Load the sentence-transformers model once at the module level
-SENTENCE_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-MODEL_PATH = os.path.join(settings.MEDIA_ROOT, "models", "all-MiniLM-L6-v2")
-os.makedirs(MODEL_PATH, exist_ok=True)
-
-# If not present locally, download:
-if not os.path.exists(os.path.join(MODEL_PATH, "config.json")):
-    logger.info(f"Local model not found in {MODEL_PATH}; downloading from {SENTENCE_MODEL_NAME}...")
-    st_model = SentenceTransformer(SENTENCE_MODEL_NAME, cache_folder=MODEL_PATH)
-else:
-    logger.info(f"Loading local model from {MODEL_PATH}")
-    st_model = SentenceTransformer(MODEL_PATH)
-
-# Thresholds
-BEST_FUZZY_THRESHOLD = 85
-LOWER_FUZZY_THRESHOLD = 40
-EMBED_SIM_THRESHOLD = 0.65
 
 # Words we remove to help with fuzzy + embedding matching
 COMMON_EXTRANEOUS_WORDS = [
@@ -70,8 +60,7 @@ def match_epg_channels():
       1) If channel.tvg_id is valid in EPGData, skip.
       2) If channel has a tvg_id but not found in EPGData, attempt direct EPGData lookup.
       3) Otherwise, perform name-based fuzzy matching with optional region-based bonus.
-      4) If a match is found, we set channel.tvg_id and also parse its programs
-         from the cached EPG file (parse_programs_for_tvg_id).
+      4) If a match is found, we set channel.tvg_id
       5) Summarize and log results.
     """
     logger.info("Starting EPG matching logic...")
@@ -83,132 +72,82 @@ def match_epg_channels():
     except CoreSettings.DoesNotExist:
         region_code = None
 
-    # Gather EPGData rows so we can do fuzzy matching in memory
-    all_epg = list(EPGData.objects.all())
-    epg_rows = []
-    for e in all_epg:
-        epg_rows.append({
-            "epg_id": e.id,
-            "tvg_id": e.tvg_id or "",
-            "raw_name": e.name,
-            "norm_name": normalize_name(e.name),
-        })
-
-    epg_embeddings = None
-    if any(row["norm_name"] for row in epg_rows):
-        epg_embeddings = st_model.encode(
-            [row["norm_name"] for row in epg_rows],
-            convert_to_tensor=True
-        )
-
     matched_channels = []
+    channels_to_update = []
 
-    source = EPGSource.objects.filter(is_active=True).first()
-    epg_file_path = getattr(source, 'file_path', None) if source else None
+    channels_json = [{
+        "id": channel.id,
+        "name": channel.name,
+        "tvg_id": channel.tvg_id,
+        "fallback_name": channel.tvg_id.strip() if channel.tvg_id else channel.name,
+        "norm_chan": normalize_name(channel.tvg_id.strip() if channel.tvg_id else channel.name)
+    } for channel in Channel.objects.all() if not channel.epg_data]
 
-    with transaction.atomic():
-        for chan in Channel.objects.all():
+    epg_json = [{
+        'id': epg.id,
+        'tvg_id': epg.tvg_id,
+        'name': epg.name,
+        'norm_name': normalize_name(epg.name),
+        'epg_source_id': epg.epg_source.id,
+    } for epg in EPGData.objects.all()]
 
-            # A) Skip if channel.tvg_id is already valid
-            if chan.tvg_id and EPGData.objects.filter(tvg_id=chan.tvg_id).exists():
-                continue
+    payload = {
+        "channels": channels_json,
+        "epg_data": epg_json,
+        "region_code": region_code,
+    }
 
-            # B) If channel has a tvg_id that doesn't exist in EPGData, do direct check
-            if chan.tvg_id:
-                epg_match = EPGData.objects.filter(tvg_id=chan.tvg_id).first()
-                if epg_match:
-                    logger.info(f"Channel {chan.id} '{chan.name}' => EPG found by tvg_id={chan.tvg_id}")
-                    continue
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(json.dumps(payload).encode('utf-8'))
+        temp_file_path = temp_file.name
 
-            # C) Perform name-based fuzzy matching
-            fallback_name = chan.tvg_name.strip() if chan.tvg_name else chan.name
-            norm_chan = normalize_name(fallback_name)
-            if not norm_chan:
-                logger.info(f"Channel {chan.id} '{chan.name}' => empty after normalization, skipping")
-                continue
+    process = subprocess.Popen(
+        ['python', '/app/scripts/epg_match.py', temp_file_path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
 
-            best_score = 0
-            best_epg = None
-            for row in epg_rows:
-                if not row["norm_name"]:
-                    continue
-                base_score = fuzz.ratio(norm_chan, row["norm_name"])
-                bonus = 0
-                # Region-based bonus/penalty
-                combined_text = row["tvg_id"].lower() + " " + row["raw_name"].lower()
-                dot_regions = re.findall(r'\.([a-z]{2})', combined_text)
-                if region_code:
-                    if dot_regions:
-                        if region_code in dot_regions:
-                            bonus = 30  # bigger bonus if .us or .ca matches
-                        else:
-                            bonus = -15
-                    elif region_code in combined_text:
-                        bonus = 15
-                score = base_score + bonus
+    # Log stderr in real-time
+    for line in iter(process.stderr.readline, ''):
+        if line:
+            logger.info(line.strip())
 
-                logger.debug(
-                    f"Channel {chan.id} '{fallback_name}' => EPG row {row['epg_id']}: "
-                    f"raw_name='{row['raw_name']}', norm_name='{row['norm_name']}', "
-                    f"combined_text='{combined_text}', dot_regions={dot_regions}, "
-                    f"base_score={base_score}, bonus={bonus}, total_score={score}"
-                )
+    process.stderr.close()
+    stdout, stderr = process.communicate()
 
-                if score > best_score:
-                    best_score = score
-                    best_epg = row
+    os.remove(temp_file_path)
 
-            # If no best match was found, skip
-            if not best_epg:
-                logger.info(f"Channel {chan.id} '{fallback_name}' => no EPG match at all.")
-                continue
+    if process.returncode != 0:
+        return f"Failed to process EPG matching: {stderr}"
 
-            # If best_score is above BEST_FUZZY_THRESHOLD => direct accept
-            if best_score >= BEST_FUZZY_THRESHOLD:
-                chan.tvg_id = best_epg["tvg_id"]
-                chan.save()
+    result = json.loads(stdout)
+    # This returns lists of dicts, not model objects
+    channels_to_update_dicts = result["channels_to_update"]
+    matched_channels = result["matched_channels"]
 
-                # Attempt to parse program data for this channel
-                if epg_file_path:
-                    parse_programs_for_tvg_id(epg_file_path, best_epg["tvg_id"])
-                    logger.info(f"Loaded program data for tvg_id={best_epg['tvg_id']}")
+    # Convert your dict-based 'channels_to_update' into real Channel objects
+    if channels_to_update_dicts:
+        # Extract IDs of the channels that need updates
+        channel_ids = [d["id"] for d in channels_to_update_dicts]
 
-                matched_channels.append((chan.id, fallback_name, best_epg["tvg_id"]))
-                logger.info(
-                    f"Channel {chan.id} '{fallback_name}' => matched tvg_id={best_epg['tvg_id']} "
-                    f"(score={best_score})"
-                )
+        # Fetch them from DB
+        channels_qs = Channel.objects.filter(id__in=channel_ids)
+        channels_list = list(channels_qs)
 
-            # If best_score is in the “middle range,” do embedding check
-            elif best_score >= LOWER_FUZZY_THRESHOLD and epg_embeddings is not None:
-                chan_embedding = st_model.encode(norm_chan, convert_to_tensor=True)
-                sim_scores = util.cos_sim(chan_embedding, epg_embeddings)[0]
-                top_index = int(sim_scores.argmax())
-                top_value = float(sim_scores[top_index])
-                if top_value >= EMBED_SIM_THRESHOLD:
-                    matched_epg = epg_rows[top_index]
-                    chan.tvg_id = matched_epg["tvg_id"]
-                    chan.save()
+        # Build a map from channel_id -> epg_data_id (or whatever fields you need)
+        epg_mapping = {
+            d["id"]: d["epg_data_id"] for d in channels_to_update_dicts
+        }
 
-                    if epg_file_path:
-                        parse_programs_for_tvg_id(epg_file_path, matched_epg["tvg_id"])
-                        logger.info(f"Loaded program data for tvg_id={matched_epg['tvg_id']}")
+        # Populate each Channel object with the updated epg_data_id
+        for channel_obj in channels_list:
+            # The script sets 'epg_data_id' in the returned dict
+            # We either assign directly, or fetch the EPGData instance if needed.
+            channel_obj.epg_data_id = epg_mapping.get(channel_obj.id)
 
-                    matched_channels.append((chan.id, fallback_name, matched_epg["tvg_id"]))
-                    logger.info(
-                        f"Channel {chan.id} '{fallback_name}' => matched EPG tvg_id={matched_epg['tvg_id']} "
-                        f"(fuzzy={best_score}, cos-sim={top_value:.2f})"
-                    )
-                else:
-                    logger.info(
-                        f"Channel {chan.id} '{fallback_name}' => fuzzy={best_score}, "
-                        f"cos-sim={top_value:.2f} < {EMBED_SIM_THRESHOLD}, skipping"
-                    )
-            else:
-                logger.info(
-                    f"Channel {chan.id} '{fallback_name}' => fuzzy={best_score} < "
-                    f"{LOWER_FUZZY_THRESHOLD}, skipping"
-                )
+        # Now we have real model objects, so bulk_update will work
+        Channel.objects.bulk_update(channels_list, ["epg_data"])
 
     total_matched = len(matched_channels)
     if total_matched:
@@ -219,4 +158,63 @@ def match_epg_channels():
         logger.info("No new channels were matched.")
 
     logger.info("Finished EPG matching logic.")
+
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        'updates',
+        {
+            'type': 'update',
+            "data": {"success": True, "type": "epg_match"}
+        }
+    )
+
     return f"Done. Matched {total_matched} channel(s)."
+
+
+@shared_task
+def run_recording(channel_id, start_time_str, end_time_str):
+    channel = Channel.objects.get(id=channel_id)
+
+    start_time = datetime.fromisoformat(start_time_str)
+    end_time = datetime.fromisoformat(end_time_str)
+
+    duration_seconds = int((end_time - start_time).total_seconds())
+    filename = f'{slugify(channel.name)}-{start_time.strftime("%Y-%m-%d_%H-%M-%S")}.mp4'
+
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        "updates",
+        {
+            "type": "update",
+            "data": {"success": True, "type": "recording_started", "channel": channel.name}
+        },
+    )
+
+    logger.info(f"Starting recording for channel {channel.name}")
+    with requests.get(f"http://localhost:5656/proxy/ts/stream/{channel.uuid}", headers={
+        'User-Agent': 'Dispatcharr-DVR',
+    }, stream=True) as response:
+        # Raise an exception for bad responses (4xx, 5xx)
+        response.raise_for_status()
+
+        # Open the file in write-binary mode
+        with open(f"/data/recordings/{filename}", 'wb') as file:
+            start_time = time.time()  # Start the timer
+            for chunk in response.iter_content(chunk_size=8192):  # 8KB chunks
+                if time.time() - start_time > duration_seconds:
+                    print(f"Timeout reached: {duration_seconds} seconds")
+                    break
+                # Write the chunk to the file
+                file.write(chunk)
+
+        async_to_sync(channel_layer.group_send)(
+            "updates",
+            {
+                "type": "update",
+                "data": {"success": True, "type": "recording_ended", "channel": channel.name}
+            },
+        )
+
+        # After the loop, the file and response are closed automatically.
+        logger.info(f"Finished recording for channel {channel.name}")

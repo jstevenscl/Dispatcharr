@@ -3,12 +3,13 @@ from django.core.exceptions import ValidationError
 from core.models import StreamProfile
 from django.conf import settings
 from core.models import StreamProfile, CoreSettings
-from core.utils import redis_client, execute_redis_command
+from core.utils import RedisClient
 import logging
 import uuid
 from datetime import datetime
 import hashlib
 import json
+from apps.epg.models import EPGData
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,7 @@ from apps.m3u.models import M3UAccount
 # Add fallback functions if Redis isn't available
 def get_total_viewers(channel_id):
     """Get viewer count from Redis or return 0 if Redis isn't available"""
-    if redis_client is None:
-        return 0
+    redis_client = RedisClient.get_client()
 
     try:
         return int(redis_client.get(f"channel:{channel_id}:viewers") or 0)
@@ -90,6 +90,7 @@ class Stream(models.Model):
         db_index=True,
     )
     last_seen = models.DateTimeField(db_index=True, default=datetime.now)
+    custom_properties = models.TextField(null=True, blank=True)
 
     class Meta:
         # If you use m3u_account, you might do unique_together = ('name','url','m3u_account')
@@ -132,6 +133,77 @@ class Stream(models.Model):
             stream = cls.objects.create(**fields_to_update)
             return stream, True  # True means it was created
 
+    # @TODO: honor stream's stream profile
+    def get_stream_profile(self):
+        stream_profile = StreamProfile.objects.get(id=CoreSettings.get_default_stream_profile_id())
+
+        return stream_profile
+
+    def get_stream(self):
+        """
+        Finds an available stream for the requested channel and returns the selected stream and profile.
+        """
+        redis_client = RedisClient.get_client()
+        profile_id = redis_client.get(f"stream_profile:{self.id}")
+        if profile_id:
+            profile_id = int(profile_id)
+            return self.id, profile_id
+
+        # Retrieve the M3U account associated with the stream.
+        m3u_account = self.m3u_account
+        m3u_profiles = m3u_account.profiles.all()
+        default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
+        profiles = [default_profile] + [obj for obj in m3u_profiles if not obj.is_default]
+
+        for profile in profiles:
+            logger.info(profile)
+            # Skip inactive profiles
+            if profile.is_active == False:
+                continue
+
+            profile_connections_key = f"profile_connections:{profile.id}"
+            current_connections = int(redis_client.get(profile_connections_key) or 0)
+
+            # Check if profile has available slots (or unlimited connections)
+            if profile.max_streams == 0 or current_connections < profile.max_streams:
+                # Start a new stream
+                redis_client.set(f"channel_stream:{self.id}", self.id)
+                redis_client.set(f"stream_profile:{self.id}", profile.id)  # Store only the matched profile
+
+                # Increment connection count for profiles with limits
+                if profile.max_streams > 0:
+                    redis_client.incr(profile_connections_key)
+
+                return self.id, profile.id  # Return newly assigned stream and matched profile
+
+        # 4. No available streams
+        return None, None
+
+    def release_stream(self):
+        """
+        Called when a stream is finished to release the lock.
+        """
+        redis_client = RedisClient.get_client()
+
+        stream_id = self.id
+        # Get the matched profile for cleanup
+        profile_id = redis_client.get(f"stream_profile:{stream_id}")
+        if not profile_id:
+            logger.debug("Invalid profile ID pulled from stream index")
+            return
+
+        redis_client.delete(f"stream_profile:{stream_id}")  # Remove profile association
+
+        profile_id = int(profile_id)
+        logger.debug(f"Found profile ID {profile_id} associated with stream {stream_id}")
+
+        profile_connections_key = f"profile_connections:{profile_id}"
+
+        # Only decrement if the profile had a max_connections limit
+        current_count = int(redis_client.get(profile_connections_key) or 0)
+        if current_count > 0:
+            redis_client.decr(profile_connections_key)
+
 class ChannelManager(models.Manager):
     def active(self):
         return self.all()
@@ -140,11 +212,12 @@ class ChannelManager(models.Manager):
 class Channel(models.Model):
     channel_number = models.IntegerField()
     name = models.CharField(max_length=255)
-    logo_url = models.URLField(max_length=2000, blank=True, null=True)
-    logo_file = models.ImageField(
-        upload_to='logos/',  # Will store in MEDIA_ROOT/logos
+    logo = models.ForeignKey(
+        'Logo',
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        null=True
+        related_name='channels',
     )
 
     # M2M to Stream now in the same file
@@ -164,7 +237,13 @@ class Channel(models.Model):
         help_text="Channel group this channel belongs to."
     )
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
-    tvg_name = models.CharField(max_length=255, blank=True, null=True)
+    epg_data = models.ForeignKey(
+        EPGData,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='channels'
+    )
 
     stream_profile = models.ForeignKey(
         StreamProfile,
@@ -190,6 +269,15 @@ class Channel(models.Model):
     def __str__(self):
         return f"{self.channel_number} - {self.name}"
 
+    @classmethod
+    def get_next_available_channel_number(cls, starting_from=1):
+        used_numbers = set(cls.objects.all().values_list('channel_number', flat=True))
+        n = starting_from
+        while n in used_numbers:
+            n += 1
+        return n
+
+    # @TODO: honor stream's stream profile
     def get_stream_profile(self):
         stream_profile = self.stream_profile
         if not stream_profile:
@@ -200,32 +288,61 @@ class Channel(models.Model):
     def get_stream(self):
         """
         Finds an available stream for the requested channel and returns the selected stream and profile.
+
+        Returns:
+            Tuple[Optional[int], Optional[int], Optional[str]]: (stream_id, profile_id, error_reason)
         """
+        redis_client = RedisClient.get_client()
+        error_reason = None
 
-        # 2. Check if a stream is already active for this channel
-        stream_id = redis_client.get(f"channel_stream:{self.id}")
-        if stream_id:
-            stream_id = int(stream_id)
-            profile_id = redis_client.get(f"stream_profile:{stream_id}")
-            if profile_id:
-                profile_id = int(profile_id)
-                return stream_id, profile_id
+        # Check if this channel has any streams
+        if not self.streams.exists():
+            error_reason = "No streams assigned to channel"
+            return None, None, error_reason
 
-        # 3. Iterate through channel streams and their profiles
+        # Check if a stream is already active for this channel
+        stream_id_bytes = redis_client.get(f"channel_stream:{self.id}")
+        if stream_id_bytes:
+            try:
+                stream_id = int(stream_id_bytes)
+                profile_id_bytes = redis_client.get(f"stream_profile:{stream_id}")
+                if profile_id_bytes:
+                    try:
+                        profile_id = int(profile_id_bytes)
+                        return stream_id, profile_id, None
+                    except (ValueError, TypeError):
+                        logger.debug(f"Invalid profile ID retrieved from Redis: {profile_id_bytes}")
+            except (ValueError, TypeError):
+                logger.debug(f"Invalid stream ID retrieved from Redis: {stream_id_bytes}")
+
+        # No existing active stream, attempt to assign a new one
+        has_streams_but_maxed_out = False
+        has_active_profiles = False
+
+        # Iterate through channel streams and their profiles
         for stream in self.streams.all().order_by('channelstream__order'):
             # Retrieve the M3U account associated with the stream.
             m3u_account = stream.m3u_account
+            if not m3u_account:
+                logger.debug(f"Stream {stream.id} has no M3U account")
+                continue
+
             m3u_profiles = m3u_account.profiles.all()
             default_profile = next((obj for obj in m3u_profiles if obj.is_default), None)
+
+            if not default_profile:
+                logger.debug(f"M3U account {m3u_account.id} has no default profile")
+                continue
+
             profiles = [default_profile] + [obj for obj in m3u_profiles if not obj.is_default]
 
-            logger.info('profiles')
-
             for profile in profiles:
-                logger.info(profile)
                 # Skip inactive profiles
-                if profile.is_active == False:
+                if not profile.is_active:
+                    logger.debug(f"Skipping inactive profile {profile.id}")
                     continue
+
+                has_active_profiles = True
 
                 profile_connections_key = f"profile_connections:{profile.id}"
                 current_connections = int(redis_client.get(profile_connections_key) or 0)
@@ -234,21 +351,34 @@ class Channel(models.Model):
                 if profile.max_streams == 0 or current_connections < profile.max_streams:
                     # Start a new stream
                     redis_client.set(f"channel_stream:{self.id}", stream.id)
-                    redis_client.set(f"stream_profile:{stream.id}", profile.id)  # Store only the matched profile
+                    redis_client.set(f"stream_profile:{stream.id}", profile.id)
 
                     # Increment connection count for profiles with limits
                     if profile.max_streams > 0:
                         redis_client.incr(profile_connections_key)
 
-                    return stream.id, profile.id  # Return newly assigned stream and matched profile
+                    return stream.id, profile.id, None  # Return newly assigned stream and matched profile
+                else:
+                    # This profile is at max connections
+                    has_streams_but_maxed_out = True
+                    logger.debug(f"Profile {profile.id} at max connections: {current_connections}/{profile.max_streams}")
 
-        # 4. No available streams
-        return None, None
+        # No available streams - determine specific reason
+        if has_streams_but_maxed_out:
+            error_reason = "All M3U profiles have reached maximum connection limits"
+        elif has_active_profiles:
+            error_reason = "No compatible profile found for any assigned stream"
+        else:
+            error_reason = "No active profiles found for any assigned stream"
+
+        return None, None, error_reason
 
     def release_stream(self):
         """
         Called when a stream is finished to release the lock.
         """
+        redis_client = RedisClient.get_client()
+
         stream_id = redis_client.get(f"channel_stream:{self.id}")
         if not stream_id:
             logger.debug("Invalid stream ID pulled from channel index")
@@ -277,6 +407,18 @@ class Channel(models.Model):
         if current_count > 0:
             redis_client.decr(profile_connections_key)
 
+
+class ChannelProfile(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+class ChannelProfileMembership(models.Model):
+    channel_profile = models.ForeignKey(ChannelProfile, on_delete=models.CASCADE)
+    channel = models.ForeignKey(Channel, on_delete=models.CASCADE)
+    enabled = models.BooleanField(default=True)  # Track if the channel is enabled for this group
+
+    class Meta:
+        unique_together = ('channel_profile', 'channel')
+
 class ChannelStream(models.Model):
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE)
     stream = models.ForeignKey(Stream, on_delete=models.CASCADE)
@@ -303,3 +445,21 @@ class ChannelGroupM3UAccount(models.Model):
 
     def __str__(self):
         return f"{self.channel_group.name} - {self.m3u_account.name} (Enabled: {self.enabled})"
+
+
+class Logo(models.Model):
+    name = models.CharField(max_length=255)
+    url = models.TextField(unique=True)
+
+    def __str__(self):
+        return self.name
+
+class Recording(models.Model):
+    channel = models.ForeignKey("Channel", on_delete=models.CASCADE, related_name="recordings")
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    custom_properties = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.channel.name} - {self.start_time} to {self.end_time}"

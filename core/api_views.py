@@ -42,6 +42,8 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def environment(request):
+
+
     public_ip = None
     local_ip = None
     country_code = None
@@ -83,4 +85,18 @@ def environment(request):
         'country_code': country_code,
         'country_name': country_name,
         'env_mode': "dev" if os.getenv('DISPATCHARR_ENV') == "dev" else "prod",
+    })
+
+@swagger_auto_schema(
+    method='get',
+    operation_description="Get application version information",
+    responses={200: "Version information"}
+)
+@api_view(['GET'])
+def version(request):
+    # Import version information
+    from version import __version__, __build__
+    return Response({
+        'version': __version__,
+        'build': __build__,
     })

@@ -14,30 +14,54 @@ from django.db import transaction
 from django.utils import timezone
 from apps.channels.models import Channel
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from .models import EPGSource, EPGData, ProgramData
+from core.utils import acquire_task_lock, release_task_lock
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task
-def refresh_epg_data():
+def refresh_all_epg_data():
     logger.info("Starting refresh_epg_data task.")
     active_sources = EPGSource.objects.filter(is_active=True)
     logger.debug(f"Found {active_sources.count()} active EPGSource(s).")
 
     for source in active_sources:
-        logger.info(f"Processing EPGSource: {source.name} (type: {source.source_type})")
-        if source.source_type == 'xmltv':
-            fetch_xmltv(source)
-        elif source.source_type == 'schedules_direct':
-            fetch_schedules_direct(source)
+        refresh_epg_data(source.id)
 
     logger.info("Finished refresh_epg_data task.")
     return "EPG data refreshed."
 
+@shared_task
+def refresh_epg_data(source_id):
+    if not acquire_task_lock('refresh_epg_data', source_id):
+        logger.debug(f"EPG refresh for {source_id} already running")
+        return
+
+    source = EPGSource.objects.get(id=source_id)
+    if not source.is_active:
+        logger.info(f"EPG source {source_id} is not active. Skipping.")
+        return
+
+    logger.info(f"Processing EPGSource: {source.name} (type: {source.source_type})")
+    if source.source_type == 'xmltv':
+        fetch_xmltv(source)
+        parse_channels_only(source)
+        parse_programs_for_source(source)
+    elif source.source_type == 'schedules_direct':
+        fetch_schedules_direct(source)
+
+    source.save(update_fields=['updated_at'])
+
+    release_task_lock('refresh_epg_data', source_id)
 
 def fetch_xmltv(source):
+    if not source.url:
+        return
+
     logger.info(f"Fetching XMLTV data from source: {source.name}")
     try:
         response = requests.get(source.url, timeout=30)
@@ -62,21 +86,14 @@ def fetch_xmltv(source):
         source.file_path = file_path
         source.save(update_fields=['file_path'])
 
-        epg_entries = EPGData.objects.exclude(tvg_id__isnull=True).exclude(tvg_id__exact='')
-        for epg in epg_entries:
-            if Channel.objects.filter(tvg_id=epg.tvg_id).exists():
-                logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
-                parse_programs_for_tvg_id(file_path, epg.tvg_id)
-
-        # Now parse <channel> blocks only
-        parse_channels_only(file_path)
-
     except Exception as e:
         logger.error(f"Error fetching XMLTV from {source.name}: {e}", exc_info=True)
 
 
-def parse_channels_only(file_path):
+def parse_channels_only(source):
+    file_path = source.file_path
     logger.info(f"Parsing channels from EPG file: {file_path}")
+    existing_epgs = {e.tvg_id: e for e in EPGData.objects.filter(epg_source=source)}
 
     # Read entire file (decompress if .gz)
     if file_path.endswith('.gz'):
@@ -90,77 +107,190 @@ def parse_channels_only(file_path):
     root = ET.fromstring(xml_data)
     channels = root.findall('channel')
 
+    epgs_to_create = []
+    epgs_to_update = []
+
     logger.info(f"Found {len(channels)} <channel> entries in {file_path}")
-    with transaction.atomic():
-        for channel_elem in channels:
-            tvg_id = channel_elem.get('id', '').strip()
-            if not tvg_id:
-                continue  # skip blank/invalid IDs
+    for channel_elem in channels:
+        tvg_id = channel_elem.get('id', '').strip()
+        if not tvg_id:
+            continue  # skip blank/invalid IDs
 
-            display_name = channel_elem.findtext('display-name', default=tvg_id).strip()
+        display_name = channel_elem.findtext('display-name', default=tvg_id).strip()
 
-            epg_obj, created = EPGData.objects.get_or_create(
+        if tvg_id in existing_epgs:
+            epg_obj = existing_epgs[tvg_id]
+            if epg_obj.name != display_name:
+                epg_obj.name = display_name
+                epgs_to_update.append(epg_obj)
+        else:
+            epgs_to_create.append(EPGData(
                 tvg_id=tvg_id,
-                defaults={'name': display_name}
-            )
-            if not created:
-                # Optionally update if new name is different
-                if epg_obj.name != display_name:
-                    epg_obj.name = display_name
-                    epg_obj.save()
-            logger.debug(f"Channel <{tvg_id}> => EPGData.id={epg_obj.id}, created={created}")
+                name=display_name,
+                epg_source=source,
+            ))
 
-            parse_programs_for_tvg_id(file_path, tvg_id)
+    if epgs_to_create:
+        EPGData.objects.bulk_create(epgs_to_create, ignore_conflicts=True)
+    if epgs_to_update:
+        EPGData.objects.bulk_update(epgs_to_update, ["name"])
+
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        'updates',
+        {
+            'type': 'update',
+            "data": {"success": True, "type": "epg_channels"}
+        }
+    )
 
     logger.info("Finished parsing channel info.")
 
+@shared_task
+def parse_programs_for_tvg_id(epg_id):
+    if not acquire_task_lock('parse_epg_programs', epg_id):
+        logger.debug(f"Program parse for {epg_id} already in progress")
+        return
 
-def parse_programs_for_tvg_id(file_path, tvg_id):
-    logger.info(f"Parsing <programme> for tvg_id={tvg_id} from {file_path}")
+    epg = EPGData.objects.get(id=epg_id)
+    epg_source = epg.epg_source
+
+    if not Channel.objects.filter(epg_data=epg).exists():
+        logger.info(f"No channels matched to EPG {epg.tvg_id}")
+        release_task_lock('parse_epg_programs', epg_id)
+        return
+
+    logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
+
+    # First, remove all existing programs
+    ProgramData.objects.filter(epg=epg).delete()
 
     # Read entire file (decompress if .gz)
-    if file_path.endswith('.gz'):
-        with open(file_path, 'rb') as gz_file:
+    if epg_source.file_path.endswith('.gz'):
+        with open(epg_source.file_path, 'rb') as gz_file:
             decompressed = gzip.decompress(gz_file.read())
             xml_data = decompressed.decode('utf-8')
     else:
-        with open(file_path, 'r', encoding='utf-8') as xml_file:
+        with open(epg_source.file_path, 'r', encoding='utf-8') as xml_file:
             xml_data = xml_file.read()
 
     root = ET.fromstring(xml_data)
-    # Retrieve the EPGData record
-    try:
-        epg_obj = EPGData.objects.get(tvg_id=tvg_id)
-    except EPGData.DoesNotExist:
-        logger.warning(f"No EPGData record found for tvg_id={tvg_id}")
-        return
 
     # Find only <programme> elements for this tvg_id
-    matched_programmes = [p for p in root.findall('programme') if p.get('channel') == tvg_id]
-    logger.debug(f"Found {len(matched_programmes)} programmes for tvg_id={tvg_id}")
+    matched_programmes = [p for p in root.findall('programme') if p.get('channel') == epg.tvg_id]
+    logger.debug(f"Found {len(matched_programmes)} programmes for tvg_id={epg.tvg_id}")
 
-    with transaction.atomic():
-        for prog in matched_programmes:
-            start_time = parse_xmltv_time(prog.get('start'))
-            end_time = parse_xmltv_time(prog.get('stop'))
-            title = prog.findtext('title', default='No Title')
-            desc = prog.findtext('desc', default='')
+    programs_to_create = []
+    for prog in matched_programmes:
+        start_time = parse_xmltv_time(prog.get('start'))
+        end_time = parse_xmltv_time(prog.get('stop'))
+        title = prog.findtext('title', default='No Title')
+        desc = prog.findtext('desc', default='')
+        sub_title = prog.findtext('sub-title', default='')
 
-            obj, created = ProgramData.objects.update_or_create(
-                epg=epg_obj,
-                start_time=start_time,
-                title=title,
-                defaults={
-                    'end_time': end_time,
-                    'description': desc,
-                    'sub_title': '',
-                    'tvg_id': tvg_id,
-                }
-            )
-            if created:
-                logger.debug(f"Created ProgramData: {title} [{start_time} - {end_time}]")
-    logger.info(f"Completed program parsing for tvg_id={tvg_id}.")
+        # Extract custom properties
+        custom_props = {}
 
+        # Extract categories
+        categories = []
+        for cat_elem in prog.findall('category'):
+            if cat_elem.text and cat_elem.text.strip():
+                categories.append(cat_elem.text.strip())
+        if categories:
+            custom_props['categories'] = categories
+
+        # Extract episode numbers
+        for ep_num in prog.findall('episode-num'):
+            system = ep_num.get('system', '')
+            if system == 'xmltv_ns' and ep_num.text:
+                # Parse XMLTV episode-num format (season.episode.part)
+                parts = ep_num.text.split('.')
+                if len(parts) >= 2:
+                    if parts[0].strip() != '':
+                        try:
+                            season = int(parts[0]) + 1  # XMLTV format is zero-based
+                            custom_props['season'] = season
+                        except ValueError:
+                            pass
+                    if parts[1].strip() != '':
+                        try:
+                            episode = int(parts[1]) + 1  # XMLTV format is zero-based
+                            custom_props['episode'] = episode
+                        except ValueError:
+                            pass
+            elif system == 'onscreen' and ep_num.text:
+                # Just store the raw onscreen format
+                custom_props['onscreen_episode'] = ep_num.text.strip()
+
+        # Extract ratings
+        for rating_elem in prog.findall('rating'):
+            if rating_elem.findtext('value'):
+                custom_props['rating'] = rating_elem.findtext('value').strip()
+                if rating_elem.get('system'):
+                    custom_props['rating_system'] = rating_elem.get('system')
+                break  # Just use the first rating
+
+        # Extract credits (actors, directors, etc.)
+        credits_elem = prog.find('credits')
+        if credits_elem is not None:
+            credits = {}
+            for credit_type in ['director', 'actor', 'writer', 'presenter', 'producer']:
+                elements = credits_elem.findall(credit_type)
+                if elements:
+                    names = [e.text.strip() for e in elements if e.text and e.text.strip()]
+                    if names:
+                        credits[credit_type] = names
+            if credits:
+                custom_props['credits'] = credits
+
+        # Extract other common program metadata
+        if prog.findtext('date'):
+            custom_props['year'] = prog.findtext('date').strip()[:4]  # Just the year part
+
+        if prog.findtext('country'):
+            custom_props['country'] = prog.findtext('country').strip()
+
+        for icon_elem in prog.findall('icon'):
+            if icon_elem.get('src'):
+                custom_props['icon'] = icon_elem.get('src')
+                break  # Just use the first icon
+
+        for kw in ['previously-shown', 'premiere', 'new']:
+            if prog.find(kw) is not None:
+                custom_props[kw.replace('-', '_')] = True
+
+        # Convert custom_props to JSON string if not empty
+        custom_properties_json = None
+        if custom_props:
+            import json
+            try:
+                custom_properties_json = json.dumps(custom_props)
+            except Exception as e:
+                logger.error(f"Error serializing custom properties to JSON: {e}", exc_info=True)
+
+        programs_to_create.append(ProgramData(
+            epg=epg,
+            start_time=start_time,
+            end_time=end_time,
+            title=title,
+            description=desc,
+            sub_title=sub_title,
+            tvg_id=epg.tvg_id,
+            custom_properties=custom_properties_json
+        ))
+
+    ProgramData.objects.bulk_create(programs_to_create)
+
+    release_task_lock('parse_epg_programs', epg_id)
+
+    logger.info(f"Completed program parsing for tvg_id={epg.tvg_id}.")
+
+def parse_programs_for_source(epg_source, tvg_id=None):
+    file_path = epg_source.file_path
+    epg_entries = EPGData.objects.filter(epg_source=epg_source)
+    for epg in epg_entries:
+        if epg.tvg_id:
+            parse_programs_for_tvg_id(epg.id)
 
 def fetch_schedules_direct(source):
     logger.info(f"Fetching Schedules Direct data from source: {source.name}")

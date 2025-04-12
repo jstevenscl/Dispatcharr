@@ -7,10 +7,11 @@ import time
 import logging
 import threading
 from apps.proxy.config import TSConfig as Config
-from . import proxy_server
+from .server import ProxyServer
 from .utils import create_ts_packet, get_logger
 from .redis_keys import RedisKeys
 from .utils import get_logger
+from .constants import ChannelMetadataField
 
 logger = get_logger()
 
@@ -96,6 +97,7 @@ class StreamGenerator:
         max_init_wait = getattr(Config, 'CLIENT_WAIT_TIMEOUT', 30)
         keepalive_interval = 0.5
         last_keepalive = 0
+        proxy_server = ProxyServer.get_instance()
 
         # While init is happening, send keepalive packets
         while time.time() - initialization_start < max_init_wait:
@@ -142,6 +144,8 @@ class StreamGenerator:
 
     def _setup_streaming(self):
         """Setup streaming parameters and check resources."""
+        proxy_server = ProxyServer.get_instance()
+
         # Get buffer - stream manager may not exist in this worker
         buffer = proxy_server.stream_buffers.get(self.channel_id)
         stream_manager = proxy_server.stream_managers.get(self.channel_id)
@@ -217,6 +221,8 @@ class StreamGenerator:
 
     def _check_resources(self):
         """Check if required resources still exist."""
+        proxy_server = ProxyServer.get_instance()
+
         # Enhanced resource checks
         if self.channel_id not in proxy_server.stream_buffers:
             logger.info(f"[{self.client_id}] Channel buffer no longer exists, terminating stream")
@@ -263,6 +269,7 @@ class StreamGenerator:
         # Process and send chunks
         total_size = sum(len(c) for c in chunks)
         logger.debug(f"[{self.client_id}] Retrieved {len(chunks)} chunks ({total_size} bytes) from index {self.local_index+1} to {next_index}")
+        proxy_server = ProxyServer.get_instance()
 
         # Send the chunks to the client
         for chunk in chunks:
@@ -298,11 +305,11 @@ class StreamGenerator:
                     try:
                         client_key = RedisKeys.client_metadata(self.channel_id, self.client_id)
                         stats = {
-                            "chunks_sent": str(self.chunks_sent),
-                            "bytes_sent": str(self.bytes_sent),
-                            "avg_rate_KBps": str(round(avg_rate, 1)),
-                            "current_rate_KBps": str(round(self.current_rate, 1)),
-                            "stats_updated_at": str(current_time)
+                            ChannelMetadataField.CHUNKS_SENT: str(self.chunks_sent),
+                            ChannelMetadataField.BYTES_SENT: str(self.bytes_sent),
+                            ChannelMetadataField.AVG_RATE_KBPS: str(round(avg_rate, 1)),
+                            ChannelMetadataField.CURRENT_RATE_KBPS: str(round(self.current_rate, 1)),
+                            ChannelMetadataField.STATS_UPDATED_AT: str(current_time)
                         }
                         proxy_server.redis_client.hset(client_key, mapping=stats)
                         # No need to set expiration as client heartbeat will refresh this key
@@ -328,14 +335,24 @@ class StreamGenerator:
 
     def _is_timeout(self):
         """Check if the stream has timed out."""
+        # Get a more generous timeout for stream switching
+        stream_timeout = getattr(Config, 'STREAM_TIMEOUT', 10)
+        failover_grace_period = getattr(Config, 'FAILOVER_GRACE_PERIOD', 20)
+        total_timeout = stream_timeout + failover_grace_period
+
         # Disconnect after long inactivity
-        if time.time() - self.last_yield_time > Config.STREAM_TIMEOUT:
+        if time.time() - self.last_yield_time > total_timeout:
             if self.stream_manager and not self.stream_manager.healthy:
-                logger.warning(f"[{self.client_id}] No data for {Config.STREAM_TIMEOUT}s and stream unhealthy, disconnecting")
+                # Check if stream manager is actively switching or reconnecting
+                if (hasattr(self.stream_manager, 'url_switching') and self.stream_manager.url_switching):
+                    logger.info(f"[{self.client_id}] Stream switching in progress, giving more time")
+                    return False
+
+                logger.warning(f"[{self.client_id}] No data for {total_timeout}s and stream unhealthy, disconnecting")
                 return True
             elif not self.is_owner_worker and self.consecutive_empty > 100:
                 # Non-owner worker without data for too long
-                logger.warning(f"[{self.client_id}] Non-owner worker with no data for {Config.STREAM_TIMEOUT}s, disconnecting")
+                logger.warning(f"[{self.client_id}] Non-owner worker with no data for {total_timeout}s, disconnecting")
                 return True
         return False
 
@@ -345,6 +362,34 @@ class StreamGenerator:
         elapsed = time.time() - self.stream_start_time
         local_clients = 0
         total_clients = 0
+        proxy_server = ProxyServer.get_instance()
+
+        # Release M3U profile stream allocation if this is the last client
+        stream_released = False
+        if proxy_server.redis_client:
+            try:
+                metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                metadata = proxy_server.redis_client.hgetall(metadata_key)
+                if metadata:
+                    stream_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_ID)
+                    if stream_id_bytes:
+                        stream_id = int(stream_id_bytes.decode('utf-8'))
+
+                        # Check if we're the last client
+                        if self.channel_id in proxy_server.client_managers:
+                            client_count = proxy_server.client_managers[self.channel_id].get_total_client_count()
+                            # Only the last client or owner should release the stream
+                            if client_count <= 1 and proxy_server.am_i_owner(self.channel_id):
+                                from apps.channels.models import Stream
+                                try:
+                                    stream = Stream.objects.get(pk=stream_id)
+                                    stream.release_stream()
+                                    stream_released = True
+                                    logger.debug(f"[{self.client_id}] Released stream {stream_id} for channel {self.channel_id}")
+                                except Exception as e:
+                                    logger.error(f"[{self.client_id}] Error releasing stream {stream_id}: {e}")
+            except Exception as e:
+                logger.error(f"[{self.client_id}] Error checking stream data for release: {e}")
 
         if self.channel_id in proxy_server.client_managers:
             client_manager = proxy_server.client_managers[self.channel_id]
@@ -353,12 +398,15 @@ class StreamGenerator:
             logger.info(f"[{self.client_id}] Disconnected after {elapsed:.2f}s (local: {local_clients}, total: {total_clients})")
 
             # Schedule channel shutdown if no clients left
-            self._schedule_channel_shutdown_if_needed(local_clients)
+            if not stream_released:  # Only if we haven't already released the stream
+                self._schedule_channel_shutdown_if_needed(local_clients)
 
     def _schedule_channel_shutdown_if_needed(self, local_clients):
         """
         Schedule channel shutdown if there are no clients left and we're the owner.
         """
+        proxy_server = ProxyServer.get_instance()
+
         # If no clients left and we're the owner, schedule shutdown using the config value
         if local_clients == 0 and proxy_server.am_i_owner(self.channel_id):
             logger.info(f"No local clients left for channel {self.channel_id}, scheduling shutdown")

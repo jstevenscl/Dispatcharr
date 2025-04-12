@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import useChannelsStore from '../../store/channels';
@@ -25,24 +25,38 @@ import {
   Divider,
   Stack,
   useMantineTheme,
+  Popover,
+  ScrollArea,
+  Tooltip,
+  NumberInput,
+  Image,
 } from '@mantine/core';
-import { ListOrdered, SquarePlus, SquareX } from 'lucide-react';
+import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
 import { Dropzone } from '@mantine/dropzone';
+import { FixedSizeList as List } from 'react-window';
 
 const Channel = ({ channel = null, isOpen, onClose }) => {
   const theme = useMantineTheme();
 
-  const channelGroups = useChannelsStore((state) => state.channelGroups);
+  const listRef = useRef(null);
+  const logoListRef = useRef(null);
+
+  const { channelGroups, logos, fetchLogos } = useChannelsStore();
   const streams = useStreamsStore((state) => state.streams);
   const { profiles: streamProfiles } = useStreamProfilesStore();
   const { playlists } = usePlaylistsStore();
-  const { tvgs } = useEPGsStore();
+  const { epgs, tvgs, tvgsById } = useEPGsStore();
 
-  const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
   const [channelStreams, setChannelStreams] = useState([]);
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
+  const [epgPopoverOpened, setEpgPopoverOpened] = useState(false);
+  const [logoPopoverOpened, setLogoPopoverOpened] = useState(false);
+  const [selectedEPG, setSelectedEPG] = useState({});
+  const [tvgFilter, setTvgFilter] = useState('');
+  const [logoFilter, setLogoFilter] = useState('');
+  const [logoOptions, setLogoOptions] = useState([]);
 
   const addStream = (stream) => {
     const streamSet = new Set(channelStreams);
@@ -56,13 +70,13 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     setChannelStreams(Array.from(streamSet));
   };
 
-  const handleLogoChange = (files) => {
+  const handleLogoChange = async (files) => {
     if (files.length === 1) {
-      console.log(files[0]);
-      setLogoFile(files[0]);
-      setLogoPreview(URL.createObjectURL(files[0]));
+      const retval = await API.uploadLogo(files[0]);
+      await fetchLogos();
+      setLogoPreview(retval.cache_url);
+      formik.setFieldValue('logo_id', retval.id);
     } else {
-      setLogoFile(null);
       setLogoPreview(null);
     }
   };
@@ -70,15 +84,15 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
       name: '',
-      channel_number: '',
+      channel_number: 0,
       channel_group_id: '',
       stream_profile_id: '0',
       tvg_id: '',
-      tvg_name: '',
+      epg_data_id: '',
+      logo_id: '',
     },
     validationSchema: Yup.object({
       name: Yup.string().required('Name is required'),
-      channel_number: Yup.string().required('Invalid channel number').min(0),
       channel_group_id: Yup.string().required('Channel group is required'),
     }),
     onSubmit: async (values, { setSubmitting, resetForm }) => {
@@ -86,50 +100,74 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         values.stream_profile_id = null;
       }
 
-      if (values.stream_profile_id == null) {
-        delete values.stream_profile_id;
+      if (!values.logo_id || values.logo_id === 'undefined') {
+        delete values.logo_id;
+      }
+
+      if (!values.channel_number) {
+        delete values.channel_number;
       }
 
       if (channel?.id) {
         await API.updateChannel({
           id: channel.id,
           ...values,
-          logo_file: logoFile,
           streams: channelStreams.map((stream) => stream.id),
         });
       } else {
         await API.addChannel({
           ...values,
-          logo_file: logoFile,
           streams: channelStreams.map((stream) => stream.id),
         });
       }
 
       resetForm();
-      setLogoFile(null);
       setLogoPreview(null);
       setSubmitting(false);
+      setTvgFilter('');
+      setLogoFilter('');
       onClose();
     },
   });
 
   useEffect(() => {
     if (channel) {
+      if (channel.epg_data) {
+        const epgSource = epgs[channel.epg_data.epg_source];
+        setSelectedEPG(`${epgSource.id}`);
+      }
+
       formik.setValues({
         name: channel.name,
         channel_number: channel.channel_number,
-        channel_group_id: channel.channel_group?.id,
-        stream_profile_id: channel.stream_profile_id || '0',
+        channel_group_id: `${channel.channel_group?.id}`,
+        stream_profile_id: channel.stream_profile_id
+          ? `${channel.stream_profile_id}`
+          : '0',
         tvg_id: channel.tvg_id,
-        tvg_name: channel.tvg_name,
+        epg_data_id: channel.epg_data ? `${channel.epg_data?.id}` : '',
+        logo_id: `${channel.logo?.id}`,
       });
 
-      console.log(channel);
       setChannelStreams(channel.streams);
     } else {
       formik.resetForm();
+      setTvgFilter('');
+      setLogoFilter('');
     }
-  }, [channel]);
+  }, [channel, tvgsById]);
+
+  useEffect(() => {
+    setLogoOptions([{ id: '0', name: 'Default' }].concat(Object.values(logos)));
+  }, [logos]);
+
+  const renderLogoOption = ({ option, checked }) => {
+    return (
+      <Center style={{ width: '100%' }}>
+        <img src={logos[option.value].cache_url} width="30" />
+      </Center>
+    );
+  };
 
   // const activeStreamsTable = useMantineReactTable({
   //   data: channelStreams,
@@ -263,6 +301,18 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     return <></>;
   }
 
+  const filteredTvgs = tvgs
+    .filter((tvg) => tvg.epg_source == selectedEPG)
+    .filter(
+      (tvg) =>
+        tvg.name.toLowerCase().includes(tvgFilter.toLowerCase()) ||
+        tvg.tvg_id.toLowerCase().includes(tvgFilter.toLowerCase())
+    );
+
+  const filteredLogos = logoOptions.filter((logo) =>
+    logo.name.toLowerCase().includes(logoFilter.toLowerCase())
+  );
+
   return (
     <>
       <Modal
@@ -296,6 +346,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   name="channel_group_id"
                   label="Channel Group"
                   value={formik.values.channel_group_id}
+                  searchable
                   onChange={(value) => {
                     formik.setFieldValue('channel_group_id', value); // Update Formik's state with the new value
                   }}
@@ -346,34 +397,82 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 )}
                 size="xs"
               />
-
-              <TextInput
-                id="channel_number"
-                name="channel_number"
-                label="Channel #"
-                value={formik.values.channel_number}
-                onChange={formik.handleChange}
-                error={
-                  formik.errors.channel_number
-                    ? formik.touched.channel_number
-                    : ''
-                }
-                size="xs"
-              />
             </Stack>
 
             <Divider size="sm" orientation="vertical" />
 
             <Stack justify="flex-start" style={{ flex: 1 }}>
-              <TextInput
-                id="logo_url"
-                name="logo_url"
-                label="Logo (URL)"
-                value={formik.values.logo_url}
-                onChange={formik.handleChange}
-                error={formik.errors.logo_url ? formik.touched.logo_url : ''}
-                size="xs"
-              />
+              <Group justify="space-between">
+                <Popover
+                  opened={logoPopoverOpened}
+                  onChange={setLogoPopoverOpened}
+                  // position="bottom-start"
+                  withArrow
+                >
+                  <Popover.Target>
+                    <TextInput
+                      id="logo_id"
+                      name="logo_id"
+                      label="Logo"
+                      readOnly
+                      value={logos[formik.values.logo_id]?.name || 'Default'}
+                      onClick={() => setLogoPopoverOpened(true)}
+                      size="xs"
+                    />
+                  </Popover.Target>
+
+                  <Popover.Dropdown onMouseDown={(e) => e.stopPropagation()}>
+                    <Group>
+                      <TextInput
+                        placeholder="Filter"
+                        value={logoFilter}
+                        onChange={(event) =>
+                          setLogoFilter(event.currentTarget.value)
+                        }
+                        mb="xs"
+                        size="xs"
+                      />
+                    </Group>
+
+                    <ScrollArea style={{ height: 200 }}>
+                      <List
+                        height={200} // Set max height for visible items
+                        itemCount={filteredLogos.length}
+                        itemSize={20} // Adjust row height for each item
+                        width="100%"
+                        ref={logoListRef}
+                      >
+                        {({ index, style }) => (
+                          <div style={style}>
+                            <Center>
+                              <img
+                                src={filteredLogos[index].cache_url || logo}
+                                height="20"
+                                style={{ maxWidth: 80 }}
+                                onClick={() => {
+                                  formik.setFieldValue(
+                                    'logo_id',
+                                    filteredLogos[index].id
+                                  );
+                                }}
+                              />
+                            </Center>
+                          </div>
+                        )}
+                      </List>
+                    </ScrollArea>
+                  </Popover.Dropdown>
+                </Popover>
+
+                <img
+                  src={
+                    logos[formik.values.logo_id]
+                      ? logos[formik.values.logo_id].cache_url
+                      : logo
+                  }
+                  height="40"
+                />
+              </Group>
 
               <Group>
                 <Divider size="xs" style={{ flex: 1 }} />
@@ -384,18 +483,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
               </Group>
 
               <Stack>
-                <Group justify="space-between">
-                  <Text size="sm">Upload Logo</Text>
-                  {logoPreview && (
-                    <ActionIcon
-                      variant="transparent"
-                      color="red.9"
-                      onClick={handleLogoChange}
-                    >
-                      <SquareX />
-                    </ActionIcon>
-                  )}
-                </Group>
+                <Text size="sm">Upload Logo</Text>
                 <Dropzone
                   onDrop={handleLogoChange}
                   onReject={(files) => console.log('rejected files', files)}
@@ -407,22 +495,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                     mih={40}
                     style={{ pointerEvents: 'none' }}
                   >
-                    <div>
-                      {logoPreview && (
-                        <Center>
-                          <img
-                            src={logoPreview || logo}
-                            alt="Selected"
-                            style={{ maxWidth: 50, height: 'auto' }}
-                          />
-                        </Center>
-                      )}
-                      {!logoPreview && (
-                        <Text size="sm" inline>
-                          Drag images here or click to select files
-                        </Text>
-                      )}
-                    </div>
+                    <Text size="sm" inline>
+                      Drag images here or click to select files
+                    </Text>
                   </Group>
                 </Dropzone>
 
@@ -433,42 +508,145 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
             <Divider size="sm" orientation="vertical" />
 
             <Stack gap="5" style={{ flex: 1 }} justify="flex-start">
-              <TextInput
-                id="tvg_name"
-                name="tvg_name"
-                label="TVG Name"
-                value={formik.values.tvg_name}
+              <NumberInput
+                id="channel_number"
+                name="channel_number"
+                label="Channel # (blank to auto-assign)"
+                value={formik.values.channel_number}
                 onChange={formik.handleChange}
-                error={formik.errors.tvg_name ? formik.touched.tvg_name : ''}
+                error={
+                  formik.errors.channel_number
+                    ? formik.touched.channel_number
+                    : ''
+                }
                 size="xs"
               />
 
-              <Select
+              <TextInput
                 id="tvg_id"
                 name="tvg_id"
-                label="TVG ID"
-                searchable
+                label="TVG-ID"
                 value={formik.values.tvg_id}
-                onChange={(value) => {
-                  formik.setFieldValue('tvg_id', value); // Update Formik's state with the new value
-                }}
-                error={formik.errors.tvg_id}
-                data={tvgs.map((tvg) => ({
-                  value: tvg.name,
-                  label: tvg.tvg_id,
-                }))}
+                onChange={formik.handleChange}
+                error={formik.errors.tvg_id ? formik.touched.tvg_id : ''}
                 size="xs"
               />
 
-              <TextInput
-                id="logo_url"
-                name="logo_url"
-                label="Logo URL (Optional)"
-                style={{ marginBottom: 2 }}
-                value={formik.values.logo_url}
-                onChange={formik.handleChange}
-                size="xs"
-              />
+              <Popover
+                opened={epgPopoverOpened}
+                onChange={setEpgPopoverOpened}
+                // position="bottom-start"
+                withArrow
+              >
+                <Popover.Target>
+                  <TextInput
+                    id="epg_data_id"
+                    name="epg_data_id"
+                    label={
+                      <Group style={{ width: '100%' }}>
+                        <Box>EPG</Box>
+                        <Button
+                          size="xs"
+                          variant="transparent"
+                          onClick={() =>
+                            formik.setFieldValue('epg_data_id', null)
+                          }
+                        >
+                          Use Dummy
+                        </Button>
+                      </Group>
+                    }
+                    readOnly
+                    value={
+                      formik.values.epg_data_id
+                        ? tvgsById[formik.values.epg_data_id].name
+                        : 'Dummy'
+                    }
+                    onClick={() => setEpgPopoverOpened(true)}
+                    size="xs"
+                    rightSection={
+                      <Tooltip label="Use dummy EPG">
+                        <ActionIcon
+                          // color={theme.tailwind.green[5]}
+                          color="white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            formik.setFieldValue('epg_data_id', null);
+                          }}
+                          title="Create new group"
+                          size="small"
+                          variant="transparent"
+                        >
+                          <X size="20" />
+                        </ActionIcon>
+                      </Tooltip>
+                    }
+                  />
+                </Popover.Target>
+
+                <Popover.Dropdown onMouseDown={(e) => e.stopPropagation()}>
+                  <Group>
+                    <Select
+                      label="Source"
+                      value={selectedEPG}
+                      onChange={setSelectedEPG}
+                      data={Object.values(epgs).map((epg) => ({
+                        value: `${epg.id}`,
+                        label: epg.name,
+                      }))}
+                      size="xs"
+                      mb="xs"
+                    />
+
+                    {/* Filter Input */}
+                    <TextInput
+                      label="Filter"
+                      value={tvgFilter}
+                      onChange={(event) =>
+                        setTvgFilter(event.currentTarget.value)
+                      }
+                      mb="xs"
+                      size="xs"
+                    />
+                  </Group>
+
+                  <ScrollArea style={{ height: 200 }}>
+                    <List
+                      height={200} // Set max height for visible items
+                      itemCount={filteredTvgs.length}
+                      itemSize={40} // Adjust row height for each item
+                      width="100%"
+                      ref={listRef}
+                    >
+                      {({ index, style }) => (
+                        <div style={style}>
+                          <Button
+                            key={filteredTvgs[index].id}
+                            variant="subtle"
+                            color="gray"
+                            fullWidth
+                            justify="left"
+                            size="xs"
+                            onClick={() => {
+                              if (filteredTvgs[index].id == '0') {
+                                formik.setFieldValue('epg_data_id', null);
+                              } else {
+                                formik.setFieldValue(
+                                  'epg_data_id',
+                                  filteredTvgs[index].id
+                                );
+                              }
+                              setEpgPopoverOpened(false);
+                            }}
+                          >
+                            {filteredTvgs[index].tvg_id}
+                          </Button>
+                        </div>
+                      )}
+                    </List>
+                  </ScrollArea>
+                </Popover.Dropdown>
+              </Popover>
             </Stack>
           </Group>
 
@@ -495,6 +673,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           </Flex>
         </form>
       </Modal>
+
       <ChannelGroupForm
         isOpen={channelGroupModelOpen}
         onClose={() => setChannelGroupModalOpen(false)}

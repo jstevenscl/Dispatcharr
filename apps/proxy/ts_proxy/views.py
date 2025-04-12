@@ -7,7 +7,7 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponseRedirec
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
-from . import proxy_server
+from .server import ProxyServer
 from .channel_status import ChannelStatus
 from .stream_generator import create_stream_generator
 from .utils import get_client_ip
@@ -18,11 +18,12 @@ from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings, PROXY_PROFILE_NAME
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
-from .constants import ChannelState, EventType, StreamType
+from .constants import ChannelState, EventType, StreamType, ChannelMetadataField
 from .config_helper import ConfigHelper
 from .services.channel_service import ChannelService
-from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch
+from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object, get_alternate_streams
 from .utils import get_logger
+from uuid import UUID
 
 logger = get_logger()
 
@@ -30,9 +31,10 @@ logger = get_logger()
 @api_view(['GET'])
 def stream_ts(request, channel_id):
     """Stream TS data to client with immediate response and keep-alive packets during initialization"""
+    channel = get_stream_object(channel_id)
+
     client_user_agent = None
-    logger.info(f"Fetching channel ID {channel_id}")
-    channel = get_object_or_404(Channel, uuid=channel_id)
+    proxy_server = ProxyServer.get_instance()
 
     try:
         # Generate a unique client ID
@@ -56,15 +58,17 @@ def stream_ts(request, channel_id):
             metadata_key = RedisKeys.channel_metadata(channel_id)
             if proxy_server.redis_client.exists(metadata_key):
                 metadata = proxy_server.redis_client.hgetall(metadata_key)
-                if b'state' in metadata:
-                    channel_state = metadata[b'state'].decode('utf-8')
+                state_field = ChannelMetadataField.STATE.encode('utf-8')
+                if state_field in metadata:
+                    channel_state = metadata[state_field].decode('utf-8')
 
                     # Only skip initialization if channel is in a healthy state
                     valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS]
                     if channel_state in valid_states:
                         # Verify the owner is still active
-                        if b'owner' in metadata:
-                            owner = metadata[b'owner'].decode('utf-8')
+                        owner_field = ChannelMetadataField.OWNER.encode('utf-8')
+                        if owner_field in metadata:
+                            owner = metadata[owner_field].decode('utf-8')
                             owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
                             if proxy_server.redis_client.exists(owner_heartbeat_key):
                                 # Owner is active and channel is in good state
@@ -82,14 +86,62 @@ def stream_ts(request, channel_id):
             # Initialize the channel (but don't wait for completion)
             logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
 
-            # Use the utility function to get stream URL and settings
-            stream_url, stream_user_agent, transcode, profile_value = generate_stream_url(channel_id)
+            # Use max retry attempts and connection timeout from config
+            max_retries = ConfigHelper.max_retries()
+            retry_timeout = ConfigHelper.connection_timeout()
+            wait_start_time = time.time()
+
+            stream_url = None
+            stream_user_agent = None
+            transcode = False
+            profile_value = None
+            error_reason = None
+
+            # Try to get a stream with configured retries
+            for attempt in range(max_retries):
+                stream_url, stream_user_agent, transcode, profile_value = generate_stream_url(channel_id)
+
+                if stream_url is not None:
+                    logger.info(f"[{client_id}] Successfully obtained stream for channel {channel_id}")
+                    break
+
+                # If we failed because there are no streams assigned, don't retry
+                _, _, error_reason = channel.get_stream()
+                if error_reason and 'maximum connection limits' not in error_reason:
+                    logger.warning(f"[{client_id}] Can't retry - error not related to connection limits: {error_reason}")
+                    break
+
+                # Don't exceed the overall connection timeout
+                if time.time() - wait_start_time > retry_timeout:
+                    logger.warning(f"[{client_id}] Connection wait timeout exceeded ({retry_timeout}s)")
+                    break
+
+                # Wait before retrying (using exponential backoff with a cap)
+                wait_time = min(0.5 * (2 ** attempt), 2.0)  # Caps at 2 seconds
+                logger.info(f"[{client_id}] Waiting {wait_time:.1f}s for a connection to become available (attempt {attempt+1}/{max_retries})")
+                time.sleep(wait_time)
+
             if stream_url is None:
-                return JsonResponse({'error': 'Channel not available'}, status=404)
+                # Make sure to release any stream locks that might have been acquired
+                if hasattr(channel, 'streams') and channel.streams.exists():
+                    for stream in channel.streams.all():
+                        try:
+                            stream.release_stream()
+                            logger.info(f"[{client_id}] Released stream {stream.id} for channel {channel_id}")
+                        except Exception as e:
+                            logger.error(f"[{client_id}] Error releasing stream: {e}")
+
+                # Get the specific error message if available
+                wait_duration = f"{int(time.time() - wait_start_time)}s"
+                error_msg = error_reason if error_reason else 'No available streams for this channel'
+                return JsonResponse({
+                    'error': error_msg,
+                    'waited': wait_duration
+                }, status=503)  # 503 Service Unavailable is appropriate here
 
             # Get the stream ID from the channel
-            stream_id, profile_id = channel.get_stream()
-            logger.info(f"Channel {channel_id} using stream ID {stream_id}, profile ID {profile_id}")
+            stream_id, m3u_profile_id, _ = channel.get_stream()
+            logger.info(f"Channel {channel_id} using stream ID {stream_id}, m3u account profile ID {m3u_profile_id}")
 
             # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
@@ -98,7 +150,7 @@ def stream_ts(request, channel_id):
 
             # Initialize channel with the stream's user agent (not the client's)
             success = ChannelService.initialize_channel(
-                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id
+                channel_id, stream_url, stream_user_agent, transcode, profile_value, stream_id, m3u_profile_id
             )
 
             if not success:
@@ -134,9 +186,9 @@ def stream_ts(request, channel_id):
 
             if proxy_server.redis_client:
                 metadata_key = RedisKeys.channel_metadata(channel_id)
-                url_bytes = proxy_server.redis_client.hget(metadata_key, "url")
-                ua_bytes = proxy_server.redis_client.hget(metadata_key, "user_agent")
-                profile_bytes = proxy_server.redis_client.hget(metadata_key, "profile")
+                url_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.URL)
+                ua_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.USER_AGENT)
+                profile_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_PROFILE)
 
                 if url_bytes:
                     url = url_bytes.decode('utf-8')
@@ -189,6 +241,8 @@ def stream_ts(request, channel_id):
 @permission_classes([IsAuthenticated])
 def change_stream(request, channel_id):
     """Change stream URL for existing channel with enhanced diagnostics"""
+    proxy_server = ProxyServer.get_instance()
+
     try:
         data = json.loads(request.body)
         new_url = data.get('url')
@@ -240,6 +294,8 @@ def channel_status(request, channel_id=None):
     - /status/ returns basic summary of all channels
     - /status/{channel_id} returns detailed info about specific channel
     """
+    proxy_server = ProxyServer.get_instance()
+
     try:
         # Check if Redis is available
         if not proxy_server.redis_client:
@@ -333,4 +389,116 @@ def stop_client(request, channel_id):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         logger.error(f"Failed to stop client: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def next_stream(request, channel_id):
+    """Switch to the next available stream for a channel"""
+    proxy_server = ProxyServer.get_instance()
+
+    try:
+        logger.info(f"Request to switch to next stream for channel {channel_id} received")
+
+        # Check if the channel exists
+        channel = get_stream_object(channel_id)
+
+        # First check if channel is active in Redis
+        current_stream_id = None
+        profile_id = None
+
+        if proxy_server.redis_client:
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            if proxy_server.redis_client.exists(metadata_key):
+                # Get current stream ID from Redis
+                stream_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_ID)
+                if stream_id_bytes:
+                    current_stream_id = int(stream_id_bytes.decode('utf-8'))
+                    logger.info(f"Found current stream ID {current_stream_id} in Redis for channel {channel_id}")
+
+                    # Get M3U profile from Redis if available
+                    profile_id_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.M3U_PROFILE)
+                    if profile_id_bytes:
+                        profile_id = int(profile_id_bytes.decode('utf-8'))
+                        logger.info(f"Found M3U profile ID {profile_id} in Redis for channel {channel_id}")
+
+        if not current_stream_id:
+            # Channel is not running
+            return JsonResponse({'error': 'No current stream found for channel'}, status=404)
+
+        # Get all streams for this channel in their defined order
+        streams = list(channel.streams.all().order_by('channelstream__order'))
+
+        if len(streams) <= 1:
+            return JsonResponse({
+                'error': 'No alternate streams available for this channel',
+                'current_stream_id': current_stream_id
+            }, status=404)
+
+        # Find the current stream's position in the list
+        current_index = None
+        for i, stream in enumerate(streams):
+            if stream.id == current_stream_id:
+                current_index = i
+                break
+
+        if current_index is None:
+            logger.warning(f"Current stream ID {current_stream_id} not found in channel's streams list")
+            # Fall back to the first stream that's not the current one
+            next_stream = next((s for s in streams if s.id != current_stream_id), None)
+            if not next_stream:
+                return JsonResponse({
+                    'error': 'Could not find current stream in channel list',
+                    'current_stream_id': current_stream_id
+                }, status=404)
+        else:
+            # Get the next stream in the rotation (with wrap-around)
+            next_index = (current_index + 1) % len(streams)
+            next_stream = streams[next_index]
+
+        next_stream_id = next_stream.id
+        logger.info(f"Rotating to next stream ID {next_stream_id} for channel {channel_id}")
+
+        # Get full stream info including URL for the next stream
+        stream_info = get_stream_info_for_switch(channel_id, next_stream_id)
+
+        if 'error' in stream_info:
+            return JsonResponse({
+                'error': stream_info['error'],
+                'current_stream_id': current_stream_id,
+                'next_stream_id': next_stream_id
+            }, status=404)
+
+        # Now use the ChannelService to change the stream URL
+        result = ChannelService.change_stream_url(
+            channel_id,
+            stream_info['url'],
+            stream_info['user_agent'],
+            next_stream_id  # Pass the stream_id to be stored in Redis
+        )
+
+        if result.get('status') == 'error':
+            return JsonResponse({
+                'error': result.get('message', 'Unknown error'),
+                'diagnostics': result.get('diagnostics', {}),
+                'current_stream_id': current_stream_id,
+                'next_stream_id': next_stream_id
+            }, status=404)
+
+        # Format success response
+        response_data = {
+            'message': 'Stream switched to next available',
+            'channel': channel_id,
+            'previous_stream_id': current_stream_id,
+            'new_stream_id': next_stream_id,
+            'new_url': stream_info['url'],
+            'owner': result.get('direct_update', False),
+            'worker_id': proxy_server.worker_id
+        }
+
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        logger.error(f"Failed to switch to next stream: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

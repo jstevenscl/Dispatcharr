@@ -15,9 +15,9 @@ from core.models import UserAgent, CoreSettings
 from .stream_buffer import StreamBuffer
 from .utils import detect_stream_type, get_logger
 from .redis_keys import RedisKeys
-from .constants import ChannelState, EventType, StreamType, TS_PACKET_SIZE
+from .constants import ChannelState, EventType, StreamType, ChannelMetadataField, TS_PACKET_SIZE
 from .config_helper import ConfigHelper
-from .url_utils import get_alternate_streams, get_stream_info_for_switch
+from .url_utils import get_alternate_streams, get_stream_info_for_switch, get_stream_object
 
 logger = get_logger()
 
@@ -284,10 +284,10 @@ class StreamManager:
 
                         # Update metadata to indicate error state
                         update_data = {
-                            "state": ChannelState.ERROR,
-                            "state_changed_at": str(time.time()),
-                            "error_message": error_message,
-                            "error_time": str(time.time())
+                            ChannelMetadataField.STATE: ChannelState.ERROR,
+                            ChannelMetadataField.STATE_CHANGED_AT: str(time.time()),
+                            ChannelMetadataField.ERROR_MESSAGE: error_message,
+                            ChannelMetadataField.ERROR_TIME: str(time.time())
                         }
                         self.buffer.redis_client.hset(metadata_key, mapping=update_data)
                         logger.info(f"Updated channel {self.channel_id} state to ERROR in Redis after stream failure")
@@ -304,7 +304,7 @@ class StreamManager:
         """Establish a connection using transcoding"""
         try:
             logger.debug(f"Building transcode command for channel {self.channel_id}")
-            channel = get_object_or_404(Channel, uuid=self.channel_id)
+            channel = get_stream_object(self.channel_id)
 
             # Use FFmpeg specifically for HLS streams
             if hasattr(self, 'force_ffmpeg') and self.force_ffmpeg:
@@ -335,6 +335,9 @@ class StreamManager:
 
             self.socket = self.transcode_process.stdout  # Read from std output
             self.connected = True
+
+            # Set connection start time for stability tracking
+            self.connection_start_time = time.time()
 
             # Set channel state to waiting for clients
             self._set_waiting_for_clients()
@@ -367,6 +370,9 @@ class StreamManager:
                 self.healthy = True
                 logger.info(f"Successfully connected to stream source")
 
+                # Store connection start time for stability tracking
+                self.connection_start_time = time.time()
+
                 # Set channel state to waiting for clients
                 self._set_waiting_for_clients()
 
@@ -398,13 +404,13 @@ class StreamManager:
                     metadata_key = RedisKeys.channel_metadata(self.channel_id)
 
                     # Use hincrby to atomically increment the total_bytes field
-                    self.buffer.redis_client.hincrby(metadata_key, "total_bytes", self.bytes_processed)
+                    self.buffer.redis_client.hincrby(metadata_key, ChannelMetadataField.TOTAL_BYTES, self.bytes_processed)
 
                     # Reset local counter after updating Redis
                     self.bytes_processed = 0
                     self.last_bytes_update = now
 
-                    logger.debug(f"Updated total_bytes in Redis for channel {self.channel_id}")
+                    logger.debug(f"Updated {ChannelMetadataField.TOTAL_BYTES} in Redis for channel {self.channel_id}")
         except Exception as e:
             logger.error(f"Error updating bytes processed: {e}")
 
@@ -490,6 +496,21 @@ class StreamManager:
         # Add at the beginning of your stop method
         self.stopping = True
 
+        # Release stream resources if we're the owner
+        if self.current_stream_id and hasattr(self, 'worker_id') and self.worker_id:
+            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                owner_key = RedisKeys.channel_owner(self.channel_id)
+                current_owner = self.buffer.redis_client.get(owner_key)
+
+                if current_owner and current_owner.decode('utf-8') == self.worker_id:
+                    try:
+                        from apps.channels.models import Stream
+                        stream = Stream.objects.get(pk=self.current_stream_id)
+                        stream.release_stream()
+                        logger.info(f"Released stream {self.current_stream_id} for channel {self.channel_id}")
+                    except Exception as e:
+                        logger.error(f"Error releasing stream {self.current_stream_id}: {e}")
+
         # Cancel all buffer check timers
         for timer in list(self._buffer_check_timers):
             try:
@@ -573,23 +594,111 @@ class StreamManager:
 
     def _monitor_health(self):
         """Monitor stream health and attempt recovery if needed"""
+        consecutive_unhealthy_checks = 0
+        health_recovery_attempts = 0
+        reconnect_attempts = 0
+        max_health_recovery_attempts = ConfigHelper.get('MAX_HEALTH_RECOVERY_ATTEMPTS', 2)
+        max_reconnect_attempts = ConfigHelper.get('MAX_RECONNECT_ATTEMPTS', 3)
+        min_stable_time = ConfigHelper.get('MIN_STABLE_TIME_BEFORE_RECONNECT', 30)  # seconds
+
         while self.running:
             try:
                 now = time.time()
-                if now - self.last_data_time > getattr(Config, 'CONNECTION_TIMEOUT', 10) and self.connected:
+                inactivity_duration = now - self.last_data_time
+                timeout_threshold = getattr(Config, 'CONNECTION_TIMEOUT', 10)
+
+                if inactivity_duration > timeout_threshold and self.connected:
                     # Mark unhealthy if no data for too long
                     if self.healthy:
-                        logger.warning(f"Stream unhealthy - no data for {now - self.last_data_time:.1f}s")
+                        logger.warning(f"Stream unhealthy - no data for {inactivity_duration:.1f}s")
                         self.healthy = False
+
+                    # Track consecutive unhealthy checks
+                    consecutive_unhealthy_checks += 1
+
+                    # After several unhealthy checks in a row, try recovery
+                    if consecutive_unhealthy_checks >= 3 and health_recovery_attempts < max_health_recovery_attempts:
+                        # Calculate how long the stream was stable before failing
+                        connection_start_time = getattr(self, 'connection_start_time', 0)
+                        stable_time = self.last_data_time - connection_start_time if connection_start_time > 0 else 0
+
+                        if stable_time >= min_stable_time and reconnect_attempts < max_reconnect_attempts:
+                            # Stream was stable for a while, try reconnecting first
+                            logger.warning(f"Stream was stable for {stable_time:.1f}s before failing. "
+                                          f"Attempting reconnect {reconnect_attempts + 1}/{max_reconnect_attempts}")
+                            reconnect_attempts += 1
+                            threading.Thread(target=self._attempt_reconnect, daemon=True).start()
+                        else:
+                            # Stream was not stable long enough, or reconnects failed too many times
+                            # Try switching to another stream
+                            if reconnect_attempts > 0:
+                                logger.warning(f"Reconnect attempts exhausted ({reconnect_attempts}/{max_reconnect_attempts}). "
+                                             f"Attempting stream switch recovery")
+                            else:
+                                logger.warning(f"Stream was only stable for {stable_time:.1f}s (<{min_stable_time}s). "
+                                             f"Skipping reconnect, attempting stream switch")
+
+                            health_recovery_attempts += 1
+                            reconnect_attempts = 0  # Reset for next time
+                            threading.Thread(target=self._attempt_health_recovery, daemon=True).start()
                 elif self.connected and not self.healthy:
                     # Auto-recover health when data resumes
                     logger.info(f"Stream health restored")
                     self.healthy = True
+                    consecutive_unhealthy_checks = 0
+                    health_recovery_attempts = 0
+                    reconnect_attempts = 0
+
+                # If healthy, reset unhealthy counter (but keep other state)
+                if self.healthy:
+                    consecutive_unhealthy_checks = 0
 
             except Exception as e:
                 logger.error(f"Error in health monitor: {e}")
 
             time.sleep(self.health_check_interval)
+
+    def _attempt_reconnect(self):
+        """Attempt to reconnect to the current stream"""
+        try:
+            logger.info(f"Attempting reconnect to current stream for channel {self.channel_id}")
+
+            # Don't try to reconnect if we're already switching URLs
+            if self.url_switching:
+                logger.info("URL switching already in progress, skipping reconnect")
+                return
+
+            # Close existing connection
+            if self.transcode or self.socket:
+                self._close_socket()
+            else:
+                self._close_connection()
+
+            self.connected = False
+
+            # Attempt to establish a new connection using the same URL
+            connection_result = False
+            try:
+                if self.transcode:
+                    connection_result = self._establish_transcode_connection()
+                else:
+                    connection_result = self._establish_http_connection()
+
+                if connection_result:
+                    # Store connection start time to measure stability
+                    self.connection_start_time = time.time()
+                    logger.info(f"Reconnect successful for channel {self.channel_id}")
+                    return True
+                else:
+                    logger.warning(f"Reconnect failed for channel {self.channel_id}")
+                    return False
+            except Exception as e:
+                logger.error(f"Error during reconnect: {e}", exc_info=True)
+                return False
+
+        except Exception as e:
+            logger.error(f"Error in reconnect attempt: {e}", exc_info=True)
+            return False
 
     def _close_connection(self):
         """Close HTTP connection resources"""
@@ -743,8 +852,9 @@ class StreamManager:
                     current_state = None
                     try:
                         metadata = redis_client.hgetall(metadata_key)
-                        if metadata and b'state' in metadata:
-                            current_state = metadata[b'state'].decode('utf-8')
+                        state_field = ChannelMetadataField.STATE.encode('utf-8')
+                        if metadata and state_field in metadata:
+                            current_state = metadata[state_field].decode('utf-8')
                     except Exception as e:
                         logger.error(f"Error checking current state: {e}")
 
@@ -758,8 +868,8 @@ class StreamManager:
                             # Not enough buffer yet - set to connecting state if not already
                             if current_state != ChannelState.CONNECTING:
                                 update_data = {
-                                    "state": ChannelState.CONNECTING,
-                                    "state_changed_at": current_time
+                                    ChannelMetadataField.STATE: ChannelState.CONNECTING,
+                                    ChannelMetadataField.STATE_CHANGED_AT: current_time
                                 }
                                 redis_client.hset(metadata_key, mapping=update_data)
                                 logger.info(f"Channel {channel_id} connected but waiting for buffer to fill: {current_buffer_index}/{initial_chunks_needed} chunks")
@@ -772,16 +882,16 @@ class StreamManager:
 
                         # We have enough buffer, proceed with state change
                         update_data = {
-                            "state": ChannelState.WAITING_FOR_CLIENTS,
-                            "connection_ready_time": current_time,
-                            "state_changed_at": current_time,
-                            "buffer_chunks": str(current_buffer_index)
+                            ChannelMetadataField.STATE: ChannelState.WAITING_FOR_CLIENTS,
+                            ChannelMetadataField.CONNECTION_READY_TIME: current_time,
+                            ChannelMetadataField.STATE_CHANGED_AT: current_time,
+                            ChannelMetadataField.BUFFER_CHUNKS: str(current_buffer_index)
                         }
                         redis_client.hset(metadata_key, mapping=update_data)
 
                         # Get configured grace period or default
                         grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
-                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} → {ChannelState.WAITING_FOR_CLIENTS} with {current_buffer_index} buffer chunks")
+                        logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} -> {ChannelState.WAITING_FOR_CLIENTS} with {current_buffer_index} buffer chunks")
                         logger.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
                     else:
                         logger.debug(f"Not changing state: channel {channel_id} already in {current_state} state")
@@ -885,12 +995,13 @@ class StreamManager:
             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                 metadata_key = RedisKeys.channel_metadata(self.channel_id)
                 self.buffer.redis_client.hset(metadata_key, mapping={
-                    "url": new_url,
-                    "user_agent": new_user_agent,
-                    "profile": stream_info['profile'],
-                    "stream_id": str(stream_id),
-                    "stream_switch_time": str(time.time()),
-                    "stream_switch_reason": "max_retries_exceeded"
+                    ChannelMetadataField.URL: new_url,
+                    ChannelMetadataField.USER_AGENT: new_user_agent,
+                    ChannelMetadataField.STREAM_PROFILE: stream_info['stream_profile'],
+                    ChannelMetadataField.M3U_PROFILE: stream_info['m3u_profile_id'],
+                    ChannelMetadataField.STREAM_ID: str(stream_id),
+                    ChannelMetadataField.STREAM_SWITCH_TIME: str(time.time()),
+                    ChannelMetadataField.STREAM_SWITCH_REASON: "max_retries_exceeded"
                 })
 
                 # Log the switch
@@ -908,5 +1019,3 @@ class StreamManager:
         except Exception as e:
             logger.error(f"Error trying next stream for channel {self.channel_id}: {e}", exc_info=True)
             return False
-
-

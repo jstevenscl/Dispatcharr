@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
 
 class EPGSource(models.Model):
     SOURCE_TYPE_CHOICES = [
@@ -12,6 +13,18 @@ class EPGSource(models.Model):
     api_key = models.CharField(max_length=255, blank=True, null=True)  # For Schedules Direct
     is_active = models.BooleanField(default=True)
     file_path = models.CharField(max_length=1024, blank=True, null=True)
+    refresh_interval = models.IntegerField(default=24)
+    refresh_task = models.ForeignKey(
+        PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Time when this source was created"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Time when this source was last updated"
+    )
 
     def __str__(self):
         return self.name
@@ -19,8 +32,18 @@ class EPGSource(models.Model):
 class EPGData(models.Model):
     # Removed the Channel foreign key. We now just store the original tvg_id
     # and a name (which might simply be the tvg_id if no real channel exists).
-    tvg_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    tvg_id = models.CharField(max_length=255, null=True, blank=True, db_index=True)
     name = models.CharField(max_length=255)
+    epg_source = models.ForeignKey(
+        EPGSource,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="epgs",
+    )
+
+    class Meta:
+        unique_together = ('tvg_id', 'epg_source')
 
     def __str__(self):
         return f"EPG Data for {self.name}"
@@ -34,6 +57,7 @@ class ProgramData(models.Model):
     sub_title = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     tvg_id = models.CharField(max_length=255, null=True, blank=True)
+    custom_properties = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.title} ({self.start_time} - {self.end_time})"

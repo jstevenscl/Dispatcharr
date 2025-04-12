@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import API from '../../api';
 import M3UProfile from './M3UProfile';
 import usePlaylistsStore from '../../store/playlists';
@@ -11,13 +11,25 @@ import {
   Box,
   ActionIcon,
   Text,
+  NumberInput,
+  useMantineTheme,
+  Center,
+  Group,
+  Switch,
 } from '@mantine/core';
 import { SquareMinus, SquarePen } from 'lucide-react';
 
 const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
-  const profiles = usePlaylistsStore((state) => state.profiles[playlist.id]);
+  const theme = useMantineTheme();
+
+  const { profiles: allProfiles } = usePlaylistsStore();
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [profile, setProfile] = useState(null);
+  const [profiles, setProfiles] = useState([]);
+
+  useEffect(() => {
+    setProfiles(allProfiles[playlist.id]);
+  }, [allProfiles]);
 
   const editProfile = (profile = null) => {
     if (profile) {
@@ -38,6 +50,13 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
     });
   };
 
+  const modifyMaxStreams = async (value, item) => {
+    await API.updateM3UProfile(playlist.id, {
+      ...item,
+      max_streams: value,
+    });
+  };
+
   const closeEditor = () => {
     setProfile(null);
     setProfileEditorOpen(false);
@@ -51,7 +70,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
     <>
       <Modal opened={isOpen} onClose={onClose} title="Profiles">
         {profiles
-          .filter((playlist) => playlist.is_default == false)
+          // .filter((playlist) => playlist.is_default == false)
           .map((item) => (
             <Card
             // key={item.id}
@@ -62,27 +81,51 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
             // }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Text>Max Streams: {item.max_streams}</Text>
-                <Checkbox
-                  label="Is Active"
-                  checked={item.is_active}
-                  onChange={() => toggleActive(item)}
-                  color="primary"
-                />
-                <ActionIcon
-                  onClick={() => editProfile(item)}
-                  color="yellow.5"
-                  variant="transparent"
-                >
-                  <SquarePen size="18" />
-                </ActionIcon>
-                <ActionIcon
-                  onClick={() => deleteProfile(item.id)}
-                  color="red.9"
-                  variant="transparent"
-                >
-                  <SquareMinus size="18" />
-                </ActionIcon>
+                <Group justify="space-between">
+                  <Text fw={600}>{item.name}</Text>
+                  <Switch
+                    checked={item.is_active}
+                    onChange={() => toggleActive(item)}
+                    disabled={item.is_default}
+                    style={{ paddingTop: 6 }}
+                  />
+                </Group>
+
+                <Flex gap="sm">
+                  <NumberInput
+                    label="Max Streams"
+                    value={item.max_streams}
+                    disabled={item.is_default}
+                    onChange={(value) => modifyMaxStreams(value, item)}
+                    style={{ flex: 1 }}
+                  />
+
+                  {!item.is_default && (
+                    <Group
+                      align="flex-end"
+                      gap="xs"
+                      style={{ paddingBottom: 8 }}
+                    >
+                      <ActionIcon
+                        size="sm"
+                        variant="transparent"
+                        color={theme.tailwind.yellow[3]}
+                        onClick={() => editProfile(item)}
+                      >
+                        <SquarePen size="=20" />
+                      </ActionIcon>
+
+                      <ActionIcon
+                        color={theme.tailwind.red[6]}
+                        onClick={() => deleteProfile(item.id)}
+                        size="small"
+                        variant="transparent"
+                      >
+                        <SquareMinus size="20" />
+                      </ActionIcon>
+                    </Group>
+                  )}
+                </Flex>
               </Box>
             </Card>
           ))}

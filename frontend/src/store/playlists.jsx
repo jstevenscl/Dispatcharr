@@ -8,6 +8,9 @@ const usePlaylistsStore = create((set) => ({
   isLoading: false,
   error: null,
 
+  profileSearchPreview: '',
+  profileResult: '',
+
   fetchPlaylists: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -62,11 +65,11 @@ const usePlaylistsStore = create((set) => ({
       // @TODO: remove playlist profiles here
     })),
 
-  setRefreshProgress: (id, progress) =>
+  setRefreshProgress: (data) =>
     set((state) => ({
       refreshProgress: {
         ...state.refreshProgress,
-        [id]: progress,
+        [data.account]: data,
       },
     })),
 
@@ -79,6 +82,12 @@ const usePlaylistsStore = create((set) => ({
         refreshProgress: updatedProgress,
       };
     }),
+
+  setProfilePreview: (profileSearchPreview, profileResult) =>
+    set((state) => ({
+      profileSearchPreview,
+      profileResult,
+    })),
 }));
 
 export default usePlaylistsStore;

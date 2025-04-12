@@ -11,26 +11,36 @@ import {
   Text,
   Paper,
 } from '@mantine/core';
+import { useWebSocket } from '../../WebSocket';
+import usePlaylistsStore from '../../store/playlists';
+import { useDebounce } from '../../utils';
 
 const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
+  const [websocketReady, sendMessage] = useWebSocket();
+  const { profileSearchPreview, profileResult } = usePlaylistsStore();
+
   const [searchPattern, setSearchPattern] = useState('');
   const [replacePattern, setReplacePattern] = useState('');
+  const [debouncedPatterns, setDebouncedPatterns] = useState({});
 
-  let regex;
-  try {
-    regex = new RegExp(searchPattern, 'g');
-  } catch (e) {
-    regex = null;
-  }
+  useEffect(() => {
+    sendMessage(
+      JSON.stringify({
+        type: 'm3u_profile_test',
+        url: m3u.server_url,
+        search: debouncedPatterns['search'] || '',
+        replace: debouncedPatterns['replace'] || '',
+      })
+    );
+  }, [m3u, debouncedPatterns]);
 
-  const highlightedUrl = regex
-    ? m3u.server_url.replace(regex, (match) => `<mark>${match}</mark>`)
-    : m3u.server_url;
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedPatterns({ search: searchPattern, replace: replacePattern });
+    }, 500);
 
-  const resultUrl =
-    regex && replacePattern
-      ? m3u.server_url.replace(regex, replacePattern)
-      : m3u.server_url;
+    return () => clearTimeout(handler); // Cleanup timeout on unmount or value change
+  }, [searchPattern, replacePattern]);
 
   const onSearchPatternUpdate = (e) => {
     formik.handleChange(e);
@@ -126,14 +136,14 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
           }
         />
 
-        <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            disabled={formik.isSubmitting}
-            size="small"
-          >
+        <Flex
+          mih={50}
+          gap="xs"
+          justify="flex-end"
+          align="flex-end"
+          style={{ marginBottom: 5 }}
+        >
+          <Button type="submit" disabled={formik.isSubmitting} size="xs">
             Submit
           </Button>
         </Flex>
@@ -142,14 +152,16 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
       <Paper shadow="sm" p="md" radius="md" withBorder>
         <Text>Search</Text>
         <Text
-          dangerouslySetInnerHTML={{ __html: highlightedUrl }}
+          dangerouslySetInnerHTML={{
+            __html: profileSearchPreview || m3u.server_url,
+          }}
           sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
         />
       </Paper>
 
-      <Paper p="md" withBorder>
+      <Paper p="md" radius="md" withBorder>
         <Text>Replace</Text>
-        <Text>{resultUrl}</Text>
+        <Text>{profileResult || m3u.server_url}</Text>
       </Paper>
     </Modal>
   );

@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from datetime import timedelta
-from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -9,7 +8,12 @@ SECRET_KEY = 'REPLACE_ME_WITH_A_REAL_SECRET'
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_DB = os.environ.get("REDIS_DB", "0")
 
-DEBUG = True
+# Set DEBUG to True for development, False for production
+if os.environ.get('DISPATCHARR_DEBUG', 'False').lower() == 'true':
+    DEBUG = True
+else:
+    DEBUG = False
+
 ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
@@ -22,9 +26,10 @@ INSTALLED_APPS = [
     'apps.m3u',
     'apps.output',
     'apps.proxy.apps.ProxyConfig',
+    'apps.proxy.ts_proxy',
     'core',
-    'drf_yasg',
     'daphne',
+    'drf_yasg',
     'channels',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -35,9 +40,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_filters',
+    'django_celery_beat',
 ]
-
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -153,7 +157,7 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 
 # Configure Redis key prefix
 CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
-    'prefix': 'celery-task:',  # Set the Redis key prefix for Celery
+    'global_keyprefix': 'celery-tasks:',  # Set the Redis key prefix for Celery
 }
 
 # Set TTL (Time-to-Live) for task results (in seconds)
@@ -164,9 +168,13 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     'visibility_timeout': 3600,  # Time in seconds that a task remains invisible during retries
 }
 
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     'fetch-channel-statuses': {
-        'task': 'apps.proxy.tasks.fetch_channel_stats',
+        'task': 'core.tasks.beat_periodic_task',
         'schedule': 2.0,
     },
 }

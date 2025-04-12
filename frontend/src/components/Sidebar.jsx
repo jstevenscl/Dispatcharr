@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   ListOrdered,
@@ -9,6 +9,7 @@ import {
   Settings as LucideSettings,
   Copy,
   ChartLine,
+  Video,
 } from 'lucide-react';
 import {
   Avatar,
@@ -25,6 +26,8 @@ import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
 import useSettingsStore from '../store/settings';
+import useAuthStore from '../store/auth'; // Add this import
+import API from '../api';
 
 const NavLink = ({ item, isActive, collapsed }) => {
   return (
@@ -62,8 +65,40 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const location = useLocation();
   const { channels } = useChannelsStore();
   const { environment } = useSettingsStore();
+  const { isAuthenticated } = useAuthStore(); // Add this line to get authentication state
   const publicIPRef = useRef(null);
+  const [appVersion, setAppVersion] = useState({ version: '', build: '' });
 
+  // Fetch environment settings including version on component mount
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const fetchEnvironment = async () => {
+      API.getEnvironmentSettings();
+    };
+
+    fetchEnvironment();
+  }, [isAuthenticated]);
+
+  // Fetch version information on component mount (regardless of authentication)
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const versionData = await API.getVersion();
+        setAppVersion({
+          version: versionData.version || '',
+          build: versionData.build || '',
+        });
+      } catch (error) {
+        console.error('Failed to fetch version information:', error);
+        // Keep using default values from useState initialization
+      }
+    };
+
+    fetchVersion();
+  }, []);
   // Navigation Items
   const navItems = [
     {
@@ -72,14 +107,9 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       path: '/channels',
       badge: `(${Object.keys(channels).length})`,
     },
-    { label: 'M3U', icon: <Play size={20} />, path: '/m3u' },
-    { label: 'EPG', icon: <Database size={20} />, path: '/epg' },
-    {
-      label: 'Stream Profiles',
-      icon: <SlidersHorizontal size={20} />,
-      path: '/stream-profiles',
-    },
+    { label: 'M3U & EPG Manager', icon: <Play size={20} />, path: '/sources' },
     { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
+    { label: 'DVR', icon: <Video size={20} />, path: '/dvr' },
     { label: 'Stats', icon: <ChartLine size={20} />, path: '/stats' },
     {
       label: 'Settings',
@@ -176,52 +206,64 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}
       >
-        <Group>
-          {!collapsed && (
-            <TextInput
-              label="Public IP"
-              ref={publicIPRef}
-              value={environment.public_ip}
-              leftSection={
-                environment.country_code && (
-                  <img
-                    src={`https://flagcdn.com/16x12/${environment.country_code.toLowerCase()}.png`}
-                    alt={environment.country_name || environment.country_code}
-                    title={environment.country_name || environment.country_code}
-                  />
-                )
-              }
-              rightSection={
-                <ActionIcon
-                  variant="transparent"
-                  color="gray.9"
-                  onClick={copyPublicIP}
-                >
-                  <Copy />
-                </ActionIcon>
-              }
-            />
-          )}
+        {isAuthenticated && (
+          <Group>
+            {!collapsed && (
+              <TextInput
+                label="Public IP"
+                ref={publicIPRef}
+                value={environment.public_ip}
+                leftSection={
+                  environment.country_code && (
+                    <img
+                      src={`https://flagcdn.com/16x12/${environment.country_code.toLowerCase()}.png`}
+                      alt={environment.country_name || environment.country_code}
+                      title={
+                        environment.country_name || environment.country_code
+                      }
+                    />
+                  )
+                }
+                rightSection={
+                  <ActionIcon
+                    variant="transparent"
+                    color="gray.9"
+                    onClick={copyPublicIP}
+                  >
+                    <Copy />
+                  </ActionIcon>
+                }
+              />
+            )}
 
-          <Avatar src="https://via.placeholder.com/40" radius="xl" />
-          {!collapsed && (
-            <Group
-              style={{
-                flex: 1,
-                justifyContent: 'space-between',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <Text size="sm" color="white">
-                John Doe
-              </Text>
-              <Text size="sm" color="white">
-                •••
-              </Text>
-            </Group>
-          )}
-        </Group>
+            <Avatar src="https://via.placeholder.com/40" radius="xl" />
+            {!collapsed && (
+              <Group
+                style={{
+                  flex: 1,
+                  justifyContent: 'space-between',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Text size="sm" color="white">
+                  John Doe
+                </Text>
+                <Text size="sm" color="white">
+                  •••
+                </Text>
+              </Group>
+            )}
+          </Group>
+        )}
       </Box>
+
+      {/* Version is always shown when sidebar is expanded, regardless of auth status */}
+      {!collapsed && (
+        <Text size="xs" style={{ padding: '0 16px 16px' }} c="dimmed">
+          v{appVersion?.version || '0.0.0'}
+          {appVersion?.build !== '0' ? `-${appVersion?.build}` : ''}
+        </Text>
+      )}
     </AppShell.Navbar>
   );
 };

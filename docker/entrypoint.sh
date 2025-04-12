@@ -36,6 +36,15 @@ export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 
 export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
+export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
+
+# Extract version information from version.py
+export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
+export DISPATCHARR_BUILD=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__build__)")
+echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}-${DISPATCHARR_BUILD}"
+
+# READ-ONLY - don't let users change these
+export POSTGRES_DIR=/data/db
 
 # Global variables, stored so other users inherit them
 if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
@@ -49,8 +58,13 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export POSTGRES_HOST=$POSTGRES_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_DEBUG=$DISPATCHARR_DEBUG" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
+    echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_BUILD=$DISPATCHARR_BUILD" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
@@ -65,18 +79,23 @@ echo "Starting init process..."
 
 # Start PostgreSQL
 echo "Starting Postgres..."
-su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
+su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
 # Wait for PostgreSQL to be ready
 until su - postgres -c "/usr/lib/postgresql/14/bin/pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT}" >/dev/null 2>&1; do
     echo_with_timestamp "Waiting for PostgreSQL to be ready..."
     sleep 1
 done
-postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D /data status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
+postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 
-if [ "$DISPATCHARR_ENV" = "dev" ]; then
+if [[ "$DISPATCHARR_ENV" = "dev" ]]; then
     . /app/docker/init/99-init-dev.sh
+    echo "Starting frontend dev environment"
+    su - $POSTGRES_USER -c "cd /app/frontend && npm run dev &"
+    npm_pid=$(pgrep vite | sort | head -n1)
+    echo "✅ vite started with PID $npm_pid"
+    pids+=("$npm_pid")
 else
     echo "🚀 Starting nginx..."
     nginx
@@ -85,22 +104,57 @@ else
     pids+=("$nginx_pid")
 fi
 
-uwsgi_file="/app/docker/uwsgi.ini"
-if [ "$DISPATCHARR_ENV" = "dev" ]; then
+cd /app
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+
+# Select proper uwsgi config based on environment
+if [ "$DISPATCHARR_ENV" = "dev" ] && [ "$DISPATCHARR_DEBUG" != "true" ]; then
+    echo "🚀 Starting uwsgi in dev mode..."
     uwsgi_file="/app/docker/uwsgi.dev.ini"
+elif [ "$DISPATCHARR_DEBUG" = "true" ]; then
+    echo "🚀 Starting uwsgi in debug mode..."
+    uwsgi_file="/app/docker/uwsgi.debug.ini"
+else
+    echo "🚀 Starting uwsgi in production mode..."
+    uwsgi_file="/app/docker/uwsgi.ini"
 fi
 
-echo "🚀 Starting uwsgi..."
 su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
 uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")
 
+# sed -i 's/protected-mode yes/protected-mode no/g' /etc/redis/redis.conf
+# su - $POSTGRES_USER -c "redis-server --protected-mode no &"
+# redis_pid=$(pgrep redis)
+# echo "✅ redis started with PID $redis_pid"
+# pids+=("$redis_pid")
 
+# echo "🚀 Starting gunicorn..."
+# su - $POSTGRES_USER -c "cd /app && gunicorn dispatcharr.asgi:application \
+#   --bind 0.0.0.0:5656 \
+#   --worker-class uvicorn.workers.UvicornWorker \
+#   --workers 2 \
+#   --threads 1 \
+#   --timeout 0 \
+#   --keep-alive 30 \
+#   --access-logfile - \
+#   --error-logfile - &"
+# gunicorn_pid=$(pgrep gunicorn | sort | head -n1)
+# echo "✅ gunicorn started with PID $gunicorn_pid"
+# pids+=("$gunicorn_pid")
 
-cd /app
-python manage.py migrate --noinput
-python manage.py collectstatic --noinput
+# echo "Starting celery and beat..."
+# su - $POSTGRES_USER -c "cd /app && celery -A dispatcharr worker -l info --autoscale=8,2 &"
+# celery_pid=$(pgrep celery | sort | head -n1)
+# echo "✅ celery started with PID $celery_pid"
+# pids+=("$celery_pid")
+
+# su - $POSTGRES_USER -c "cd /app && celery -A dispatcharr beat -l info &"
+# beat_pid=$(pgrep beat | sort | head -n1)
+# echo "✅ celery beat started with PID $beat_pid"
+# pids+=("$beat_pid")
 
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then

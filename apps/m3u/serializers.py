@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.response import Response
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
 from apps.channels.models import ChannelGroup, ChannelGroupM3UAccount
@@ -32,6 +33,19 @@ class M3UAccountProfileSerializer(serializers.ModelSerializer):
 
         return super().create(validated_data)
 
+    def update(self, instance, validated_data):
+        if instance.is_default:
+            raise serializers.ValidationError("Default profiles cannot be modified.")
+        return super().update(instance, validated_data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_default:
+            return Response(
+                {"error": "Default profiles cannot be deleted."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
 
 class M3UAccountSerializer(serializers.ModelSerializer):
     """Serializer for M3U Account"""
@@ -39,77 +53,52 @@ class M3UAccountSerializer(serializers.ModelSerializer):
     # Include user_agent as a mandatory field using its primary key.
     user_agent = serializers.PrimaryKeyRelatedField(
         queryset=UserAgent.objects.all(),
-        required=True
+        required=False,
+        allow_null=True,
     )
     profiles = M3UAccountProfileSerializer(many=True, read_only=True)
-    read_only_fields = ['locked']
+    read_only_fields = ['locked', 'created_at', 'updated_at']
     # channel_groups = serializers.SerializerMethodField()
-    channel_groups = ChannelGroupM3UAccountSerializer(source='channel_group.all', many=True, required=False)
-
+    channel_groups = ChannelGroupM3UAccountSerializer(source='channel_group', many=True, required=False)
 
     class Meta:
         model = M3UAccount
         fields = [
-            'id', 'name', 'server_url', 'uploaded_file', 'server_group',
+            'id', 'name', 'server_url', 'file_path', 'server_group',
             'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked',
-            'channel_groups',
+            'channel_groups', 'refresh_interval'
         ]
 
-    # def get_channel_groups(self, obj):
-    #     # Retrieve related ChannelGroupM3UAccount records for this M3UAccount
-    #     relations = ChannelGroupM3UAccount.objects.filter(m3u_account=obj).select_related('channel_group')
+    def update(self, instance, validated_data):
+        # Pop out channel group memberships so we can handle them manually
+        channel_group_data = validated_data.pop('channel_group', [])
 
-    #     # Serialize the channel groups with their enabled status
-    #     return [
-    #         {
-    #             'channel_group_name': relation.channel_group.name,
-    #             'channel_group_id': relation.channel_group.id,
-    #             'enabled': relation.enabled,
-    #         }
-    #         for relation in relations
-    #     ]
+        # First, update the M3UAccount itself
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
 
-    # def to_representation(self, instance):
-    #     """Override the default to_representation method to include channel_groups"""
-    #     representation = super().to_representation(instance)
+        # Prepare a list of memberships to update
+        memberships_to_update = []
+        for group_data in channel_group_data:
+            group = group_data.get('channel_group')
+            enabled = group_data.get('enabled')
 
-    #     # Manually add the channel_groups to the representation
-    #     channel_groups = ChannelGroupM3UAccount.objects.filter(m3u_account=instance).select_related('channel_group')
-    #     representation['channel_groups'] = [
-    #         {
-    #             'id': relation.id,
-    #             'channel_group_name': relation.channel_group.name,
-    #             'channel_group_id': relation.channel_group.id,
-    #             'enabled': relation.enabled,
-    #         }
-    #         for relation in channel_groups
-    #     ]
+            try:
+                membership = ChannelGroupM3UAccount.objects.get(
+                    m3u_account=instance,
+                    channel_group=group
+                )
+                membership.enabled = enabled
+                memberships_to_update.append(membership)
+            except ChannelGroupM3UAccount.DoesNotExist:
+                continue
 
-    #     return representation
+        # Perform the bulk update
+        if memberships_to_update:
+            ChannelGroupM3UAccount.objects.bulk_update(memberships_to_update, ['enabled'])
 
-    # def update(self, instance, validated_data):
-    #     logger.info(validated_data)
-    #     channel_groups_data = validated_data.pop('channel_groups', None)
-    #     instance = super().update(instance, validated_data)
-
-    #     if channel_groups_data is not None:
-    #         logger.info(json.dumps(channel_groups_data))
-    #         # Remove existing relationships not included in the request
-    #         existing_groups = {cg.channel_group_id: cg for cg in instance.channel_group.all()}
-
-    #         # for group_id in set(existing_groups.keys()) - sent_group_ids:
-    #         #     existing_groups[group_id].delete()
-
-    #         # Create or update relationships
-    #         for cg_data in channel_groups_data:
-    #             logger.info(json.dumps(cg_data))
-    #             ChannelGroupM3UAccount.objects.update_or_create(
-    #                 channel_group=existing_groups[cg_data['channel_group_id']],
-    #                 m3u_account=instance,
-    #                 defaults={'enabled': cg_data.get('enabled', True)}
-    #             )
-
-    #     return instance
+        return instance
 
 class ServerGroupSerializer(serializers.ModelSerializer):
     """Serializer for Server Group"""

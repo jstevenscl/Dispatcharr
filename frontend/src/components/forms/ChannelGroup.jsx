@@ -1,40 +1,31 @@
 // Modal.js
-import React, { useEffect } from 'react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
+import React from 'react';
 import API from '../../api';
 import { Flex, TextInput, Button, Modal } from '@mantine/core';
+import { isNotEmpty, useForm } from '@mantine/form';
 
 const ChannelGroup = ({ channelGroup = null, isOpen, onClose }) => {
-  const formik = useFormik({
+  const form = useForm({
+    mode: 'uncontrolled',
     initialValues: {
-      name: '',
+      name: channelGroup ? channelGroup.name : '',
     },
-    validationSchema: Yup.object({
-      name: Yup.string().required('Name is required'),
-    }),
-    onSubmit: async (values, { setSubmitting, resetForm }) => {
-      if (channelGroup?.id) {
-        await API.updateChannelGroup({ id: channelGroup.id, ...values });
-      } else {
-        await API.addChannelGroup(values);
-      }
 
-      resetForm();
-      setSubmitting(false);
-      onClose();
+    validate: {
+      name: isNotEmpty('Specify a name'),
     },
   });
 
-  useEffect(() => {
+  const onSubmit = async () => {
+    const values = form.getValues();
     if (channelGroup) {
-      formik.setValues({
-        name: channelGroup.name,
-      });
+      await API.updateChannelGroup({ id: channelGroup.id, ...values });
     } else {
-      formik.resetForm();
+      await API.addChannelGroup(values);
     }
-  }, [channelGroup]);
+
+    return form.reset();
+  };
 
   if (!isOpen) {
     return <></>;
@@ -42,14 +33,13 @@ const ChannelGroup = ({ channelGroup = null, isOpen, onClose }) => {
 
   return (
     <Modal opened={isOpen} onClose={onClose} title="Channel Group">
-      <form onSubmit={formik.handleSubmit}>
+      <form onSubmit={form.onSubmit(onSubmit)}>
         <TextInput
           id="name"
           name="name"
           label="Name"
-          value={formik.values.name}
-          onChange={formik.handleChange}
-          error={formik.touched.name}
+          {...form.getInputProps('name')}
+          key={form.key('name')}
         />
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
@@ -57,7 +47,7 @@ const ChannelGroup = ({ channelGroup = null, isOpen, onClose }) => {
             type="submit"
             variant="contained"
             color="primary"
-            disabled={formik.isSubmitting}
+            disabled={form.submitting}
             size="small"
           >
             Submit

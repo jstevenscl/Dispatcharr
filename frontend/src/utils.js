@@ -51,3 +51,12 @@ export function useDebounce(value, delay = 500) {
 
   return debouncedValue;
 }
+
+export function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export const getDescendantProp = (obj, path) =>
+  path.split('.').reduce((acc, part) => acc && acc[part], obj);

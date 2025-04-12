@@ -12,6 +12,8 @@ streamlink
 python-vlc
 yt-dlp
 gevent==24.11.1
+daphne
+uwsgi
 django-cors-headers
 djangorestframework-simplejwt
 m3u8
@@ -22,8 +24,7 @@ torch==2.6.0+cpu
 
 # ML/NLP dependencies
 sentence-transformers==3.4.1
-uwsgi
 channels
 channels-redis
-daphne
 django-filter
+django-celery-beat

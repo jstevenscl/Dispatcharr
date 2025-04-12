@@ -7,11 +7,75 @@ import useEPGsStore from './store/epgs';
 import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
 import useSettingsStore from './store/settings';
+import { notifications } from '@mantine/notifications';
 
 // If needed, you can set a base host or keep it empty if relative requests
 const host = import.meta.env.DEV
   ? `http://${window.location.hostname}:5656`
   : '';
+
+const errorNotification = (message, error) => {
+  message =
+    `${message}: ` +
+    (error.status ? `${error.status} - ${error.body}` : error.message);
+
+  notifications.show({
+    title: 'Error',
+    message,
+    autoClose: false,
+    color: 'red',
+  });
+
+  throw error;
+};
+
+const request = async (url, options = {}) => {
+  if (
+    options.body &&
+    !(options.body instanceof FormData) &&
+    typeof options.body === 'object'
+  ) {
+    options.body = JSON.stringify(options.body);
+    options.headers = {
+      ...options.headers,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  if (options.auth !== false) {
+    options.headers = {
+      ...options.headers,
+      Authorization: `Bearer ${await API.getAuthToken()}`,
+    };
+  }
+
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const error = new Error(`HTTP error! Status: ${response.status}`);
+
+    let errorBody = await response.text();
+
+    try {
+      errorBody = JSON.parse(errorBody);
+    } catch (e) {
+      // If parsing fails, leave errorBody as the raw text
+    }
+
+    error.status = response.status;
+    error.response = response;
+    error.body = errorBody;
+
+    throw error;
+  }
+
+  try {
+    const retval = await response.json();
+    return retval;
+  } catch (e) {
+    return '';
+  }
+};
 
 export default class API {
   /**
@@ -22,883 +86,1052 @@ export default class API {
   }
 
   static async fetchSuperUser() {
-    const response = await fetch(`${host}/api/accounts/initialize-superuser/`);
-    return await response.json();
+    try {
+      const response = await request(
+        `${host}/api/accounts/initialize-superuser/`,
+        { auth: false }
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch  superuser', e);
+    }
   }
 
   static async createSuperUser({ username, email, password }) {
-    const response = await fetch(`${host}/api/accounts/initialize-superuser/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username,
-        password,
-        email,
-      }),
-    });
+    try {
+      const response = await request(
+        `${host}/api/accounts/initialize-superuser/`,
+        {
+          auth: false,
+          method: 'POST',
+          body: {
+            username,
+            password,
+            email,
+          },
+        }
+      );
 
-    return await response.json();
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create superuser', e);
+    }
   }
 
   static async login(username, password) {
-    const response = await fetch(`${host}/api/accounts/token/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
+    try {
+      const response = await request(`${host}/api/accounts/token/`, {
+        auth: false,
+        method: 'POST',
+        body: { username, password },
+      });
 
-    return await response.json();
+      return response;
+    } catch (e) {
+      errorNotification('Login failed', e);
+    }
   }
 
   static async refreshToken(refresh) {
-    const response = await fetch(`${host}/api/accounts/token/refresh/`, {
+    return await request(`${host}/api/accounts/token/refresh/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh }),
+      body: { auth: false, refresh },
     });
-
-    const retval = await response.json();
-    return retval;
   }
 
   static async logout() {
-    const response = await fetch(`${host}/api/accounts/auth/logout/`, {
+    return await request(`${host}/api/accounts/auth/logout/`, {
+      auth: false,
       method: 'POST',
     });
-
-    return response.data.data;
   }
 
   static async getChannels() {
-    const response = await fetch(`${host}/api/channels/channels/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/channels/channels/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve channels', e);
+    }
+  }
+
+  static async queryChannels(params) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/?${params.toString()}`
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch channels', e);
+    }
+  }
+
+  static async getAllChannelIds(params) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/ids/?${params.toString()}`
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch channel IDs', e);
+    }
   }
 
   static async getChannelGroups() {
-    const response = await fetch(`${host}/api/channels/groups/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/channels/groups/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve channel groups', e);
+    }
   }
 
   static async addChannelGroup(values) {
-    const response = await fetch(`${host}/api/channels/groups/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(values),
-    });
+    try {
+      const response = await request(`${host}/api/channels/groups/`, {
+        method: 'POST',
+        body: values,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().addChannelGroup(retval);
+      if (response.id) {
+        useChannelsStore.getState().addChannelGroup(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create channel group', e);
     }
-
-    return retval;
   }
 
   static async updateChannelGroup(values) {
-    const { id, ...payload } = values;
-    const response = await fetch(`${host}/api/channels/groups/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const { id, ...payload } = values;
+      const response = await request(`${host}/api/channels/groups/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().updateChannelGroup(retval);
+      if (response.id) {
+        useChannelsStore.getState().updateChannelGroup(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel group', e);
     }
-
-    return retval;
   }
 
   static async addChannel(channel) {
-    let body = null;
-    if (channel.logo_file) {
-      // Must send FormData for file upload
-      body = new FormData();
-      for (const prop in channel) {
-        body.append(prop, channel[prop]);
+    try {
+      let body = null;
+      if (channel.logo_file) {
+        // Must send FormData for file upload
+        body = new FormData();
+        for (const prop in channel) {
+          body.append(prop, channel[prop]);
+        }
+      } else {
+        body = { ...channel };
+        delete body.logo_file;
       }
-    } else {
-      body = { ...channel };
-      delete body.logo_file;
-      body = JSON.stringify(body);
+
+      const response = await request(`${host}/api/channels/channels/`, {
+        method: 'POST',
+        body: body,
+      });
+
+      if (response.id) {
+        useChannelsStore.getState().addChannel(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create channel', e);
     }
-
-    const response = await fetch(`${host}/api/channels/channels/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        ...(channel.logo_file
-          ? {}
-          : {
-              'Content-Type': 'application/json',
-            }),
-      },
-      body: body,
-    });
-
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().addChannel(retval);
-    }
-
-    return retval;
   }
 
   static async deleteChannel(id) {
-    const response = await fetch(`${host}/api/channels/channels/${id}/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      await request(`${host}/api/channels/channels/${id}/`, {
+        method: 'DELETE',
+      });
 
-    useChannelsStore.getState().removeChannels([id]);
+      useChannelsStore.getState().removeChannels([id]);
+    } catch (e) {
+      errorNotification('Failed to delete channel', e);
+    }
   }
 
   // @TODO: the bulk delete endpoint is currently broken
   static async deleteChannels(channel_ids) {
-    const response = await fetch(`${host}/api/channels/channels/bulk-delete/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ channel_ids }),
-    });
+    try {
+      await request(`${host}/api/channels/channels/bulk-delete/`, {
+        method: 'DELETE',
+        body: { channel_ids },
+      });
 
-    useChannelsStore.getState().removeChannels(channel_ids);
+      useChannelsStore.getState().removeChannels(channel_ids);
+    } catch (e) {
+      errorNotification('Failed to delete channels', e);
+    }
   }
 
   static async updateChannel(values) {
-    const { id, ...payload } = values;
+    try {
+      const { id, ...payload } = values;
 
-    let body = null;
-    if (values.logo_file) {
-      // Must send FormData for file upload
-      body = new FormData();
-      for (const prop in values) {
-        body.append(prop, values[prop]);
+      let body = null;
+      if (payload.logo_file) {
+        // Must send FormData for file upload
+        body = new FormData();
+        for (const prop in payload) {
+          body.append(prop, payload[prop]);
+        }
+      } else {
+        body = { ...payload };
+        delete body.logo_file;
       }
-    } else {
-      body = { ...values };
-      delete body.logo_file;
-      body = JSON.stringify(body);
+
+      const response = await request(`${host}/api/channels/channels/${id}/`, {
+        method: 'PUT',
+        body,
+      });
+
+      if (response.id) {
+        useChannelsStore.getState().updateChannel(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel', e);
     }
-
-    console.log(body);
-
-    const response = await fetch(`${host}/api/channels/channels/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        ...(values.logo_file
-          ? {}
-          : {
-              'Content-Type': 'application/json',
-            }),
-      },
-      body: body,
-    });
-
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().updateChannel(retval);
-    }
-
-    return retval;
   }
 
   static async assignChannelNumbers(channelIds) {
-    // Make the request
-    const response = await fetch(`${host}/api/channels/channels/assign/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ channel_order: channelIds }),
-    });
+    try {
+      const response = await request(`${host}/api/channels/channels/assign/`, {
+        method: 'POST',
+        body: { channel_order: channelIds },
+      });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Assign channels failed: ${response.status} => ${text}`);
+      // Optionally refesh the channel list in Zustand
+      await useChannelsStore.getState().fetchChannels();
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to assign channel #s', e);
     }
-
-    const retval = await response.json();
-
-    // Optionally refresh the channel list in Zustand
-    await useChannelsStore.getState().fetchChannels();
-
-    return retval;
   }
 
   static async createChannelFromStream(values) {
-    const response = await fetch(`${host}/api/channels/channels/from-stream/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(values),
-    });
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/from-stream/`,
+        {
+          method: 'POST',
+          body: values,
+        }
+      );
 
-    const retval = await response.json();
-    if (retval.id) {
-      useChannelsStore.getState().addChannel(retval);
+      if (response.id) {
+        useChannelsStore.getState().addChannel(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create channel', e);
     }
-
-    return retval;
   }
 
   static async createChannelsFromStreams(values) {
-    const response = await fetch(
-      `${host}/api/channels/channels/from-stream/bulk/`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(values),
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/from-stream/bulk/`,
+        {
+          method: 'POST',
+          body: values,
+        }
+      );
+
+      if (response.created.length > 0) {
+        useChannelsStore.getState().addChannels(response.created);
       }
-    );
 
-    const retval = await response.json();
-    if (retval.created.length > 0) {
-      useChannelsStore.getState().addChannels(retval.created);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create channels', e);
     }
-
-    return retval;
   }
 
   static async getStreams() {
-    const response = await fetch(`${host}/api/channels/streams/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/channels/streams/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve streams', e);
+    }
   }
 
   static async queryStreams(params) {
-    const response = await fetch(
-      `${host}/api/channels/streams/?${params.toString()}`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-        },
-      }
-    );
+    try {
+      const response = await request(
+        `${host}/api/channels/streams/?${params.toString()}`
+      );
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch streams', e);
+    }
   }
 
   static async getAllStreamIds(params) {
-    const response = await fetch(
-      `${host}/api/channels/streams/ids/?${params.toString()}`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-        },
-      }
-    );
+    try {
+      const response = await request(
+        `${host}/api/channels/streams/ids/?${params.toString()}`
+      );
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch stream IDs', e);
+    }
   }
 
   static async getStreamGroups() {
-    const response = await fetch(`${host}/api/channels/streams/groups/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/channels/streams/groups/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve stream groups', e);
+    }
   }
 
   static async addStream(values) {
-    const response = await fetch(`${host}/api/channels/streams/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(values),
-    });
+    try {
+      const response = await request(`${host}/api/channels/streams/`, {
+        method: 'POST',
+        body: values,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useStreamsStore.getState().addStream(retval);
+      if (response.id) {
+        useStreamsStore.getState().addStream(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to add stream', e);
     }
-
-    return retval;
   }
 
   static async updateStream(values) {
-    const { id, ...payload } = values;
-    const response = await fetch(`${host}/api/channels/streams/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const { id, ...payload } = values;
+      const response = await request(`${host}/api/channels/streams/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useStreamsStore.getState().updateStream(retval);
+      if (response.id) {
+        useStreamsStore.getState().updateStream(response);
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update stream', e);
     }
-
-    return retval;
   }
 
   static async deleteStream(id) {
-    const response = await fetch(`${host}/api/channels/streams/${id}/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      await request(`${host}/api/channels/streams/${id}/`, {
+        method: 'DELETE',
+      });
 
-    useStreamsStore.getState().removeStreams([id]);
+      useStreamsStore.getState().removeStreams([id]);
+    } catch (e) {
+      errorNotification('Failed to delete stream', e);
+    }
   }
 
   static async deleteStreams(ids) {
-    const response = await fetch(`${host}/api/channels/streams/bulk-delete/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ stream_ids: ids }),
-    });
+    try {
+      await request(`${host}/api/channels/streams/bulk-delete/`, {
+        method: 'DELETE',
+        body: { stream_ids: ids },
+      });
 
-    useStreamsStore.getState().removeStreams(ids);
+      useStreamsStore.getState().removeStreams(ids);
+    } catch (e) {
+      errorNotification('Failed to delete streams', e);
+    }
   }
 
   static async getUserAgents() {
-    const response = await fetch(`${host}/api/core/useragents/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/core/useragents/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve user-agents', e);
+    }
   }
 
   static async addUserAgent(values) {
-    const response = await fetch(`${host}/api/core/useragents/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(values),
-    });
+    try {
+      const response = await request(`${host}/api/core/useragents/`, {
+        method: 'POST',
+        body: values,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useUserAgentsStore.getState().addUserAgent(retval);
+      useUserAgentsStore.getState().addUserAgent(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create user-agent', e);
     }
-
-    return retval;
   }
 
   static async updateUserAgent(values) {
-    const { id, ...payload } = values;
-    const response = await fetch(`${host}/api/core/useragents/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const { id, ...payload } = values;
+      const response = await request(`${host}/api/core/useragents/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useUserAgentsStore.getState().updateUserAgent(retval);
+      useUserAgentsStore.getState().updateUserAgent(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update user-agent', e);
     }
-
-    return retval;
   }
 
   static async deleteUserAgent(id) {
-    const response = await fetch(`${host}/api/core/useragents/${id}/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      await request(`${host}/api/core/useragents/${id}/`, {
+        method: 'DELETE',
+      });
 
-    useUserAgentsStore.getState().removeUserAgents([id]);
+      useUserAgentsStore.getState().removeUserAgents([id]);
+    } catch (e) {
+      errorNotification('Failed to delete user-agent', e);
+    }
   }
 
   static async getPlaylist(id) {
-    const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/m3u/accounts/${id}/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to retrieve M3U account ${id}`, e);
+    }
   }
 
   static async getPlaylists() {
-    const response = await fetch(`${host}/api/m3u/accounts/`, {
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/m3u/accounts/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve M3U accounts', e);
+    }
   }
 
   static async addPlaylist(values) {
-    let body = null;
-    if (values.uploaded_file) {
-      body = new FormData();
-      for (const prop in values) {
-        body.append(prop, values[prop]);
+    try {
+      let body = null;
+      if (values.file) {
+        body = new FormData();
+        for (const prop in values) {
+          body.append(prop, values[prop]);
+        }
+      } else {
+        body = { ...values };
+        delete body.file;
       }
-    } else {
-      body = { ...values };
-      delete body.uploaded_file;
-      body = JSON.stringify(body);
+
+      const response = await request(`${host}/api/m3u/accounts/`, {
+        method: 'POST',
+        body,
+      });
+
+      usePlaylistsStore.getState().addPlaylist(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create M3U account', e);
     }
-
-    const response = await fetch(`${host}/api/m3u/accounts/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        ...(values.uploaded_file
-          ? {}
-          : {
-              'Content-Type': 'application/json',
-            }),
-      },
-      body,
-    });
-
-    const retval = await response.json();
-    if (retval.id) {
-      usePlaylistsStore.getState().addPlaylist(retval);
-    }
-
-    return retval;
   }
 
   static async refreshPlaylist(id) {
-    const response = await fetch(`${host}/api/m3u/refresh/${id}/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/m3u/refresh/${id}/`, {
+        method: 'POST',
+      });
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to refresh M3U account', e);
+    }
   }
 
   static async refreshAllPlaylist() {
-    const response = await fetch(`${host}/api/m3u/refresh/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/m3u/refresh/`, {
+        method: 'POST',
+      });
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to refresh all M3U accounts', e);
+    }
   }
 
   static async deletePlaylist(id) {
-    const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      await request(`${host}/api/m3u/accounts/${id}/`, {
+        method: 'DELETE',
+      });
 
-    usePlaylistsStore.getState().removePlaylists([id]);
+      usePlaylistsStore.getState().removePlaylists([id]);
+      // @TODO: MIGHT need to optimize this later if someone has thousands of channels
+      // but I'm feeling laze right now
+      useChannelsStore.getState().fetchChannels();
+    } catch (e) {
+      errorNotification(`Failed to delete playlist ${id}`, e);
+    }
   }
 
   static async updatePlaylist(values) {
     const { id, ...payload } = values;
-    const response = await fetch(`${host}/api/m3u/accounts/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
 
-    const retval = await response.json();
-    if (retval.id) {
-      usePlaylistsStore.getState().updatePlaylist(retval);
+    try {
+      let body = null;
+      if (payload.file) {
+        delete payload.server_url;
+
+        body = new FormData();
+        for (const prop in values) {
+          body.append(prop, values[prop]);
+        }
+      } else {
+        delete payload.file;
+        if (!payload.server_url) {
+          delete payload.sever_url;
+        }
+
+        body = { ...payload };
+        delete body.file;
+      }
+
+      const response = await request(`${host}/api/m3u/accounts/${id}/`, {
+        method: 'PATCH',
+        body,
+      });
+
+      usePlaylistsStore.getState().updatePlaylist(response);
+
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to update M3U account ${id}`, e);
     }
-
-    return retval;
   }
 
   static async getEPGs() {
-    const response = await fetch(`${host}/api/epg/sources/`, {
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/epg/sources/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve EPGs', e);
+    }
   }
 
   static async getEPGData() {
-    const response = await fetch(`${host}/api/epg/epgdata/`, {
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/epg/epgdata/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve EPG data', e);
+    }
   }
 
   // Notice there's a duplicated "refreshPlaylist" method above;
   // you might want to rename or remove one if it's not needed.
 
   static async addEPG(values) {
-    let body = null;
-    if (values.epg_file) {
-      body = new FormData();
-      for (const prop in values) {
-        body.append(prop, values[prop]);
+    try {
+      let body = null;
+      if (values.files) {
+        body = new FormData();
+        for (const prop in values) {
+          body.append(prop, values[prop]);
+        }
+      } else {
+        body = { ...values };
+        delete body.file;
       }
-    } else {
-      body = { ...values };
-      delete body.epg_file;
-      body = JSON.stringify(body);
+
+      const response = await request(`${host}/api/epg/sources/`, {
+        method: 'POST',
+        body,
+      });
+
+      useEPGsStore.getState().addEPG(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create EPG', e);
     }
+  }
 
-    const response = await fetch(`${host}/api/epg/sources/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        ...(values.epg_file
-          ? {}
-          : {
-              'Content-Type': 'application/json',
-            }),
-      },
-      body,
-    });
+  static async updateEPG(values) {
+    const { id, ...payload } = values;
 
-    const retval = await response.json();
-    if (retval.id) {
-      useEPGsStore.getState().addEPG(retval);
+    try {
+      let body = null;
+      if (payload.files) {
+        body = new FormData();
+        for (const prop in payload) {
+          if (prop == 'url') {
+            continue;
+          }
+          body.append(prop, payload[prop]);
+        }
+      } else {
+        delete payload.file;
+        if (!payload.url) {
+          delete payload.url;
+        }
+        body = payload;
+      }
+
+      const response = await request(`${host}/api/epg/sources/${id}/`, {
+        method: 'PATCH',
+        body,
+      });
+
+      useEPGsStore.getState().updateEPG(response);
+
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to update EPG ${id}`, e);
     }
-
-    return retval;
   }
 
   static async deleteEPG(id) {
-    const response = await fetch(`${host}/api/epg/sources/${id}/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      await request(`${host}/api/epg/sources/${id}/`, {
+        method: 'DELETE',
+      });
 
-    useEPGsStore.getState().removeEPGs([id]);
+      useEPGsStore.getState().removeEPGs([id]);
+    } catch (e) {
+      errorNotification(`Failed to delete EPG ${id}`, e);
+    }
   }
 
   static async refreshEPG(id) {
-    const response = await fetch(`${host}/api/epg/import/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ id }),
-    });
+    try {
+      const response = await request(`${host}/api/epg/import/`, {
+        method: 'POST',
+        body: { id },
+      });
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to refresh EPG ${id}`, e);
+    }
   }
 
   static async getStreamProfiles() {
-    const response = await fetch(`${host}/api/core/streamprofiles/`, {
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/core/streamprofiles/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve sream profiles', e);
+    }
   }
 
   static async addStreamProfile(values) {
-    const response = await fetch(`${host}/api/core/streamprofiles/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(values),
-    });
+    try {
+      const response = await request(`${host}/api/core/streamprofiles/`, {
+        method: 'POST',
+        body: values,
+      });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useStreamProfilesStore.getState().addStreamProfile(retval);
+      useStreamProfilesStore.getState().addStreamProfile(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create stream profile', e);
     }
-    return retval;
   }
 
   static async updateStreamProfile(values) {
     const { id, ...payload } = values;
-    const response = await fetch(`${host}/api/core/streamprofiles/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useStreamProfilesStore.getState().updateStreamProfile(retval);
+    try {
+      const response = await request(`${host}/api/core/streamprofiles/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
+
+      useStreamProfilesStore.getState().updateStreamProfile(response);
+
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to update stream profile ${id}`, e);
     }
-
-    return retval;
   }
 
   static async deleteStreamProfile(id) {
-    const response = await fetch(`${host}/api/core/streamprofiles/${id}/`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      await request(`${host}/api/core/streamprofiles/${id}/`, {
+        method: 'DELETE',
+      });
 
-    useStreamProfilesStore.getState().removeStreamProfiles([id]);
+      useStreamProfilesStore.getState().removeStreamProfiles([id]);
+    } catch (e) {
+      errorNotification(`Failed to delete stream propfile ${id}`, e);
+    }
   }
 
   static async getGrid() {
-    const response = await fetch(`${host}/api/epg/grid/`, {
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    try {
+      const response = await request(`${host}/api/epg/grid/`);
 
-    const retval = await response.json();
-    return retval.data;
+      return response.data;
+    } catch (e) {
+      errorNotification('Failed to retrieve program grid', e);
+    }
   }
 
   static async addM3UProfile(accountId, values) {
-    const response = await fetch(
-      `${host}/api/m3u/accounts/${accountId}/profiles/`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(values),
-      }
-    );
+    try {
+      const response = await request(
+        `${host}/api/m3u/accounts/${accountId}/profiles/`,
+        {
+          method: 'POST',
+          body: values,
+        }
+      );
 
-    const retval = await response.json();
-    if (retval.id) {
       // Refresh the playlist
       const playlist = await API.getPlaylist(accountId);
       usePlaylistsStore
         .getState()
         .updateProfiles(playlist.id, playlist.profiles);
-    }
 
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to add profile to account ${accountId}`, e);
+    }
   }
 
   static async deleteM3UProfile(accountId, id) {
-    const response = await fetch(
-      `${host}/api/m3u/accounts/${accountId}/profiles/${id}/`,
-      {
+    try {
+      await request(`${host}/api/m3u/accounts/${accountId}/profiles/${id}/`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+      });
 
-    const playlist = await API.getPlaylist(accountId);
-    usePlaylistsStore.getState().updatePlaylist(playlist);
+      const playlist = await API.getPlaylist(accountId);
+      usePlaylistsStore.getState().updatePlaylist(playlist);
+    } catch (e) {
+      errorNotification(`Failed to delete profile for account ${accountId}`, e);
+    }
   }
 
   static async updateM3UProfile(accountId, values) {
     const { id, ...payload } = values;
-    const response = await fetch(
-      `${host}/api/m3u/accounts/${accountId}/profiles/${id}/`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${await API.getAuthToken()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      }
-    );
 
-    const playlist = await API.getPlaylist(accountId);
-    usePlaylistsStore.getState().updateProfiles(playlist.id, playlist.profiles);
+    try {
+      await request(`${host}/api/m3u/accounts/${accountId}/profiles/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
+
+      const playlist = await API.getPlaylist(accountId);
+      usePlaylistsStore
+        .getState()
+        .updateProfiles(playlist.id, playlist.profiles);
+    } catch (e) {
+      errorNotification(`Failed to update profile for account ${accountId}`, e);
+    }
   }
 
   static async getSettings() {
-    const response = await fetch(`${host}/api/core/settings/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/core/settings/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve settings', e);
+    }
   }
 
   static async getEnvironmentSettings() {
-    const response = await fetch(`${host}/api/core/settings/env/`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/api/core/settings/env/`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve environment settings', e);
+    }
+  }
+
+  static async getVersion() {
+    try {
+      const response = await request(`${host}/api/core/version/`, {
+        auth: false,
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve version', e);
+    }
   }
 
   static async updateSetting(values) {
     const { id, ...payload } = values;
-    const response = await fetch(`${host}/api/core/settings/${id}/`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
 
-    const retval = await response.json();
-    if (retval.id) {
-      useSettingsStore.getState().updateSetting(retval);
+    try {
+      const response = await request(`${host}/api/core/settings/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
+
+      useSettingsStore.getState().updateSetting(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update settings', e);
     }
-
-    return retval;
   }
 
   static async getChannelStats(uuid = null) {
-    const response = await fetch(`${host}/proxy/ts/status`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/proxy/ts/status`);
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve channel stats', e);
+    }
   }
 
   static async stopChannel(id) {
-    const response = await fetch(`${host}/proxy/ts/stop/${id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(`${host}/proxy/ts/stop/${id}`, {
+        method: 'POST',
+      });
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to stop channel', e);
+    }
   }
 
   static async stopClient(channelId, clientId) {
-    const response = await fetch(`${host}/proxy/ts/stop_client/${channelId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-      body: JSON.stringify({ client_id: clientId }),
-    });
+    try {
+      const response = await request(
+        `${host}/proxy/ts/stop_client/${channelId}`,
+        {
+          method: 'POST',
+          body: { client_id: clientId },
+        }
+      );
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to stop client', e);
+    }
   }
 
   static async matchEpg() {
-    const response = await fetch(`${host}/api/channels/channels/match-epg/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await API.getAuthToken()}`,
-      },
-    });
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/match-epg/`,
+        {
+          method: 'POST',
+        }
+      );
 
-    const retval = await response.json();
-    return retval;
+      return response;
+    } catch (e) {
+      errorNotification('Failed to run EPG auto-match', e);
+    }
+  }
+
+  static async getLogos() {
+    try {
+      const response = await request(`${host}/api/channels/logos/`);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve logos', e);
+    }
+  }
+
+  static async uploadLogo(file) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await request(`${host}/api/channels/logos/upload/`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      useChannelsStore.getState().addLogo(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to upload logo', e);
+    }
+  }
+
+  static async getChannelProfiles() {
+    try {
+      const response = await request(`${host}/api/channels/profiles/`);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to get channel profiles', e);
+    }
+  }
+
+  static async addChannelProfile(values) {
+    try {
+      const response = await request(`${host}/api/channels/profiles/`, {
+        method: 'POST',
+        body: values,
+      });
+
+      useChannelsStore.getState().addProfile(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create channle profile', e);
+    }
+  }
+
+  static async updateChannelProfile(values) {
+    const { id, ...payload } = values;
+
+    try {
+      const response = await request(`${host}/api/channels/profiles/${id}/`, {
+        method: 'PUT',
+        body: payload,
+      });
+
+      useChannelsStore.getState().updateProfile(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel profile', e);
+    }
+  }
+
+  static async deleteChannelProfile(id) {
+    try {
+      await request(`${host}/api/channels/profiles/${id}/`, {
+        method: 'DELETE',
+      });
+
+      useChannelsStore.getState().removeProfiles([id]);
+    } catch (e) {
+      errorNotification(`Failed to delete channel profile ${id}`, e);
+    }
+  }
+
+  static async updateProfileChannel(channelId, profileId, enabled) {
+    try {
+      await request(
+        `${host}/api/channels/profiles/${profileId}/channels/${channelId}/`,
+        {
+          method: 'PATCH',
+          body: { enabled },
+        }
+      );
+
+      useChannelsStore
+        .getState()
+        .updateProfileChannels([channelId], profileId, enabled);
+    } catch (e) {
+      errorNotification(`Failed to update channel for profile ${profileId}`, e);
+    }
+  }
+
+  static async updateProfileChannels(channelIds, profileId, enabled) {
+    try {
+      await request(
+        `${host}/api/channels/profiles/${profileId}/channels/bulk-update/`,
+        {
+          method: 'PATCH',
+          body: {
+            channels: channelIds.map((id) => ({
+              channel_id: id,
+              enabled,
+            })),
+          },
+        }
+      );
+
+      useChannelsStore
+        .getState()
+        .updateProfileChannels(channelIds, profileId, enabled);
+    } catch (e) {
+      errorNotification(
+        `Failed to bulk update channels for profile ${profileId}`,
+        e
+      );
+    }
+  }
+
+  static async getRecordings() {
+    try {
+      const response = await request(`${host}/api/channels/recordings/`);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve recordings', e);
+    }
+  }
+
+  static async createRecording(values) {
+    try {
+      const response = await request(`${host}/api/channels/recordings/`, {
+        method: 'POST',
+        body: values,
+      });
+
+      useChannelsStore.getState().fetchRecordings();
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create recording', e);
+    }
+  }
+
+  static async deleteRecording(id) {
+    try {
+      await request(`${host}/api/channels/recordings/${id}/`, {
+        method: 'DELETE',
+      });
+
+      useChannelsStore.getState().fetchRecordings();
+    } catch (e) {
+      errorNotification(`Failed to delete recording ${id}`, e);
+    }
   }
 }

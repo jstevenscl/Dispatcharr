@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import useUserAgentsStore from '../store/userAgents';
 import M3UsTable from '../components/tables/M3UsTable';
-import UserAgentsTable from '../components/tables/UserAgentsTable';
-import { Box } from '@mantine/core';
+import EPGsTable from '../components/tables/EPGsTable';
+import { Box, Stack } from '@mantine/core';
 
 const M3UPage = () => {
   const isLoading = useUserAgentsStore((state) => state.isLoading);
@@ -12,13 +12,9 @@ const M3UPage = () => {
   if (error) return <div>Error: {error}</div>;
 
   return (
-    <Box
+    <Stack
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        overflow: 'hidden',
-        padding: 16,
+        padding: 10,
       }}
     >
       <Box sx={{ flex: '1 1 50%', overflow: 'hidden' }}>
@@ -26,9 +22,9 @@ const M3UPage = () => {
       </Box>
 
       <Box sx={{ flex: '1 1 50%', overflow: 'hidden' }}>
-        <UserAgentsTable />
+        <EPGsTable />
       </Box>
-    </Box>
+    </Stack>
   );
 };
 

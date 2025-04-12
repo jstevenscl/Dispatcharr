@@ -7,6 +7,9 @@ from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.core.cache import cache
+import os
+from rest_framework.decorators import action
+from django.conf import settings
 
 # Import all models, including UserAgent.
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
@@ -22,6 +25,8 @@ from .serializers import (
 )
 
 from .tasks import refresh_single_m3u_account, refresh_m3u_accounts
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 
 class M3UAccountViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U accounts"""
@@ -29,38 +34,60 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
     serializer_class = M3UAccountSerializer
     permission_classes = [IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        # Handle file upload first, if any
+        file_path = None
+        if 'file' in request.FILES:
+            file = request.FILES['file']
+            file_name = file.name
+            file_path = os.path.join('/data/uploads/m3us', file_name)
+
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+
+            # Add file_path to the request data so it's available during creation
+            request.data._mutable = True  # Allow modification of the request data
+            request.data['file_path'] = file_path  # Include the file path if a file was uploaded
+            request.data.pop('server_url')
+            request.data._mutable = False  # Make the request data immutable again
+
+        # Now call super().create() to create the instance
+        response = super().create(request, *args, **kwargs)
+
+        # After the instance is created, return the response
+        return response
+
     def update(self, request, *args, **kwargs):
-        # Get the M3UAccount instance we're updating
         instance = self.get_object()
 
-        # Handle updates to the 'enabled' flag of the related ChannelGroupM3UAccount instances
-        updates = request.data.get('channel_groups', [])
+        # Handle file upload first, if any
+        file_path = None
+        if 'file' in request.FILES:
+            file = request.FILES['file']
+            file_name = file.name
+            file_path = os.path.join('/data/uploads/m3us', file_name)
 
-        for update_data in updates:
-            channel_group_id = update_data.get('channel_group')
-            enabled = update_data.get('enabled')
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
 
-            try:
-                # Get the specific relationship to update
-                relationship = ChannelGroupM3UAccount.objects.get(
-                    m3u_account=instance, channel_group_id=channel_group_id
-                )
-                relationship.enabled = enabled
-                relationship.save()
-            except ChannelGroupM3UAccount.DoesNotExist:
-                return Response(
-                    {"error": "ChannelGroupM3UAccount not found for the given M3UAccount and ChannelGroup."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Add file_path to the request data so it's available during creation
+            request.data._mutable = True  # Allow modification of the request data
+            request.data['file_path'] = file_path  # Include the file path if a file was uploaded
+            request.data.pop('server_url')
+            request.data._mutable = False  # Make the request data immutable again
 
-        # After updating the ChannelGroupM3UAccount relationships, reload the M3UAccount instance
-        instance.refresh_from_db()
+            if instance.file_path and os.path.exists(instance.file_path):
+                os.remove(instance.file_path)
 
-        refresh_single_m3u_account.delay(instance.id)
+        # Now call super().create() to create the instance
+        response = super().update(request, *args, **kwargs)
 
-        # Serialize and return the updated M3UAccount data
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        # After the instance is created, return the response
+        return response
 
 class M3UFilterViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U filters"""

@@ -16,6 +16,7 @@ import {
   Paper,
   Box,
   Button,
+  Stack,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { SquareMinus, SquarePen, Check, X } from 'lucide-react';
@@ -35,10 +36,12 @@ const UserAgentsTable = () => {
       {
         header: 'Name',
         accessorKey: 'name',
+        size: 100,
       },
       {
         header: 'User-Agent',
         accessorKey: 'user_agent',
+        enableSorting: false,
         Cell: ({ cell }) => (
           <div
             style={{
@@ -54,6 +57,7 @@ const UserAgentsTable = () => {
       {
         header: 'Desecription',
         accessorKey: 'description',
+        enableSorting: false,
         Cell: ({ cell }) => (
           <div
             style={{
@@ -69,10 +73,14 @@ const UserAgentsTable = () => {
       {
         header: 'Active',
         accessorKey: 'is_active',
-        size: 100,
+        size: 10,
         sortingFn: 'basic',
+        enableSorting: false,
+        mantineTableHeadCellProps: {
+          align: 'right',
+        },
         mantineTableBodyCellProps: {
-          align: 'left',
+          align: 'right',
         },
         Cell: ({ cell }) => (
           <Center>
@@ -213,21 +221,30 @@ const UserAgentsTable = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(43vh - 55px)',
+        height: 'calc(60vh - 100px)',
+        overflowY: 'auto',
+        // margin: 5,
+      },
+    },
+    displayColumnDefOptions: {
+      'mrt-row-actions': {
+        size: 10,
       },
     },
   });
 
   return (
-    <>
+    <Stack gap={0} style={{ width: '49%', padding: 0 }}>
       <Flex
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          paddingTop: 10,
-          paddingBottom: 10,
-        }}
-        gap={15}
+        style={
+          {
+            // display: 'flex',
+            // alignItems: 'center',
+            // paddingTop: 10,
+            // paddingBottom: 10,
+          }
+        }
+        // gap={15}
       >
         <Text
           h={24}
@@ -238,7 +255,7 @@ const UserAgentsTable = () => {
             lineHeight: 1,
             letterSpacing: '-0.3px',
             color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
-            marginBottom: 0,
+            // marginBottom: 0,
           }}
         >
           User-Agents
@@ -296,7 +313,7 @@ const UserAgentsTable = () => {
         isOpen={userAgentModalOpen}
         onClose={closeUserAgentForm}
       />
-    </>
+    </Stack>
   );
 };
 
