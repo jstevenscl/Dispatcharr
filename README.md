@@ -58,11 +58,12 @@ Dispatcharr has officially entered **BETA**, bringing powerful new features and 
 ### 🐳 Quick Start with Docker (Recommended)
 
 ```bash
-docker pull dispatcharr/dispatcharr:latest
+docker pull ghcr.io/dispatcharr/dispatcharr:latest
 docker run -d \
   -p 9191:9191 \
   --name dispatcharr \
-  dispatcharr/dispatcharr:latest
+  -v dispatcharr_data:/data \
+  ghcr.io/dispatcharr/dispatcharr:latest
 ```
 
 > Customize ports and volumes to fit your setup.
