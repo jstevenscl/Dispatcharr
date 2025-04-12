@@ -48,7 +48,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     initialValues: {
       name: '',
       server_url: '',
-      user_agent: `${userAgents[0].id}`,
+      user_agent: '0',
       is_active: true,
       max_streams: 0,
       refresh_interval: 24,
@@ -67,7 +67,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
         name: playlist.name,
         server_url: playlist.server_url,
         max_streams: playlist.max_streams,
-        user_agent: `${playlist.user_agent}`,
+        user_agent: playlist.user_agent ? `${playlist.user_agent}` : '0',
         is_active: playlist.is_active,
         refresh_interval: playlist.refresh_interval,
       });
@@ -78,6 +78,10 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
   const onSubmit = async () => {
     const values = form.getValues();
+
+    if (values.user_agent == '0') {
+      values.user_agent = null;
+    }
 
     let newPlaylist;
     if (playlist?.id) {
@@ -184,10 +188,12 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               label="User-Agent"
               {...form.getInputProps('user_agent')}
               key={form.key('user_agent')}
-              data={userAgents.map((ua) => ({
-                label: ua.name,
-                value: `${ua.id}`,
-              }))}
+              data={[{ value: '0', label: '(use default)' }].concat(
+                userAgents.map((ua) => ({
+                  label: ua.name,
+                  value: `${ua.id}`,
+                }))
+              )}
             />
 
             <NumberInput
