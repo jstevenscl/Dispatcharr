@@ -35,7 +35,8 @@ def fetch_m3u_lines(account, use_cache=False):
     """Fetch M3U file lines efficiently."""
     if account.server_url:
         if not use_cache or not os.path.exists(file_path):
-            headers = {"User-Agent": account.user_agent.user_agent}
+            user_agent = account.get_user_agent()
+            headers = {"User-Agent": user_agent.user_agent}
             logger.info(f"Fetching from URL {account.server_url}")
             try:
                 response = requests.get(account.server_url, headers=headers, stream=True)

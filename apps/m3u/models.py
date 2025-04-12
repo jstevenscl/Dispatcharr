@@ -5,6 +5,7 @@ import re
 from django.dispatch import receiver
 from apps.channels.models import StreamProfile
 from django_celery_beat.models import PeriodicTask
+from core.models import CoreSettings, UserAgent
 
 CUSTOM_M3U_ACCOUNT_NAME="custom"
 
@@ -99,6 +100,13 @@ class M3UAccount(models.Model):
     @classmethod
     def get_custom_account(cls):
         return cls.objects.get(name=CUSTOM_M3U_ACCOUNT_NAME, locked=True)
+
+    def get_user_agent(self):
+        user_agent = self.user_agent
+        if not user_agent:
+            user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
+
+        return user_agent
 
     # def get_channel_groups(self):
     #     return ChannelGroup.objects.filter(m3u_account__m3u_account=self)
