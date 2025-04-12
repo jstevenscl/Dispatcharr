@@ -133,6 +133,3 @@ Have a question? Want to suggest a feature? Just want to say hi?\
 ---
 
 ### 🚀 *Happy Streaming! The Dispatcharr Team*
-
-
-![image](https://github.com/user-attachments/assets/1ccb7669-d054-4f97-ad05-9ecbbc35fe0f)
