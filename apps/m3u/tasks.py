@@ -46,6 +46,7 @@ def fetch_m3u_lines(account, use_cache=False):
                 downloaded = 0
                 start_time = time.time()
                 last_update_time = start_time
+                progress = 0
 
                 with open(file_path, 'wb') as file:
                     send_m3u_update(account.id, "downloading", 0)
@@ -60,7 +61,8 @@ def fetch_m3u_lines(account, use_cache=False):
                             speed = downloaded / elapsed_time / 1024  # in KB/s
 
                             # Calculate progress percentage
-                            progress = (downloaded / total_size) * 100
+                            if total_size and total_size > 0:
+                                progress = (downloaded / total_size) * 100
 
                             # Time remaining (in seconds)
                             time_remaining = (total_size - downloaded) / (speed * 1024)
