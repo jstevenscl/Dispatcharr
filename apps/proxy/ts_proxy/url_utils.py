@@ -58,7 +58,7 @@ def generate_stream_url(channel_id: str) -> Tuple[str, str, bool, Optional[int]]
 
         # Get the appropriate user agent
         m3u_account = M3UAccount.objects.get(id=m3u_profile.m3u_account.id)
-        stream_user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
+        stream_user_agent = m3u_account.get_user_agent().user_agent
 
         if stream_user_agent is None:
             stream_user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
@@ -163,9 +163,7 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
 
         # Get the user agent from the M3U account
         m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
-        user_agent = UserAgent.objects.get(id=m3u_account.user_agent.id).user_agent
-        if not user_agent:
-            user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id()).user_agent
+        user_agent = m3u_account.get_user_agent().user_agent
 
         # Generate URL using the transform function directly
         stream_url = transform_url(stream.url, profile.search_pattern, profile.replace_pattern)
