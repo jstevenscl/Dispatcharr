@@ -147,7 +147,7 @@ class Stream(models.Model):
         profile_id = redis_client.get(f"stream_profile:{self.id}")
         if profile_id:
             profile_id = int(profile_id)
-            return self.id, profile_id
+            return self.id, profile_id, None
 
         # Retrieve the M3U account associated with the stream.
         m3u_account = self.m3u_account
@@ -174,10 +174,10 @@ class Stream(models.Model):
                 if profile.max_streams > 0:
                     redis_client.incr(profile_connections_key)
 
-                return self.id, profile.id  # Return newly assigned stream and matched profile
+                return self.id, profile.id, None  # Return newly assigned stream and matched profile
 
         # 4. No available streams
-        return None, None
+        return None, None, None
 
     def release_stream(self):
         """
