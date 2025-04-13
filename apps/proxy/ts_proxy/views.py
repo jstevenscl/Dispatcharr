@@ -44,7 +44,7 @@ def stream_ts(request, channel_id):
 
         # Extract client user agent early
         for header in ['HTTP_USER_AGENT', 'User-Agent', 'user-agent']:
-            if header in request.META:
+            if (header in request.META):
                 client_user_agent = request.META[header]
                 logger.debug(f"[{client_id}] Client connected with user agent: {client_user_agent}")
                 break
