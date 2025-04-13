@@ -14,19 +14,17 @@ import useEPGsStore from './store/epgs';
 import { Box, Button, Stack } from '@mantine/core';
 import API from './api';
 
-export const WebsocketContext = createContext(false, null, () => {});
+export const WebsocketContext = createContext([false, () => {}, null]);
 
 export const WebsocketProvider = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
   const [val, setVal] = useState(null);
 
-  const { fetchStreams } = useStreamsStore();
   const { fetchChannels, setChannelStats, fetchChannelGroups } =
     useChannelsStore();
   const { fetchPlaylists, setRefreshProgress, setProfilePreview } =
     usePlaylistsStore();
   const { fetchEPGData, fetchEPGs } = useEPGsStore();
-  const { playlists } = usePlaylistsStore();
 
   const ws = useRef(null);
 
