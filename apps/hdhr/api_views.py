@@ -8,7 +8,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
 from django.db import models
-from apps.channels.models import Channel, ChannelProfile
+from apps.channels.models import Channel, ChannelProfile, Stream
 from .models import HDHRDevice
 from .serializers import HDHRDeviceSerializer
 from django.contrib.auth.decorators import login_required
@@ -51,24 +51,36 @@ class DiscoverAPIView(APIView):
         base_url = request.build_absolute_uri(f'/{"/".join(uri_parts)}/').rstrip('/')
         device = HDHRDevice.objects.first()
 
-        # Get active profiles and calculate tuner count
-        # Exclude the default "custom Default" profile (ID 1)
+        # Calculate tuner count from active profiles (excluding default "custom Default" profile)
         profiles = M3UAccountProfile.objects.filter(is_active=True).exclude(id=1)
 
-        # Check if any profile has unlimited streams (max_streams=0)
+        # 1. Check if any profile has unlimited streams (max_streams=0)
         has_unlimited = profiles.filter(max_streams=0).exists()
 
-        if has_unlimited:
-            tuner_count = 10  # Default to 10 if any profile has unlimited streams
-        else:
-            # Sum all max_streams values
-            tuner_count = profiles.filter(max_streams__gt=0).aggregate(
+        # 2. Calculate tuner count from limited profiles
+        limited_tuners = 0
+        if not has_unlimited:
+            limited_tuners = profiles.filter(max_streams__gt=0).aggregate(
                 total=models.Sum('max_streams')
-            ).get('total', 0)
+            ).get('total', 0) or 0
 
-            # Ensure there's at least 2 tuners
-            tuner_count = max(2, tuner_count or 0)
-        logger.debug(f"Calculated tuner count: {tuner_count}")
+        # 3. Add custom stream count to tuner count
+        custom_stream_count = Stream.objects.filter(is_custom=True).count()
+        logger.debug(f"Found {custom_stream_count} custom streams")
+
+        # 4. Calculate final tuner count
+        if has_unlimited:
+            # If there are unlimited profiles, start with 10 plus custom streams
+            tuner_count = 10 + custom_stream_count
+        else:
+            # Otherwise use the limited profile sum plus custom streams
+            tuner_count = limited_tuners + custom_stream_count
+
+        # 5. Ensure minimum of 2 tuners
+        tuner_count = max(2, tuner_count)
+
+        logger.debug(f"Calculated tuner count: {tuner_count} (limited profiles: {limited_tuners}, custom streams: {custom_stream_count}, unlimited: {has_unlimited})")
+
         if not device:
             data = {
                 "FriendlyName": "Dispatcharr HDHomeRun",
