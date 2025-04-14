@@ -3,9 +3,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse, HttpResponseForbidden, HttpResponse
+import logging
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
+from django.db import models
 from apps.channels.models import Channel, ChannelProfile
 from .models import HDHRDevice
 from .serializers import HDHRDeviceSerializer
@@ -15,6 +17,9 @@ from django.views import View
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
+from apps.m3u.models import M3UAccountProfile
+# Configure logger
+logger = logging.getLogger(__name__)
 
 @login_required
 def hdhr_dashboard_view(request):
@@ -46,6 +51,24 @@ class DiscoverAPIView(APIView):
         base_url = request.build_absolute_uri(f'/{"/".join(uri_parts)}/').rstrip('/')
         device = HDHRDevice.objects.first()
 
+        # Get active profiles and calculate tuner count
+        # Exclude the default "custom Default" profile (ID 1)
+        profiles = M3UAccountProfile.objects.filter(is_active=True).exclude(id=1)
+
+        # Check if any profile has unlimited streams (max_streams=0)
+        has_unlimited = profiles.filter(max_streams=0).exists()
+
+        if has_unlimited:
+            tuner_count = 10  # Default to 10 if any profile has unlimited streams
+        else:
+            # Sum all max_streams values
+            tuner_count = profiles.filter(max_streams__gt=0).aggregate(
+                total=models.Sum('max_streams')
+            ).get('total', 0)
+
+            # Ensure there's at least 2 tuners
+            tuner_count = max(2, tuner_count or 0)
+        logger.debug(f"Calculated tuner count: {tuner_count}")
         if not device:
             data = {
                 "FriendlyName": "Dispatcharr HDHomeRun",
@@ -56,7 +79,7 @@ class DiscoverAPIView(APIView):
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
-                "TunerCount": 10,
+                "TunerCount": tuner_count,
             }
         else:
             data = {
@@ -68,7 +91,7 @@ class DiscoverAPIView(APIView):
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
-                "TunerCount": 10,
+                "TunerCount": tuner_count,
             }
         return JsonResponse(data)
 
