@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from 'react';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
@@ -44,13 +50,12 @@ import {
   Group,
   useMantineTheme,
   Center,
-  Container,
   Switch,
   Menu,
   MultiSelect,
 } from '@mantine/core';
 
-const ChannelStreams = ({ channel, isExpanded }) => {
+const ChannelStreams = React.memo(({ channel, isExpanded }) => {
   const channelStreams = useChannelsStore(
     (state) => state.channels[channel.id]?.streams
   );
@@ -180,13 +185,13 @@ const ChannelStreams = ({ channel, isExpanded }) => {
       <MantineReactTable table={channelStreamsTable} />
     </Box>
   );
-};
+});
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
 const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
 
-const CreateProfilePopover = ({}) => {
+const CreateProfilePopover = React.memo(({}) => {
   const [opened, setOpened] = useState(false);
   const [name, setName] = useState('');
   const theme = useMantineTheme();
@@ -241,9 +246,9 @@ const CreateProfilePopover = ({}) => {
       </Popover.Dropdown>
     </Popover>
   );
-};
+});
 
-const ChannelsTable = ({}) => {
+const ChannelsTable = React.memo(({}) => {
   const {
     channels,
     isLoading: channelsLoading,
@@ -326,39 +331,58 @@ const ChannelsTable = ({}) => {
     }
   };
 
+  const enabledChannelSet = useMemo(() => {
+    return new Set(
+      selectedProfileChannels.filter((c) => c.enabled).map((c) => c.id)
+    );
+  }, [selectedProfileChannels]);
+
+  const EnabledHeaderSwitch = React.memo(({ isActive, toggle, disabled }) => (
+    <Switch
+      size="xs"
+      checked={disabled || isActive}
+      onChange={toggle}
+      disabled={disabled}
+    />
+  ));
+
+  const renderEnabledHeader = useCallback(() => {
+    if (Object.values(rowSelection).length === 0) {
+      return <ScanEye size="16" style={{ marginRight: 8 }} />;
+    }
+
+    const handleToggle = () => {
+      toggleChannelEnabled(
+        channelsPageSelection.map((row) => row.id),
+        !channelsEnabledHeaderSwitch
+      );
+    };
+
+    return (
+      <EnabledHeaderSwitch
+        isActive={channelsEnabledHeaderSwitch}
+        toggle={handleToggle}
+        disabled={selectedProfileId === '0'}
+      />
+    );
+  }, [
+    rowSelection,
+    channelsPageSelection,
+    channelsEnabledHeaderSwitch,
+    selectedProfileId,
+  ]);
+
   // Configure columns
   const columns = useMemo(
     () => [
       {
         id: 'enabled',
-        Header: () => {
-          if (Object.values(rowSelection).length == 0) {
-            return <ScanEye size="16" style={{ marginRight: 8 }} />;
-          }
-
-          return (
-            <Switch
-              size="xs"
-              checked={selectedProfileId == '0' || channelsEnabledHeaderSwitch}
-              onChange={() => {
-                console.log(channelsPageSelection);
-                toggleChannelEnabled(
-                  channelsPageSelection.map((row) => row.id),
-                  !channelsEnabledHeaderSwitch
-                );
-              }}
-              disabled={selectedProfileId == '0'}
-            />
-          );
-        },
+        Header: renderEnabledHeader,
         enableSorting: false,
         accessorFn: (row) => {
-          if (selectedProfileId == '0') {
-            return true;
-          }
-
-          return selectedProfileChannels.find((channel) => row.id == channel.id)
-            .enabled;
+          return selectedProfileId == '0'
+            ? true
+            : enabledChannelSet.has(row.id);
         },
         mantineTableHeadCellProps: {
           align: 'right',
@@ -388,16 +412,21 @@ const ChannelsTable = ({}) => {
             padding: 0,
           },
         },
-        Cell: ({ row, cell }) => (
-          <Switch
-            size="xs"
-            checked={cell.getValue()}
-            onChange={() => {
-              toggleChannelEnabled([row.original.id], !cell.getValue());
-            }}
-            disabled={selectedProfileId == '0'}
-          />
-        ),
+        Cell: ({ row, cell }) => {
+          const memoizedCellValue = useMemo(() => cell.getValue(), [cell]);
+          const handleSwitchChange = useCallback(() => {
+            toggleChannelEnabled([row.original.id], !memoizedCellValue);
+          }, [memoizedCellValue, row.original.id, toggleChannelEnabled]);
+
+          return (
+            <Switch
+              size="xs"
+              checked={cell.getValue()}
+              onChange={handleSwitchChange}
+              disabled={selectedProfileId == '0'}
+            />
+          );
+        },
       },
       {
         header: '#',
@@ -544,32 +573,6 @@ const ChannelsTable = ({}) => {
     { id: 'channel_number', desc: false },
     { id: 'name', desc: false },
   ]);
-
-  const editChannel = async (ch = null) => {
-    setChannel(ch);
-    setChannelModalOpen(true);
-  };
-
-  const deleteChannel = async (id) => {
-    setRowSelection([]);
-    if (channelsPageSelection.length > 0) {
-      return deleteChannels();
-    }
-    await API.deleteChannel(id);
-  };
-
-  const createRecording = (channel) => {
-    setChannel(channel);
-    setRecordingModalOpen(true);
-  };
-
-  function handleWatchStream(channelNumber) {
-    let vidUrl = `/proxy/ts/stream/${channelNumber}`;
-    if (env_mode == 'dev') {
-      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
-    }
-    showVideo(vidUrl);
-  }
 
   // (Optional) bulk delete, but your endpoint is @TODO
   const deleteChannels = async () => {
@@ -744,6 +747,104 @@ const ChannelsTable = ({}) => {
     );
   };
 
+  const RowActions = React.memo(({ row }) => {
+    const editChannel = useCallback(() => {
+      setChannel(row.original);
+      setChannelModalOpen(true);
+    }, []);
+
+    const deleteChannel = useCallback(async () => {
+      setRowSelection([]);
+      // if (channelsPageSelection.length > 0) {
+      //   return deleteChannels();
+      // }
+      await API.deleteChannel(row.id);
+    }, []);
+
+    const createRecording = useCallback(() => {
+      setChannel(row);
+      setRecordingModalOpen(true);
+    }, []);
+
+    const handleWatchStream = useCallback(() => {
+      let vidUrl = `/proxy/ts/stream/${row.uuid}`;
+      if (env_mode == 'dev') {
+        vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+      }
+      showVideo(vidUrl);
+    }, []);
+
+    return (
+      <Box style={{ width: '100%', justifyContent: 'left' }}>
+        <Center>
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.yellow[3]}
+            onClick={editChannel}
+          >
+            <SquarePen size="18" />
+          </ActionIcon>
+
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.red[6]}
+            onClick={deleteChannel}
+            disabled={
+              channelsPageSelection.length > 0 &&
+              !channelsPageSelection.map((row) => row.id).includes(row.id)
+            }
+          >
+            {channelsPageSelection.length === 0 ? (
+              <SquareMinus size="18" />
+            ) : (
+              <CopyMinus size="18" />
+            )}
+          </ActionIcon>
+
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.green[5]}
+            onClick={handleWatchStream}
+          >
+            <CirclePlay size="18" />
+          </ActionIcon>
+
+          {env_mode == 'dev' && (
+            <Menu>
+              <Menu.Target>
+                <ActionIcon variant="transparent" size="sm">
+                  <EllipsisVertical size="18" />
+                </ActionIcon>
+              </Menu.Target>
+
+              <Menu.Dropdown>
+                <Menu.Item
+                  onClick={createRecording}
+                  leftSection={
+                    <div
+                      style={{
+                        borderRadius: '50%',
+                        width: '10px',
+                        height: '10px',
+                        display: 'flex',
+                        backgroundColor: 'red',
+                      }}
+                    ></div>
+                  }
+                >
+                  Record
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Center>
+      </Box>
+    );
+  });
+
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -761,7 +862,7 @@ const ChannelsTable = ({}) => {
       rowSelection,
     },
     rowVirtualizerInstanceRef,
-    rowVirtualizerOptions: { overscan: 5 },
+    rowVirtualizerOptions: { overscan: 25 },
     initialState: {
       density: 'compact',
       sorting: [
@@ -828,7 +929,7 @@ const ChannelsTable = ({}) => {
           style: {
             minWidth: '85px',
             maxWidth: '85px',
-            paddingRight: 40,
+            // paddingRight: 40,
             fontWeight: 'normal',
             color: 'rgb(207,207,207)',
             backgroundColor: '#3F3F46',
@@ -839,7 +940,7 @@ const ChannelsTable = ({}) => {
             minWidth: '85px',
             maxWidth: '85px',
             paddingLeft: 0,
-            paddingRight: 10,
+            // paddingRight: 10,
           },
         },
       },
@@ -858,85 +959,7 @@ const ChannelsTable = ({}) => {
     renderDetailPanel: ({ row }) => (
       <ChannelStreams channel={row.original} isExpanded={row.getIsExpanded()} />
     ),
-    renderRowActions: ({ row }) => (
-      <Box style={{ width: '100%', justifyContent: 'left' }}>
-        <Center>
-          <Tooltip label="Edit Channel">
-            <ActionIcon
-              size="xs"
-              variant="transparent"
-              color={theme.tailwind.yellow[3]}
-              onClick={() => {
-                editChannel(row.original);
-              }}
-            >
-              <SquarePen size="18" />
-            </ActionIcon>
-          </Tooltip>
-
-          <Tooltip label="Delete Channel">
-            <ActionIcon
-              size="xs"
-              variant="transparent"
-              color={theme.tailwind.red[6]}
-              onClick={() => deleteChannel(row.original.id)}
-              disabled={
-                channelsPageSelection.length > 0 &&
-                !channelsPageSelection
-                  .map((row) => row.id)
-                  .includes(row.original.id)
-              }
-            >
-              {channelsPageSelection.length === 0 ? (
-                <SquareMinus size="18" />
-              ) : (
-                <CopyMinus size="18" />
-              )}
-            </ActionIcon>
-          </Tooltip>
-
-          <Tooltip label="Preview Channel">
-            <ActionIcon
-              size="xs"
-              variant="transparent"
-              color={theme.tailwind.green[5]}
-              onClick={() => handleWatchStream(row.original.uuid)}
-            >
-              <CirclePlay size="18" />
-            </ActionIcon>
-          </Tooltip>
-
-          {env_mode == 'dev' && (
-            <Menu>
-              <Menu.Target>
-                <ActionIcon variant="transparent" size="sm">
-                  <EllipsisVertical size="18" />
-                </ActionIcon>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                <Menu.Item
-                  onClick={() => createRecording(row.original)}
-                  leftSection={
-                    <div
-                      style={{
-                        borderRadius: '50%',
-                        width: '10px',
-                        height: '10px',
-                        display: 'flex',
-                        backgroundColor: 'red',
-                      }}
-                    ></div>
-                  }
-                >
-                  Record
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
-        </Center>
-      </Box>
-    ),
+    renderRowActions: ({ row }) => <RowActions row={row.original} />,
     mantineTableContainerProps: {
       style: {
         height: 'calc(100vh - 110px)',
@@ -1270,6 +1293,6 @@ const ChannelsTable = ({}) => {
       />
     </Box>
   );
-};
+});
 
 export default ChannelsTable;
