@@ -32,7 +32,7 @@ const useAuthStore = create((set, get) => ({
 
   initData: async () => {
     await Promise.all([
-      useChannelsStore.getState().fetchChannels(),
+      // useChannelsStore.getState().fetchChannels(),
       useChannelsStore.getState().fetchChannelGroups(),
       useChannelsStore.getState().fetchLogos(),
       useChannelsStore.getState().fetchChannelProfiles(),

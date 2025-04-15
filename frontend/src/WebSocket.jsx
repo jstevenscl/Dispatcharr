@@ -122,7 +122,7 @@ export const WebsocketProvider = ({ children }) => {
             message: 'EPG match is complete!',
             color: 'green.5',
           });
-          fetchChannels();
+          // fetchChannels();
           fetchEPGData();
           break;
 

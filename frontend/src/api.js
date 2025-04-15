@@ -320,7 +320,7 @@ export default class API {
       });
 
       // Optionally refesh the channel list in Zustand
-      await useChannelsStore.getState().fetchChannels();
+      // await useChannelsStore.getState().fetchChannels();
 
       return response;
     } catch (e) {
@@ -604,7 +604,7 @@ export default class API {
       usePlaylistsStore.getState().removePlaylists([id]);
       // @TODO: MIGHT need to optimize this later if someone has thousands of channels
       // but I'm feeling laze right now
-      useChannelsStore.getState().fetchChannels();
+      // useChannelsStore.getState().fetchChannels();
     } catch (e) {
       errorNotification(`Failed to delete playlist ${id}`, e);
     }

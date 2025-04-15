@@ -5,7 +5,6 @@ import React, {
   useState,
   useCallback,
 } from 'react';
-import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
 import API from '../../api';
@@ -55,7 +54,21 @@ import {
   MultiSelect,
   Pagination,
   NativeSelect,
+  Checkbox,
+  Table,
 } from '@mantine/core';
+import AutoSizer from 'react-virtualized-auto-sizer'
+import { FixedSizeList as List } from 'react-window'
+import ChannelsTableRow from './ChannelsTable/ChannelsTableRow';
+import ChannelsTableBody from './ChannelsTable/ChannelsTableBody';
+import {
+  flexRender,
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+} from '@tanstack/react-table'
+import { notUndefined, useVirtualizer } from '@tanstack/react-virtual'
 
 const ChannelStreams = React.memo(({ channel, isExpanded }) => {
   const channelStreams = useChannelsStore(
@@ -71,7 +84,7 @@ const ChannelStreams = React.memo(({ channel, isExpanded }) => {
     });
   };
 
-  const channelStreamsTable = useMantineReactTable({
+  const channelStreamsTable = useReactTable({
     ...TableHelper.defaultProperties,
     data: channelStreams,
     columns: useMemo(
@@ -250,6 +263,160 @@ const CreateProfilePopover = React.memo(({ }) => {
   );
 });
 
+const ChannelEnabledCell = ({ cell, row, toggleChannelEnabled, selectedProfileId }) => {
+  const handleSwitchChange = useCallback(() => {
+    toggleChannelEnabled([row.original.id], !cell.getValue());
+  }, [cell.getValue(), row.original.id, toggleChannelEnabled]);
+
+  return (
+    <Center style={{ width: cell.column.getSize() }}>
+      <Switch
+        size="xs"
+        checked={cell.getValue()}
+        onChange={handleSwitchChange}
+        disabled={selectedProfileId == '0'}
+      />
+    </Center>
+  );
+}
+
+const ChannelLogoCell = React.memo(({ cell }) => {
+  return (
+    <Center>
+      <img
+        src={cell.getValue() ? cell.getValue().cache_url : logo}
+        alt="channel logo"
+        style={{
+          width: 'auto',
+          height: 'auto',
+          maxWidth: '55px',
+          maxHeight: '18px',
+        }}
+      />
+    </Center>
+  )
+})
+
+const ChannelSelectCell = React.memo(({
+  checked,
+  disabled,
+  indeterminate,
+  onChange,
+}) => {
+  return (
+    <Center>
+      <div className="px-1">
+        <Checkbox
+          size="xs"
+          {...{
+            checked: checked,
+            disabled: disabled,
+            indeterminate: indeterminate,
+            onChange: onChange,
+          }}
+        />
+      </div>
+    </Center>
+  )
+})
+
+const RowActions = React.memo(({
+  row,
+  editChannel,
+  deleteChannel,
+  handleWatchStream,
+  createRecording,
+}) => {
+  const theme = useMantineTheme()
+  const { channelsPageSelection } = useChannelsStore()
+
+  const onEdit = useCallback(() => {
+    editChannel(row.original)
+  }, [row]);
+
+  const onDelete = useCallback(async () => {
+    deleteChannel(row.original)
+  }, [row]);
+
+  const onRecord = useCallback(() => {
+    createRecording(row.original)
+  }, [row]);
+
+  const onPreview = useCallback(() => {
+    handleWatchStream(row.original)
+  }, [row]);
+
+  return (
+    <Box style={{ width: '100%', justifyContent: 'left' }}>
+      <Center>
+        <ActionIcon
+          size="xs"
+          variant="transparent"
+          color={theme.tailwind.yellow[3]}
+          onClick={onEdit}
+        >
+          <SquarePen size="18" />
+        </ActionIcon>
+
+        <ActionIcon
+          size="xs"
+          variant="transparent"
+          color={theme.tailwind.red[6]}
+          onClick={onDelete}
+          disabled={
+            channelsPageSelection.length > 0 &&
+            !channelsPageSelection.map((row) => row.id).includes(row.id)
+          }
+        >
+          {channelsPageSelection.length === 0 ? (
+            <SquareMinus size="18" />
+          ) : (
+            <CopyMinus size="18" />
+          )}
+        </ActionIcon>
+
+        <ActionIcon
+          size="xs"
+          variant="transparent"
+          color={theme.tailwind.green[5]}
+          onClick={onPreview}
+        >
+          <CirclePlay size="18" />
+        </ActionIcon>
+
+        {/* {env_mode == 'dev' && (
+          <Menu>
+            <Menu.Target>
+              <ActionIcon variant="transparent" size="sm">
+                <EllipsisVertical size="18" />
+              </ActionIcon>
+            </Menu.Target>
+
+            <Menu.Dropdown>
+              <Menu.Item
+                onClick={createRecording}
+                leftSection={
+                  <div
+                    style={{
+                      borderRadius: '50%',
+                      width: '10px',
+                      height: '10px',
+                      display: 'flex',
+                      backgroundColor: 'red',
+                    }}
+                  ></div>
+                }
+              >
+                Record
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )} */}
+      </Center>
+    </Box>
+  );
+});
+
 const ChannelsTable = React.memo(({ }) => {
   const {
     channels,
@@ -277,17 +444,17 @@ const ChannelsTable = React.memo(({ }) => {
   );
   const [channelsEnabledHeaderSwitch, setChannelsEnabledHeaderSwitch] =
     useState(false);
-  const [initialDataCount, setInitialDataCount] = useState(null);
-  const [data, setData] = useState([]);
+  const [data, setData] = useState([]); // Holds fetched data
+  const [selectedRowIds, setSelectedRowIds] = useState([]);
   const [rowCount, setRowCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [paginationString, setPaginationString] = useState('');
-  const [selectedStreamIds, setSelectedStreamIds] = useState([]);
-  // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 250,
   });
+  const [groupOptions, setGroupOptions] = useState([]);
+  const [initialDataCount, setInitialDataCount] = useState(null);
   const [filters, setFilters] = useState({
     name: '',
     channel_group: '',
@@ -295,6 +462,7 @@ const ChannelsTable = React.memo(({ }) => {
   });
   const debouncedFilters = useDebounce(filters, 500);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedChannelIds, setSelectedChannelIds] = useState([]);
   const [sorting, setSorting] = useState([
     { id: 'channel_number', desc: false },
     { id: 'name', desc: false },
@@ -326,19 +494,23 @@ const ChannelsTable = React.memo(({ }) => {
   useEffect(() => {
     setChannelGroupOptions([
       ...new Set(
-        Object.values(channels).map((channel) => channel.channel_group?.name)
+        Object.values(data).map((channel) => channel.channel_group?.name)
       ),
     ]);
-  }, [channels]);
+  }, [data]);
 
-  const handleFilterChange = (columnId, value) => {
-    setFilterValues((prev) => ({
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({
       ...prev,
-      [columnId]: Array.isArray(value)
-        ? value
-        : value
-          ? value.toLowerCase()
-          : '',
+      [name]: value,
+    }));
+  };
+
+  const handleGroupChange = (value) => {
+    setFilters((prev) => ({
+      ...prev,
+      channel_group: value ? value : '',
     }));
   };
 
@@ -387,7 +559,7 @@ const ChannelsTable = React.memo(({ }) => {
 
       const newSelection = {};
       result.results.forEach((item, index) => {
-        if (selectedStreamIds.includes(item.id)) {
+        if (selectedChannelIds.includes(item.id)) {
           newSelection[index] = true;
         }
       });
@@ -412,7 +584,7 @@ const ChannelsTable = React.memo(({ }) => {
       const newRowSelection =
         typeof updater === 'function' ? updater(prevRowSelection) : updater;
 
-      const updatedSelected = new Set([...selectedStreamIds]);
+      const updatedSelected = new Set([...selectedChannelIds]);
       table.getRowModel().rows.forEach((row) => {
         if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
           updatedSelected.delete(row.original.id);
@@ -420,7 +592,7 @@ const ChannelsTable = React.memo(({ }) => {
           updatedSelected.add(row.original.id);
         }
       });
-      setSelectedStreamIds([...updatedSelected]);
+      setSelectedChannelIds([...updatedSelected]);
 
       return newRowSelection;
     });
@@ -435,9 +607,9 @@ const ChannelsTable = React.memo(({ }) => {
         if (value) params.append(key, value);
       });
       const ids = await API.getAllStreamIds(params);
-      setSelectedStreamIds(ids);
+      setSelectedChannelIds(ids);
     } else {
-      setSelectedStreamIds([]);
+      setSelectedChannelIds([]);
     }
 
     const newSelection = {};
@@ -489,9 +661,13 @@ const ChannelsTable = React.memo(({ }) => {
     />
   ));
 
-  const renderEnabledHeader = useCallback(() => {
+  const renderEnabledHeader = useCallback(({ header }) => {
     if (Object.values(rowSelection).length === 0) {
-      return <ScanEye size="16" style={{ marginRight: 8 }} />;
+      return (
+        <Center style={{ width: header.getSize() }}>
+          <ScanEye size="16" style={{ marginRight: 0 }} />
+        </Center>
+      );
     }
 
     const handleToggle = () => {
@@ -519,108 +695,81 @@ const ChannelsTable = React.memo(({ }) => {
   const columns = useMemo(
     () => [
       {
+        id: 'select',
+        size: 20,
+        meta: {
+          minWidth: 20,
+          maxWidth: 20,
+        },
+        header: ({ table }) => (
+          <Center>
+            <Checkbox
+              size="xs"
+              {...{
+                checked: table.getIsAllRowsSelected(),
+                indeterminate: table.getIsSomeRowsSelected(),
+                onChange: table.getToggleAllRowsSelectedHandler(),
+              }}
+            />
+          </Center>
+        ),
+        cell: ({ row }) => (
+          <ChannelSelectCell row={row}
+            checked={row.getIsSelected()}
+            disabled={!row.getCanSelect()}
+            indeterminate={row.getIsSomeSelected()}
+            onChange={row.getToggleSelectedHandler()}
+          />
+        ),
+      },
+      {
         id: 'enabled',
-        Header: renderEnabledHeader,
-        enableSorting: false,
+        size: 32,
+        meta: {
+          minWidth: 32,
+          maxWidth: 32,
+        },
+        header: renderEnabledHeader,
         accessorFn: (row) => {
           return selectedProfileId == '0'
             ? true
             : enabledChannelSet.has(row.id);
         },
-        mantineTableHeadCellProps: {
-          align: 'right',
-          style: {
-            backgroundColor: '#3F3F46',
-            width: '40px',
-            minWidth: '40px',
-            maxWidth: '40px',
-            //   // minWidth: '20px',
-            //   // width: '50px !important',
-            //   // justifyContent: 'center',
-            padding: 0,
-            //   // paddingLeft: 8,
-            //   // paddingRight: 0,
-          },
-        },
-        mantineTableBodyCellProps: {
-          align: 'right',
-          style: {
-            width: '40px',
-            minWidth: '40px',
-            maxWidth: '40px',
-            //   // minWidth: '20px',
-            //   // justifyContent: 'center',
-            //   // paddingLeft: 0,
-            //   // paddingRight: 0,
-            padding: 0,
-          },
-        },
-        Cell: ({ row, cell }) => {
-          const memoizedCellValue = useMemo(() => cell.getValue(), [cell]);
-          const handleSwitchChange = useCallback(() => {
-            toggleChannelEnabled([row.original.id], !memoizedCellValue);
-          }, [memoizedCellValue, row.original.id, toggleChannelEnabled]);
-
-          return (
-            <Switch
-              size="xs"
-              checked={cell.getValue()}
-              onChange={handleSwitchChange}
-              disabled={selectedProfileId == '0'}
-            />
-          );
-        },
+        cell: ({ row, cell }) => (
+          <ChannelEnabledCell cell={cell} row={row} toggleChannelEnabled={toggleChannelEnabled} selectedProfileId={selectedProfileId} />
+        ),
       },
       {
-        header: '#',
-        size: 50,
-        maxSize: 50,
+        size: 26,
+        maxSize: 26,
         accessorKey: 'channel_number',
-        sortingFn: (a, b, columnId) => {
-          return (
-            parseInt(a.original.channel_number) -
-            parseInt(b.original.channel_number)
-          );
+        header: ({ header }) => (
+          <Center>#</Center>
+        ),
+        meta: {
+          align: 'right'
         },
-        mantineTableHeadCellProps: {
-          align: 'right',
-          //   //   style: {
-          //   //     backgroundColor: '#3F3F46',
-          //   //     // minWidth: '20px',
-          //   //     // justifyContent: 'center',
-          //   //     // paddingLeft: 15,
-          //   //     paddingRight: 0,
-          //   //   },
-        },
-        mantineTableBodyCellProps: {
-          align: 'right',
-          //   //   style: {
-          //   //     minWidth: '20px',
-          //   //     // justifyContent: 'center',
-          //   //     paddingLeft: 0,
-          //   //     paddingRight: 0,
-          //   //   },
-        },
+        // cell: ({ cell }) => (
+        //   <Flex justify="flex-end" style={{ width: cell.column.getSize() }}>
+        //     {cell.getValue()}
+        //   </Flex>
+        // )
       },
       {
-        header: 'Name',
         accessorKey: 'name',
-        Header: ({ column }) => (
+        header: ({ column }) => (
           <TextInput
             name="name"
             placeholder="Name"
             value={filterValues[column.id]}
-            onChange={(e) => {
-              e.stopPropagation();
-              handleFilterChange(column.id, e.target.value);
-            }}
+            onClick={(e) => e.stopPropagation()}
+            onChange={handleFilterChange}
             size="xs"
             variant="unstyled"
             className="table-input-header"
-            onClick={(e) => e.stopPropagation()}
           />
         ),
-        Cell: ({ cell }) => (
+        cell: ({ cell }) => (
           <div
             style={{
               whiteSpace: 'nowrap',
@@ -633,10 +782,9 @@ const ChannelsTable = React.memo(({ }) => {
         ),
       },
       {
-        header: 'Group',
         accessorKey: 'channel_group.name',
         accessorFn: (row) => row.channel_group?.name || '',
-        Cell: ({ cell }) => (
+        cell: ({ cell }) => (
           <div
             style={{
               whiteSpace: 'nowrap',
@@ -647,16 +795,14 @@ const ChannelsTable = React.memo(({ }) => {
             {cell.getValue()}
           </div>
         ),
-        Header: ({ column }) => (
+        header: ({ column }) => (
           <Box onClick={(e) => e.stopPropagation()}>
             <MultiSelect
               placeholder="Group"
               searchable
               size="xs"
               nothingFoundMessage="No options"
-              onChange={(value) => {
-                handleFilterChange(column.id, value);
-              }}
+              onChange={handleGroupChange}
               data={channelGroupOptions}
               variant="unstyled"
               className="table-input-header custom-multiselect"
@@ -675,27 +821,23 @@ const ChannelsTable = React.memo(({ }) => {
             maxWidth: '75px',
           },
         },
-        Cell: ({ cell }) => (
-          <Grid
-            direction="row"
-            sx={{
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <img
-              src={cell.getValue() ? cell.getValue().cache_url : logo}
-              alt="channel logo"
-              style={{
-                width: 'auto',
-                height: 'auto',
-                maxWidth: '55px',
-                maxHeight: '18px',
-              }}
-            />
-          </Grid>
+        cell: ({ cell }) => (
+          <ChannelLogoCell cell={cell} />
         ),
       },
+      {
+        header: 'Actions',
+        size: 40,
+        cell: ({ row }) => (
+          <RowActions
+            row={row}
+            editChannel={editChannel}
+            deleteChannel={deleteChannel}
+            handleWatchStream={handleWatchStream}
+            createRecording={createRecording}
+          />
+        )
+      }
     ],
     [
       channelGroupOptions,
@@ -703,8 +845,7 @@ const ChannelsTable = React.memo(({ }) => {
       selectedProfile,
       selectedProfileChannels,
       rowSelection,
-      channelsPageSelection,
-      channelsEnabledHeaderSwitch,
+      // channelsEnabledHeaderSwitch,
     ]
   );
 
@@ -716,6 +857,7 @@ const ChannelsTable = React.memo(({ }) => {
       .rows.filter((row) => row.getIsSelected());
 
     await API.deleteChannels(selected.map((row) => row.original.id));
+    fetchData();
     setIsLoading(false);
   };
 
@@ -739,7 +881,7 @@ const ChannelsTable = React.memo(({ }) => {
       });
 
       // Refresh the channel list
-      await fetchChannels();
+      // await fetchChannels();
     } catch (err) {
       console.error(err);
       notifications.show({
@@ -811,41 +953,26 @@ const ChannelsTable = React.memo(({ }) => {
     handleCopy(hdhrUrl, hdhrUrlRef);
   };
 
+  // useEffect(() => {
+  //   const selectedRows = table
+  //     .getSelectedRowModel()
+  //     .rows.map((row) => row.original);
+  //   setChannelsPageSelection(selectedRows);
+
+  //   if (selectedProfileId != '0') {
+  //     setChannelsEnabledHeaderSwitch(
+  //       selectedRows.filter(
+  //         (row) =>
+  //           selectedProfileChannels.find((channel) => row.id == channel.id)
+  //             .enabled
+  //       ).length == selectedRows.length
+  //     );
+  //   }
+  // }, [rowSelection])
+
   useEffect(() => {
-    const selectedRows = table
-      .getSelectedRowModel()
-      .rows.map((row) => row.original);
-    setChannelsPageSelection(selectedRows);
-
-    if (selectedProfileId != '0') {
-      setChannelsEnabledHeaderSwitch(
-        selectedRows.filter(
-          (row) =>
-            selectedProfileChannels.find((channel) => row.id == channel.id)
-              .enabled
-        ).length == selectedRows.length
-      );
-    }
-  }, [rowSelection]);
-
-  const filteredData = Object.values(channels).filter((row) =>
-    columns.every(({ accessorKey }) => {
-      if (!accessorKey) {
-        return true;
-      }
-
-      const filterValue = filterValues[accessorKey];
-      const rowValue = getDescendantProp(row, accessorKey);
-
-      if (Array.isArray(filterValue) && filterValue.length != 0) {
-        return filterValue.includes(rowValue);
-      } else if (filterValue) {
-        return rowValue?.toLowerCase().includes(filterValues[accessorKey]);
-      }
-
-      return true;
-    })
-  );
+    fetchData();
+  }, [fetchData]);
 
   const deleteProfile = async (id) => {
     await API.deleteChannelProfile(id);
@@ -872,257 +999,71 @@ const ChannelsTable = React.memo(({ }) => {
     );
   };
 
-  const RowActions = React.memo(({ row }) => {
-    const editChannel = useCallback(() => {
-      setChannel(row.original);
-      setChannelModalOpen(true);
-    }, []);
+  const editChannel = useCallback((row) => {
+    setChannel(row.original);
+    setChannelModalOpen(true);
+  }, []);
 
-    const deleteChannel = useCallback(async () => {
-      setRowSelection([]);
-      // if (channelsPageSelection.length > 0) {
-      //   return deleteChannels();
-      // }
-      await API.deleteChannel(row.id);
-    }, []);
+  const deleteChannel = useCallback(async (row) => {
+    console.log(row)
+    setRowSelection([]);
+    // if (channelsPageSelection.length > 0) {
+    //   return deleteChannels();
+    // }
+    await API.deleteChannel(row.id);
+  }, []);
 
-    const createRecording = useCallback(() => {
-      setChannel(row);
-      setRecordingModalOpen(true);
-    }, []);
+  const createRecording = useCallback((row) => {
+    setChannel(row);
+    setRecordingModalOpen(true);
+  }, []);
 
-    const handleWatchStream = useCallback(() => {
-      let vidUrl = `/proxy/ts/stream/${row.uuid}`;
-      if (env_mode == 'dev') {
-        vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
-      }
-      showVideo(vidUrl);
-    }, []);
+  const handleWatchStream = useCallback((row) => {
+    let vidUrl = `/proxy/ts/stream/${row.uuid}`;
+    if (env_mode == 'dev') {
+      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+    }
+    showVideo(vidUrl);
+  }, []);
 
-    return (
-      <Box style={{ width: '100%', justifyContent: 'left' }}>
-        <Center>
-          <ActionIcon
-            size="xs"
-            variant="transparent"
-            color={theme.tailwind.yellow[3]}
-            onClick={editChannel}
-          >
-            <SquarePen size="18" />
-          </ActionIcon>
-
-          <ActionIcon
-            size="xs"
-            variant="transparent"
-            color={theme.tailwind.red[6]}
-            onClick={deleteChannel}
-            disabled={
-              channelsPageSelection.length > 0 &&
-              !channelsPageSelection.map((row) => row.id).includes(row.id)
-            }
-          >
-            {channelsPageSelection.length === 0 ? (
-              <SquareMinus size="18" />
-            ) : (
-              <CopyMinus size="18" />
-            )}
-          </ActionIcon>
-
-          <ActionIcon
-            size="xs"
-            variant="transparent"
-            color={theme.tailwind.green[5]}
-            onClick={handleWatchStream}
-          >
-            <CirclePlay size="18" />
-          </ActionIcon>
-
-          {env_mode == 'dev' && (
-            <Menu>
-              <Menu.Target>
-                <ActionIcon variant="transparent" size="sm">
-                  <EllipsisVertical size="18" />
-                </ActionIcon>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                <Menu.Item
-                  onClick={createRecording}
-                  leftSection={
-                    <div
-                      style={{
-                        borderRadius: '50%',
-                        width: '10px',
-                        height: '10px',
-                        display: 'flex',
-                        backgroundColor: 'red',
-                      }}
-                    ></div>
-                  }
-                >
-                  Record
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
-        </Center>
-      </Box>
-    );
-  });
-
-  const table = useMantineReactTable({
-    ...TableHelper.defaultProperties,
-    columns,
+  const table = useReactTable({
     data,
-    enablePagination: true,
-    manualPagination: true,
-    enableColumnActions: false,
+    columns,
+    // filterFns: {},
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    // getPaginationRowModel: getPaginationRowModel(),
+    // manualPagination: true,
     enableRowSelection: true,
-    renderTopToolbar: false,
-    onRowSelectionChange: onRowSelectionChange,
-    onSortingChange: setSorting,
-    state: {
-      isLoading: isLoading || channelsLoading,
-      sorting,
-      rowSelection,
-    },
-    enableBottomToolbar: true,
-    renderBottomToolbar: ({ table }) => (
-      <Group
-        gap={5}
-        justify="center"
-        style={{ padding: 8, borderTop: '1px solid #666' }}
-      >
-        <Text size="xs">Page Size</Text>
-        <NativeSelect
-          size="xxs"
-          value={pagination.pageSize}
-          data={['25', '50', '100', '250', '500', '1000']}
-          onChange={onPageSizeChange}
-          style={{ paddingRight: 20 }}
-        />
-        <Pagination
-          total={pageCount}
-          value={pagination.pageIndex + 1}
-          onChange={onPageIndexChange}
-          size="xs"
-          withEdges
-          style={{ paddingRight: 20 }}
-        />
-        <Text size="xs">{paginationString}</Text>
-      </Group>
-    ),
-    initialState: {
-      density: 'compact',
-      sorting: [
-        {
-          id: 'channel_number',
-          desc: false,
-        },
-      ],
-    },
-    enableRowActions: true,
-    enableExpandAll: false,
-    displayColumnDefOptions: {
-      'mrt-row-select': {
-        size: 10,
-        maxSize: 10,
-        mantineTableHeadCellProps: {
-          align: 'right',
-          style: {
-            paddding: 0,
-            // paddingLeft: 7,
-            width: '20px',
-            minWidth: '20px',
-            backgroundColor: '#3F3F46',
-          },
-        },
-        mantineTableBodyCellProps: {
-          align: 'right',
-          style: {
-            paddingLeft: 0,
-            width: '20px',
-            minWidth: '20px',
-          },
-        },
-      },
-      'mrt-row-expand': {
-        size: 20,
-        maxSize: 20,
-        header: '',
-        mantineTableHeadCellProps: {
-          style: {
-            padding: 0,
-            paddingLeft: 2,
-            width: '20px',
-            minWidth: '20px',
-            maxWidth: '20px',
-            backgroundColor: '#3F3F46',
-          },
-        },
-        mantineTableBodyCellProps: {
-          style: {
-            padding: 0,
-            paddingLeft: 2,
-            width: '20px',
-            minWidth: '20px',
-            maxWidth: '20px',
-          },
-        },
-      },
-      'mrt-row-actions': {
-        size: 85,
-        maxWidth: 85,
-        mantineTableHeadCellProps: {
-          align: 'center',
-          style: {
-            minWidth: '85px',
-            maxWidth: '85px',
-            // paddingRight: 40,
-            fontWeight: 'normal',
-            color: 'rgb(207,207,207)',
-            backgroundColor: '#3F3F46',
-          },
-        },
-        mantineTableBodyCellProps: {
-          style: {
-            minWidth: '85px',
-            maxWidth: '85px',
-            paddingLeft: 0,
-            // paddingRight: 10,
-          },
-        },
-      },
-    },
-    mantineExpandButtonProps: ({ row, table }) => ({
-      onClick: () => {
-        setRowSelection({ [row.index]: true });
-        table.setExpanded({ [row.id]: !row.getIsExpanded() });
-      },
-      size: 'xs',
-      style: {
-        transform: row.getIsExpanded() ? 'rotate(180deg)' : 'rotate(-90deg)',
-        transition: 'transform 0.2s',
-      },
-    }),
-    renderDetailPanel: ({ row }) => (
-      <ChannelStreams channel={row.original} isExpanded={row.getIsExpanded()} />
-    ),
-    renderRowActions: ({ row }) => <RowActions row={row.original} />,
-    mantineTableContainerProps: {
-      style: {
-        height: 'calc(100vh - 150px)',
-        overflowY: 'auto',
-        // margin: 5,
-      },
-    },
-  });
+    // debugTable: true,
+    // debugHeaders: true,
+    // debugColumns: false,
+  })
+
+  const { rows } = table.getRowModel()
+
+  const virtualizerRef = useRef(null)
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => virtualizerRef.current,
+    estimateSize: () => 21,
+    overscan: 20,
+  })
+  const items = virtualizer.getVirtualItems()
+
+  const [before, after] =
+    items.length > 0
+      ? [
+        notUndefined(items[0]).start - virtualizer.options.scrollMargin,
+        virtualizer.getTotalSize() - notUndefined(items[items.length - 1]).end
+      ]
+      : [0, 0];
 
   return (
     <Box>
       {/* Header Row: outside the Paper */}
       <Flex
-        style={{ display: 'flex', alignItems: 'center', paddingBottom: 10 }}
+        style={{ alignItems: 'center', paddingBottom: 10 }}
         gap={15}
       >
         <Text
@@ -1259,175 +1200,138 @@ const ChannelsTable = React.memo(({ }) => {
       </Flex>
 
       {/* Paper container: contains top toolbar and table (or ghost state) */}
-      <Paper
-        style={{
-          height: 'calc(100vh - 60px)',
-          backgroundColor: '#27272A',
-        }}
-      >
-        {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
-        <Group justify="space-between">
-          <Group gap={5} style={{ paddingLeft: 10 }}>
-            <Select
-              size="xs"
-              value={selectedProfileId}
-              onChange={setSelectedProfileId}
-              data={Object.values(profiles).map((profile) => ({
-                label: profile.name,
-                value: `${profile.id}`,
-              }))}
-              renderOption={renderProfileOption}
-            />
 
-            <Tooltip label="Create Profile">
-              <CreateProfilePopover />
-            </Tooltip>
-          </Group>
+      {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
+      <Group justify="space-between">
+        <Group gap={5} style={{ paddingLeft: 10 }}>
+          <Select
+            size="xs"
+            value={selectedProfileId}
+            onChange={setSelectedProfileId}
+            data={Object.values(profiles).map((profile) => ({
+              label: profile.name,
+              value: `${profile.id}`,
+            }))}
+            renderOption={renderProfileOption}
+          />
 
-          <Box
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              padding: 10,
-            }}
-          >
-            <Flex gap={6}>
-              <Button
-                leftSection={<SquareMinus size={18} />}
-                variant="default"
-                size="xs"
-                onClick={deleteChannels}
-                disabled={Object.values(rowSelection).length == 0}
-              >
-                Remove
-              </Button>
-
-              <Tooltip label="Assign Channel #s">
-                <Button
-                  leftSection={<ArrowDown01 size={18} />}
-                  variant="default"
-                  size="xs"
-                  onClick={assignChannels}
-                  p={5}
-                >
-                  Assign
-                </Button>
-              </Tooltip>
-
-              <Tooltip label="Auto-Match EPG">
-                <Button
-                  leftSection={<Binary size={18} />}
-                  variant="default"
-                  size="xs"
-                  onClick={matchEpg}
-                  p={5}
-                >
-                  Auto-Match
-                </Button>
-              </Tooltip>
-
-              <Button
-                leftSection={<SquarePlus size={18} />}
-                variant="light"
-                size="xs"
-                onClick={() => editChannel()}
-                p={5}
-                color={theme.tailwind.green[5]}
-                style={{
-                  borderWidth: '1px',
-                  borderColor: theme.tailwind.green[5],
-                  color: 'white',
-                }}
-              >
-                Add
-              </Button>
-            </Flex>
-          </Box>
+          <Tooltip label="Create Profile">
+            <CreateProfilePopover />
+          </Tooltip>
         </Group>
 
-        {/* Table or ghost empty state inside Paper */}
-        <Box>
-          {Object.keys(channels).length === 0 && (
-            <Box
+        <Box
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: 10,
+          }}
+        >
+          <Flex gap={6}>
+            <Button
+              leftSection={<SquareMinus size={18} />}
+              variant="default"
+              size="xs"
+              onClick={deleteChannels}
+              disabled={Object.values(rowSelection).length == 0}
+            >
+              Remove
+            </Button>
+
+            <Tooltip label="Assign Channel #s">
+              <Button
+                leftSection={<ArrowDown01 size={18} />}
+                variant="default"
+                size="xs"
+                onClick={assignChannels}
+                p={5}
+              >
+                Assign
+              </Button>
+            </Tooltip>
+
+            <Tooltip label="Auto-Match EPG">
+              <Button
+                leftSection={<Binary size={18} />}
+                variant="default"
+                size="xs"
+                onClick={matchEpg}
+                p={5}
+              >
+                Auto-Match
+              </Button>
+            </Tooltip>
+
+            <Button
+              leftSection={<SquarePlus size={18} />}
+              variant="light"
+              size="xs"
+              onClick={() => editChannel()}
+              p={5}
+              color={theme.tailwind.green[5]}
               style={{
-                paddingTop: 20,
-                bgcolor: theme.palette.background.paper,
+                borderWidth: '1px',
+                borderColor: theme.tailwind.green[5],
+                color: 'white',
               }}
             >
-              <Center>
-                <Box
-                  style={{
-                    textAlign: 'center',
-                    width: '55%',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontWeight: 400,
-                      fontSize: '20px',
-                      lineHeight: '28px',
-                      letterSpacing: '-0.3px',
-                      color: theme.palette.text.secondary,
-                      mb: 1,
-                    }}
-                  >
-                    It’s recommended to create channels after adding your M3U or
-                    streams.
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontWeight: 400,
-                      fontSize: '16px',
-                      lineHeight: '24px',
-                      letterSpacing: '-0.2px',
-                      color: theme.palette.text.secondary,
-                      mb: 2,
-                    }}
-                  >
-                    You can still create channels without streams if you’d like,
-                    and map them later.
-                  </Text>
-                  <Button
-                    leftSection={<SquarePlus size={18} />}
-                    variant="light"
-                    size="xs"
-                    onClick={() => editChannel()}
-                    color="gray"
-                    style={{
-                      marginTop: 20,
-                      borderWidth: '1px',
-                      borderColor: 'gray',
-                      color: 'white',
-                    }}
-                  >
-                    Create Channel
-                  </Button>
-                </Box>
-              </Center>
-
-              <Center>
-                <Box
-                  component="img"
-                  src={ghostImage}
-                  alt="Ghost"
-                  style={{
-                    paddingTop: 30,
-                    width: '120px',
-                    height: 'auto',
-                    opacity: 0.2,
-                    pointerEvents: 'none',
-                  }}
-                />
-              </Center>
-            </Box>
-          )}
+              Add
+            </Button>
+          </Flex>
         </Box>
-        {Object.keys(channels).length > 0 && (
-          <MantineReactTable table={table} />
+      </Group>
+
+      {/* Table or ghost empty state inside Paper */}
+      <Box>
+        {initialDataCount === 0 && (
+          <EmptyChannelsTableGuide />
         )}
-      </Paper>
+      </Box>
+
+
+      {initialDataCount > 0 && (
+        <Box
+          ref={virtualizerRef}
+          style={{
+            height: 'calc(100vh - 110px)',
+            backgroundColor: '#27272A',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          }}
+        >
+          <Table style={{ width: '100%', tableLayout: 'fixed' }}>
+            <Table.Thead style={{
+              backgroundColor: '#27272A',
+              position: 'sticky',
+              top: 0,
+            }}>
+              {table.getHeaderGroups().map(headerGroup => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map(header => {
+                    return (
+                      <Table.Th key={header.id} style={{
+                        padding: 0, width: header.getSize(), minWidth: header.column.columnDef.meta?.minWidth,
+                        maxWidth: header.column.columnDef.meta?.maxWidth,
+                      }}>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </Table.Th>
+                    )
+                  })}
+                </tr>
+              ))}
+            </Table.Thead>
+            <ChannelsTableBody
+              rows={rows}
+              virtualizedItems={items}
+              height={virtualizer.getTotalSize()}
+            // onEdit={editChannel}
+            // onDelete={deleteChannel}
+            // onPreview={handleWatchStream}
+            // onRecord={createRecording}
+            />
+          </Table>
+        </Box>
+      )}
 
       <ChannelForm
         channel={channel}
@@ -1440,7 +1344,7 @@ const ChannelsTable = React.memo(({ }) => {
         isOpen={recordingModalOpen}
         onClose={closeRecordingForm}
       />
-    </Box>
+    </Box >
   );
 });
 
