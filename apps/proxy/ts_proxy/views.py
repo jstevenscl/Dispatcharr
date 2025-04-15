@@ -288,6 +288,15 @@ def change_stream(request, channel_id):
         # Use the service layer instead of direct implementation
         result = ChannelService.change_stream_url(channel_id, new_url, user_agent)
 
+        # Get the stream manager before updating URL
+        stream_manager = proxy_server.stream_managers.get(channel_id)
+
+        # If we have a stream manager, reset its tried_stream_ids when manually changing streams
+        if stream_manager:
+            # Reset tried streams when manually switching URL via API
+            stream_manager.tried_stream_ids = set()
+            logger.debug(f"Reset tried stream IDs for channel {channel_id} during manual stream change")
+
         if result.get('status') == 'error':
             return JsonResponse({
                 'error': result.get('message', 'Unknown error'),
