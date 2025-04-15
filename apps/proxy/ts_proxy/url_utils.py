@@ -11,6 +11,7 @@ from apps.m3u.models import M3UAccount, M3UAccountProfile
 from core.models import UserAgent, CoreSettings
 from .utils import get_logger
 from uuid import UUID
+import requests
 
 logger = get_logger()
 
@@ -95,14 +96,14 @@ def transform_url(input_url: str, search_pattern: str, replace_pattern: str) -> 
         str: The transformed URL
     """
     try:
-        logger.info("Executing URL pattern replacement:")
-        logger.info(f"  base URL: {input_url}")
-        logger.info(f"  search: {search_pattern}")
+        logger.debug("Executing URL pattern replacement:")
+        logger.debug(f"  base URL: {input_url}")
+        logger.debug(f"  search: {search_pattern}")
 
         # Handle backreferences in the replacement pattern
         safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', replace_pattern)
-        logger.info(f"  replace: {replace_pattern}")
-        logger.info(f"  safe replace: {safe_replace_pattern}")
+        logger.debug(f"  replace: {replace_pattern}")
+        logger.debug(f"  safe replace: {safe_replace_pattern}")
 
         # Apply the transformation
         stream_url = re.sub(search_pattern, safe_replace_pattern, input_url)
@@ -268,3 +269,115 @@ def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = No
     except Exception as e:
         logger.error(f"Error getting alternate streams for channel {channel_id}: {e}", exc_info=True)
         return []
+
+def validate_stream_url(url, user_agent=None, timeout=(5, 5)):
+    """
+    Validate if a stream URL is accessible without downloading the full content.
+
+    Args:
+        url (str): The URL to validate
+        user_agent (str): User agent to use for the request
+        timeout (tuple): Connection and read timeout in seconds
+
+    Returns:
+        tuple: (is_valid, final_url, status_code, message)
+    """
+    try:
+        # Create session with proper headers
+        session = requests.Session()
+        headers = {
+            'User-Agent': user_agent,
+            'Connection': 'close'  # Don't keep connection alive
+        }
+        session.headers.update(headers)
+
+        # Make HEAD request first as it's faster and doesn't download content
+        head_response = session.head(
+            url,
+            timeout=timeout,
+            allow_redirects=True
+        )
+
+        # If HEAD not supported, server will return 405 or other error
+        if 200 <= head_response.status_code < 300:
+            # HEAD request successful
+            return True, head_response.url, head_response.status_code, "Valid (HEAD request)"
+
+        # Try a GET request with stream=True to avoid downloading all content
+        get_response = session.get(
+            url,
+            stream=True,
+            timeout=timeout,
+            allow_redirects=True
+        )
+
+        # IMPORTANT: Check status code first before checking content
+        if not (200 <= get_response.status_code < 300):
+            logger.warning(f"Stream validation failed with HTTP status {get_response.status_code}")
+            return False, get_response.url, get_response.status_code, f"Invalid HTTP status: {get_response.status_code}"
+
+        # Only check content if status code is valid
+        try:
+            chunk = next(get_response.iter_content(chunk_size=188*10))
+            is_valid = len(chunk) > 0
+            message = f"Valid (GET request, received {len(chunk)} bytes)"
+        except StopIteration:
+            is_valid = False
+            message = "Empty response from server"
+
+        # Check content type for additional validation
+        content_type = get_response.headers.get('Content-Type', '').lower()
+
+        # Expanded list of valid content types for streaming media
+        valid_content_types = [
+            'video/',
+            'audio/',
+            'mpegurl',
+            'octet-stream',
+            'mp2t',
+            'mp4',
+            'mpeg',
+            'dash+xml',
+            'application/mp4',
+            'application/mpeg',
+            'application/x-mpegurl',
+            'application/vnd.apple.mpegurl',
+            'application/ogg',
+            'm3u',
+            'playlist',
+            'binary/',
+            'rtsp',
+            'rtmp',
+            'hls',
+            'ts'
+        ]
+
+        content_type_valid = any(type_str in content_type for type_str in valid_content_types)
+
+        # Always consider the stream valid if we got data, regardless of content type
+        # But add content type info to the message for debugging
+        if content_type:
+            content_type_msg = f" (Content-Type: {content_type}"
+            if content_type_valid:
+                content_type_msg += ", recognized as valid stream format)"
+            else:
+                content_type_msg += ", unrecognized but may still work)"
+            message += content_type_msg
+
+        # Clean up connection
+        get_response.close()
+
+        # If we have content, consider it valid even with unrecognized content type
+        return is_valid, get_response.url, get_response.status_code, message
+
+    except requests.exceptions.Timeout:
+        return False, url, 0, "Timeout connecting to stream"
+    except requests.exceptions.TooManyRedirects:
+        return False, url, 0, "Too many redirects"
+    except requests.exceptions.RequestException as e:
+        return False, url, 0, f"Request error: {str(e)}"
+    except Exception as e:
+        return False, url, 0, f"Validation error: {str(e)}"
+    finally:
+        if 'session' in locals():
+            session.close()

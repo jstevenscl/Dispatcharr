@@ -146,7 +146,63 @@ def stream_ts(request, channel_id):
             # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
             if stream_profile.is_redirect():
-                return HttpResponseRedirect(stream_url)
+                # Validate the stream URL before redirecting
+                from .url_utils import validate_stream_url, get_alternate_streams, get_stream_info_for_switch
+
+                # Try initial URL
+                logger.info(f"[{client_id}] Validating redirect URL: {stream_url}")
+                is_valid, final_url, status_code, message = validate_stream_url(
+                    stream_url,
+                    user_agent=stream_user_agent,
+                    timeout=(5, 5)
+                )
+
+                # If first URL doesn't validate, try alternates
+                if not is_valid:
+                    logger.warning(f"[{client_id}] Primary stream URL failed validation: {message}")
+
+                    # Track tried streams to avoid loops
+                    tried_streams = {stream_id}
+
+                    # Get alternate streams
+                    alternates = get_alternate_streams(channel_id, stream_id)
+
+                    # Try each alternate until one works
+                    for alt in alternates:
+                        if alt['stream_id'] in tried_streams:
+                            continue
+
+                        tried_streams.add(alt['stream_id'])
+
+                        # Get stream info
+                        alt_info = get_stream_info_for_switch(channel_id, alt['stream_id'])
+                        if 'error' in alt_info:
+                            logger.warning(f"[{client_id}] Error getting alternate stream info: {alt_info['error']}")
+                            continue
+
+                        # Validate the alternate URL
+                        logger.info(f"[{client_id}] Trying alternate stream #{alt['stream_id']}: {alt_info['url']}")
+                        is_valid, final_url, status_code, message = validate_stream_url(
+                            alt_info['url'],
+                            user_agent=alt_info['user_agent'],
+                            timeout=(5, 5)
+                        )
+
+                        if is_valid:
+                            logger.info(f"[{client_id}] Alternate stream #{alt['stream_id']} validated successfully")
+                            break
+                        else:
+                            logger.warning(f"[{client_id}] Alternate stream #{alt['stream_id']} failed validation: {message}")
+
+                # Final decision based on validation results
+                if is_valid:
+                    logger.info(f"[{client_id}] Redirecting to validated URL: {final_url} ({message})")
+                    return HttpResponseRedirect(final_url)
+                else:
+                    logger.error(f"[{client_id}] All available redirect URLs failed validation")
+                    return JsonResponse({
+                        'error': 'All available streams failed validation'
+                    }, status=502)  # 502 Bad Gateway
 
             # Initialize channel with the stream's user agent (not the client's)
             success = ChannelService.initialize_channel(
