@@ -12,7 +12,7 @@ import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import RecordingForm from '../forms/Recording';
 import { TableHelper } from '../../helpers';
-import { getDescendantProp } from '../../utils';
+import { getDescendantProp, useDebounce } from '../../utils';
 import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
@@ -53,6 +53,8 @@ import {
   Switch,
   Menu,
   MultiSelect,
+  Pagination,
+  NativeSelect,
 } from '@mantine/core';
 
 const ChannelStreams = React.memo(({ channel, isExpanded }) => {
@@ -191,7 +193,7 @@ const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
 const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
 
-const CreateProfilePopover = React.memo(({}) => {
+const CreateProfilePopover = React.memo(({ }) => {
   const [opened, setOpened] = useState(false);
   const [name, setName] = useState('');
   const theme = useMantineTheme();
@@ -248,7 +250,7 @@ const CreateProfilePopover = React.memo(({}) => {
   );
 });
 
-const ChannelsTable = React.memo(({}) => {
+const ChannelsTable = React.memo(({ }) => {
   const {
     channels,
     isLoading: channelsLoading,
@@ -275,6 +277,28 @@ const ChannelsTable = React.memo(({}) => {
   );
   const [channelsEnabledHeaderSwitch, setChannelsEnabledHeaderSwitch] =
     useState(false);
+  const [initialDataCount, setInitialDataCount] = useState(null);
+  const [data, setData] = useState([]);
+  const [rowCount, setRowCount] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [paginationString, setPaginationString] = useState('');
+  const [selectedStreamIds, setSelectedStreamIds] = useState([]);
+  // const [allRowsSelected, setAllRowsSelected] = useState(false);
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: 250,
+  });
+  const [filters, setFilters] = useState({
+    name: '',
+    channel_group: '',
+    m3u_account: '',
+  });
+  const debouncedFilters = useDebounce(filters, 500);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sorting, setSorting] = useState([
+    { id: 'channel_number', desc: false },
+    { id: 'name', desc: false },
+  ]);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
@@ -321,6 +345,125 @@ const ChannelsTable = React.memo(({}) => {
   const hdhrUrlRef = useRef(null);
   const m3uUrlRef = useRef(null);
   const epgUrlRef = useRef(null);
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+
+    const params = new URLSearchParams();
+    params.append('page', pagination.pageIndex + 1);
+    params.append('page_size', pagination.pageSize);
+
+    // Apply sorting
+    if (sorting.length > 0) {
+      const sortField = sorting[0].id;
+      const sortDirection = sorting[0].desc ? '-' : '';
+      params.append('ordering', `${sortDirection}${sortField}`);
+    }
+
+    // Apply debounced filters
+    Object.entries(debouncedFilters).forEach(([key, value]) => {
+      if (value) params.append(key, value);
+    });
+
+    try {
+      const result = await API.queryChannels(params);
+      setData(result.results);
+      setRowCount(result.count);
+      setPageCount(Math.ceil(result.count / pagination.pageSize));
+
+      // Calculate the starting and ending item indexes
+      const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
+      const endItem = Math.min(
+        (pagination.pageIndex + 1) * pagination.pageSize,
+        result.count
+      );
+
+      if (initialDataCount === null) {
+        setInitialDataCount(result.count);
+      }
+
+      // Generate the string
+      setPaginationString(`${startItem} to ${endItem} of ${result.count}`);
+
+      const newSelection = {};
+      result.results.forEach((item, index) => {
+        if (selectedStreamIds.includes(item.id)) {
+          newSelection[index] = true;
+        }
+      });
+
+      // ✅ Only update rowSelection if it's different
+      if (JSON.stringify(newSelection) !== JSON.stringify(rowSelection)) {
+        setRowSelection(newSelection);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+
+    setIsLoading(false);
+  }, [pagination, sorting, debouncedFilters]);
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const onRowSelectionChange = (updater) => {
+    setRowSelection((prevRowSelection) => {
+      const newRowSelection =
+        typeof updater === 'function' ? updater(prevRowSelection) : updater;
+
+      const updatedSelected = new Set([...selectedStreamIds]);
+      table.getRowModel().rows.forEach((row) => {
+        if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
+          updatedSelected.delete(row.original.id);
+        } else {
+          updatedSelected.add(row.original.id);
+        }
+      });
+      setSelectedStreamIds([...updatedSelected]);
+
+      return newRowSelection;
+    });
+  };
+
+  const onSelectAllChange = async (e) => {
+    const selectAll = e.target.checked;
+    if (selectAll) {
+      // Get all stream IDs for current view
+      const params = new URLSearchParams();
+      Object.entries(debouncedFilters).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+      });
+      const ids = await API.getAllStreamIds(params);
+      setSelectedStreamIds(ids);
+    } else {
+      setSelectedStreamIds([]);
+    }
+
+    const newSelection = {};
+    table.getRowModel().rows.forEach((item, index) => {
+      newSelection[index] = selectAll;
+    });
+    setRowSelection(newSelection);
+  };
+
+  const onPageSizeChange = (e) => {
+    setPagination({
+      ...pagination,
+      pageSize: e.target.value,
+    });
+  };
+
+  const onPageIndexChange = (pageIndex) => {
+    if (!pageIndex || pageIndex > pageCount) {
+      return;
+    }
+
+    setPagination({
+      ...pagination,
+      pageIndex: pageIndex - 1,
+    });
+  };
 
   const toggleChannelEnabled = async (channelIds, enabled) => {
     if (channelIds.length == 1) {
@@ -565,15 +708,6 @@ const ChannelsTable = React.memo(({}) => {
     ]
   );
 
-  // Access the row virtualizer instance (optional)
-  const rowVirtualizerInstanceRef = useRef(null);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([
-    { id: 'channel_number', desc: false },
-    { id: 'name', desc: false },
-  ]);
-
   // (Optional) bulk delete, but your endpoint is @TODO
   const deleteChannels = async () => {
     setIsLoading(true);
@@ -644,15 +778,6 @@ const ChannelsTable = React.memo(({}) => {
       setIsLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    // Scroll to the top of the table when sorting changes
-    try {
-      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
-    } catch (error) {
-      console.error(error);
-    }
-  }, [sorting]);
 
   const handleCopy = async (textToCopy, ref) => {
     try {
@@ -848,21 +973,45 @@ const ChannelsTable = React.memo(({}) => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: filteredData,
-    enablePagination: false,
+    data,
+    enablePagination: true,
+    manualPagination: true,
     enableColumnActions: false,
-    enableRowVirtualization: true,
     enableRowSelection: true,
     renderTopToolbar: false,
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange: onRowSelectionChange,
     onSortingChange: setSorting,
     state: {
       isLoading: isLoading || channelsLoading,
       sorting,
       rowSelection,
     },
-    rowVirtualizerInstanceRef,
-    rowVirtualizerOptions: { overscan: 25 },
+    enableBottomToolbar: true,
+    renderBottomToolbar: ({ table }) => (
+      <Group
+        gap={5}
+        justify="center"
+        style={{ padding: 8, borderTop: '1px solid #666' }}
+      >
+        <Text size="xs">Page Size</Text>
+        <NativeSelect
+          size="xxs"
+          value={pagination.pageSize}
+          data={['25', '50', '100', '250', '500', '1000']}
+          onChange={onPageSizeChange}
+          style={{ paddingRight: 20 }}
+        />
+        <Pagination
+          total={pageCount}
+          value={pagination.pageIndex + 1}
+          onChange={onPageIndexChange}
+          size="xs"
+          withEdges
+          style={{ paddingRight: 20 }}
+        />
+        <Text size="xs">{paginationString}</Text>
+      </Group>
+    ),
     initialState: {
       density: 'compact',
       sorting: [
@@ -962,7 +1111,7 @@ const ChannelsTable = React.memo(({}) => {
     renderRowActions: ({ row }) => <RowActions row={row.original} />,
     mantineTableContainerProps: {
       style: {
-        height: 'calc(100vh - 110px)',
+        height: 'calc(100vh - 150px)',
         overflowY: 'auto',
         // margin: 5,
       },
