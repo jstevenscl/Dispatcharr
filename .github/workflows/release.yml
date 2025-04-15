@@ -77,7 +77,6 @@ jobs:
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:latest-arm64
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.update_version.outputs.new_version }}-amd64
             ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.update_version.outputs.new_version }}-arm64
-            ghcr.io/${{ steps.repo_owner.outputs.lowercase }}/dispatcharr:${{ steps.update_version.outputs.new_version }}-armv7
           build-args: |
             BRANCH=${{ github.ref_name }}
             REPO_URL=https://github.com/${{ github.repository }}
