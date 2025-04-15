@@ -1,5 +1,5 @@
 """
 Dispatcharr version information.
 """
-__version__ = '0.2.1'  # Follow semantic versioning (MAJOR.MINOR.PATCH)
-__build__ = '8'        # Auto-incremented on builds
+__version__ = '0.3.0'  # Follow semantic versioning (MAJOR.MINOR.PATCH)
+__build__ = '0'        # Auto-incremented on builds
