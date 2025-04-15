@@ -178,7 +178,7 @@ def stream_ts(request, channel_id):
                                     state_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STATE)
                                     if state_bytes:
                                         current_state = state_bytes.decode('utf-8')
-                                        logger.info(f"[{client_id}] Current state of channel {channel_id}: {current_state}")
+                                        logger.debug(f"[{client_id}] Current state of channel {channel_id}: {current_state}")
                                 except Exception as e:
                                     logger.warning(f"[{client_id}] Error getting channel state: {e}")
 
