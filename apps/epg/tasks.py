@@ -149,8 +149,8 @@ def parse_channels_only(source):
 @shared_task
 def parse_programs_for_tvg_id(epg_id):
     if not acquire_task_lock('parse_epg_programs', epg_id):
-        logger.debug(f"Program parse for {epg_id} already in progress")
-        return
+        logger.info(f"Program parse for {epg_id} already in progress, skipping duplicate task")
+        return "Task already running"
 
     epg = EPGData.objects.get(id=epg_id)
     epg_source = epg.epg_source

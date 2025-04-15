@@ -47,7 +47,19 @@ def set_default_m3u_account(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Channel)
 def refresh_epg_programs(sender, instance, created, **kwargs):
-    if instance.epg_data:
+    """
+    When a channel is saved, check if the EPG data has changed.
+    If so, trigger a refresh of the program data for the EPG.
+    """
+    # Check if this is an update (not a new channel) and the epg_data has changed
+    if not created and kwargs.get('update_fields') and 'epg_data' in kwargs['update_fields']:
+        logger.info(f"Channel {instance.id} ({instance.name}) EPG data updated, refreshing program data")
+        if instance.epg_data:
+            logger.info(f"Triggering EPG program refresh for {instance.epg_data.tvg_id}")
+            parse_programs_for_tvg_id.delay(instance.epg_data.id)
+    # For new channels with EPG data, also refresh
+    elif created and instance.epg_data:
+        logger.info(f"New channel {instance.id} ({instance.name}) created with EPG data, refreshing program data")
         parse_programs_for_tvg_id.delay(instance.epg_data.id)
 
 @receiver(post_save, sender=Channel)

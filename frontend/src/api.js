@@ -15,14 +15,27 @@ const host = import.meta.env.DEV
   : '';
 
 const errorNotification = (message, error) => {
-  message =
-    `${message}: ` +
-    (error.status ? `${error.status} - ${error.body}` : error.message);
+  let errorMessage = '';
+
+  if (error.status) {
+    try {
+      // Try to format the error body if it's an object
+      if (typeof error.body === 'object') {
+        errorMessage = JSON.stringify(error.body, null, 2);
+      } else {
+        errorMessage = `${error.status} - ${error.body}`;
+      }
+    } catch (e) {
+      errorMessage = `${error.status} - ${String(error.body)}`;
+    }
+  } else {
+    errorMessage = error.message || 'Unknown error';
+  }
 
   notifications.show({
     title: 'Error',
-    message,
-    autoClose: false,
+    message: `${message}: ${errorMessage}`,
+    autoClose: 10000,
     color: 'red',
   });
 
@@ -283,32 +296,58 @@ export default class API {
 
   static async updateChannel(values) {
     try {
-      const { id, ...payload } = values;
+      // Clean up values before sending to API
+      const payload = { ...values };
 
-      let body = null;
-      if (payload.logo_file) {
-        // Must send FormData for file upload
-        body = new FormData();
-        for (const prop in payload) {
-          body.append(prop, payload[prop]);
-        }
-      } else {
-        body = { ...payload };
-        delete body.logo_file;
+      // Handle special values
+      if (payload.stream_profile_id === '0' || payload.stream_profile_id === 0) {
+        payload.stream_profile_id = null;
       }
 
-      const response = await request(`${host}/api/channels/channels/${id}/`, {
-        method: 'PUT',
-        body,
+      // Ensure tvg_id is included properly (not as empty string)
+      if (payload.tvg_id === '') {
+        payload.tvg_id = null;
+      }
+
+      const response = await request(`${host}/api/channels/channels/${payload.id}/`, {
+        method: 'PATCH',
+        body: payload,
       });
 
-      if (response.id) {
-        useChannelsStore.getState().updateChannel(response);
+      useChannelsStore.getState().updateChannel(response);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel', e);
+    }
+  }
+
+  static async setChannelEPG(channelId, epgDataId) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/${channelId}/set-epg/`,
+        {
+          method: 'POST',
+          body: { epg_data_id: epgDataId },
+        }
+      );
+
+      // Update the channel in the store with the refreshed data
+      if (response.channel) {
+        useChannelsStore.getState().updateChannel(response.channel);
+      }
+
+      // Show notification about task status
+      if (response.task_status) {
+        notifications.show({
+          title: 'EPG Status',
+          message: response.task_status,
+          color: 'blue'
+        });
       }
 
       return response;
     } catch (e) {
-      errorNotification('Failed to update channel', e);
+      errorNotification('Failed to update channel EPG', e);
     }
   }
 

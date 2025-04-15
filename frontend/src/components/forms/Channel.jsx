@@ -95,34 +95,65 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       name: Yup.string().required('Name is required'),
       channel_group_id: Yup.string().required('Channel group is required'),
     }),
-    onSubmit: async (values, { setSubmitting, resetForm }) => {
-      if (values.stream_profile_id == '0') {
-        values.stream_profile_id = null;
+    onSubmit: async (values, { setSubmitting }) => {
+      let response;
+
+      try {
+        const formattedValues = { ...values };
+
+        // Convert empty or "0" stream_profile_id to null for the API
+        if (!formattedValues.stream_profile_id || formattedValues.stream_profile_id === '0') {
+          formattedValues.stream_profile_id = null;
+        }
+
+        // Ensure tvg_id is properly included (no empty strings)
+        formattedValues.tvg_id = formattedValues.tvg_id || null;
+
+        if (channel) {
+          // If there's an EPG to set, use our enhanced endpoint
+          if (values.epg_data_id !== (channel.epg_data ? `${channel.epg_data.id}` : '')) {
+            // Use the special endpoint to set EPG and trigger refresh
+            const epgResponse = await API.setChannelEPG(channel.id, values.epg_data_id);
+
+            // Show notification about EPG status if available
+            if (epgResponse && epgResponse.task_status) {
+              notifications.show({
+                title: 'EPG Status',
+                message: epgResponse.task_status,
+                color: 'blue'
+              });
+            }
+
+            // Remove epg_data_id from values since we've handled it separately
+            const { epg_data_id, ...otherValues } = formattedValues;
+
+            // Update other channel fields if needed
+            if (Object.keys(otherValues).length > 0 && !channel.hasEqualValues(otherValues)) {
+              response = await API.updateChannel({
+                id: channel.id,
+                ...otherValues,
+                stream_ids: channelStreams.map((stream) => stream.id),
+              });
+            }
+          } else {
+            // No EPG change, regular update
+            response = await API.updateChannel({
+              id: channel.id,
+              ...formattedValues,
+              stream_ids: channelStreams.map((stream) => stream.id),
+            });
+          }
+        } else {
+          // New channel creation - use the standard method
+          response = await API.addChannel({
+            ...formattedValues,
+            stream_ids: channelStreams.map((stream) => stream.id),
+          });
+        }
+      } catch (error) {
+        console.error("Error saving channel:", error);
       }
 
-      if (!values.logo_id || values.logo_id === 'undefined') {
-        delete values.logo_id;
-      }
-
-      if (!values.channel_number) {
-        delete values.channel_number;
-      }
-
-      if (channel?.id) {
-        await API.updateChannel({
-          id: channel.id,
-          ...values,
-          streams: channelStreams.map((stream) => stream.id),
-        });
-      } else {
-        await API.addChannel({
-          ...values,
-          streams: channelStreams.map((stream) => stream.id),
-        });
-      }
-
-      resetForm();
-      setLogoPreview(null);
       setSubmitting(false);
       setTvgFilter('');
       setLogoFilter('');
