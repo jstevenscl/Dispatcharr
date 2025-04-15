@@ -166,9 +166,41 @@ def stream_ts(request, channel_id):
                         if time.time() - wait_start > timeout:
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Connection timeout'}, status=504)
+
+                        # Check if this manager should keep retrying or stop
                         if not manager.should_retry():
+                            # Check channel state in Redis to make a better decision
+                            metadata_key = RedisKeys.channel_metadata(channel_id)
+                            current_state = None
+
+                            if proxy_server.redis_client:
+                                try:
+                                    state_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STATE)
+                                    if state_bytes:
+                                        current_state = state_bytes.decode('utf-8')
+                                        logger.info(f"[{client_id}] Current state of channel {channel_id}: {current_state}")
+                                except Exception as e:
+                                    logger.warning(f"[{client_id}] Error getting channel state: {e}")
+
+                            # Allow normal transitional states to continue
+                            if current_state in [ChannelState.INITIALIZING, ChannelState.CONNECTING]:
+                                logger.info(f"[{client_id}] Channel {channel_id} is in {current_state} state, continuing to wait")
+                                # Reset wait timer to allow the transition to complete
+                                wait_start = time.time()
+                                continue
+
+                            # Check if we're switching URLs
+                            if hasattr(manager, 'url_switching') and manager.url_switching:
+                                logger.info(f"[{client_id}] Stream manager is currently switching URLs for channel {channel_id}")
+                                # Reset wait timer to give the switch a chance
+                                wait_start = time.time()
+                                continue
+
+                            # If we reach here, we've exhausted retries and the channel isn't in a valid transitional state
+                            logger.warning(f"[{client_id}] Channel {channel_id} failed to connect and is not in transitional state")
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Failed to connect'}, status=502)
+
                         time.sleep(0.1)
 
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")

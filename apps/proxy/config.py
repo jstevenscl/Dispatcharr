@@ -35,7 +35,7 @@ class TSConfig(BaseConfig):
 
     # Streaming settings
     TARGET_BITRATE = 8000000   # Target bitrate (8 Mbps)
-    STREAM_TIMEOUT = 10        # Disconnect after this many seconds of no data
+    STREAM_TIMEOUT = 20        # Disconnect after this many seconds of no data
     HEALTH_CHECK_INTERVAL = 5  # Check stream health every N seconds
 
     # Resource management
