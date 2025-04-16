@@ -544,7 +544,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 name="channel_number"
                 label="Channel # (blank to auto-assign)"
                 value={formik.values.channel_number}
-                onChange={formik.handleChange}
+                onChange={(value) => formik.setFieldValue('channel_number', value)}
                 error={
                   formik.errors.channel_number
                     ? formik.touched.channel_number

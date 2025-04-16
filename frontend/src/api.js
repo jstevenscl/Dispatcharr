@@ -309,6 +309,14 @@ export default class API {
         payload.tvg_id = null;
       }
 
+      // Handle channel_number properly
+      if (payload.channel_number === '') {
+        payload.channel_number = null;
+      } else if (payload.channel_number !== null && payload.channel_number !== undefined) {
+        const parsedNumber = parseInt(payload.channel_number, 10);
+        payload.channel_number = isNaN(parsedNumber) ? null : parsedNumber;
+      }
+
       const response = await request(`${host}/api/channels/channels/${payload.id}/`, {
         method: 'PATCH',
         body: payload,
