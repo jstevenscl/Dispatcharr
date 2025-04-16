@@ -209,7 +209,19 @@ class ChannelSerializer(serializers.ModelSerializer):
 
         # Handle streams if provided
         if stream_ids is not None:
-            instance.streams.set(stream_ids)
+            # Clear existing associations
+            instance.channelstream_set.all().delete()
+
+            # Create new associations with proper ordering
+            for index, stream in enumerate(stream_ids):
+                # Extract the ID from the Stream object
+                actual_stream_id = stream.id if hasattr(stream, "id") else stream
+                print(f'Setting stream {actual_stream_id} to index {index}')
+                ChannelStream.objects.create(
+                    channel=instance,
+                    stream_id=actual_stream_id,
+                    order=index
+                )
 
         return instance
 
