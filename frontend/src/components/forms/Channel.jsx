@@ -115,20 +115,11 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
             // Use the special endpoint to set EPG and trigger refresh
             const epgResponse = await API.setChannelEPG(channel.id, values.epg_data_id);
 
-            // Show notification about EPG status if available
-            if (epgResponse && epgResponse.task_status) {
-              notifications.show({
-                title: 'EPG Status',
-                message: epgResponse.task_status,
-                color: 'blue'
-              });
-            }
-
             // Remove epg_data_id from values since we've handled it separately
             const { epg_data_id, ...otherValues } = formattedValues;
 
             // Update other channel fields if needed
-            if (Object.keys(otherValues).length > 0 && !channel.hasEqualValues(otherValues)) {
+            if (Object.keys(otherValues).length > 0) {
               response = await API.updateChannel({
                 id: channel.id,
                 ...otherValues,
