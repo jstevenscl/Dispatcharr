@@ -10,7 +10,7 @@ const useChannelsStore = create((set, get) => ({
   channelGroups: {},
   profiles: {},
   selectedProfileId: '0',
-  selectedProfileChannels: [],
+  selectedProfileChannelIds: new Set(),
   channelsPageSelection: [],
   stats: {},
   activeChannels: {},
@@ -97,10 +97,10 @@ const useChannelsStore = create((set, get) => ({
         },
         profiles,
         selectedProfile: profiles[state.selectedProfileId],
-        selectedProfileChannels:
+        selectedProfileChannelIds:
           state.selectedProfileId == '0'
             ? []
-            : profiles[state.selectedProfileId].channels,
+            : new Set(profiles[state.selectedProfileId].channels),
       };
     });
   },
@@ -149,7 +149,9 @@ const useChannelsStore = create((set, get) => ({
         },
         profiles,
         selectedProfile: profiles[state.selectedProfileId],
-        selectedProfileChannels: profiles[state.selectedProfileId].channels,
+        selectedProfileChannelIds: new Set(
+          profiles[state.selectedProfileId].channels
+        ),
       };
     }),
 
@@ -256,7 +258,7 @@ const useChannelsStore = create((set, get) => ({
       if (profileIds.includes(state.selectedProfileId)) {
         additionalUpdates = {
           selectedProfileId: '0',
-          selectedProfileChannels: [],
+          selectedProfileChannelIds: new Set(),
           selectedProfile: {},
         };
       }
@@ -276,27 +278,30 @@ const useChannelsStore = create((set, get) => ({
       const profile = state.profiles[profileId];
       if (!profile) return state; // Profile doesn't exist, no update needed
 
+      const profileChannels = new Set(state.profiles[profileId].channels);
+
+      if (enabled) {
+        channelIds.forEach((id) => {
+          profileChannels.add(id);
+        });
+      } else {
+        channelIds.forEach((id) => {
+          profileChannels.delete(id);
+        });
+      }
+
       // Efficiently update only the specific channel
       return {
         profiles: {
           ...state.profiles,
           [profileId]: {
             ...profile,
-            channels: profile.channels.map((channel) =>
-              channelIds.includes(channel.id)
-                ? { ...channel, enabled } // Update enabled flag
-                : channel
-            ),
+            channels: profileChannels,
           },
         },
-        selectedProfileChannels: state.selectedProfileChannels.map(
-          (channel) => ({
-            id: channel.id,
-            enabled: channelIds.includes(channel.id)
-              ? enabled
-              : channel.enabled,
-          })
-        ),
+        ...(state.selectedProfileId == profileId && {
+          selectedProfileChannelIds: profileChannels,
+        }),
       };
     }),
 
@@ -306,7 +311,8 @@ const useChannelsStore = create((set, get) => ({
   setSelectedProfileId: (id) =>
     set((state) => ({
       selectedProfileId: id,
-      selectedProfileChannels: id == '0' ? [] : state.profiles[id].channels,
+      selectedProfileChannelIds:
+        id == '0' ? new Set() : new Set(state.profiles[id].channels),
     })),
 
   setChannelStats: (stats) => {

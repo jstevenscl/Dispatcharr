@@ -139,13 +139,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
     queryset = Channel.objects.all()
     serializer_class = ChannelSerializer
     permission_classes = [IsAuthenticated]
-    # pagination_class = ChannelPagination
+    pagination_class = ChannelPagination
 
-    # filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    # filterset_class = ChannelFilter
-    # search_fields = ['name', 'channel_group__name']
-    # ordering_fields = ['channel_number', 'name', 'channel_group__name']
-    # ordering = ['-channel_number']
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = ChannelFilter
+    search_fields = ['name', 'channel_group__name']
+    ordering_fields = ['channel_number', 'name', 'channel_group__name']
+    ordering = ['-channel_number']
 
     def get_queryset(self):
         qs = super().get_queryset()

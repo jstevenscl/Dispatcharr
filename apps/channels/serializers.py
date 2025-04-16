@@ -83,12 +83,9 @@ class ChannelProfileSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'channels']
 
     def get_channels(self, obj):
-        memberships = ChannelProfileMembership.objects.filter(channel_profile=obj)
+        memberships = ChannelProfileMembership.objects.filter(channel_profile=obj, enabled=True)
         return [
-            {
-                'id': membership.channel.id,
-                'enabled': membership.enabled
-            }
+            membership.channel.id
             for membership in memberships
         ]
 
