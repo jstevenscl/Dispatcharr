@@ -189,7 +189,12 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           const isActive = location.pathname === item.path;
 
           return (
-            <NavLink item={item} collapsed={collapsed} isActive={isActive} />
+            <NavLink
+              key={item.path}
+              item={item}
+              collapsed={collapsed}
+              isActive={isActive}
+            />
           );
         })}
       </Stack>

@@ -138,7 +138,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         queryset=StreamProfile.objects.all(),
         source='stream_profile',
         allow_null=True,
-        required=False,
+        required=False
     )
 
     streams = serializers.SerializerMethodField()
@@ -199,34 +199,25 @@ class ChannelSerializer(serializers.ModelSerializer):
         return channel
 
     def update(self, instance, validated_data):
-        streams = validated_data.pop('stream_ids', None)
+        stream_ids = validated_data.pop('stream_ids', None)
 
-        # Update the actual Channel fields
-        instance.channel_number = validated_data.get('channel_number', instance.channel_number)
-        instance.name = validated_data.get('name', instance.name)
-        instance.tvg_id = validated_data.get('tvg_id', instance.tvg_id)
-        instance.epg_data = validated_data.get('epg_data', None)
-
-        # If serializer allows changing channel_group or stream_profile:
-        if 'channel_group' in validated_data:
-            instance.channel_group = validated_data['channel_group']
-        if 'stream_profile' in validated_data:
-            instance.stream_profile = validated_data['stream_profile']
-        if 'logo' in validated_data:
-            instance.logo = validated_data['logo']
+        # Update all fields from validated_data
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
 
         instance.save()
 
-        # Handle the many-to-many 'streams'
-        if streams is not None:
-            # Clear existing relationships
-            instance.channelstream_set.all().delete()
-            # Add new streams in order
-            for index, stream in enumerate(streams):
-                print(f'Setting stream {stream.id} to index {index}')
-                ChannelStream.objects.create(channel=instance, stream_id=stream.id, order=index)
+        # Handle streams if provided
+        if stream_ids is not None:
+            instance.streams.set(stream_ids)
 
         return instance
+
+    def validate_stream_profile(self, value):
+        """Handle special case where empty/0 values mean 'use default' (null)"""
+        if value == '0' or value == 0 or value == '' or value is None:
+            return None
+        return value  # PrimaryKeyRelatedField will handle the conversion to object
 
 class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
     enabled = serializers.BooleanField()

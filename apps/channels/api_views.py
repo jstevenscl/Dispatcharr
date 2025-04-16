@@ -459,6 +459,59 @@ class ChannelViewSet(viewsets.ModelViewSet):
         match_epg_channels.delay()
         return Response({"message": "EPG matching task initiated."}, status=status.HTTP_202_ACCEPTED)
 
+    # ─────────────────────────────────────────────────────────
+    # 7) Set EPG and Refresh
+    # ─────────────────────────────────────────────────────────
+    @swagger_auto_schema(
+        method='post',
+        operation_description="Set EPG data for a channel and refresh program data",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['epg_data_id'],
+            properties={
+                'epg_data_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER, description="EPG data ID to link"
+                )
+            }
+        ),
+        responses={200: "EPG data linked and refresh triggered"}
+    )
+    @action(detail=True, methods=['post'], url_path='set-epg')
+    def set_epg(self, request, pk=None):
+        channel = self.get_object()
+        epg_data_id = request.data.get('epg_data_id')
+
+        # Handle removing EPG link
+        if epg_data_id in (None, '', '0', 0):
+            channel.epg_data = None
+            channel.save(update_fields=['epg_data'])
+            return Response({"message": f"EPG data removed from channel {channel.name}"})
+
+        try:
+            # Get the EPG data object
+            from apps.epg.models import EPGData
+            epg_data = EPGData.objects.get(pk=epg_data_id)
+
+            # Set the EPG data and save
+            channel.epg_data = epg_data
+            channel.save(update_fields=['epg_data'])
+
+            # Explicitly trigger program refresh for this EPG
+            from apps.epg.tasks import parse_programs_for_tvg_id
+            task_result = parse_programs_for_tvg_id.delay(epg_data.id)
+
+            # Prepare response with task status info
+            status_message = "EPG refresh queued"
+            if task_result.result == "Task already running":
+                status_message = "EPG refresh already in progress"
+
+            return Response({
+                "message": f"EPG data set to {epg_data.tvg_id} for channel {channel.name}. {status_message}.",
+                "channel": self.get_serializer(channel).data,
+                "task_status": status_message
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams

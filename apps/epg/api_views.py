@@ -89,8 +89,62 @@ class EPGGridAPIView(APIView):
         )
         count = programs.count()
         logger.debug(f"EPGGridAPIView: Found {count} program(s), including recently ended, currently running, and upcoming shows.")
-        serializer = ProgramDataSerializer(programs, many=True)
-        return Response({'data': serializer.data}, status=status.HTTP_200_OK)
+
+        # Generate dummy programs for channels that have no EPG data
+        from apps.channels.models import Channel
+        from django.db.models import Q
+
+        # Get channels with no EPG data
+        channels_without_epg = Channel.objects.filter(Q(epg_data__isnull=True))
+        logger.debug(f"EPGGridAPIView: Found {channels_without_epg.count()} channels with no EPG data.")
+
+        # Serialize the regular programs
+        serialized_programs = ProgramDataSerializer(programs, many=True).data
+
+        # Generate and append dummy programs
+        dummy_programs = []
+        for channel in channels_without_epg:
+            # Create dummy programs covering the next 24 hours in 4-hour blocks
+            current_day = now.date()
+
+            # Use the channel UUID as tvg_id for dummy programs to match in the guide
+            dummy_tvg_id = str(channel.uuid)
+
+            # Create programs every 4 hours for the next 24 hours
+            for hour_offset in range(0, 24, 4):
+                start_time = now.replace(hour=now.hour + hour_offset, minute=0, second=0, microsecond=0)
+                if start_time.hour >= 24:
+                    # Handle hour overflow
+                    start_time = start_time.replace(day=start_time.day + 1, hour=start_time.hour - 24)
+
+                end_time = start_time + timedelta(hours=4)
+
+                # Create a dummy program in the same format as regular programs
+                dummy_program = {
+                    'id': f"dummy-{channel.id}-{hour_offset}",  # Create a unique ID
+                    'epg': {
+                        'tvg_id': dummy_tvg_id,
+                        'name': channel.name
+                    },
+                    'start_time': start_time.isoformat(),
+                    'end_time': end_time.isoformat(),
+                    'title': f"{channel.name}",
+                    'description': f"Placeholder program for {channel.name}",
+                    'tvg_id': dummy_tvg_id,
+                    'sub_title': None,
+                    'custom_properties': None
+                }
+                dummy_programs.append(dummy_program)
+
+            # Also update the channel to use this dummy tvg_id
+            channel.tvg_id = dummy_tvg_id
+            channel.save(update_fields=['tvg_id'])
+
+        # Combine regular and dummy programs
+        all_programs = list(serialized_programs) + dummy_programs
+        logger.debug(f"EPGGridAPIView: Returning {len(all_programs)} total programs (including {len(dummy_programs)} dummy programs).")
+
+        return Response({'data': all_programs}, status=status.HTTP_200_OK)
 
 # ─────────────────────────────
 # 4) EPG Import View
