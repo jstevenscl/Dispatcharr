@@ -571,9 +571,6 @@ class StreamManager:
         # Reset retry counter to allow immediate reconnect
         self.retry_count = 0
 
-        # Reset tried streams when manually switching URL
-        self.tried_stream_ids = set()
-
         # Also reset buffer position to prevent stale data after URL change
         if hasattr(self.buffer, 'reset_buffer_position'):
             try:

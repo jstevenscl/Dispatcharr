@@ -146,7 +146,63 @@ def stream_ts(request, channel_id):
             # Generate transcode command if needed
             stream_profile = channel.get_stream_profile()
             if stream_profile.is_redirect():
-                return HttpResponseRedirect(stream_url)
+                # Validate the stream URL before redirecting
+                from .url_utils import validate_stream_url, get_alternate_streams, get_stream_info_for_switch
+
+                # Try initial URL
+                logger.info(f"[{client_id}] Validating redirect URL: {stream_url}")
+                is_valid, final_url, status_code, message = validate_stream_url(
+                    stream_url,
+                    user_agent=stream_user_agent,
+                    timeout=(5, 5)
+                )
+
+                # If first URL doesn't validate, try alternates
+                if not is_valid:
+                    logger.warning(f"[{client_id}] Primary stream URL failed validation: {message}")
+
+                    # Track tried streams to avoid loops
+                    tried_streams = {stream_id}
+
+                    # Get alternate streams
+                    alternates = get_alternate_streams(channel_id, stream_id)
+
+                    # Try each alternate until one works
+                    for alt in alternates:
+                        if alt['stream_id'] in tried_streams:
+                            continue
+
+                        tried_streams.add(alt['stream_id'])
+
+                        # Get stream info
+                        alt_info = get_stream_info_for_switch(channel_id, alt['stream_id'])
+                        if 'error' in alt_info:
+                            logger.warning(f"[{client_id}] Error getting alternate stream info: {alt_info['error']}")
+                            continue
+
+                        # Validate the alternate URL
+                        logger.info(f"[{client_id}] Trying alternate stream #{alt['stream_id']}: {alt_info['url']}")
+                        is_valid, final_url, status_code, message = validate_stream_url(
+                            alt_info['url'],
+                            user_agent=alt_info['user_agent'],
+                            timeout=(5, 5)
+                        )
+
+                        if is_valid:
+                            logger.info(f"[{client_id}] Alternate stream #{alt['stream_id']} validated successfully")
+                            break
+                        else:
+                            logger.warning(f"[{client_id}] Alternate stream #{alt['stream_id']} failed validation: {message}")
+
+                # Final decision based on validation results
+                if is_valid:
+                    logger.info(f"[{client_id}] Redirecting to validated URL: {final_url} ({message})")
+                    return HttpResponseRedirect(final_url)
+                else:
+                    logger.error(f"[{client_id}] All available redirect URLs failed validation")
+                    return JsonResponse({
+                        'error': 'All available streams failed validation'
+                    }, status=502)  # 502 Bad Gateway
 
             # Initialize channel with the stream's user agent (not the client's)
             success = ChannelService.initialize_channel(
@@ -166,9 +222,41 @@ def stream_ts(request, channel_id):
                         if time.time() - wait_start > timeout:
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Connection timeout'}, status=504)
+
+                        # Check if this manager should keep retrying or stop
                         if not manager.should_retry():
+                            # Check channel state in Redis to make a better decision
+                            metadata_key = RedisKeys.channel_metadata(channel_id)
+                            current_state = None
+
+                            if proxy_server.redis_client:
+                                try:
+                                    state_bytes = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STATE)
+                                    if state_bytes:
+                                        current_state = state_bytes.decode('utf-8')
+                                        logger.debug(f"[{client_id}] Current state of channel {channel_id}: {current_state}")
+                                except Exception as e:
+                                    logger.warning(f"[{client_id}] Error getting channel state: {e}")
+
+                            # Allow normal transitional states to continue
+                            if current_state in [ChannelState.INITIALIZING, ChannelState.CONNECTING]:
+                                logger.info(f"[{client_id}] Channel {channel_id} is in {current_state} state, continuing to wait")
+                                # Reset wait timer to allow the transition to complete
+                                wait_start = time.time()
+                                continue
+
+                            # Check if we're switching URLs
+                            if hasattr(manager, 'url_switching') and manager.url_switching:
+                                logger.info(f"[{client_id}] Stream manager is currently switching URLs for channel {channel_id}")
+                                # Reset wait timer to give the switch a chance
+                                wait_start = time.time()
+                                continue
+
+                            # If we reach here, we've exhausted retries and the channel isn't in a valid transitional state
+                            logger.warning(f"[{client_id}] Channel {channel_id} failed to connect and is not in transitional state")
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Failed to connect'}, status=502)
+
                         time.sleep(0.1)
 
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")
@@ -255,6 +343,15 @@ def change_stream(request, channel_id):
 
         # Use the service layer instead of direct implementation
         result = ChannelService.change_stream_url(channel_id, new_url, user_agent)
+
+        # Get the stream manager before updating URL
+        stream_manager = proxy_server.stream_managers.get(channel_id)
+
+        # If we have a stream manager, reset its tried_stream_ids when manually changing streams
+        if stream_manager:
+            # Reset tried streams when manually switching URL via API
+            stream_manager.tried_stream_ids = set()
+            logger.debug(f"Reset tried stream IDs for channel {channel_id} during manual stream change")
 
         if result.get('status') == 'error':
             return JsonResponse({

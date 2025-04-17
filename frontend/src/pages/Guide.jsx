@@ -78,7 +78,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
       // Filter your Redux/Zustand channels by matching tvg_id
       const filteredChannels = Object.values(channels)
-        .filter((ch) => programIds.includes(ch.epg_data?.tvg_id))
+        // Include channels with matching tvg_ids OR channels with null epg_data
+        .filter((ch) => programIds.includes(ch.epg_data?.tvg_id) || programIds.includes(ch.uuid) || ch.epg_data === null)
         // Add sorting by channel_number
         .sort(
           (a, b) =>
@@ -274,7 +275,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
 
   // Helper: find channel by tvg_id
   function findChannelByTvgId(tvgId) {
-    return guideChannels.find((ch) => ch.epg_data?.tvg_id === tvgId);
+    return guideChannels.find(
+      (ch) => ch.epg_data?.tvg_id === tvgId || (!ch.epg_data && ch.uuid === tvgId)
+    );
   }
 
   const record = async (program) => {
@@ -1046,7 +1049,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
             {filteredChannels.length > 0 ? (
               filteredChannels.map((channel) => {
                 const channelPrograms = programs.filter(
-                  (p) => p.tvg_id === channel.epg_data?.tvg_id
+                  (p) => (channel.epg_data && p.tvg_id === channel.epg_data.tvg_id) ||
+                    (!channel.epg_data && p.tvg_id === channel.uuid)
                 );
                 // Check if any program in this channel is expanded
                 const hasExpandedProgram = channelPrograms.some(
