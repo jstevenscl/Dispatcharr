@@ -39,6 +39,7 @@ import { IconSquarePlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import useSettingsStore from '../../store/settings';
 import useVideoStore from '../../store/useVideoStore';
+import useChannelsTableStore from '../../store/channelsTable';
 
 const StreamsTable = ({}) => {
   const theme = useMantineTheme();
@@ -77,11 +78,15 @@ const StreamsTable = ({}) => {
    * Stores
    */
   const { playlists } = usePlaylistsStore();
-  const { channelGroups, channelsPageSelection, fetchLogos } =
-    useChannelsStore();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const channelsPageSelection = useChannelsStore(
+    (s) => s.channelsPageSelection
+  );
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
   const channelSelectionStreams = useChannelsStore(
     (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
   );
+  const requeryChannels = useChannelsTableStore((s) => s.requeryChannels);
   const {
     environment: { env_mode },
   } = useSettingsStore();
@@ -293,6 +298,7 @@ const StreamsTable = ({}) => {
         stream_id,
       }))
     );
+    requeryChannels();
     fetchLogos();
     setIsLoading(false);
   };

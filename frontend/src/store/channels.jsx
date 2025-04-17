@@ -18,6 +18,11 @@ const useChannelsStore = create((set, get) => ({
   recordings: [],
   isLoading: false,
   error: null,
+  forceUpdate: 0,
+
+  triggerUpdate: () => {
+    set({ forecUpdate: new Date() });
+  },
 
   fetchChannels: async () => {
     set({ isLoading: true, error: null });

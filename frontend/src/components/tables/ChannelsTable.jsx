@@ -32,6 +32,9 @@ import {
   EllipsisVertical,
   CircleEllipsis,
   CopyMinus,
+  ArrowUpNarrowWide,
+  ArrowUpDown,
+  ArrowDownWideNarrow,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -66,144 +69,13 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import './table.css';
-
-const ChannelStreams = React.memo(({ channel, isExpanded }) => {
-  const channelStreams = useChannelsStore(
-    (state) => state.channels[channel.id]?.streams
-  );
-  const { playlists } = usePlaylistsStore();
-
-  const removeStream = async (stream) => {
-    const newStreamList = channelStreams.filter((s) => s.id !== stream.id);
-    await API.updateChannel({
-      ...channel,
-      stream_ids: newStreamList.map((s) => s.id),
-    });
-  };
-
-  const channelStreamsTable = useReactTable({
-    ...TableHelper.defaultProperties,
-    data: channelStreams,
-    columns: useMemo(
-      () => [
-        {
-          size: 400,
-          header: 'Name',
-          accessorKey: 'name',
-          Cell: ({ cell }) => (
-            <div
-              style={{
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {cell.getValue()}
-            </div>
-          ),
-        },
-        {
-          size: 100,
-          header: 'M3U',
-          accessorFn: (row) =>
-            playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
-          Cell: ({ cell }) => (
-            <div
-              style={{
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {cell.getValue()}
-            </div>
-          ),
-        },
-      ],
-      [playlists]
-    ),
-    displayColumnDefOptions: {
-      'mrt-row-actions': {
-        size: 10,
-      },
-    },
-    enableKeyboardShortcuts: false,
-    enableColumnFilters: false,
-    enableBottomToolbar: false,
-    enableTopToolbar: false,
-    enableTableHead: false,
-    columnFilterDisplayMode: 'popover',
-    enablePagination: false,
-    enableRowVirtualization: true,
-    enableColumnHeaders: false,
-    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
-    initialState: {
-      density: 'compact',
-    },
-    enableRowActions: true,
-    enableRowOrdering: true,
-    mantineTableHeadRowProps: {
-      style: { display: 'none' },
-    },
-    mantineTableBodyCellProps: {
-      style: {
-        // py: 0,
-        padding: 4,
-        borderColor: '#444',
-        color: '#E0E0E0',
-        fontSize: '0.85rem',
-      },
-    },
-    mantineRowDragHandleProps: ({ table }) => ({
-      onDragEnd: async () => {
-        const { draggingRow, hoveredRow } = table.getState();
-
-        if (hoveredRow && draggingRow) {
-          channelStreams.splice(
-            hoveredRow.index,
-            0,
-            channelStreams.splice(draggingRow.index, 1)[0]
-          );
-
-          const { streams: _, ...channelUpdate } = channel;
-
-          API.updateChannel({
-            ...channelUpdate,
-            stream_ids: channelStreams.map((stream) => stream.id),
-          });
-        }
-      },
-    }),
-    renderRowActions: ({ row }) => (
-      <Tooltip label="Remove stream">
-        <ActionIcon
-          size="sm"
-          color="red.9"
-          variant="transparent"
-          onClick={() => removeStream(row.original)}
-        >
-          <SquareMinus size="18" fontSize="small" />
-        </ActionIcon>
-      </Tooltip>
-    ),
-  });
-
-  if (!isExpanded) {
-    return <></>;
-  }
-
-  return (
-    <Box style={{ width: '100%' }}>
-      <MantineReactTable table={channelStreamsTable} />
-    </Box>
-  );
-});
+import useChannelsTableStore from '../../store/channelsTable';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
 const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
 
-const CreateProfilePopover = React.memo(({}) => {
+const CreateProfilePopover = React.memo(() => {
   const [opened, setOpened] = useState(false);
   const [name, setName] = useState('');
   const theme = useMantineTheme();
@@ -382,18 +254,17 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = React.memo(({}) => {
-  const {
-    channels,
-    isLoading: channelsLoading,
-    fetchChannels,
-    setChannelsPageSelection,
-    profiles,
-    selectedProfileId,
-    setSelectedProfileId,
-    channelsPageSelection,
-    channelGroups,
-  } = useChannelsStore();
+const ChannelsTable = ({}) => {
+  const profiles = useChannelsStore((s) => s.profiles);
+  const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
+  const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+
+  const queryChannels = useChannelsTableStore((s) => s.queryChannels);
+  const requeryChannels = useChannelsTableStore((s) => s.requeryChannels);
+  const data = useChannelsTableStore((s) => s.channels);
+  const rowCount = useChannelsTableStore((s) => s.count);
+  const pageCount = useChannelsTableStore((s) => s.pageCount);
 
   const selectedProfileChannels = useChannelsStore(
     (s) => s.profiles[selectedProfileId]?.channels
@@ -416,10 +287,6 @@ const ChannelsTable = React.memo(({}) => {
   const [selectedProfile, setSelectedProfile] = useState(
     profiles[selectedProfileId]
   );
-  const [data, setData] = useState([]); // Holds fetched data
-  const [selectedRowIds, setSelectedRowIds] = useState([]);
-  const [rowCount, setRowCount] = useState(0);
-  const [pageCount, setPageCount] = useState(0);
   const [paginationString, setPaginationString] = useState('');
   const [pagination, setPagination] = useState({
     pageIndex: 0,
@@ -435,14 +302,34 @@ const ChannelsTable = React.memo(({}) => {
   const [selectedChannelIds, setSelectedChannelIds] = useState([]);
   const [sorting, setSorting] = useState([
     { id: 'channel_number', desc: false },
-    { id: 'name', desc: false },
   ]);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
   const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
 
-  const [textToCopy, setTextToCopy] = useState('');
+  useEffect(() => {
+    const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
+    const endItem = Math.min(
+      (pagination.pageIndex + 1) * pagination.pageSize,
+      rowCount
+    );
+
+    if (initialDataCount === null) {
+      setInitialDataCount(rowCount);
+    }
+
+    // Generate the string
+    setPaginationString(`${startItem} to ${endItem} of ${rowCount}`);
+  }, [data]);
+
+  useEffect(() => {
+    queryChannels({ pagination, sorting, filters });
+  }, []);
+
+  useEffect(() => {
+    queryChannels({ pagination, sorting, filters });
+  }, [pagination, sorting, debouncedFilters]);
 
   // const theme = useTheme();
   const theme = useMantineTheme();
@@ -507,67 +394,6 @@ const ChannelsTable = React.memo(({}) => {
     }
     showVideo(vidUrl);
   }
-
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-
-    const params = new URLSearchParams();
-    params.append('page', pagination.pageIndex + 1);
-    params.append('page_size', pagination.pageSize);
-
-    // Apply sorting
-    if (sorting.length > 0) {
-      const sortField = sorting[0].id;
-      const sortDirection = sorting[0].desc ? '-' : '';
-      params.append('ordering', `${sortDirection}${sortField}`);
-    }
-
-    // Apply debounced filters
-    Object.entries(debouncedFilters).forEach(([key, value]) => {
-      if (value) params.append(key, value);
-    });
-
-    try {
-      const result = await API.queryChannels(params);
-      setData(result.results);
-      setRowCount(result.count);
-      setPageCount(Math.ceil(result.count / pagination.pageSize));
-
-      // Calculate the starting and ending item indexes
-      const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
-      const endItem = Math.min(
-        (pagination.pageIndex + 1) * pagination.pageSize,
-        result.count
-      );
-
-      if (initialDataCount === null) {
-        setInitialDataCount(result.count);
-      }
-
-      // Generate the string
-      setPaginationString(`${startItem} to ${endItem} of ${result.count}`);
-
-      const newSelection = {};
-      result.results.forEach((item, index) => {
-        if (selectedChannelIds.includes(item.id)) {
-          newSelection[index] = true;
-        }
-      });
-
-      // ✅ Only update rowSelection if it's different
-      if (JSON.stringify(newSelection) !== JSON.stringify(rowSelection)) {
-        setRowSelection(newSelection);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
-
-    setIsLoading(false);
-  }, [pagination, sorting, debouncedFilters]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   const onRowSelectionChange = (updater) => {
     setRowSelection((prevRowSelection) => {
@@ -656,13 +482,13 @@ const ChannelsTable = React.memo(({}) => {
     };
 
     return <Switch size="xs" checked={enabled} onChange={toggleSelected} />;
-  }, [selectedChannelIds, selectedProfileChannelIds, fetchData]);
+  }, [selectedChannelIds, selectedProfileChannelIds, data]);
 
   // (Optional) bulk delete, but your endpoint is @TODO
   const deleteChannels = async () => {
     setIsLoading(true);
     await API.deleteChannels(selectedChannelIds);
-    fetchData();
+    requeryChannels();
     setIsLoading(false);
   };
 
@@ -687,7 +513,7 @@ const ChannelsTable = React.memo(({}) => {
 
       // Refresh the channel list
       // await fetchChannels();
-      fetchData();
+      requeryChannels();
     } catch (err) {
       console.error(err);
       notifications.show({
@@ -760,6 +586,32 @@ const ChannelsTable = React.memo(({}) => {
 
   const deleteProfile = async (id) => {
     await API.deleteChannelProfile(id);
+  };
+
+  const onSortingChange = (column) => {
+    console.log(sorting);
+    const sortField = sorting[0]?.id;
+    const sortDirection = sorting[0]?.desc;
+
+    if (sortField == column) {
+      if (sortDirection == false) {
+        setSorting([
+          {
+            id: column,
+            desc: true,
+          },
+        ]);
+      } else {
+        setSorting([]);
+      }
+    } else {
+      setSorting([
+        {
+          id: column,
+          desc: false,
+        },
+      ]);
+    }
   };
 
   const renderProfileOption = ({ option, checked }) => {
@@ -859,7 +711,7 @@ const ChannelsTable = React.memo(({}) => {
           const value = getValue();
           const src = value?.cache_url || logo;
           return (
-            <Center>
+            <Center style={{ width: '100%' }}>
               <img
                 src={src}
                 alt="logo"
@@ -887,7 +739,7 @@ const ChannelsTable = React.memo(({}) => {
         enableSorting: false,
       },
     ],
-    [selectedProfileId]
+    [selectedProfileId, data]
   );
 
   const { getHeaderGroups, getRowModel } = useReactTable({
@@ -899,6 +751,8 @@ const ChannelsTable = React.memo(({}) => {
     },
     pageCount,
     state: {
+      data,
+      rowCount,
       sorting,
       filters,
       pagination,
@@ -908,9 +762,6 @@ const ChannelsTable = React.memo(({}) => {
     manualSorting: true,
     manualFiltering: true,
     enableRowSelection: true,
-    // onPaginationChange: setPagination,
-    // onSortingChange: setSorting,
-    // onColumnFiltersChange: setFilters,
     onRowSelectionChange: onRowSelectionChange,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -922,6 +773,15 @@ const ChannelsTable = React.memo(({}) => {
   const rows = getRowModel().rows;
 
   const renderHeaderCell = (header) => {
+    let sortingIcon = ArrowUpDown;
+    if (sorting[0]?.id == header.id) {
+      if (sorting[0].desc === false) {
+        sortingIcon = ArrowUpNarrowWide;
+      } else {
+        sortingIcon = ArrowDownWideNarrow;
+      }
+    }
+
     switch (header.id) {
       case 'select':
         return ChannelRowSelectHeader({
@@ -938,19 +798,39 @@ const ChannelsTable = React.memo(({}) => {
           </Center>
         );
 
+      case 'channel_number':
+        return (
+          <Flex gap={2}>
+            #
+            {/* <Center>
+              {React.createElement(sortingIcon, {
+                onClick: () => onSortingChange('name'),
+                size: 14,
+              })}
+            </Center> */}
+          </Flex>
+        );
+
       case 'name':
         return (
-          <TextInput
-            name="name"
-            placeholder="Name"
-            value={filters.name || ''}
-            onClick={(e) => e.stopPropagation()}
-            onChange={handleFilterChange}
-            size="xs"
-            variant="unstyled"
-            className="table-input-header"
-            style={{ width: '100%' }}
-          />
+          <Flex gap="sm">
+            <TextInput
+              name="name"
+              placeholder="Name"
+              value={filters.name || ''}
+              onClick={(e) => e.stopPropagation()}
+              onChange={handleFilterChange}
+              size="xs"
+              variant="unstyled"
+              className="table-input-header"
+            />
+            <Center>
+              {React.createElement(sortingIcon, {
+                onClick: () => onSortingChange('name'),
+                size: 14,
+              })}
+            </Center>
+          </Flex>
         );
 
       case 'channel_group':
@@ -1006,7 +886,7 @@ const ChannelsTable = React.memo(({}) => {
         </Center>
       );
     },
-    [rows]
+    [rows, rowCount]
   );
 
   return (
@@ -1320,8 +1200,7 @@ const ChannelsTable = React.memo(({}) => {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              height: '100%',
-              paddingBottom: '56px',
+              height: 'calc(100vh - 120px)',
             }}
           >
             <Box
@@ -1335,9 +1214,6 @@ const ChannelsTable = React.memo(({}) => {
             >
               <Box
                 className="divTable table-striped"
-                striped
-                highlightOnHover
-                stickyHeader
                 style={{
                   width: '100%',
                   display: 'flex',
@@ -1345,7 +1221,7 @@ const ChannelsTable = React.memo(({}) => {
                 }}
               >
                 <Box
-                  class="thead"
+                  className="thead"
                   style={{
                     position: 'sticky',
                     top: 0,
@@ -1480,6 +1356,6 @@ const ChannelsTable = React.memo(({}) => {
       />
     </Box>
   );
-});
+};
 
 export default ChannelsTable;
