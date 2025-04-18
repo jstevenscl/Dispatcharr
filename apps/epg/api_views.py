@@ -96,7 +96,14 @@ class EPGGridAPIView(APIView):
 
         # Get channels with no EPG data
         channels_without_epg = Channel.objects.filter(Q(epg_data__isnull=True))
-        logger.debug(f"EPGGridAPIView: Found {channels_without_epg.count()} channels with no EPG data.")
+        channels_count = channels_without_epg.count()
+
+        # Log more detailed information about channels missing EPG data
+        if channels_count > 0:
+            channel_names = [f"{ch.name} (ID: {ch.id})" for ch in channels_without_epg]
+            logger.warning(f"EPGGridAPIView: Missing EPG data for these channels: {', '.join(channel_names)}")
+
+        logger.debug(f"EPGGridAPIView: Found {channels_count} channels with no EPG data.")
 
         # Serialize the regular programs
         serialized_programs = ProgramDataSerializer(programs, many=True).data
@@ -104,41 +111,41 @@ class EPGGridAPIView(APIView):
         # Generate and append dummy programs
         dummy_programs = []
         for channel in channels_without_epg:
-            # Create dummy programs covering the next 24 hours in 4-hour blocks
-            current_day = now.date()
-
             # Use the channel UUID as tvg_id for dummy programs to match in the guide
             dummy_tvg_id = str(channel.uuid)
 
-            # Create programs every 4 hours for the next 24 hours
-            for hour_offset in range(0, 24, 4):
-                start_time = now.replace(hour=now.hour + hour_offset, minute=0, second=0, microsecond=0)
-                if start_time.hour >= 24:
-                    # Handle hour overflow
-                    start_time = start_time.replace(day=start_time.day + 1, hour=start_time.hour - 24)
+            try:
+                # Create programs every 4 hours for the next 24 hours
+                for hour_offset in range(0, 24, 4):
+                    # Use timedelta for time arithmetic instead of replace() to avoid hour overflow
+                    start_time = now + timedelta(hours=hour_offset)
+                    # Set minutes/seconds to zero for clean time blocks
+                    start_time = start_time.replace(minute=0, second=0, microsecond=0)
+                    end_time = start_time + timedelta(hours=4)
 
-                end_time = start_time + timedelta(hours=4)
-
-                # Create a dummy program in the same format as regular programs
-                dummy_program = {
-                    'id': f"dummy-{channel.id}-{hour_offset}",  # Create a unique ID
-                    'epg': {
+                    # Create a dummy program in the same format as regular programs
+                    dummy_program = {
+                        'id': f"dummy-{channel.id}-{hour_offset}",  # Create a unique ID
+                        'epg': {
+                            'tvg_id': dummy_tvg_id,
+                            'name': channel.name
+                        },
+                        'start_time': start_time.isoformat(),
+                        'end_time': end_time.isoformat(),
+                        'title': f"{channel.name}",
+                        'description': f"Placeholder program for {channel.name}",
                         'tvg_id': dummy_tvg_id,
-                        'name': channel.name
-                    },
-                    'start_time': start_time.isoformat(),
-                    'end_time': end_time.isoformat(),
-                    'title': f"{channel.name}",
-                    'description': f"Placeholder program for {channel.name}",
-                    'tvg_id': dummy_tvg_id,
-                    'sub_title': None,
-                    'custom_properties': None
-                }
-                dummy_programs.append(dummy_program)
+                        'sub_title': None,
+                        'custom_properties': None
+                    }
+                    dummy_programs.append(dummy_program)
 
-            # Also update the channel to use this dummy tvg_id
-            channel.tvg_id = dummy_tvg_id
-            channel.save(update_fields=['tvg_id'])
+                # Also update the channel to use this dummy tvg_id
+                channel.tvg_id = dummy_tvg_id
+                channel.save(update_fields=['tvg_id'])
+
+            except Exception as e:
+                logger.error(f"Error creating dummy programs for channel {channel.name} (ID: {channel.id}): {str(e)}")
 
         # Combine regular and dummy programs
         all_programs = list(serialized_programs) + dummy_programs

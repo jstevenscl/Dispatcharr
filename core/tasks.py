@@ -38,6 +38,14 @@ def scan_and_process_files():
     redis_client = RedisClient.get_client()
     now = time.time()
 
+    # Add debug logging for the auto-import setting
+    auto_import_value = CoreSettings.get_auto_import_mapped_files()
+    logger.info(f"Auto-import mapped files setting value: '{auto_import_value}' (type: {type(auto_import_value).__name__})")
+
+    # Check if directories exist
+    logger.info(f"Checking M3U directory: {M3U_WATCH_DIR} (exists: {os.path.exists(M3U_WATCH_DIR)})")
+    logger.info(f"Checking EPG directory: {EPG_WATCH_DIR} (exists: {os.path.exists(EPG_WATCH_DIR)})")
+
     for filename in os.listdir(M3U_WATCH_DIR):
         filepath = os.path.join(M3U_WATCH_DIR, filename)
 
@@ -52,10 +60,17 @@ def scan_and_process_files():
         redis_key = REDIS_PREFIX + filepath
         stored_mtime = redis_client.get(redis_key)
 
-        # Startup safety: skip old untracked files
+        # Instead of assuming old files were processed, check if they exist in the database
         if not stored_mtime and age > STARTUP_SKIP_AGE:
-            redis_client.set(redis_key, mtime, ex=REDIS_TTL)
-            continue  # Assume already processed before startup
+            # Check if this file is already in the database
+            existing_m3u = M3UAccount.objects.filter(file_path=filepath).exists()
+            if existing_m3u:
+                logger.info(f"Skipping {filename}: Already exists in database")
+                redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+                continue
+            else:
+                logger.info(f"Processing {filename} despite age: Not found in database")
+                # Continue processing this file even though it's old
 
         # File too new — probably still being written
         if age < MIN_AGE_SECONDS:
@@ -65,13 +80,11 @@ def scan_and_process_files():
         if stored_mtime and float(stored_mtime) >= mtime:
             continue
 
-
         m3u_account, _ = M3UAccount.objects.get_or_create(file_path=filepath, defaults={
             "name": filename,
-            "is_active": True if CoreSettings.get_auto_import_mapped_files() == "true" else False,
+            "is_active": CoreSettings.get_auto_import_mapped_files() in [True, "true", "True"],
         })
 
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
         redis_client.set(redis_key, mtime, ex=REDIS_TTL)
 
         if not m3u_account.is_active:
@@ -89,13 +102,23 @@ def scan_and_process_files():
             },
         )
 
-    for filename in os.listdir(EPG_WATCH_DIR):
+    try:
+        epg_files = os.listdir(EPG_WATCH_DIR)
+        logger.info(f"Found {len(epg_files)} files in EPG directory: {epg_files}")
+    except Exception as e:
+        logger.error(f"Error listing EPG directory: {e}")
+        epg_files = []
+
+    for filename in epg_files:
         filepath = os.path.join(EPG_WATCH_DIR, filename)
+        logger.info(f"Processing potential EPG file: {filename}")
 
         if not os.path.isfile(filepath):
+            logger.info(f"Skipping {filename}: Not a file")
             continue
 
         if not filename.endswith('.xml') and not filename.endswith('.gz'):
+            logger.info(f"Skipping {filename}: Not an XML or GZ file")
             continue
 
         mtime = os.path.getmtime(filepath)
@@ -103,42 +126,58 @@ def scan_and_process_files():
         redis_key = REDIS_PREFIX + filepath
         stored_mtime = redis_client.get(redis_key)
 
-        # Startup safety: skip old untracked files
+        logger.info(f"File {filename}: age={age}s, MIN_AGE={MIN_AGE_SECONDS}s, stored_mtime={stored_mtime}")
+
+        # Instead of assuming old files were processed, check if they exist in the database
         if not stored_mtime and age > STARTUP_SKIP_AGE:
-            redis_client.set(redis_key, mtime, ex=REDIS_TTL)
-            continue  # Assume already processed before startup
+            # Check if this file is already in the database
+            existing_epg = EPGSource.objects.filter(file_path=filepath).exists()
+            if existing_epg:
+                logger.info(f"Skipping {filename}: Already exists in database")
+                redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+                continue
+            else:
+                logger.info(f"Processing {filename} despite age: Not found in database")
+                # Continue processing this file even though it's old
 
         # File too new — probably still being written
         if age < MIN_AGE_SECONDS:
+            logger.info(f"Skipping {filename}: Too new, possibly still being written (age={age}s < {MIN_AGE_SECONDS}s)")
             continue
 
         # Skip if we've already processed this mtime
         if stored_mtime and float(stored_mtime) >= mtime:
+            logger.info(f"Skipping {filename}: Already processed this version (stored={stored_mtime}, current={mtime})")
             continue
 
-        epg_source, _ = EPGSource.objects.get_or_create(file_path=filepath, defaults={
-            "name": filename,
-            "source_type": "xmltv",
-            "is_active": True if CoreSettings.get_auto_import_mapped_files() == "true" else False,
-        })
+        try:
+            logger.info(f"Creating/getting EPG source for {filename}")
+            epg_source, created = EPGSource.objects.get_or_create(file_path=filepath, defaults={
+                "name": filename,
+                "source_type": "xmltv",
+                "is_active": CoreSettings.get_auto_import_mapped_files() in [True, "true", "True"],
+            })
 
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
-        redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+            # Add debug logging for created sources
+            if created:
+                logger.info(f"Created new EPG source '{filename}' with is_active={epg_source.is_active}")
+            else:
+                logger.info(f"Found existing EPG source '{filename}' with is_active={epg_source.is_active}")
 
-        if not epg_source.is_active:
-            logger.info("EPG source is inactive, skipping.")
+            redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+
+            if not epg_source.is_active:
+                logger.info(f"Skipping {filename}: EPG source is marked as inactive")
+                continue
+
+            logger.info(f"Triggering refresh_epg_data task for EPG source id={epg_source.id}")
+            refresh_epg_data.delay(epg_source.id)  # Trigger Celery task
+
+            logger.info(f"Successfully queued refresh for EPG file: {filename}")
+
+        except Exception as e:
+            logger.error(f"Error processing EPG file {filename}: {str(e)}", exc_info=True)
             continue
-
-        refresh_epg_data.delay(epg_source.id)  # Trigger Celery task
-
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            "updates",
-            {
-                "type": "update",
-                "data": {"success": True, "type": "epg_file", "filename": filename}
-            },
-        )
 
 def fetch_channel_stats():
     redis_client = RedisClient.get_client()
