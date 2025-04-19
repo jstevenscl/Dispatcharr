@@ -56,9 +56,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [selectedGroupId, setSelectedGroupId] = useState('all');
   const [selectedProfileId, setSelectedProfileId] = useState('all');
 
-  const {
-    environment: { env_mode },
-  } = useSettingsStore();
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
   const guideRef = useRef(null);
   const timelineRef = useRef(null); // New ref for timeline scrolling
@@ -308,7 +306,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   };
 
   // The “Watch Now” click => show floating video
-  const { showVideo } = useVideoStore(); // or useVideoStore()
+  const showVideo = useVideoStore((s) => s.showVideo);
   function handleWatchStream(program) {
     const matched = findChannelByTvgId(program.tvg_id);
     if (!matched) {

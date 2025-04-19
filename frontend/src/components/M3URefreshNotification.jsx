@@ -8,11 +8,12 @@ import useChannelsStore from '../store/channels';
 import useEPGsStore from '../store/epgs';
 
 export default function M3URefreshNotification() {
-  const { playlists, refreshProgress } = usePlaylistsStore();
-  const { fetchStreams } = useStreamsStore();
-  const { fetchChannelGroups } = useChannelsStore();
-  const { fetchPlaylists } = usePlaylistsStore();
-  const { fetchEPGData } = useEPGsStore();
+  const playlists = usePlaylistsStore((s) => s.playlists);
+  const refreshProgress = usePlaylistsStore((s) => s.refreshProgress);
+  const fetchStreams = useStreamsStore((s) => s.fetchStreams);
+  const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
+  const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
+  const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
 
   const [notificationStatus, setNotificationStatus] = useState({});
 

@@ -11,7 +11,7 @@ function SuperuserForm({}) {
     email: '',
   });
   const [error, setError] = useState('');
-  const { setSuperuserExists } = useAuthStore();
+  const setSuperuserExists = useAuthStore((s) => s.setSuperuserExists);
 
   const handleChange = (e) => {
     setFormData((prev) => ({

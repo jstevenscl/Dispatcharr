@@ -36,7 +36,7 @@ dayjs.extend(duration);
 dayjs.extend(relativeTime);
 
 const RecordingCard = ({ recording }) => {
-  const { channels } = useChannelsStore();
+  const channels = useChannelsStore((s) => s.channels);
 
   const deleteRecording = (id) => {
     API.deleteRecording(id);
@@ -103,7 +103,7 @@ const RecordingCard = ({ recording }) => {
 const DVRPage = () => {
   const theme = useMantineTheme();
 
-  const { recordings } = useChannelsStore();
+  const recordings = useChannelsStore((s) => s.recordings);
 
   const [recordingModalOpen, setRecordingModalOpen] = useState(false);
 

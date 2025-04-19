@@ -25,7 +25,7 @@ const EPGsTable = () => {
   const [epgModalOpen, setEPGModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
 
-  const { epgs } = useEPGsStore();
+  const epgs = useEPGsStore((s) => s.epgs);
 
   const theme = useMantineTheme();
 

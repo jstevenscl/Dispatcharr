@@ -17,7 +17,9 @@ import { useDebounce } from '../../utils';
 
 const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
   const [websocketReady, sendMessage] = useWebSocket();
-  const { profileSearchPreview, profileResult } = usePlaylistsStore();
+
+  const profileSearchPreview = usePlaylistsStore((s) => s.profileSearchPreview);
+  const profileResult = usePlaylistsStore((s) => s.profileResult);
 
   const [searchPattern, setSearchPattern] = useState('');
   const [replacePattern, setReplacePattern] = useState('');

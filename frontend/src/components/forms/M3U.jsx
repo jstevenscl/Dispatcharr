@@ -28,8 +28,8 @@ import { isNotEmpty, useForm } from '@mantine/form';
 const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   const theme = useMantineTheme();
 
-  const { userAgents } = useUserAgentsStore();
-  const { fetchChannelGroups } = useChannelsStore();
+  const userAgents = useUserAgentsStore((s) => s.userAgents);
+  const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
 
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);

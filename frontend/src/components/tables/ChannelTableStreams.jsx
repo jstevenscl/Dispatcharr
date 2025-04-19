@@ -117,7 +117,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
 
   const dataIds = data?.map(({ id }) => id);
 
-  const { playlists } = usePlaylistsStore();
+  const playlists = usePlaylistsStore((s) => s.playlists);
 
   const removeStream = async (stream) => {
     const newStreamList = channelStreams.filter((s) => s.id !== stream.id);

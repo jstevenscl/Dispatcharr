@@ -27,8 +27,9 @@ const M3UTable = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
   const [playlistCreated, setPlaylistCreated] = useState(false);
 
-  const { playlists, refreshProgress, setRefreshProgress } =
-    usePlaylistsStore();
+  const playlists = usePlaylistsStore((s) => s.playlists);
+  const refreshProgress = usePlaylistsStore((s) => s.refreshProgress);
+  const setRefreshProgress = usePlaylistsStore((s) => s.setRefreshProgress);
 
   const theme = useMantineTheme();
 

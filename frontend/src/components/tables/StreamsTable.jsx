@@ -77,7 +77,7 @@ const StreamsTable = ({}) => {
   /**
    * Stores
    */
-  const { playlists } = usePlaylistsStore();
+  const playlists = usePlaylistsStore((s) => s.playlists);
 
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
@@ -86,10 +86,8 @@ const StreamsTable = ({}) => {
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
-  const {
-    environment: { env_mode },
-  } = useSettingsStore();
-  const { showVideo } = useVideoStore();
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
+  const showVideo = useVideoStore((s) => s.showVideo);
 
   // Access the row virtualizer instance (optional)
   const rowVirtualizerInstanceRef = useRef(null);

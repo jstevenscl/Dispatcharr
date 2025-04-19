@@ -42,11 +42,15 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const listRef = useRef(null);
   const logoListRef = useRef(null);
 
-  const { channelGroups, logos, fetchLogos } = useChannelsStore();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const logos = useChannelsStore((s) => s.logos);
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
   const streams = useStreamsStore((state) => state.streams);
-  const { profiles: streamProfiles } = useStreamProfilesStore();
-  const { playlists } = usePlaylistsStore();
-  const { epgs, tvgs, tvgsById } = useEPGsStore();
+  const streamProfiles = useStreamProfilesStore((s) => s.profiles);
+  const playlists = usePlaylistsStore((s) => s.playlists);
+  const epgs = useEPGsStore((s) => s.epgs);
+  const tvgs = useEPGsStore((s) => s.tvgs);
+  const tvgsById = useEPGsStore((s) => s.tvgsById);
 
   const [logoPreview, setLogoPreview] = useState(null);
   const [channelStreams, setChannelStreams] = useState([]);

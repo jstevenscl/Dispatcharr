@@ -292,9 +292,7 @@ const ChannelsTable = ({}) => {
 
   const groupOptions = Object.values(channelGroups).map((group) => group.name);
 
-  const {
-    environment: { env_mode },
-  } = useSettingsStore();
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
@@ -365,7 +363,7 @@ const ChannelsTable = ({}) => {
   // const theme = useTheme();
   const theme = useMantineTheme();
 
-  const { showVideo } = useVideoStore();
+  const showVideo = useVideoStore((s) => s.showVideo);
 
   useEffect(() => {
     setSelectedProfile(profiles[selectedProfileId]);

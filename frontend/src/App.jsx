@@ -36,14 +36,12 @@ const defaultRoute = '/channels';
 
 const App = () => {
   const [open, setOpen] = useState(true);
-  const {
-    isAuthenticated,
-    setIsAuthenticated,
-    logout,
-    initData,
-    initializeAuth,
-    setSuperuserExists,
-  } = useAuthStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const setIsAuthenticated = useAuthStore((s) => s.setIsAuthenticated);
+  const logout = useAuthStore((s) => s.logout);
+  const initData = useAuthStore((s) => s.initData);
+  const initializeAuth = useAuthStore((s) => s.initializeAuth);
+  const setSuperuserExists = useAuthStore((s) => s.setSuperuserExists);
 
   const toggleDrawer = () => {
     setOpen(!open);

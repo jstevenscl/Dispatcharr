@@ -63,9 +63,9 @@ const NavLink = ({ item, isActive, collapsed }) => {
 
 const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const location = useLocation();
-  const { channels } = useChannelsStore();
-  const { environment } = useSettingsStore();
-  const { isAuthenticated } = useAuthStore(); // Add this line to get authentication state
+  const channels = useChannelsStore((s) => s.channels);
+  const environment = useSettingsStore((s) => s.environment);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const publicIPRef = useRef(null);
   const [appVersion, setAppVersion] = useState({ version: '', build: '' });
 

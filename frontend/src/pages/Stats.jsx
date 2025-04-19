@@ -227,8 +227,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
 const ChannelsPage = () => {
   const theme = useMantineTheme();
 
-  const { channels, channelsByUUID, stats: channelStats } = useChannelsStore();
-  const { profiles: streamProfiles } = useStreamProfilesStore();
+  const channels = useChannelsStore((s) => s.channels);
+  const channelsByUUID = useChannelsStore((s) => s.channelsByUUID);
+  const channelStats = useChannelsStore((s) => s.stats);
+  const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const [activeChannels, setActiveChannels] = useState({});
   const [clients, setClients] = useState([]);

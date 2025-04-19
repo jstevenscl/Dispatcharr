@@ -9,7 +9,7 @@ import useChannelsStore from '../../store/channels';
 
 const Stream = ({ stream = null, isOpen, onClose }) => {
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
-  const { channelGroups } = useChannelsStore();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
 
   const formik = useFormik({
     initialValues: {

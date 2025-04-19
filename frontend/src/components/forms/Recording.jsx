@@ -8,7 +8,7 @@ import { CircleAlert } from 'lucide-react';
 import { isNotEmpty, useForm } from '@mantine/form';
 
 const DVR = ({ recording = null, channel = null, isOpen, onClose }) => {
-  const { channels } = useChannelsStore();
+  const channels = useChannelsStore((s) => s.channels);
 
   let startTime = new Date();
   startTime.setMinutes(Math.ceil(startTime.getMinutes() / 30) * 30);

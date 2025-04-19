@@ -30,7 +30,7 @@ const StreamProfiles = () => {
   const [hideInactive, setHideInactive] = useState(false);
 
   const streamProfiles = useStreamProfilesStore((state) => state.profiles);
-  const { settings } = useSettingsStore();
+  const settings = useSettingsStore((s) => s.settings);
 
   const theme = useMantineTheme();
 

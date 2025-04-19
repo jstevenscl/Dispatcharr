@@ -20,11 +20,13 @@ export const WebsocketProvider = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
   const [val, setVal] = useState(null);
 
-  const { fetchChannels, setChannelStats, fetchChannelGroups } =
-    useChannelsStore();
-  const { fetchPlaylists, setRefreshProgress, setProfilePreview } =
-    usePlaylistsStore();
-  const { fetchEPGData, fetchEPGs } = useEPGsStore();
+  const setChannelStats = useChannelsStore((s) => s.setChannelStats);
+  const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
+  const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
+  const setRefreshProgress = usePlaylistsStore((s) => s.setRefreshProgress);
+  const setProfilePreview = usePlaylistsStore((s) => s.setProfilePreview);
+  const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
+  const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
 
   const ws = useRef(null);
 
