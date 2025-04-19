@@ -385,6 +385,10 @@ const ChannelsTable = ({}) => {
       ...prev,
       [name]: value,
     }));
+    setPagination({
+      pageIndex: 0,
+      pageSize: pagination.pageSize,
+    });
   }, []);
 
   const handleGroupChange = (value) => {
@@ -392,6 +396,10 @@ const ChannelsTable = ({}) => {
       ...prev,
       channel_group: value ? value : '',
     }));
+    setPagination({
+      pageIndex: 0,
+      pageSize: pagination.pageSize,
+    });
   };
 
   const hdhrUrlRef = useRef(null);
@@ -729,7 +737,8 @@ const ChannelsTable = ({}) => {
         },
       },
       {
-        accessorFn: (row) => row.channel_group?.name || '',
+        accessorFn: (row) =>
+          row.channel_group_id ? channelGroups[row.channel_group_id].name : '',
         id: 'channel_group',
         cell: ({ getValue }) => (
           <Box

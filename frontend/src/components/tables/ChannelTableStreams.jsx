@@ -43,9 +43,16 @@ const RowDragHandleCell = ({ rowId }) => {
   });
   return (
     // Alternatively, you could set these attributes on the rows themselves
-    <ActionIcon {...attributes} {...listeners} variant="transparent" size="xs">
-      <GripHorizontal color="white" />
-    </ActionIcon>
+    <Center>
+      <ActionIcon
+        {...attributes}
+        {...listeners}
+        variant="transparent"
+        size="xs"
+      >
+        <GripHorizontal color="white" />
+      </ActionIcon>
+    </Center>
   );
 };
 
@@ -108,19 +115,18 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     (state) => state.getChannelStreams(channel.id),
     shallow
   );
+  const playlists = usePlaylistsStore((s) => s.playlists);
+
+  const [data, setData] = useState(channelStreams || []);
 
   useEffect(() => {
     setData(channelStreams);
   }, [channelStreams]);
 
-  const [data, setData] = useState(channelStreams || []);
-
   const dataIds = data?.map(({ id }) => id);
 
-  const playlists = usePlaylistsStore((s) => s.playlists);
-
   const removeStream = async (stream) => {
-    const newStreamList = channelStreams.filter((s) => s.id !== stream.id);
+    const newStreamList = data.filter((s) => s.id !== stream.id);
     await API.updateChannel({
       ...channel,
       stream_ids: newStreamList.map((s) => s.id),
@@ -164,9 +170,9 @@ const ChannelStreams = ({ channel, isExpanded }) => {
           ),
         },
       ],
-      [playlists]
+      [data, playlists]
     ),
-    data: data,
+    data,
     state: {
       data,
     },
@@ -216,6 +222,8 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     return <></>;
   }
 
+  const rows = table.getRowModel().rows;
+
   return (
     <Box style={{ width: '100%', padding: 10, backgroundColor: '#163632' }}>
       <DndContext
@@ -238,9 +246,35 @@ const ChannelStreams = ({ channel, isExpanded }) => {
               items={dataIds}
               strategy={verticalListSortingStrategy}
             >
-              {table.getRowModel().rows.map((row) => (
-                <DraggableRow key={row.id} row={row} />
-              ))}
+              {rows.length === 0 && (
+                <Box
+                  className="tr"
+                  style={{
+                    display: 'flex',
+                    width: '100%',
+                  }}
+                >
+                  <Box
+                    className="td"
+                    style={{
+                      flex: '1 1 0',
+                      minWidth: 0,
+                    }}
+                  >
+                    <Flex
+                      align="center"
+                      justify="center"
+                      style={{ height: '100%' }}
+                    >
+                      <Text size="xs">No Data</Text>
+                    </Flex>
+                  </Box>
+                </Box>
+              )}
+              {rows.length > 0 &&
+                table
+                  .getRowModel()
+                  .rows.map((row) => <DraggableRow key={row.id} row={row} />)}
             </SortableContext>
           </Box>
         </Box>
