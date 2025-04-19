@@ -113,16 +113,12 @@ const useChannelsStore = create((set, get) => ({
       const channelsByID = newChannels.reduce((acc, channel) => {
         acc[channel.id] = channel;
         channelsByUUID[channel.uuid] = channel.id;
-        if (channel.logo) {
-          logos[channel.logo.id] = channel.logo;
-        }
-
         profileChannels.add(channel.id);
 
         return acc;
       }, {});
 
-      const newProfiles = {};
+      const newProfiles = { ...defaultProfiles };
       Object.entries(state.profiles).forEach(([id, profile]) => {
         newProfiles[id] = {
           ...profile,
@@ -138,10 +134,6 @@ const useChannelsStore = create((set, get) => ({
         channelsByUUID: {
           ...state.channelsByUUID,
           ...channelsByUUID,
-        },
-        logos: {
-          ...state.logos,
-          ...logos,
         },
         profiles: newProfiles,
       };

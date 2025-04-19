@@ -15,7 +15,6 @@ import { useDebounce } from '../../utils';
 import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
-import usePlaylistsStore from '../../store/playlists';
 import {
   Tv2,
   ScreenShare,
@@ -35,6 +34,8 @@ import {
   ArrowUpNarrowWide,
   ArrowUpDown,
   ArrowDownWideNarrow,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -70,6 +71,26 @@ import {
 } from '@tanstack/react-table';
 import './table.css';
 import useChannelsTableStore from '../../store/channelsTable';
+import usePlaylistsStore from '../../store/playlists';
+import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import ChannelTableStreams from './ChannelTableStreams';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
@@ -189,38 +210,32 @@ const ChannelRowActions = React.memo(
     return (
       <Box style={{ width: '100%', justifyContent: 'left' }}>
         <Center>
-          <Tooltip label="Edit Channel">
-            <ActionIcon
-              size="xs"
-              variant="transparent"
-              color={theme.tailwind.yellow[3]}
-              onClick={onEdit}
-            >
-              <SquarePen size="18" />
-            </ActionIcon>
-          </Tooltip>
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.yellow[3]}
+            onClick={onEdit}
+          >
+            <SquarePen size="18" />
+          </ActionIcon>
 
-          <Tooltip label="Delete Channel">
-            <ActionIcon
-              size="xs"
-              variant="transparent"
-              color={theme.tailwind.red[6]}
-              onClick={onDelete}
-            >
-              <SquareMinus size="18" />
-            </ActionIcon>
-          </Tooltip>
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.red[6]}
+            onClick={onDelete}
+          >
+            <SquareMinus size="18" />
+          </ActionIcon>
 
-          <Tooltip label="Preview Channel">
-            <ActionIcon
-              size="xs"
-              variant="transparent"
-              color={theme.tailwind.green[5]}
-              onClick={onPreview}
-            >
-              <CirclePlay size="18" />
-            </ActionIcon>
-          </Tooltip>
+          <ActionIcon
+            size="xs"
+            variant="transparent"
+            color={theme.tailwind.green[5]}
+            onClick={onPreview}
+          >
+            <CirclePlay size="18" />
+          </ActionIcon>
 
           <Menu>
             <Menu.Target>
@@ -255,16 +270,17 @@ const ChannelRowActions = React.memo(
 );
 
 const ChannelsTable = ({}) => {
+  const data = useChannelsTableStore((s) => s.channels);
+  const rowCount = useChannelsTableStore((s) => s.count);
+  const pageCount = useChannelsTableStore((s) => s.pageCount);
+  const setSelectedTableIds = useChannelsTableStore(
+    (s) => s.setSelectedChannelIds
+  );
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
   const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
-
-  const queryChannels = useChannelsTableStore((s) => s.queryChannels);
-  const requeryChannels = useChannelsTableStore((s) => s.requeryChannels);
-  const data = useChannelsTableStore((s) => s.channels);
-  const rowCount = useChannelsTableStore((s) => s.count);
-  const pageCount = useChannelsTableStore((s) => s.pageCount);
+  const logos = useChannelsStore((s) => s.logos);
 
   const selectedProfileChannels = useChannelsStore(
     (s) => s.profiles[selectedProfileId]?.channels
@@ -303,33 +319,48 @@ const ChannelsTable = ({}) => {
   const [sorting, setSorting] = useState([
     { id: 'channel_number', desc: false },
   ]);
+  const [expandedRowId, setExpandedRowId] = useState(null);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
   const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
+    const params = new URLSearchParams();
+    params.append('page', pagination.pageIndex + 1);
+    params.append('page_size', pagination.pageSize);
+
+    // Apply sorting
+    if (sorting.length > 0) {
+      const sortField = sorting[0].id;
+      const sortDirection = sorting[0].desc ? '-' : '';
+      params.append('ordering', `${sortDirection}${sortField}`);
+    }
+
+    // Apply debounced filters
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.append(key, value);
+    });
+
+    const results = await API.queryChannels(params);
+
     const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
     const endItem = Math.min(
       (pagination.pageIndex + 1) * pagination.pageSize,
-      rowCount
+      results.count
     );
 
     if (initialDataCount === null) {
-      setInitialDataCount(rowCount);
+      setInitialDataCount(results.count);
     }
 
     // Generate the string
-    setPaginationString(`${startItem} to ${endItem} of ${rowCount}`);
-  }, [data]);
-
-  useEffect(() => {
-    queryChannels({ pagination, sorting, filters });
-  }, []);
-
-  useEffect(() => {
-    queryChannels({ pagination, sorting, filters });
+    setPaginationString(`${startItem} to ${endItem} of ${results.count}`);
   }, [pagination, sorting, debouncedFilters]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // const theme = useTheme();
   const theme = useMantineTheme();
@@ -408,7 +439,9 @@ const ChannelsTable = ({}) => {
           updatedSelected.add(row.original.id);
         }
       });
-      setSelectedChannelIds([...updatedSelected]);
+      const newSelection = [...updatedSelected];
+      setSelectedChannelIds(newSelection);
+      setSelectedTableIds(newSelection);
 
       return newRowSelection;
     });
@@ -423,8 +456,10 @@ const ChannelsTable = ({}) => {
         if (value) params.append(key, value);
       });
       const ids = await API.getAllChannelIds(params);
+      setSelectedTableIds(ids);
       setSelectedChannelIds(ids);
     } else {
+      setSelectedTableIds([]);
       setSelectedChannelIds([]);
     }
 
@@ -488,7 +523,9 @@ const ChannelsTable = ({}) => {
   const deleteChannels = async () => {
     setIsLoading(true);
     await API.deleteChannels(selectedChannelIds);
-    requeryChannels();
+    await API.requeryChannels();
+    setSelectedChannelIds([]);
+    setRowSelection([]);
     setIsLoading(false);
   };
 
@@ -513,7 +550,7 @@ const ChannelsTable = ({}) => {
 
       // Refresh the channel list
       // await fetchChannels();
-      requeryChannels();
+      API.requeryChannels();
     } catch (err) {
       console.error(err);
       notifications.show({
@@ -589,7 +626,6 @@ const ChannelsTable = ({}) => {
   };
 
   const onSortingChange = (column) => {
-    console.log(sorting);
     const sortField = sorting[0]?.id;
     const sortDirection = sorting[0]?.desc;
 
@@ -637,6 +673,12 @@ const ChannelsTable = ({}) => {
 
   const columns = useMemo(
     () => [
+      {
+        id: 'expand',
+        size: 20,
+        enableSorting: false,
+        enableColumnFilter: false,
+      },
       {
         id: 'select',
         size: 30,
@@ -704,7 +746,8 @@ const ChannelsTable = ({}) => {
         ),
       },
       {
-        accessorKey: 'logo',
+        id: 'logo',
+        accessorFn: (row) => logos[row.logo_id] ?? logo,
         size: 75,
         header: '',
         cell: ({ getValue }) => {
@@ -772,6 +815,17 @@ const ChannelsTable = ({}) => {
 
   const rows = getRowModel().rows;
 
+  const onRowExpansion = (row) => {
+    let isExpanded = false;
+    setExpandedRowId((prev) => {
+      isExpanded = prev === row.original.id ? null : row.original.id;
+      return isExpanded;
+    });
+    setRowSelection({ [row.index]: true });
+    setSelectedChannelIds([row.original.id]);
+    setSelectedTableIds([row.original.id]);
+  };
+
   const renderHeaderCell = (header) => {
     let sortingIcon = ArrowUpDown;
     if (sorting[0]?.id == header.id) {
@@ -802,12 +856,12 @@ const ChannelsTable = ({}) => {
         return (
           <Flex gap={2}>
             #
-            {/* <Center>
+            <Center>
               {React.createElement(sortingIcon, {
-                onClick: () => onSortingChange('name'),
+                onClick: () => onSortingChange('channel_number'),
                 size: 14,
               })}
-            </Center> */}
+            </Center>
           </Flex>
         );
 
@@ -852,6 +906,37 @@ const ChannelsTable = ({}) => {
         return flexRender(header.column.columnDef.header, header.getContext());
     }
   };
+
+  const renderBodyCell = (cell) => {
+    switch (cell.column.id) {
+      case 'select':
+        return ChannelRowSelectCell({ row: cell.row });
+
+      case 'expand':
+        return ChannelExpandCell({ row: cell.row });
+
+      default:
+        return flexRender(cell.column.columnDef.cell, cell.getContext());
+    }
+  };
+
+  const ChannelExpandCell = useCallback(
+    ({ row }) => {
+      const isExpanded = expandedRowId === row.original.id;
+
+      return (
+        <Center
+          style={{ width: '100%', cursor: 'pointer' }}
+          onClick={() => {
+            onRowExpansion(row);
+          }}
+        >
+          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </Center>
+      );
+    },
+    [expandedRowId]
+  );
 
   const ChannelRowSelectCell = useCallback(
     ({ row }) => {
@@ -1031,7 +1116,7 @@ const ChannelsTable = ({}) => {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 60px)',
+          height: 'calc(100vh - 58px)',
           backgroundColor: '#27272A',
         }}
       >
@@ -1200,7 +1285,7 @@ const ChannelsTable = ({}) => {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              height: 'calc(100vh - 120px)',
+              height: 'calc(100vh - 110px)',
             }}
           >
             <Box
@@ -1269,38 +1354,53 @@ const ChannelsTable = ({}) => {
                 </Box>
                 <Box className="tbody">
                   {getRowModel().rows.map((row) => (
-                    <Box
-                      key={row.id}
-                      className="tr"
-                      style={{ display: 'flex', width: '100%' }}
-                    >
-                      {row.getVisibleCells().map((cell) => {
-                        const width = cell.column.getSize();
-                        return (
-                          <Box
-                            className="td"
-                            key={cell.id}
-                            style={{
-                              flex: cell.column.columnDef.size
-                                ? '0 0 auto'
-                                : '1 1 0',
-                              width: cell.column.columnDef.size
-                                ? cell.column.getSize()
-                                : undefined,
-                              minWidth: 0,
-                            }}
-                          >
-                            <Flex align="center" style={{ height: '100%' }}>
-                              {cell.column.id === 'select'
-                                ? ChannelRowSelectCell({ row: cell.row })
-                                : flexRender(
-                                    cell.column.columnDef.cell,
-                                    cell.getContext()
-                                  )}
-                            </Flex>
-                          </Box>
-                        );
-                      })}
+                    <Box>
+                      <Box
+                        key={row.id}
+                        className="tr"
+                        style={{
+                          display: 'flex',
+                          width: '100%',
+                          ...(row.getIsSelected() && {
+                            backgroundColor: '#163632',
+                          }),
+                        }}
+                      >
+                        {row.getVisibleCells().map((cell) => {
+                          const width = cell.column.getSize();
+                          return (
+                            <Box
+                              className="td"
+                              key={cell.id}
+                              style={{
+                                flex: cell.column.columnDef.size
+                                  ? '0 0 auto'
+                                  : '1 1 0',
+                                width: cell.column.columnDef.size
+                                  ? cell.column.getSize()
+                                  : undefined,
+                                minWidth: 0,
+                              }}
+                            >
+                              <Flex align="center" style={{ height: '100%' }}>
+                                {renderBodyCell(cell)}
+                              </Flex>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                      {row.original.id === expandedRowId && (
+                        <Box
+                          key={row.id}
+                          className="tr"
+                          style={{ display: 'flex', width: '100%' }}
+                        >
+                          <ChannelTableStreams
+                            channel={row.original}
+                            isExpanded={true}
+                          />
+                        </Box>
+                      )}
                     </Box>
                   ))}
                 </Box>
@@ -1318,7 +1418,10 @@ const ChannelsTable = ({}) => {
               <Group
                 gap={5}
                 justify="center"
-                style={{ padding: 8, borderTop: '1px solid #666' }}
+                style={{
+                  padding: 8,
+                  borderTop: '1px solid #666',
+                }}
               >
                 <Text size="xs">Page Size</Text>
                 <NativeSelect

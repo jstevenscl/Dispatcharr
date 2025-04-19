@@ -78,15 +78,14 @@ const StreamsTable = ({}) => {
    * Stores
    */
   const { playlists } = usePlaylistsStore();
+
   const channelGroups = useChannelsStore((s) => s.channelGroups);
-  const channelsPageSelection = useChannelsStore(
-    (s) => s.channelsPageSelection
-  );
+  const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
-  const channelSelectionStreams = useChannelsStore(
-    (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
+  const channelSelectionStreams = useChannelsTableStore(
+    (state) =>
+      state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
-  const requeryChannels = useChannelsTableStore((s) => s.requeryChannels);
   const {
     environment: { env_mode },
   } = useSettingsStore();
@@ -287,6 +286,7 @@ const StreamsTable = ({}) => {
       channel_number: null,
       stream_id: stream.id,
     });
+    await API.requeryChannels();
     fetchLogos();
   };
 
@@ -298,7 +298,7 @@ const StreamsTable = ({}) => {
         stream_id,
       }))
     );
-    requeryChannels();
+    await API.requeryChannels();
     fetchLogos();
     setIsLoading(false);
   };
@@ -325,9 +325,8 @@ const StreamsTable = ({}) => {
   };
 
   const addStreamsToChannel = async () => {
-    const { streams, ...channel } = { ...channelsPageSelection[0] };
     await API.updateChannel({
-      ...channel,
+      id: selectedChannelIds[0],
       stream_ids: [
         ...new Set(
           channelSelectionStreams
@@ -336,18 +335,19 @@ const StreamsTable = ({}) => {
         ),
       ],
     });
+    await API.requeryChannels();
   };
 
   const addStreamToChannel = async (streamId) => {
-    const { streams, ...channel } = { ...channelsPageSelection[0] };
     await API.updateChannel({
-      ...channel,
+      id: selectedChannelIds[0],
       stream_ids: [
         ...new Set(
           channelSelectionStreams.map((stream) => stream.id).concat([streamId])
         ),
       ],
     });
+    await API.requeryChannels();
   };
 
   const onRowSelectionChange = (updater) => {
@@ -512,7 +512,7 @@ const StreamsTable = ({}) => {
             onClick={() => addStreamToChannel(row.original.id)}
             style={{ background: 'none' }}
             disabled={
-              channelsPageSelection.length !== 1 ||
+              selectedChannelIds.length !== 1 ||
               (channelSelectionStreams &&
                 channelSelectionStreams
                   .map((stream) => stream.id)

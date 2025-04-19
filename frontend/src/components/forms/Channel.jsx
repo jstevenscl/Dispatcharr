@@ -102,7 +102,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         const formattedValues = { ...values };
 
         // Convert empty or "0" stream_profile_id to null for the API
-        if (!formattedValues.stream_profile_id || formattedValues.stream_profile_id === '0') {
+        if (
+          !formattedValues.stream_profile_id ||
+          formattedValues.stream_profile_id === '0'
+        ) {
           formattedValues.stream_profile_id = null;
         }
 
@@ -111,9 +114,12 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
         if (channel) {
           // If there's an EPG to set, use our enhanced endpoint
-          if (values.epg_data_id !== (channel.epg_data ? `${channel.epg_data.id}` : '')) {
+          if (values.epg_data_id !== (channel.epg_data_id ?? '')) {
             // Use the special endpoint to set EPG and trigger refresh
-            const epgResponse = await API.setChannelEPG(channel.id, values.epg_data_id);
+            const epgResponse = await API.setChannelEPG(
+              channel.id,
+              values.epg_data_id
+            );
 
             // Remove epg_data_id from values since we've handled it separately
             const { epg_data_id, ...otherValues } = formattedValues;
@@ -142,7 +148,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           });
         }
       } catch (error) {
-        console.error("Error saving channel:", error);
+        console.error('Error saving channel:', error);
       }
 
       setSubmitting(false);
@@ -154,8 +160,8 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   useEffect(() => {
     if (channel) {
-      if (channel.epg_data) {
-        const epgSource = epgs[channel.epg_data.epg_source];
+      if (channel.epg_data_id) {
+        const epgSource = epgs[tvgsById[channel.epg_data_id].epg_source];
         setSelectedEPG(`${epgSource.id}`);
       }
 
@@ -167,8 +173,8 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           ? `${channel.stream_profile_id}`
           : '0',
         tvg_id: channel.tvg_id,
-        epg_data_id: channel.epg_data ? `${channel.epg_data?.id}` : '',
-        logo_id: `${channel.logo?.id}`,
+        epg_data_id: channel.epg_data_id ?? '',
+        logo_id: `${channel.logo_id}`,
       });
 
       setChannelStreams(channel.streams);
@@ -535,7 +541,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 name="channel_number"
                 label="Channel # (blank to auto-assign)"
                 value={formik.values.channel_number}
-                onChange={(value) => formik.setFieldValue('channel_number', value)}
+                onChange={(value) =>
+                  formik.setFieldValue('channel_number', value)
+                }
                 error={
                   formik.errors.channel_number
                     ? formik.touched.channel_number

@@ -127,6 +127,13 @@ class ChannelPagination(PageNumberPagination):
     page_size_query_param = 'page_size'  # Allow clients to specify page size
     max_page_size = 10000  # Prevent excessive page sizes
 
+
+    def paginate_queryset(self, queryset, request, view=None):
+        if not request.query_params.get(self.page_query_param):
+            return None  # disables pagination, returns full queryset
+
+        return super().paginate_queryset(queryset, request, view)
+
 class ChannelFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr='icontains')
     channel_group_name = OrInFilter(field_name="channel_group__name", lookup_expr="icontains")
@@ -148,7 +155,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
     ordering = ['-channel_number']
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related(
+            'channel_group',
+            'logo',
+            'epg_data',
+            'stream_profile',
+        ).prefetch_related('streams')
 
         channel_group = self.request.query_params.get('channel_group')
         if channel_group:

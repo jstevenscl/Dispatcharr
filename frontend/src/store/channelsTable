@@ -3,56 +3,31 @@ import api from '../api';
 import { notifications } from '@mantine/notifications';
 import API from '../api';
 
-const defaultProfiles = { 0: { id: '0', name: 'All', channels: new Set() } };
-
 const useChannelsTableStore = create((set, get) => ({
   channels: [],
   count: 0,
   pageCount: 0,
-  lastParams: new URLSearchParams(),
+  selectedChannelIds: [],
 
-  requeryChannels: async () => {
-    const lastParams = get().lastParams;
-    console.log(lastParams);
-    const result = await API.queryChannels(lastParams);
-    const pageSize = parseInt(lastParams.get?.('page_size') || '25');
-
-    set({
-      channels: result.results,
-      count: result.count,
-      pageCount: Math.ceil(result.count / pageSize),
+  queryChannels: ({ results, count }, params) => {
+    set((state) => {
+      return {
+        channels: results,
+        count: count,
+        pageCount: Math.ceil(count / params.page_size),
+      };
     });
   },
 
-  queryChannels: async ({ pagination, sorting, filters }) => {
-    const params = new URLSearchParams();
-    params.append('page', pagination.pageIndex + 1);
-    params.append('page_size', pagination.pageSize);
-
-    // Apply sorting
-    if (sorting.length > 0) {
-      const sortField = sorting[0].id;
-      const sortDirection = sorting[0].desc ? '-' : '';
-      params.append('ordering', `${sortDirection}${sortField}`);
-    }
-
-    // Apply debounced filters
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) params.append(key, value);
+  setSelectedChannelIds: (selectedChannelIds) => {
+    set({
+      selectedChannelIds,
     });
+  },
 
-    try {
-      const result = await API.queryChannels(params);
-
-      set((state) => ({
-        channels: result.results,
-        count: result.count,
-        pageCount: Math.ceil(result.count / pagination.pageSize),
-        lastParams: params,
-      }));
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
+  getChannelStreams: (id) => {
+    const channel = get().channels.find((c) => c.id === id);
+    return channel?.streams ?? [];
   },
 }));
 
