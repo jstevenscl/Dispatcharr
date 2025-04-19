@@ -51,8 +51,11 @@ class DiscoverAPIView(APIView):
         base_url = request.build_absolute_uri(f'/{"/".join(uri_parts)}/').rstrip('/')
         device = HDHRDevice.objects.first()
 
-        # Calculate tuner count from active profiles (excluding default "custom Default" profile)
-        profiles = M3UAccountProfile.objects.filter(is_active=True).exclude(id=1)
+        # Calculate tuner count from active profiles from active M3U accounts (excluding default "custom Default" profile)
+        profiles = M3UAccountProfile.objects.filter(
+            is_active=True,
+            m3u_account__is_active=True  # Only include profiles from enabled M3U accounts
+        ).exclude(id=1)
 
         # 1. Check if any profile has unlimited streams (max_streams=0)
         has_unlimited = profiles.filter(max_streams=0).exists()
