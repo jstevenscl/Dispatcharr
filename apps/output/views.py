@@ -26,7 +26,11 @@ def generate_m3u(request, profile_name=None):
         group_title = channel.channel_group.name if channel.channel_group else "Default"
         tvg_id = channel.channel_number or channel.id
         tvg_name = channel.name
-        tvg_logo = channel.logo.url if channel.logo else ""
+
+        tvg_logo = ""
+        if channel.logo:
+            tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+
         channel_number = channel.channel_number
 
         extinf_line = (
@@ -96,15 +100,7 @@ def generate_epg(request, profile_name=None):
 
         # Add channel logo if available
         if channel.logo:
-            logo_url = channel.logo.url
-
-            # Convert to absolute URL if it's relative
-            if logo_url.startswith('/data'):
-                # Use the full URL for the logo
-                logo_uri = re.sub(r"^\/data", '', logo_url)
-                base_url = request.build_absolute_uri('/')[:-1]
-                logo_url = f"{base_url}{logo_uri}"
-
+            logo_url = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
             xml_lines.append(f'    <icon src="{html.escape(logo_url)}" />')
 
         xml_lines.append('  </channel>')
