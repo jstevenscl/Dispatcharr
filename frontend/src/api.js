@@ -151,8 +151,9 @@ export default class API {
 
   static async refreshToken(refresh) {
     return await request(`${host}/api/accounts/token/refresh/`, {
+      auth: false,
       method: 'POST',
-      body: { auth: false, refresh },
+      body: { refresh },
     });
   }
 
