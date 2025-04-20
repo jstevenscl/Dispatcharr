@@ -58,12 +58,6 @@ class StreamProfile(models.Model):
     def __str__(self):
         return self.name
 
-    def delete(self):
-        if self.locked():
-            raise ValueError("This profile is locked and cannot be deleted.")
-
-        self.delete()
-
     def save(self, *args, **kwargs):
         if self.pk:  # Only check existing records
             orig = StreamProfile.objects.get(pk=self.pk)
