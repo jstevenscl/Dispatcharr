@@ -417,6 +417,7 @@ const ChannelsTable = ({}) => {
       return deleteChannels();
     }
     await API.deleteChannel(id);
+    API.requeryChannels();
   };
 
   const createRecording = (channel) => {
