@@ -11,6 +11,7 @@ import {
   ListPlus,
   SquareMinus,
   EllipsisVertical,
+  Copy,
 } from 'lucide-react';
 import {
   TextInput,
@@ -34,6 +35,8 @@ import {
   NativeSelect,
   MultiSelect,
   useMantineTheme,
+  CopyButton,
+  UnstyledButton,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
@@ -540,22 +543,31 @@ const StreamsTable = ({}) => {
           </Menu.Target>
 
           <Menu.Dropdown>
+            <Menu.Item leftSection={<Copy size="14" />}>
+              <CopyButton value={row.original.url}>
+                {({ copied, copy }) => (
+                  <UnstyledButton variant="unstyled" size="xs" onClick={copy}>
+                    <Text size="xs">{copied ? 'Copied!' : 'Copy URL'}</Text>
+                  </UnstyledButton>
+                )}
+              </CopyButton>
+            </Menu.Item>
             <Menu.Item
               onClick={() => editStream(row.original)}
               disabled={!row.original.is_custom}
             >
-              Edit
+              <Text size="xs">Edit</Text>
             </Menu.Item>
             <Menu.Item
               onClick={() => deleteStream(row.original.id)}
               disabled={!row.original.is_custom}
             >
-              Delete Stream
+              <Text size="xs">Delete Stream</Text>
             </Menu.Item>
             <Menu.Item
               onClick={() => handleWatchStream(row.original.stream_hash)}
             >
-              Preview Stream
+              <Text size="xs">Preview Stream</Text>
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>

@@ -60,6 +60,8 @@ import {
   NativeSelect,
   Table,
   Checkbox,
+  UnstyledButton,
+  CopyButton,
 } from '@mantine/core';
 import {
   useReactTable,
@@ -190,6 +192,7 @@ const ChannelRowActions = React.memo(
     deleteChannel,
     handleWatchStream,
     createRecording,
+    getChannelURL,
   }) => {
     const onEdit = useCallback(() => {
       editChannel(row.original);
@@ -200,7 +203,7 @@ const ChannelRowActions = React.memo(
     }, []);
 
     const onPreview = useCallback(() => {
-      handleWatchStream(row.original.uuid);
+      handleWatchStream(row.original);
     }, []);
 
     const onRecord = useCallback(() => {
@@ -245,6 +248,15 @@ const ChannelRowActions = React.memo(
             </Menu.Target>
 
             <Menu.Dropdown>
+              <Menu.Item leftSection={<Copy size="14" />}>
+                <CopyButton value={getChannelURL(row.original)}>
+                  {({ copied, copy }) => (
+                    <UnstyledButton variant="unstyled" size="xs" onClick={copy}>
+                      <Text size="xs">{copied ? 'Copied!' : 'Copy URL'}</Text>
+                    </UnstyledButton>
+                  )}
+                </CopyButton>
+              </Menu.Item>
               <Menu.Item
                 onClick={onRecord}
                 leftSection={
@@ -259,7 +271,7 @@ const ChannelRowActions = React.memo(
                   ></div>
                 }
               >
-                Record
+                <Text size="xs">Record</Text>
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
@@ -425,12 +437,18 @@ const ChannelsTable = ({}) => {
     setRecordingModalOpen(true);
   };
 
-  function handleWatchStream(channelNumber) {
-    let vidUrl = `/proxy/ts/stream/${channelNumber}`;
+  const getChannelURL = (channel) => {
+    console.log(window.location);
+    let channelUrl = `${window.location.protocol}//${window.location.host}/proxy/ts/stream/${channel.uuid}`;
     if (env_mode == 'dev') {
-      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+      channelUrl = `${window.location.protocol}//${window.location.hostname}:5656/proxy/ts/stream/${channel.uuid}`;
     }
-    showVideo(vidUrl);
+
+    return channelUrl;
+  };
+
+  function handleWatchStream(channel) {
+    showVideo(getChannelURL(channel));
   }
 
   const onRowSelectionChange = (updater) => {
@@ -785,6 +803,7 @@ const ChannelsTable = ({}) => {
             deleteChannel={deleteChannel}
             handleWatchStream={handleWatchStream}
             createRecording={createRecording}
+            getChannelURL={getChannelURL}
           />
         ),
         enableSorting: false,
