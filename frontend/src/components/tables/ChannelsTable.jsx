@@ -1210,7 +1210,7 @@ const ChannelsTable = ({}) => {
 
         {/* Table or ghost empty state inside Paper */}
         <Box>
-          {initialDataCount === 0 && (
+          {initialDataCount === 0 && data.length === 0 && (
             <Box
               style={{
                 paddingTop: 20,
@@ -1288,7 +1288,7 @@ const ChannelsTable = ({}) => {
           )}
         </Box>
 
-        {initialDataCount > 0 && (
+        {data.length > 0 && (
           <Box
             style={{
               display: 'flex',
