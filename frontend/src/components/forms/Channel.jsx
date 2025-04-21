@@ -173,7 +173,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       formik.setValues({
         name: channel.name,
         channel_number: channel.channel_number,
-        channel_group_id: channel.channel_group_id ?? '',
+        channel_group_id: channel.channel_group_id
+          ? `${channel.channel_group_id}`
+          : '',
         stream_profile_id: channel.stream_profile_id
           ? `${channel.stream_profile_id}`
           : '0',
