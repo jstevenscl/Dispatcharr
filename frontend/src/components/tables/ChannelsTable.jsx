@@ -10,7 +10,6 @@ import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import RecordingForm from '../forms/Recording';
-import { TableHelper } from '../../helpers';
 import { useDebounce } from '../../utils';
 import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
@@ -29,8 +28,6 @@ import {
   CircleCheck,
   ScanEye,
   EllipsisVertical,
-  CircleEllipsis,
-  CopyMinus,
   ArrowUpNarrowWide,
   ArrowUpDown,
   ArrowDownWideNarrow,
@@ -49,7 +46,6 @@ import {
   Flex,
   Text,
   Tooltip,
-  Grid,
   Group,
   useMantineTheme,
   Center,
@@ -58,7 +54,6 @@ import {
   MultiSelect,
   Pagination,
   NativeSelect,
-  Table,
   Checkbox,
   UnstyledButton,
   CopyButton,
@@ -73,26 +68,8 @@ import {
 } from '@tanstack/react-table';
 import './table.css';
 import useChannelsTableStore from '../../store/channelsTable';
-import usePlaylistsStore from '../../store/playlists';
-import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import {
-  arrayMove,
-  SortableContext,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import ChannelTableStreams from './ChannelTableStreams';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
@@ -288,11 +265,15 @@ const ChannelsTable = ({}) => {
   const setSelectedTableIds = useChannelsTableStore(
     (s) => s.setSelectedChannelIds
   );
+  const channels = useChannelsStore((s) => s.channels);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
   const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const logos = useChannelsStore((s) => s.logos);
+  const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
+    pageSize: 50,
+  });
 
   const selectedProfileChannels = useChannelsStore(
     (s) => s.profiles[selectedProfileId]?.channels
@@ -302,7 +283,12 @@ const ChannelsTable = ({}) => {
     [selectedProfileChannels]
   );
 
-  const groupOptions = Object.values(channelGroups).map((group) => group.name);
+  const activeGroupIds = new Set(
+    Object.values(channels).map((channel) => channel.channel_group_id)
+  );
+  const groupOptions = Object.values(channelGroups)
+    .filter((group) => activeGroupIds.has(group.id))
+    .map((group) => group.name);
 
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
@@ -316,7 +302,7 @@ const ChannelsTable = ({}) => {
   const [paginationString, setPaginationString] = useState('');
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 50,
+    pageSize: tablePrefs.pageSize,
   });
   const [initialDataCount, setInitialDataCount] = useState(null);
   const [filters, setFilters] = useState({
@@ -366,6 +352,9 @@ const ChannelsTable = ({}) => {
 
     // Generate the string
     setPaginationString(`${startItem} to ${endItem} of ${results.count}`);
+    setTablePrefs({
+      pageSize: pagination.pageSize,
+    });
   }, [pagination, sorting, debouncedFilters]);
 
   useEffect(() => {
@@ -438,10 +427,10 @@ const ChannelsTable = ({}) => {
   };
 
   const getChannelURL = (channel) => {
-    console.log(window.location);
-    let channelUrl = `${window.location.protocol}//${window.location.host}/proxy/ts/stream/${channel.uuid}`;
+    const uri = `/proxy/ts/stream/${channel.uuid}`;
+    let channelUrl = `${window.location.protocol}//${window.location.host}${uri}`;
     if (env_mode == 'dev') {
-      channelUrl = `${window.location.protocol}//${window.location.hostname}:5656/proxy/ts/stream/${channel.uuid}`;
+      channelUrl = `${window.location.protocol}//${window.location.hostname}:5656${uri}`;
     }
 
     return channelUrl;
@@ -998,7 +987,7 @@ const ChannelsTable = ({}) => {
         </Center>
       );
     },
-    [rows, rowCount]
+    [rows]
   );
 
   return (
