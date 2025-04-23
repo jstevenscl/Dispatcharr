@@ -30,6 +30,7 @@ const CustomTable = ({ table }) => {
         bodyCellRenderFns={table.bodyCellRenderFns}
         expandedRowIds={table.expandedRowIds}
         expandedRowRenderer={table.expandedRowRenderer}
+        renderBodyCell={table.renderBodyCell}
       />
     </Box>
   );

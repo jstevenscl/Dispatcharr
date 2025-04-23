@@ -30,6 +30,7 @@ import {
   Tooltip,
   NumberInput,
   Image,
+  UnstyledButton,
 } from '@mantine/core';
 import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
@@ -41,6 +42,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const listRef = useRef(null);
   const logoListRef = useRef(null);
+  const groupListRef = useRef(null);
 
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const logos = useChannelsStore((s) => s.logos);
@@ -61,6 +63,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const [tvgFilter, setTvgFilter] = useState('');
   const [logoFilter, setLogoFilter] = useState('');
   const [logoOptions, setLogoOptions] = useState([]);
+
+  const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
+  const [groupFilter, setGroupFilter] = useState('');
+  const groupOptions = Object.values(channelGroups);
 
   const addStream = (stream) => {
     const streamSet = new Set(channelStreams);
@@ -89,7 +95,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     initialValues: {
       name: '',
       channel_number: 0,
-      channel_group_id: '',
+      channel_group_id: Object.keys(channelGroups)[0],
       stream_profile_id: '0',
       tvg_id: '',
       epg_data_id: '',
@@ -348,6 +354,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     logo.name.toLowerCase().includes(logoFilter.toLowerCase())
   );
 
+  const filteredGroups = groupOptions.filter((group) =>
+    group.name.toLowerCase().includes(groupFilter.toLowerCase())
+  );
+
   return (
     <>
       <Modal
@@ -376,7 +386,83 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
               />
 
               <Flex gap="sm">
-                <Select
+                <Popover
+                  opened={groupPopoverOpened}
+                  onChange={setGroupPopoverOpened}
+                  // position="bottom-start"
+                  withArrow
+                >
+                  <Popover.Target>
+                    <TextInput
+                      id="channel_group_id"
+                      name="channel_group_id"
+                      label="Channel Group"
+                      readOnly
+                      value={channelGroups[formik.values.channel_group_id].name}
+                      onClick={() => setGroupPopoverOpened(true)}
+                      size="xs"
+                    />
+                  </Popover.Target>
+
+                  <Popover.Dropdown onMouseDown={(e) => e.stopPropagation()}>
+                    <Group>
+                      <TextInput
+                        placeholder="Filter"
+                        value={groupFilter}
+                        onChange={(event) =>
+                          setGroupFilter(event.currentTarget.value)
+                        }
+                        mb="xs"
+                        size="xs"
+                      />
+                    </Group>
+
+                    <ScrollArea style={{ height: 200 }}>
+                      <List
+                        height={200} // Set max height for visible items
+                        itemCount={filteredGroups.length}
+                        itemSize={20} // Adjust row height for each item
+                        width={200}
+                        ref={groupListRef}
+                      >
+                        {({ index, style }) => (
+                          <Box
+                            style={{ ...style, height: 20, overflow: 'hidden' }}
+                          >
+                            <Tooltip
+                              openDelay={500}
+                              label={filteredGroups[index].name}
+                              size="xs"
+                            >
+                              <UnstyledButton
+                                onClick={() => {
+                                  formik.setFieldValue(
+                                    'channel_group_id',
+                                    filteredGroups[index].id
+                                  );
+                                  setGroupPopoverOpened(false);
+                                }}
+                              >
+                                <Text
+                                  size="xs"
+                                  style={{
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
+                                >
+                                  {filteredGroups[index].name}
+                                </Text>
+                              </UnstyledButton>
+                            </Tooltip>
+                          </Box>
+                        )}
+                      </List>
+                    </ScrollArea>
+                  </Popover.Dropdown>
+                </Popover>
+
+                {/* <Select
                   id="channel_group_id"
                   name="channel_group_id"
                   label="Channel Group"
@@ -396,7 +482,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   }))}
                   size="xs"
                   style={{ flex: 1 }}
-                />
+                /> */}
                 <Flex align="flex-end">
                   <ActionIcon
                     color={theme.tailwind.green[5]}

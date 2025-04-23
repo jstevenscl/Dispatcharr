@@ -6,6 +6,7 @@ import API from '../api';
 const useChannelsTableStore = create((set, get) => ({
   channels: [],
   pageCount: 0,
+  totalCount: 0,
   sorting: [{ id: 'channel_number', desc: false }],
   pagination: {
     pageIndex: 0,
@@ -17,6 +18,7 @@ const useChannelsTableStore = create((set, get) => ({
     set((state) => {
       return {
         channels: results,
+        totalCount: count,
         pageCount: Math.ceil(count / params.get('page_size')),
       };
     });

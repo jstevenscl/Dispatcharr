@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 const useTable = ({
   allRowIds,
   headerCellRenderFns = {},
+  bodyCellRenderFns = {},
   filters = {},
   sorting = [],
   expandedRowRenderer = () => <></>,
@@ -25,6 +26,10 @@ const useTable = ({
   const rowCount = allRowIds.length;
 
   const table = useReactTable({
+    defaultColumn: {
+      size: undefined,
+      minSize: 0,
+    },
     ...options,
     state: {
       data: options.data,
@@ -64,8 +69,6 @@ const useTable = ({
     }
   };
 
-  const rows = table.getRowModel().rows;
-
   const onRowExpansion = (row) => {
     let isExpanded = false;
     setExpandedRowIds((prev) => {
@@ -75,43 +78,14 @@ const useTable = ({
     updateSelectedTableIds([row.original.id]);
   };
 
-  const renderHeaderCell = useCallback(
-    (header) => {
-      if (table.headerCellRenderFns && table.headerCellRenderFns[header.id]) {
-        return table.headerCellRenderFns[header.id](header);
-      }
+  const renderBodyCell = ({ row, cell }) => {
+    if (bodyCellRenderFns[cell.column.id]) {
+      return bodyCellRenderFns[cell.column.id]({ row, cell });
+    }
 
-      switch (header.id) {
-        case 'select':
-          return (
-            <Center style={{ width: '100%' }}>
-              <Checkbox
-                size="xs"
-                checked={
-                  rowCount == 0 ? false : selectedTableIds.length == rowCount
-                }
-                indeterminate={
-                  selectedTableIds.length > 0 &&
-                  selectedTableIds.length !== rowCount
-                }
-                onChange={onSelectAllChange}
-              />
-            </Center>
-          );
-
-        default:
-          return flexRender(
-            header.column.columnDef.header,
-            header.getContext()
-          );
-      }
-    },
-    [filters, selectedTableIds, rowCount, onSelectAllChange, sorting]
-  );
-
-  const bodyCellRenderFns = {
-    select: useCallback(
-      ({ row }) => {
+    const isExpanded = expandedRowIds.includes(row.original.id);
+    switch (cell.column.id) {
+      case 'select':
         return (
           <Center style={{ width: '100%' }}>
             <Checkbox
@@ -129,23 +103,25 @@ const useTable = ({
             />
           </Center>
         );
-      },
-      [rows, selectedTableIdsSet]
-    ),
-    expand: useCallback(({ row }) => {
-      const isExpanded = expandedRowIds.includes(row.original.id);
+      case 'expand':
+        return (
+          <Center
+            style={{ width: '100%', cursor: 'pointer' }}
+            onClick={() => {
+              onRowExpansion(row);
+            }}
+          >
+            {isExpanded ? (
+              <ChevronDown size={16} />
+            ) : (
+              <ChevronRight size={16} />
+            )}
+          </Center>
+        );
 
-      return (
-        <Center
-          style={{ width: '100%', cursor: 'pointer' }}
-          onClick={() => {
-            onRowExpansion(row);
-          }}
-        >
-          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </Center>
-      );
-    }),
+      default:
+        return flexRender(cell.column.columnDef.cell, cell.getContext());
+    }
   };
 
   // Return both the table instance and your custom methods
@@ -162,6 +138,7 @@ const useTable = ({
       selectedTableIdsSet,
       expandedRowIds,
       expandedRowRenderer,
+      setSelectedTableIds,
     }),
     [selectedTableIdsSet, expandedRowIds]
   );
@@ -169,8 +146,8 @@ const useTable = ({
   return {
     ...tableInstance,
     headerCellRenderFns,
-    renderHeaderCell,
     bodyCellRenderFns,
+    renderBodyCell,
   };
 };
 

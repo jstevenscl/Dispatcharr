@@ -1,16 +1,10 @@
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useCallback,
-} from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import RecordingForm from '../forms/Recording';
-import { useDebounce } from '../../utils';
+import { useDebounce, copyToClipboard } from '../../utils';
 import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
@@ -21,29 +15,22 @@ import {
   SquareMinus,
   CirclePlay,
   SquarePen,
-  Binary,
-  ArrowDown01,
-  SquarePlus,
   Copy,
-  CircleCheck,
   ScanEye,
   EllipsisVertical,
   ArrowUpNarrowWide,
   ArrowUpDown,
   ArrowDownWideNarrow,
 } from 'lucide-react';
-import ghostImage from '../../images/ghost.svg';
 import {
   Box,
   TextInput,
   Popover,
   ActionIcon,
-  Select,
   Button,
   Paper,
   Flex,
   Text,
-  Tooltip,
   Group,
   useMantineTheme,
   Center,
@@ -53,7 +40,6 @@ import {
   Pagination,
   NativeSelect,
   UnstyledButton,
-  CopyButton,
 } from '@mantine/core';
 import { getCoreRowModel, flexRender } from '@tanstack/react-table';
 import './table.css';
@@ -61,67 +47,12 @@ import useChannelsTableStore from '../../store/channelsTable';
 import ChannelTableStreams from './ChannelTableStreams';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { CustomTable, useTable } from './CustomTable';
+import ChannelsTableOnboarding from './ChannelsTable/ChannelsTableOnboarding';
+import ChannelTableHeader from './ChannelsTable/ChannelTableHeader';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
 const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
-
-const CreateProfilePopover = React.memo(() => {
-  const [opened, setOpened] = useState(false);
-  const [name, setName] = useState('');
-  const theme = useMantineTheme();
-
-  const setOpen = () => {
-    setName('');
-    setOpened(!opened);
-  };
-
-  const submit = async () => {
-    await API.addChannelProfile({ name });
-    setName('');
-    setOpened(false);
-  };
-
-  return (
-    <Popover
-      opened={opened}
-      onChange={setOpen}
-      position="bottom"
-      withArrow
-      shadow="md"
-    >
-      <Popover.Target>
-        <ActionIcon
-          variant="transparent"
-          color={theme.tailwind.green[5]}
-          onClick={setOpen}
-        >
-          <SquarePlus />
-        </ActionIcon>
-      </Popover.Target>
-
-      <Popover.Dropdown>
-        <Group>
-          <TextInput
-            placeholder="Profile Name"
-            value={name}
-            onChange={(event) => setName(event.currentTarget.value)}
-            size="xs"
-          />
-
-          <ActionIcon
-            variant="transparent"
-            color={theme.tailwind.green[5]}
-            size="sm"
-            onClick={submit}
-          >
-            <CircleCheck />
-          </ActionIcon>
-        </Group>
-      </Popover.Dropdown>
-    </Popover>
-  );
-});
 
 const ChannelEnabledSwitch = React.memo(
   ({ rowId, selectedProfileId, toggleChannelEnabled }) => {
@@ -217,13 +148,12 @@ const ChannelRowActions = React.memo(
 
             <Menu.Dropdown>
               <Menu.Item leftSection={<Copy size="14" />}>
-                <CopyButton value={getChannelURL(row.original)}>
-                  {({ copied, copy }) => (
-                    <UnstyledButton variant="unstyled" size="xs" onClick={copy}>
-                      <Text size="xs">{copied ? 'Copied!' : 'Copy URL'}</Text>
-                    </UnstyledButton>
-                  )}
-                </CopyButton>
+                <UnstyledButton
+                  size="xs"
+                  onClick={() => copyToClipboard(getChannelURL(row.original))}
+                >
+                  <Text size="xs">Copy URL</Text>
+                </UnstyledButton>
               </Menu.Item>
               <Menu.Item
                 onClick={onRecord}
@@ -250,64 +180,86 @@ const ChannelRowActions = React.memo(
 );
 
 const ChannelsTable = ({}) => {
+  const theme = useMantineTheme();
+
+  /**
+   * STORES
+   */
+
+  // store/channelsTable
   const data = useChannelsTableStore((s) => s.channels);
   const pageCount = useChannelsTableStore((s) => s.pageCount);
-  const setSelectedTableIds = useChannelsTableStore(
+  const setSelectedChannelIds = useChannelsTableStore(
     (s) => s.setSelectedChannelIds
   );
+  const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
+  const pagination = useChannelsTableStore((s) => s.pagination);
+  const setPagination = useChannelsTableStore((s) => s.setPagination);
+  const sorting = useChannelsTableStore((s) => s.sorting);
+  const setSorting = useChannelsTableStore((s) => s.setSorting);
+  const totalCount = useChannelsTableStore((s) => s.totalCount);
+
+  // store/channels
   const channels = useChannelsStore((s) => s.channels);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
-  const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const logos = useChannelsStore((s) => s.logos);
   const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
     pageSize: 50,
   });
-
   const selectedProfileChannels = useChannelsStore(
     (s) => s.profiles[selectedProfileId]?.channels
   );
+
+  // store/settings
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
+  const showVideo = useVideoStore((s) => s.showVideo);
+
+  /**
+   * useMemo
+   */
   const selectedProfileChannelIds = useMemo(
     () => new Set(selectedProfileChannels),
     [selectedProfileChannels]
   );
 
+  /**
+   * useState
+   */
+  const [allRowIds, setAllRowIds] = useState([]);
+  const [channel, setChannel] = useState(null);
+  const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [recordingModalOpen, setRecordingModalOpen] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState(
+    profiles[selectedProfileId]
+  );
+
+  const [paginationString, setPaginationString] = useState('');
+  const [filters, setFilters] = useState({
+    name: '',
+    channel_group: '',
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
+  const [epgUrl, setEPGUrl] = useState(epgUrlBase);
+  const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
+
+  /**
+   * Dereived variables
+   */
   const activeGroupIds = new Set(
     Object.values(channels).map((channel) => channel.channel_group_id)
   );
   const groupOptions = Object.values(channelGroups)
     .filter((group) => activeGroupIds.has(group.id))
     .map((group) => group.name);
-
-  const env_mode = useSettingsStore((s) => s.environment.env_mode);
-
-  const [allRowIds, setAllRowIds] = useState([]);
-  const [channel, setChannel] = useState(null);
-  const [channelModalOpen, setChannelModalOpen] = useState(false);
-  const [recordingModalOpen, setRecordingModalOpen] = useState(false);
-  const [rowSelection, setRowSelection] = useState([]);
-  const [selectedProfile, setSelectedProfile] = useState(
-    profiles[selectedProfileId]
-  );
-  const pagination = useChannelsTableStore((s) => s.pagination);
-  const setPagination = useChannelsTableStore((s) => s.setPagination);
-  const [paginationString, setPaginationString] = useState('');
-  const [filters, setFilters] = useState({
-    name: '',
-    channel_group: '',
-  });
   const debouncedFilters = useDebounce(filters, 500);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedChannelIds, setSelectedChannelIds] = useState([]);
-  const sorting = useChannelsTableStore((s) => s.sorting);
-  const setSorting = useChannelsTableStore((s) => s.setSorting);
-  const [expandedRowIds, setExpandedRowIds] = useState([]);
 
-  const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
-  const [epgUrl, setEPGUrl] = useState(epgUrlBase);
-  const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
-
+  /**
+   * Functions
+   */
   const fetchData = useCallback(async () => {
     const params = new URLSearchParams();
     params.append('page', pagination.pageIndex + 1);
@@ -328,38 +280,11 @@ const ChannelsTable = ({}) => {
     const results = await API.queryChannels(params);
     const ids = await API.getAllChannelIds(params);
 
-    const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
-    const endItem = Math.min(
-      (pagination.pageIndex + 1) * pagination.pageSize,
-      results.count
-    );
-
-    // Generate the string
-    setPaginationString(`${startItem} to ${endItem} of ${results.count}`);
     setTablePrefs({
       pageSize: pagination.pageSize,
     });
     setAllRowIds(ids);
   }, [pagination, sorting, debouncedFilters]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // const theme = useTheme();
-  const theme = useMantineTheme();
-
-  const showVideo = useVideoStore((s) => s.showVideo);
-
-  useEffect(() => {
-    setSelectedProfile(profiles[selectedProfileId]);
-
-    const profileString =
-      selectedProfileId != '0' ? `/${profiles[selectedProfileId].name}` : '';
-    setHDHRUrl(`${hdhrUrlBase}${profileString}`);
-    setEPGUrl(`${epgUrlBase}${profileString}`);
-    setM3UUrl(`${m3uUrlBase}${profileString}`);
-  }, [selectedProfileId]);
 
   const stopPropagation = useCallback((e) => {
     e.stopPropagation();
@@ -380,17 +305,13 @@ const ChannelsTable = ({}) => {
     }));
   };
 
-  const hdhrUrlRef = useRef(null);
-  const m3uUrlRef = useRef(null);
-  const epgUrlRef = useRef(null);
-
   const editChannel = async (ch = null) => {
     setChannel(ch);
     setChannelModalOpen(true);
   };
 
   const deleteChannel = async (id) => {
-    setRowSelection([]);
+    table.setSelectedTableIds([]);
     if (selectedChannelIds.length > 0) {
       return deleteChannels();
     }
@@ -413,36 +334,13 @@ const ChannelsTable = ({}) => {
     return channelUrl;
   };
 
-  function handleWatchStream(channel) {
+  const handleWatchStream = (channel) => {
     showVideo(getChannelURL(channel));
-  }
-
-  const onRowSelectionChange = (newSelection) => {
-    setSelectedTableIds(newSelection);
   };
 
-  // const onSelectAllChange = async (e) => {
-  //   const selectAll = e.target.checked;
-  //   if (selectAll) {
-  //     // Get all channel IDs for current view
-  //     const params = new URLSearchParams();
-  //     Object.entries(debouncedFilters).forEach(([key, value]) => {
-  //       if (value) params.append(key, value);
-  //     });
-  //     const ids = await API.getAllChannelIds(params);
-  //     setSelectedTableIds(ids);
-  //     setSelectedChannelIds(ids);
-  //   } else {
-  //     setSelectedTableIds([]);
-  //     setSelectedChannelIds([]);
-  //   }
-
-  //   const newSelection = {};
-  //   getRowModel().rows.forEach((item, index) => {
-  //     newSelection[index] = selectAll;
-  //   });
-  //   setRowSelection(newSelection);
-  // };
+  const onRowSelectionChange = (newSelection) => {
+    setSelectedChannelIds(newSelection);
+  };
 
   const onPageSizeChange = (e) => {
     setPagination({
@@ -477,74 +375,14 @@ const ChannelsTable = ({}) => {
     [selectedProfileId]
   );
 
-  const EnabledHeaderSwitch = useCallback(() => {
-    let enabled = false;
-    for (const id of selectedChannelIds) {
-      if (selectedProfileChannelIds.has(id)) {
-        enabled = true;
-        break;
-      }
-    }
-
-    const toggleSelected = () => {
-      toggleChannelEnabled(selectedChannelIds, !enabled);
-    };
-
-    return <Switch size="xs" checked={enabled} onChange={toggleSelected} />;
-  }, [selectedChannelIds, selectedProfileChannelIds, data]);
-
   // (Optional) bulk delete, but your endpoint is @TODO
   const deleteChannels = async () => {
     setIsLoading(true);
-    await API.deleteChannels(selectedChannelIds);
+    await API.deleteChannels(table.selectedTableIds);
     await API.requeryChannels();
     setSelectedChannelIds([]);
-    setRowSelection([]);
+    table.setSelectedTableIds([]);
     setIsLoading(false);
-  };
-
-  // ─────────────────────────────────────────────────────────
-  // The "Assign Channels" button logic
-  // ─────────────────────────────────────────────────────────
-  const assignChannels = async () => {
-    try {
-      // Get row order from the table
-      const rowOrder = getRowModel().rows.map((row) => row.original.id);
-
-      // Call our custom API endpoint
-      setIsLoading(true);
-      const result = await API.assignChannelNumbers(rowOrder);
-      setIsLoading(false);
-
-      // We might get { message: "Channels have been auto-assigned!" }
-      notifications.show({
-        title: result.message || 'Channels assigned',
-        color: 'green.5',
-      });
-
-      // Refresh the channel list
-      // await fetchChannels();
-      API.requeryChannels();
-    } catch (err) {
-      console.error(err);
-      notifications.show({
-        title: 'Failed to assign channels',
-        color: 'red.5',
-      });
-    }
-  };
-
-  const matchEpg = async () => {
-    try {
-      // Hit our new endpoint that triggers the fuzzy matching Celery task
-      await API.matchEpg();
-
-      notifications.show({
-        title: 'EPG matching task started!',
-      });
-    } catch (err) {
-      notifications.show(`Error: ${err.message}`);
-    }
   };
 
   const closeChannelForm = () => {
@@ -556,12 +394,6 @@ const ChannelsTable = ({}) => {
     // setChannel(null);
     setRecordingModalOpen(false);
   };
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsLoading(false);
-    }
-  }, []);
 
   const handleCopy = async (textToCopy, ref) => {
     try {
@@ -586,17 +418,13 @@ const ChannelsTable = ({}) => {
 
   // Example copy URLs
   const copyM3UUrl = () => {
-    handleCopy(m3uUrl, m3uUrlRef);
+    copyToClipboard(m3uUrl);
   };
   const copyEPGUrl = () => {
-    handleCopy(epgUrl, epgUrlRef);
+    copyToClipboard(epgUrl);
   };
   const copyHDHRUrl = () => {
-    handleCopy(hdhrUrl, hdhrUrlRef);
-  };
-
-  const deleteProfile = async (id) => {
-    await API.deleteChannelProfile(id);
+    copyToClipboard(hdhrUrl);
   };
 
   const onSortingChange = (column) => {
@@ -624,40 +452,57 @@ const ChannelsTable = ({}) => {
     }
   };
 
-  const renderProfileOption = ({ option, checked }) => {
-    return (
-      <Group justify="space-between" style={{ width: '100%' }}>
-        <Box>{option.label}</Box>
-        {option.value != '0' && (
-          <ActionIcon
-            size="xs"
-            variant="transparent"
-            color={theme.tailwind.red[6]}
-            onClick={(e) => {
-              e.stopPropagation();
-              deleteProfile(option.value);
-            }}
-          >
-            <SquareMinus />
-          </ActionIcon>
-        )}
-      </Group>
+  const EnabledHeaderSwitch = useCallback(() => {
+    let enabled = false;
+    for (const id of selectedChannelIds) {
+      if (selectedProfileChannelIds.has(id)) {
+        enabled = true;
+        break;
+      }
+    }
+
+    const toggleSelected = () => {
+      toggleChannelEnabled(selectedChannelIds, !enabled);
+    };
+
+    return <Switch size="xs" checked={enabled} onChange={toggleSelected} />;
+  }, [selectedChannelIds, selectedProfileChannelIds, data]);
+
+  /**
+   * useEffect
+   */
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    setSelectedProfile(profiles[selectedProfileId]);
+
+    const profileString =
+      selectedProfileId != '0' ? `/${profiles[selectedProfileId].name}` : '';
+    setHDHRUrl(`${hdhrUrlBase}${profileString}`);
+    setEPGUrl(`${epgUrlBase}${profileString}`);
+    setM3UUrl(`${m3uUrlBase}${profileString}`);
+  }, [selectedProfileId]);
+
+  useEffect(() => {
+    const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
+    const endItem = Math.min(
+      (pagination.pageIndex + 1) * pagination.pageSize,
+      totalCount
     );
-  };
+    setPaginationString(`${startItem} to ${endItem} of ${totalCount}`);
+  }, [data]);
 
   const columns = useMemo(
     () => [
       {
         id: 'expand',
         size: 20,
-        enableSorting: false,
-        enableColumnFilter: false,
       },
       {
         id: 'select',
         size: 30,
-        enableSorting: false,
-        enableColumnFilter: false,
       },
       {
         id: 'enabled',
@@ -671,7 +516,6 @@ const ChannelsTable = ({}) => {
             />
           );
         },
-        enableSorting: false,
       },
       {
         accessorKey: 'channel_number',
@@ -692,24 +536,18 @@ const ChannelsTable = ({}) => {
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              // position: 'absolute',
-              // left: 0,
-              // top: 0,
             }}
           >
             <Text size="sm">{getValue()}</Text>
           </Box>
         ),
-        style: {
-          justifyContent: 'left',
-        },
       },
       {
+        id: 'channel_group',
         accessorFn: (row) =>
           row.channel_group_id && channelGroups
             ? channelGroups[row.channel_group_id].name
             : '',
-        id: 'channel_group',
         cell: ({ getValue }) => (
           <Box
             style={{
@@ -740,7 +578,6 @@ const ChannelsTable = ({}) => {
             </Center>
           );
         },
-        enableSorting: false,
       },
       {
         id: 'actions',
@@ -757,7 +594,6 @@ const ChannelsTable = ({}) => {
             getChannelURL={getChannelURL}
           />
         ),
-        enableSorting: false,
       },
     ],
     [selectedProfileId, data, channelGroups]
@@ -775,9 +611,9 @@ const ChannelsTable = ({}) => {
 
     switch (header.id) {
       case 'enabled':
-        if (selectedProfileId !== '0' && selectedChannelIds.length > 0) {
-          // return EnabledHeaderSwitch();
-        }
+        // if (selectedProfileId !== '0' && table.selectedTableIds.length > 0) {
+        // return EnabledHeaderSwitch();
+        // }
         return (
           <Center style={{ width: '100%' }}>
             <ScanEye size="16" />
@@ -833,9 +669,6 @@ const ChannelsTable = ({}) => {
             style={{ width: '100%' }}
           />
         );
-
-      default:
-        return flexRender(header.column.columnDef.header, header.getContext());
     }
   };
 
@@ -843,33 +676,16 @@ const ChannelsTable = ({}) => {
     data,
     columns,
     allRowIds,
-    defaultColumn: {
-      size: undefined,
-      minSize: 0,
-    },
     pageCount,
-    // state: {
-    //   data,
-    //   rowCount,
-    //   sorting,
-    //   filters,
-    //   pagination,
-    //   rowSelection,
-    // },
     filters,
     pagination,
     sorting,
-    expandedRowIds,
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true,
     enableRowSelection: true,
     onRowSelectionChange: onRowSelectionChange,
     getCoreRowModel: getCoreRowModel(),
-    // getFilteredRowModel: getFilteredRowModel(),
-    // getSortedRowModel: getSortedRowModel(),
-    // getPaginationRowModel: getPaginationRowModel(),
-    // debugTable: true,
     expandedRowRenderer: ({ row }) => {
       return (
         <Box
@@ -884,13 +700,11 @@ const ChannelsTable = ({}) => {
     headerCellRenderFns: {
       name: renderHeaderCell,
       channel_group: renderHeaderCell,
-      enabled: () => (
-        <Center style={{ width: '100%' }}>
-          <ScanEye size="16" />
-        </Center>
-      ),
+      enabled: renderHeaderCell,
     },
   });
+
+  const rows = table.getRowModel().rows;
 
   return (
     <Box>
@@ -952,7 +766,7 @@ const ChannelsTable = ({}) => {
               </Popover.Target>
               <Popover.Dropdown>
                 <Group>
-                  <TextInput ref={hdhrUrlRef} value={hdhrUrl} size="small" />
+                  <TextInput value={hdhrUrl} size="small" readOnly />
                   <ActionIcon
                     onClick={copyHDHRUrl}
                     size="sm"
@@ -982,7 +796,7 @@ const ChannelsTable = ({}) => {
               </Popover.Target>
               <Popover.Dropdown>
                 <Group>
-                  <TextInput ref={m3uUrlRef} value={m3uUrl} size="small" />
+                  <TextInput value={m3uUrl} size="small" readOnly />
                   <ActionIcon
                     onClick={copyM3UUrl}
                     size="sm"
@@ -1013,7 +827,7 @@ const ChannelsTable = ({}) => {
               </Popover.Target>
               <Popover.Dropdown>
                 <Group>
-                  <TextInput ref={epgUrlRef} value={epgUrl} size="small" />
+                  <TextInput value={epgUrl} size="small" readOnly />
                   <ActionIcon
                     onClick={copyEPGUrl}
                     size="sm"
@@ -1038,164 +852,17 @@ const ChannelsTable = ({}) => {
           backgroundColor: '#27272A',
         }}
       >
-        {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
-        <Group justify="space-between">
-          <Group gap={5} style={{ paddingLeft: 10 }}>
-            <Select
-              size="xs"
-              allowDeselect={false}
-              value={selectedProfileId}
-              onChange={setSelectedProfileId}
-              data={Object.values(profiles).map((profile) => ({
-                label: profile.name,
-                value: `${profile.id}`,
-              }))}
-              renderOption={renderProfileOption}
-            />
-
-            <Tooltip label="Create Profile">
-              <CreateProfilePopover />
-            </Tooltip>
-          </Group>
-
-          <Box
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              padding: 10,
-            }}
-          >
-            <Flex gap={6}>
-              <Button
-                leftSection={<SquareMinus size={18} />}
-                variant="default"
-                size="xs"
-                onClick={deleteChannels}
-                disabled={selectedChannelIds.length == 0}
-              >
-                Remove
-              </Button>
-
-              <Tooltip label="Assign Channel #s">
-                <Button
-                  leftSection={<ArrowDown01 size={18} />}
-                  variant="default"
-                  size="xs"
-                  onClick={assignChannels}
-                  p={5}
-                >
-                  Assign
-                </Button>
-              </Tooltip>
-
-              <Tooltip label="Auto-Match EPG">
-                <Button
-                  leftSection={<Binary size={18} />}
-                  variant="default"
-                  size="xs"
-                  onClick={matchEpg}
-                  p={5}
-                >
-                  Auto-Match
-                </Button>
-              </Tooltip>
-
-              <Button
-                leftSection={<SquarePlus size={18} />}
-                variant="light"
-                size="xs"
-                onClick={() => editChannel()}
-                p={5}
-                color={theme.tailwind.green[5]}
-                style={{
-                  borderWidth: '1px',
-                  borderColor: theme.tailwind.green[5],
-                  color: 'white',
-                }}
-              >
-                Add
-              </Button>
-            </Flex>
-          </Box>
-        </Group>
+        <ChannelTableHeader
+          rows={rows}
+          editChannel={editChannel}
+          deleteChannels={deleteChannels}
+          selectedTableIds={table.selectedTableIds}
+        />
 
         {/* Table or ghost empty state inside Paper */}
         <Box>
           {Object.keys(channels).length === 0 && (
-            <Box
-              style={{
-                paddingTop: 20,
-                bgcolor: theme.palette.background.paper,
-              }}
-            >
-              <Center>
-                <Box
-                  style={{
-                    textAlign: 'center',
-                    width: '55%',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontWeight: 400,
-                      fontSize: '20px',
-                      lineHeight: '28px',
-                      letterSpacing: '-0.3px',
-                      color: theme.palette.text.secondary,
-                      mb: 1,
-                    }}
-                  >
-                    It’s recommended to create channels after adding your M3U or
-                    streams.
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontWeight: 400,
-                      fontSize: '16px',
-                      lineHeight: '24px',
-                      letterSpacing: '-0.2px',
-                      color: theme.palette.text.secondary,
-                      mb: 2,
-                    }}
-                  >
-                    You can still create channels without streams if you’d like,
-                    and map them later.
-                  </Text>
-                  <Button
-                    leftSection={<SquarePlus size={18} />}
-                    variant="light"
-                    size="xs"
-                    onClick={() => editChannel()}
-                    color="gray"
-                    style={{
-                      marginTop: 20,
-                      borderWidth: '1px',
-                      borderColor: 'gray',
-                      color: 'white',
-                    }}
-                  >
-                    Create Channel
-                  </Button>
-                </Box>
-              </Center>
-
-              <Center>
-                <Box
-                  component="img"
-                  src={ghostImage}
-                  alt="Ghost"
-                  style={{
-                    paddingTop: 30,
-                    width: '120px',
-                    height: 'auto',
-                    opacity: 0.2,
-                    pointerEvents: 'none',
-                  }}
-                />
-              </Center>
-            </Box>
+            <ChannelsTableOnboarding editChannel={editChannel} />
           )}
         </Box>
 

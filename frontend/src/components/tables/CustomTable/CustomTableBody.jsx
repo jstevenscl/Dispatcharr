@@ -3,9 +3,9 @@ import { flexRender } from '@tanstack/react-table';
 
 const CustomTableBody = ({
   getRowModel,
-  bodyCellRenderFns,
   expandedRowIds,
   expandedRowRenderer,
+  renderBodyCell,
 }) => {
   const renderExpandedRow = (row) => {
     if (expandedRowRenderer) {
@@ -15,9 +15,11 @@ const CustomTableBody = ({
     return <></>;
   };
 
+  const rows = getRowModel().rows;
+
   return (
     <Box className="tbody">
-      {getRowModel().rows.map((row, index) => (
+      {rows.map((row, index) => (
         <Box>
           <Box
             key={`tr-${row.id}`}
@@ -44,12 +46,7 @@ const CustomTableBody = ({
                   }}
                 >
                   <Flex align="center" style={{ height: '100%' }}>
-                    {bodyCellRenderFns[cell.column.id]
-                      ? bodyCellRenderFns[cell.column.id](cell)
-                      : flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
+                    {renderBodyCell({ row, cell })}
                   </Flex>
                 </Box>
               );
