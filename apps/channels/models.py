@@ -27,7 +27,7 @@ def get_total_viewers(channel_id):
         return 0
 
 class ChannelGroup(models.Model):
-    name = models.CharField(max_length=100, unique=True, db_index=True)
+    name = models.TextField(unique=True, db_index=True)
 
     def related_channels(self):
         # local import if needed to avoid cyc. Usually fine in a single file though

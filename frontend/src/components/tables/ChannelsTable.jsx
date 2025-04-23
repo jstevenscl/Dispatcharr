@@ -58,18 +58,12 @@ import {
   UnstyledButton,
   CopyButton,
 } from '@mantine/core';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-} from '@tanstack/react-table';
+import { getCoreRowModel, flexRender } from '@tanstack/react-table';
 import './table.css';
 import useChannelsTableStore from '../../store/channelsTable';
 import ChannelTableStreams from './ChannelTableStreams';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { CustomTable, useTable } from './CustomTable';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
@@ -292,6 +286,7 @@ const ChannelsTable = ({}) => {
 
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
+  const [allRowIds, setAllRowIds] = useState([]);
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [recordingModalOpen, setRecordingModalOpen] = useState(false);
@@ -299,12 +294,9 @@ const ChannelsTable = ({}) => {
   const [selectedProfile, setSelectedProfile] = useState(
     profiles[selectedProfileId]
   );
+  const pagination = useChannelsTableStore((s) => s.pagination);
+  const setPagination = useChannelsTableStore((s) => s.setPagination);
   const [paginationString, setPaginationString] = useState('');
-  const [pagination, setPagination] = useState({
-    pageIndex: 0,
-    pageSize: tablePrefs.pageSize,
-  });
-  const [initialDataCount, setInitialDataCount] = useState(null);
   const [filters, setFilters] = useState({
     name: '',
     channel_group: '',
@@ -312,10 +304,9 @@ const ChannelsTable = ({}) => {
   const debouncedFilters = useDebounce(filters, 500);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedChannelIds, setSelectedChannelIds] = useState([]);
-  const [sorting, setSorting] = useState([
-    { id: 'channel_number', desc: false },
-  ]);
-  const [expandedRowId, setExpandedRowId] = useState(null);
+  const sorting = useChannelsTableStore((s) => s.sorting);
+  const setSorting = useChannelsTableStore((s) => s.setSorting);
+  const [expandedRowIds, setExpandedRowIds] = useState([]);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
@@ -339,6 +330,7 @@ const ChannelsTable = ({}) => {
     });
 
     const results = await API.queryChannels(params);
+    const ids = await API.getAllChannelIds(params);
 
     const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
     const endItem = Math.min(
@@ -346,15 +338,12 @@ const ChannelsTable = ({}) => {
       results.count
     );
 
-    if (initialDataCount === null) {
-      setInitialDataCount(results.count);
-    }
-
     // Generate the string
     setPaginationString(`${startItem} to ${endItem} of ${results.count}`);
     setTablePrefs({
       pageSize: pagination.pageSize,
     });
+    setAllRowIds(ids);
   }, [pagination, sorting, debouncedFilters]);
 
   useEffect(() => {
@@ -386,10 +375,6 @@ const ChannelsTable = ({}) => {
       ...prev,
       [name]: value,
     }));
-    setPagination({
-      pageIndex: 0,
-      pageSize: pagination.pageSize,
-    });
   }, []);
 
   const handleGroupChange = (value) => {
@@ -397,10 +382,6 @@ const ChannelsTable = ({}) => {
       ...prev,
       channel_group: value ? value : '',
     }));
-    setPagination({
-      pageIndex: 0,
-      pageSize: pagination.pageSize,
-    });
   };
 
   const hdhrUrlRef = useRef(null);
@@ -440,49 +421,49 @@ const ChannelsTable = ({}) => {
     showVideo(getChannelURL(channel));
   }
 
-  const onRowSelectionChange = (updater) => {
-    setRowSelection((prevRowSelection) => {
-      const newRowSelection =
-        typeof updater === 'function' ? updater(prevRowSelection) : updater;
+  // const onRowSelectionChange = (updater) => {
+  //   setRowSelection((prevRowSelection) => {
+  //     const newRowSelection =
+  //       typeof updater === 'function' ? updater(prevRowSelection) : updater;
 
-      const updatedSelected = new Set([...selectedChannelIds]);
-      getRowModel().rows.forEach((row) => {
-        if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
-          updatedSelected.delete(row.original.id);
-        } else {
-          updatedSelected.add(row.original.id);
-        }
-      });
-      const newSelection = [...updatedSelected];
-      setSelectedChannelIds(newSelection);
-      setSelectedTableIds(newSelection);
+  //     const updatedSelected = new Set([...selectedChannelIds]);
+  //     getRowModel().rows.forEach((row) => {
+  //       if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
+  //         updatedSelected.delete(row.original.id);
+  //       } else {
+  //         updatedSelected.add(row.original.id);
+  //       }
+  //     });
+  //     const newSelection = [...updatedSelected];
+  //     setSelectedChannelIds(newSelection);
+  //     setSelectedTableIds(newSelection);
 
-      return newRowSelection;
-    });
-  };
+  //     return newRowSelection;
+  //   });
+  // };
 
-  const onSelectAllChange = async (e) => {
-    const selectAll = e.target.checked;
-    if (selectAll) {
-      // Get all channel IDs for current view
-      const params = new URLSearchParams();
-      Object.entries(debouncedFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const ids = await API.getAllChannelIds(params);
-      setSelectedTableIds(ids);
-      setSelectedChannelIds(ids);
-    } else {
-      setSelectedTableIds([]);
-      setSelectedChannelIds([]);
-    }
+  // const onSelectAllChange = async (e) => {
+  //   const selectAll = e.target.checked;
+  //   if (selectAll) {
+  //     // Get all channel IDs for current view
+  //     const params = new URLSearchParams();
+  //     Object.entries(debouncedFilters).forEach(([key, value]) => {
+  //       if (value) params.append(key, value);
+  //     });
+  //     const ids = await API.getAllChannelIds(params);
+  //     setSelectedTableIds(ids);
+  //     setSelectedChannelIds(ids);
+  //   } else {
+  //     setSelectedTableIds([]);
+  //     setSelectedChannelIds([]);
+  //   }
 
-    const newSelection = {};
-    getRowModel().rows.forEach((item, index) => {
-      newSelection[index] = selectAll;
-    });
-    setRowSelection(newSelection);
-  };
+  //   const newSelection = {};
+  //   getRowModel().rows.forEach((item, index) => {
+  //     newSelection[index] = selectAll;
+  //   });
+  //   setRowSelection(newSelection);
+  // };
 
   const onPageSizeChange = (e) => {
     setPagination({
@@ -798,49 +779,8 @@ const ChannelsTable = ({}) => {
         enableSorting: false,
       },
     ],
-    [selectedProfileId, data]
+    [selectedProfileId, data, channelGroups]
   );
-
-  const { getHeaderGroups, getRowModel } = useReactTable({
-    data,
-    columns: columns,
-    defaultColumn: {
-      size: undefined,
-      minSize: 0,
-    },
-    pageCount,
-    state: {
-      data,
-      rowCount,
-      sorting,
-      filters,
-      pagination,
-      rowSelection,
-    },
-    manualPagination: true,
-    manualSorting: true,
-    manualFiltering: true,
-    enableRowSelection: true,
-    onRowSelectionChange: onRowSelectionChange,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    // debugTable: true,
-  });
-
-  const rows = getRowModel().rows;
-
-  const onRowExpansion = (row) => {
-    let isExpanded = false;
-    setExpandedRowId((prev) => {
-      isExpanded = prev === row.original.id ? null : row.original.id;
-      return isExpanded;
-    });
-    setRowSelection({ [row.index]: true });
-    setSelectedChannelIds([row.original.id]);
-    setSelectedTableIds([row.original.id]);
-  };
 
   const renderHeaderCell = (header) => {
     let sortingIcon = ArrowUpDown;
@@ -853,11 +793,6 @@ const ChannelsTable = ({}) => {
     }
 
     switch (header.id) {
-      case 'select':
-        return ChannelRowSelectHeader({
-          selectedChannelIds,
-        });
-
       case 'enabled':
         if (selectedProfileId !== '0' && selectedChannelIds.length > 0) {
           // return EnabledHeaderSwitch();
@@ -923,22 +858,85 @@ const ChannelsTable = ({}) => {
     }
   };
 
-  const renderBodyCell = (cell) => {
-    switch (cell.column.id) {
-      case 'select':
-        return ChannelRowSelectCell({ row: cell.row });
+  const table = useTable({
+    data,
+    columns,
+    allRowIds,
+    defaultColumn: {
+      size: undefined,
+      minSize: 0,
+    },
+    pageCount,
+    // state: {
+    //   data,
+    //   rowCount,
+    //   sorting,
+    //   filters,
+    //   pagination,
+    //   rowSelection,
+    // },
+    filters,
+    pagination,
+    sorting,
+    expandedRowIds,
+    manualPagination: true,
+    manualSorting: true,
+    manualFiltering: true,
+    enableRowSelection: true,
+    // onRowSelectionChange: onRowSelectionChange,
+    getCoreRowModel: getCoreRowModel(),
+    // getFilteredRowModel: getFilteredRowModel(),
+    // getSortedRowModel: getSortedRowModel(),
+    // getPaginationRowModel: getPaginationRowModel(),
+    // debugTable: true,
+    expandedRowRenderer: ({ row }) => {
+      return (
+        <Box
+          key={row.id}
+          className="tr"
+          style={{ display: 'flex', width: '100%' }}
+        >
+          <ChannelTableStreams channel={row.original} isExpanded={true} />
+        </Box>
+      );
+    },
+    headerCellRenderFns: {
+      name: renderHeaderCell,
+      enabled: () => (
+        <Center style={{ width: '100%' }}>
+          <ScanEye size="16" />
+        </Center>
+      ),
+    },
+  });
 
-      case 'expand':
-        return ChannelExpandCell({ row: cell.row });
-
-      default:
-        return flexRender(cell.column.columnDef.cell, cell.getContext());
-    }
+  const onRowExpansion = (row) => {
+    let isExpanded = false;
+    setExpandedRowIds((prev) => {
+      isExpanded = prev === row.original.id ? null : row.original.id;
+      return isExpanded;
+    });
+    setRowSelection({ [row.index]: true });
+    setSelectedChannelIds([row.original.id]);
+    setSelectedTableIds([row.original.id]);
   };
+
+  // const renderBodyCell = (cell) => {
+  //   switch (cell.column.id) {
+  //     case 'select':
+  //       return ChannelRowSelectCell({ row: cell.row });
+
+  //     case 'expand':
+  //       return ChannelExpandCell({ row: cell.row });
+
+  //     default:
+  //       return flexRender(cell.column.columnDef.cell, cell.getContext());
+  //   }
+  // };
 
   const ChannelExpandCell = useCallback(
     ({ row }) => {
-      const isExpanded = expandedRowId === row.original.id;
+      const isExpanded = expandedRowIds === row.original.id;
 
       return (
         <Center
@@ -951,44 +949,44 @@ const ChannelsTable = ({}) => {
         </Center>
       );
     },
-    [expandedRowId]
+    [expandedRowIds]
   );
 
-  const ChannelRowSelectCell = useCallback(
-    ({ row }) => {
-      return (
-        <Center style={{ width: '100%' }}>
-          <Checkbox
-            size="xs"
-            checked={row.getIsSelected()}
-            onChange={row.getToggleSelectedHandler()}
-          />
-        </Center>
-      );
-    },
-    [rows]
-  );
+  // const ChannelRowSelectCell = useCallback(
+  //   ({ row }) => {
+  //     return (
+  //       <Center style={{ width: '100%' }}>
+  //         <Checkbox
+  //           size="xs"
+  //           checked={row.getIsSelected()}
+  //           onChange={row.getToggleSelectedHandler()}
+  //         />
+  //       </Center>
+  //     );
+  //   },
+  //   [rows]
+  // );
 
-  const ChannelRowSelectHeader = useCallback(
-    ({ selectedChannelIds }) => {
-      return (
-        <Center style={{ width: '100%' }}>
-          <Checkbox
-            size="xs"
-            checked={
-              rowCount == 0 ? false : selectedChannelIds.length == rowCount
-            }
-            indeterminate={
-              selectedChannelIds.length > 0 &&
-              selectedChannelIds.length !== rowCount
-            }
-            onChange={onSelectAllChange}
-          />
-        </Center>
-      );
-    },
-    [rows]
-  );
+  // const ChannelRowSelectHeader = useCallback(
+  //   ({ selectedChannelIds }) => {
+  //     return (
+  //       <Center style={{ width: '100%' }}>
+  //         <Checkbox
+  //           size="xs"
+  //           checked={
+  //             rowCount == 0 ? false : selectedChannelIds.length == rowCount
+  //           }
+  //           indeterminate={
+  //             selectedChannelIds.length > 0 &&
+  //             selectedChannelIds.length !== rowCount
+  //           }
+  //           onChange={onSelectAllChange}
+  //         />
+  //       </Center>
+  //     );
+  //   },
+  //   [rows]
+  // );
 
   return (
     <Box>
@@ -1218,7 +1216,7 @@ const ChannelsTable = ({}) => {
 
         {/* Table or ghost empty state inside Paper */}
         <Box>
-          {initialDataCount === 0 && data.length === 0 && (
+          {Object.keys(channels).length === 0 && (
             <Box
               style={{
                 paddingTop: 20,
@@ -1296,7 +1294,7 @@ const ChannelsTable = ({}) => {
           )}
         </Box>
 
-        {data.length > 0 && (
+        {Object.keys(channels).length > 0 && (
           <Box
             style={{
               display: 'flex',
@@ -1313,114 +1311,7 @@ const ChannelsTable = ({}) => {
                 borderRadius: 'var(--mantine-radius-default)',
               }}
             >
-              <Box
-                className="divTable table-striped"
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                <Box
-                  className="thead"
-                  style={{
-                    position: 'sticky',
-                    top: 0,
-                    backgroundColor: '#3E3E45',
-                    zIndex: 10,
-                  }}
-                >
-                  {getHeaderGroups().map((headerGroup) => (
-                    <Box
-                      className="tr"
-                      key={headerGroup.id}
-                      style={{ display: 'flex', width: '100%' }}
-                    >
-                      {headerGroup.headers.map((header) => {
-                        const width = header.getSize();
-                        return (
-                          <Box
-                            className="th"
-                            key={header.id}
-                            style={{
-                              flex: header.column.columnDef.size
-                                ? '0 0 auto'
-                                : '1 1 0',
-                              width: header.column.columnDef.size
-                                ? header.getSize()
-                                : undefined,
-                              minWidth: 0,
-                            }}
-                          >
-                            <Flex
-                              align="center"
-                              style={{
-                                ...(header.column.columnDef.style &&
-                                  header.column.columnDef.style),
-                                height: '100%',
-                              }}
-                            >
-                              {renderHeaderCell(header)}
-                            </Flex>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  ))}
-                </Box>
-                <Box className="tbody">
-                  {getRowModel().rows.map((row) => (
-                    <Box>
-                      <Box
-                        key={row.id}
-                        className="tr"
-                        style={{
-                          display: 'flex',
-                          width: '100%',
-                          ...(row.getIsSelected() && {
-                            backgroundColor: '#163632',
-                          }),
-                        }}
-                      >
-                        {row.getVisibleCells().map((cell) => {
-                          const width = cell.column.getSize();
-                          return (
-                            <Box
-                              className="td"
-                              key={cell.id}
-                              style={{
-                                flex: cell.column.columnDef.size
-                                  ? '0 0 auto'
-                                  : '1 1 0',
-                                width: cell.column.columnDef.size
-                                  ? cell.column.getSize()
-                                  : undefined,
-                                minWidth: 0,
-                              }}
-                            >
-                              <Flex align="center" style={{ height: '100%' }}>
-                                {renderBodyCell(cell)}
-                              </Flex>
-                            </Box>
-                          );
-                        })}
-                      </Box>
-                      {row.original.id === expandedRowId && (
-                        <Box
-                          key={row.id}
-                          className="tr"
-                          style={{ display: 'flex', width: '100%' }}
-                        >
-                          <ChannelTableStreams
-                            channel={row.original}
-                            isExpanded={true}
-                          />
-                        </Box>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
+              <CustomTable table={table} />
             </Box>
 
             <Box

@@ -6,7 +6,11 @@ import API from '../api';
 const useChannelsTableStore = create((set, get) => ({
   channels: [],
   count: 0,
-  pageCount: 0,
+  sorting: [{ id: 'channel_number', desc: false }],
+  pagination: {
+    pageIndex: 0,
+    pageCount: 50,
+  },
   selectedChannelIds: [],
 
   queryChannels: ({ results, count }, params) => {
@@ -28,6 +32,18 @@ const useChannelsTableStore = create((set, get) => ({
   getChannelStreams: (id) => {
     const channel = get().channels.find((c) => c.id === id);
     return channel?.streams ?? [];
+  },
+
+  setPagination: (pagination) => {
+    set((state) => ({
+      pagination,
+    }));
+  },
+
+  setSorting: (sorting) => {
+    set((state) => ({
+      sorting,
+    }));
   },
 }));
 

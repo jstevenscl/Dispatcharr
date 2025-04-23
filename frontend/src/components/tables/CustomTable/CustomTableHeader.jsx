@@ -1,119 +1,38 @@
-import { Box, Flex } from '@mantine/core';
-import {
-  ArrowDownWideNarrow,
-  ArrowUpDown,
-  ArrowUpNarrowWide,
-} from 'lucide-react';
+import { Box, Center, Checkbox, Flex } from '@mantine/core';
+import { flexRender } from '@tanstack/react-table';
 import { useCallback } from 'react';
 
 const CustomTableHeader = ({
-  table,
+  getHeaderGroups,
+  allRowIds,
+  selectedTableIds,
   headerCellRenderFns,
-  rowCount,
   onSelectAllChange,
 }) => {
-  const ChannelRowSelectHeader = useCallback(
-    ({ selectedChannelIds }) => {
-      return (
-        <Center style={{ width: '100%' }}>
-          <Checkbox
-            size="xs"
-            checked={
-              rowCount == 0 ? false : selectedChannelIds.length == rowCount
-            }
-            indeterminate={
-              selectedChannelIds.length > 0 &&
-              selectedChannelIds.length !== rowCount
-            }
-            onChange={onSelectAllChange}
-          />
-        </Center>
-      );
-    },
-    [rows, rowCount]
-  );
-
-  const onSelectAll = (e) => {
-    if (onSelectAllChange) {
-      onSelectAllChange(e);
-    }
-  };
-
-  const headerCellRenderer = (header) => {
-    let sortingIcon = ArrowUpDown;
-    if (sorting[0]?.id == header.id) {
-      if (sorting[0].desc === false) {
-        sortingIcon = ArrowUpNarrowWide;
-      } else {
-        sortingIcon = ArrowDownWideNarrow;
-      }
+  const renderHeaderCell = (header) => {
+    if (headerCellRenderFns[header.id]) {
+      return headerCellRenderFns[header.id](header);
     }
 
     switch (header.id) {
       case 'select':
-        return ChannelRowSelectHeader({
-          selectedChannelIds,
-        });
-
-      case 'enabled':
-        if (selectedProfileId !== '0' && selectedChannelIds.length > 0) {
-          // return EnabledHeaderSwitch();
-        }
         return (
           <Center style={{ width: '100%' }}>
-            <ScanEye size="16" />
+            <Checkbox
+              size="xs"
+              checked={
+                allRowIds.length == 0
+                  ? false
+                  : selectedTableIds.length == allRowIds.length
+              }
+              indeterminate={
+                selectedTableIds.length > 0 &&
+                selectedTableIds.length !== allRowIds.length
+              }
+              onChange={onSelectAllChange}
+            />
           </Center>
         );
-
-      // case 'channel_number':
-      //   return (
-      //     <Flex gap={2}>
-      //       #
-      //       {/* <Center>
-      //         {React.createElement(sortingIcon, {
-      //           onClick: () => onSortingChange('name'),
-      //           size: 14,
-      //         })}
-      //       </Center> */}
-      //     </Flex>
-      //   );
-
-      // case 'name':
-      //   return (
-      //     <Flex gap="sm">
-      //       <TextInput
-      //         name="name"
-      //         placeholder="Name"
-      //         value={filters.name || ''}
-      //         onClick={(e) => e.stopPropagation()}
-      //         onChange={handleFilterChange}
-      //         size="xs"
-      //         variant="unstyled"
-      //         className="table-input-header"
-      //       />
-      //       <Center>
-      //         {React.createElement(sortingIcon, {
-      //           onClick: () => onSortingChange('name'),
-      //           size: 14,
-      //         })}
-      //       </Center>
-      //     </Flex>
-      //   );
-
-      // case 'channel_group':
-      //   return (
-      //     <MultiSelect
-      //       placeholder="Group"
-      //       variant="unstyled"
-      //       data={groupOptions}
-      //       size="xs"
-      //       searchable
-      //       clearable
-      //       onClick={stopPropagation}
-      //       onChange={handleGroupChange}
-      //       style={{ width: '100%' }}
-      //     />
-      //   );
 
       default:
         return flexRender(header.column.columnDef.header, header.getContext());
@@ -130,7 +49,7 @@ const CustomTableHeader = ({
         zIndex: 10,
       }}
     >
-      {table.getHeaderGroups().map((headerGroup) => (
+      {getHeaderGroups().map((headerGroup) => (
         <Box
           className="tr"
           key={headerGroup.id}
@@ -157,7 +76,7 @@ const CustomTableHeader = ({
                     height: '100%',
                   }}
                 >
-                  {headerCellRenderer(header)}
+                  {renderHeaderCell(header)}
                 </Flex>
               </Box>
             );
