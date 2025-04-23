@@ -26,7 +26,18 @@ def generate_m3u(request, profile_name=None):
         group_title = channel.channel_group.name if channel.channel_group else "Default"
         tvg_id = channel.channel_number or channel.id
         tvg_name = channel.name
-        tvg_logo = channel.logo.url if channel.logo else ""
+
+        # Fix for logo URLs - convert filesystem paths to web URLs
+        tvg_logo = ""
+        if channel.logo:
+            tvg_logo = channel.logo.url
+
+            # Convert to absolute URL if it's a filesystem path
+            if tvg_logo.startswith('/data'):
+                logo_uri = re.sub(r"^\/data", '', tvg_logo)
+                base_url = request.build_absolute_uri('/')[:-1]
+                tvg_logo = f"{base_url}{logo_uri}"
+
         channel_number = channel.channel_number
 
         extinf_line = (
