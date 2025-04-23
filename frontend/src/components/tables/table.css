@@ -18,6 +18,10 @@
     display: flex;
   }
 
+  .table-striped .tbody .tr:hover {
+    background-color: rgb(68,68,68);
+  }
+
   .tr {
     /* width: fit-content;
     width: 100%;  */
@@ -79,12 +83,12 @@
     }
   }
 
-  .table-striped .tbody .tr:nth-child(odd),
+  /* .table-striped .tbody .tr:nth-child(odd), */
   .table-striped .tbody .tr-odd {
     background-color: #18181b;
   }
 
-  .table-striped .tbody .tr:nth-child(even),
+  /* .table-striped .tbody .tr:nth-child(even), */
   .table-striped .tbody .tr-even {
     background-color: #27272A;
   }

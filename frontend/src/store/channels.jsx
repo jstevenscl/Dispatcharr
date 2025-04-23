@@ -293,6 +293,7 @@ const useChannelsStore = create((set, get) => ({
 
       const updates = {
         profiles: {
+          ...state.profiles,
           [profileId]: updatedProfile,
         },
       };

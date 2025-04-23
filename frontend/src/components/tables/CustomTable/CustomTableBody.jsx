@@ -17,11 +17,11 @@ const CustomTableBody = ({
 
   return (
     <Box className="tbody">
-      {getRowModel().rows.map((row) => (
+      {getRowModel().rows.map((row, index) => (
         <Box>
           <Box
-            key={row.id}
-            className="tr"
+            key={`tr-${row.id}`}
+            className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'}`}
             style={{
               display: 'flex',
               width: '100%',
@@ -34,7 +34,7 @@ const CustomTableBody = ({
               return (
                 <Box
                   className="td"
-                  key={cell.id}
+                  key={`td-${cell.id}`}
                   style={{
                     flex: cell.column.columnDef.size ? '0 0 auto' : '1 1 0',
                     width: cell.column.columnDef.size

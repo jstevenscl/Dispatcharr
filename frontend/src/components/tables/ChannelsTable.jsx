@@ -31,8 +31,6 @@ import {
   ArrowUpNarrowWide,
   ArrowUpDown,
   ArrowDownWideNarrow,
-  ChevronDown,
-  ChevronRight,
 } from 'lucide-react';
 import ghostImage from '../../images/ghost.svg';
 import {
@@ -54,7 +52,6 @@ import {
   MultiSelect,
   Pagination,
   NativeSelect,
-  Checkbox,
   UnstyledButton,
   CopyButton,
 } from '@mantine/core';
@@ -254,7 +251,6 @@ const ChannelRowActions = React.memo(
 
 const ChannelsTable = ({}) => {
   const data = useChannelsTableStore((s) => s.channels);
-  const rowCount = useChannelsTableStore((s) => s.count);
   const pageCount = useChannelsTableStore((s) => s.pageCount);
   const setSelectedTableIds = useChannelsTableStore(
     (s) => s.setSelectedChannelIds
@@ -710,7 +706,9 @@ const ChannelsTable = ({}) => {
       },
       {
         accessorFn: (row) =>
-          row.channel_group_id ? channelGroups[row.channel_group_id].name : '',
+          row.channel_group_id && channelGroups
+            ? channelGroups[row.channel_group_id].name
+            : '',
         id: 'channel_group',
         cell: ({ getValue }) => (
           <Box
@@ -894,84 +892,6 @@ const ChannelsTable = ({}) => {
     },
   });
 
-  const onRowExpansion = (row) => {
-    let isExpanded = false;
-    setExpandedRowIds((prev) => {
-      isExpanded = prev === row.original.id ? null : row.original.id;
-      return isExpanded;
-    });
-    setRowSelection({ [row.index]: true });
-    setSelectedChannelIds([row.original.id]);
-    setSelectedTableIds([row.original.id]);
-  };
-
-  // const renderBodyCell = (cell) => {
-  //   switch (cell.column.id) {
-  //     case 'select':
-  //       return ChannelRowSelectCell({ row: cell.row });
-
-  //     case 'expand':
-  //       return ChannelExpandCell({ row: cell.row });
-
-  //     default:
-  //       return flexRender(cell.column.columnDef.cell, cell.getContext());
-  //   }
-  // };
-
-  const ChannelExpandCell = useCallback(
-    ({ row }) => {
-      const isExpanded = expandedRowIds === row.original.id;
-
-      return (
-        <Center
-          style={{ width: '100%', cursor: 'pointer' }}
-          onClick={() => {
-            onRowExpansion(row);
-          }}
-        >
-          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </Center>
-      );
-    },
-    [expandedRowIds]
-  );
-
-  // const ChannelRowSelectCell = useCallback(
-  //   ({ row }) => {
-  //     return (
-  //       <Center style={{ width: '100%' }}>
-  //         <Checkbox
-  //           size="xs"
-  //           checked={row.getIsSelected()}
-  //           onChange={row.getToggleSelectedHandler()}
-  //         />
-  //       </Center>
-  //     );
-  //   },
-  //   [rows]
-  // );
-
-  // const ChannelRowSelectHeader = useCallback(
-  //   ({ selectedChannelIds }) => {
-  //     return (
-  //       <Center style={{ width: '100%' }}>
-  //         <Checkbox
-  //           size="xs"
-  //           checked={
-  //             rowCount == 0 ? false : selectedChannelIds.length == rowCount
-  //           }
-  //           indeterminate={
-  //             selectedChannelIds.length > 0 &&
-  //             selectedChannelIds.length !== rowCount
-  //           }
-  //           onChange={onSelectAllChange}
-  //         />
-  //       </Center>
-  //     );
-  //   },
-  //   [rows]
-  // );
-
   return (
     <Box>
       {/* Header Row: outside the Paper */}
@@ -1123,6 +1043,7 @@ const ChannelsTable = ({}) => {
           <Group gap={5} style={{ paddingLeft: 10 }}>
             <Select
               size="xs"
+              allowDeselect={false}
               value={selectedProfileId}
               onChange={setSelectedProfileId}
               data={Object.values(profiles).map((profile) => ({

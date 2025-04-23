@@ -23,6 +23,7 @@ import {
   MouseSensor,
   TouchSensor,
   closestCenter,
+  useDraggable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -36,19 +37,22 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { shallow } from 'zustand/shallow';
 
-// Cell Component
 const RowDragHandleCell = ({ rowId }) => {
-  const { attributes, listeners } = useSortable({
+  const { attributes, listeners, setNodeRef } = useDraggable({
     id: rowId,
   });
+
   return (
-    // Alternatively, you could set these attributes on the rows themselves
     <Center>
       <ActionIcon
-        {...attributes}
+        ref={setNodeRef}
         {...listeners}
+        {...attributes}
         variant="transparent"
         size="xs"
+        style={{
+          cursor: 'grab', // this is enough
+        }}
       >
         <GripHorizontal color="white" />
       </ActionIcon>
@@ -57,7 +61,7 @@ const RowDragHandleCell = ({ rowId }) => {
 };
 
 // Row Component
-const DraggableRow = ({ row }) => {
+const DraggableRow = ({ row, index }) => {
   const { transform, transition, setNodeRef, isDragging } = useSortable({
     id: row.original.id,
   });
@@ -73,7 +77,7 @@ const DraggableRow = ({ row }) => {
     <Box
       ref={setNodeRef}
       key={row.id}
-      className="tr"
+      className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'}`}
       style={{
         ...style,
         display: 'flex',
@@ -186,9 +190,6 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     enableRowSelection: true,
     getRowId: (row) => row.id,
     getCoreRowModel: getCoreRowModel(),
-    // getFilteredRowModel: getFilteredRowModel(),
-    // getSortedRowModel: getSortedRowModel(),
-    // getPaginationRowModel: getPaginationRowModel(),
   });
 
   function handleDragEnd(event) {
