@@ -217,27 +217,27 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
     logger.debug(f"Processing batch of {len(batch)}")
     for stream_info in batch:
-        name, url = stream_info["name"], stream_info["url"]
-        tvg_id, tvg_logo = stream_info["attributes"].get("tvg-id", ""), stream_info["attributes"].get("tvg-logo", "")
-        group_title = stream_info["attributes"].get("group-title", "Default Group")
-
-        # Filter out disabled groups for this account
-        if group_title not in groups:
-            logger.debug(f"Skipping stream in disabled group: {group_title}")
-            continue
-
-        # if any(url.lower().endswith(ext) for ext in SKIP_EXTS) or len(url) > 2000:
-        #     continue
-
-        # if _matches_filters(name, group_title, account.filters.all()):
-        #     continue
-
-        # if any(compiled_pattern.search(current_info['name']) for ftype, compiled_pattern in compiled_filters if ftype == 'name'):
-        #     excluded_count += 1
-        #     current_info = None
-        #     continue
-
         try:
+            name, url = stream_info["name"], stream_info["url"]
+            tvg_id, tvg_logo = stream_info["attributes"].get("tvg-id", ""), stream_info["attributes"].get("tvg-logo", "")
+            group_title = stream_info["attributes"].get("group-title", "Default Group")
+
+            # Filter out disabled groups for this account
+            if group_title not in groups:
+                logger.debug(f"Skipping stream in disabled group: {group_title}")
+                continue
+
+            # if any(url.lower().endswith(ext) for ext in SKIP_EXTS) or len(url) > 2000:
+            #     continue
+
+            # if _matches_filters(name, group_title, account.filters.all()):
+            #     continue
+
+            # if any(compiled_pattern.search(current_info['name']) for ftype, compiled_pattern in compiled_filters if ftype == 'name'):
+            #     excluded_count += 1
+            #     current_info = None
+            #     continue
+
             stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
             # if redis_client.exists(f"m3u_refresh:{stream_hash}"):
             #     # duplicate already processed by another batch
