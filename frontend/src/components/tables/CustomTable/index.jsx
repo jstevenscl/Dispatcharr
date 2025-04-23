@@ -14,9 +14,9 @@ const useTable = ({
   allRowIds,
   headerCellRenderFns = {},
   filters = {},
-  pagination = {},
   sorting = [],
   expandedRowRenderer = () => <></>,
+  onRowSelectionChange = null,
   ...options
 }) => {
   const [selectedTableIds, setSelectedTableIds] = useState([]);
@@ -24,44 +24,12 @@ const useTable = ({
 
   const rowCount = allRowIds.length;
 
-  const onRowSelectionChange = (updater) => {
-    const newRowSelection =
-      typeof updater === 'function' ? updater(rowSelection) : updater;
-
-    const updatedSelected = new Set(selectedTableIds);
-
-    const allChangedRowIds = new Set([
-      ...Object.keys(rowSelection),
-      ...Object.keys(newRowSelection),
-    ]);
-
-    for (const rowId of allChangedRowIds) {
-      const wasSelected = !!rowSelection[rowId];
-      const isSelected = !!newRowSelection[rowId];
-
-      if (wasSelected !== isSelected) {
-        const row = table.getRow(rowId);
-        if (!row) continue;
-
-        const originalId = row.original.id;
-        if (isSelected) {
-          updatedSelected.add(originalId);
-        } else {
-          updatedSelected.delete(originalId);
-        }
-      }
-    }
-
-    setSelectedTableIds([...updatedSelected]);
-  };
-
   const table = useReactTable({
     ...options,
     state: {
       data: options.data,
       selectedTableIds,
     },
-    onRowSelectionChange,
     getCoreRowModel: options.getCoreRowModel ?? getCoreRowModel(),
   });
 
@@ -69,6 +37,13 @@ const useTable = ({
     () => new Set(selectedTableIds),
     [selectedTableIds]
   );
+
+  const updateSelectedTableIds = (ids) => {
+    setSelectedTableIds(ids);
+    if (onRowSelectionChange) {
+      onRowSelectionChange(ids);
+    }
+  };
 
   const rowSelection = useMemo(() => {
     const selection = {};
@@ -83,9 +58,9 @@ const useTable = ({
   const onSelectAllChange = async (e) => {
     const selectAll = e.target.checked;
     if (selectAll) {
-      setSelectedTableIds(allRowIds);
+      updateSelectedTableIds(allRowIds);
     } else {
-      setSelectedTableIds([]);
+      updateSelectedTableIds([]);
     }
   };
 
@@ -97,7 +72,7 @@ const useTable = ({
       isExpanded = prev.includes(row.original.id) ? [] : [row.original.id];
       return isExpanded;
     });
-    setSelectedTableIds([row.original.id]);
+    updateSelectedTableIds([row.original.id]);
   };
 
   const renderHeaderCell = useCallback(
@@ -149,7 +124,7 @@ const useTable = ({
                 } else {
                   newSet.delete(row.original.id);
                 }
-                setSelectedTableIds([...newSet]);
+                updateSelectedTableIds([...newSet]);
               }}
             />
           </Center>
@@ -180,7 +155,7 @@ const useTable = ({
       ...options,
       sorting,
       selectedTableIds,
-      setSelectedTableIds,
+      updateSelectedTableIds,
       rowSelection,
       allRowIds,
       onSelectAllChange,

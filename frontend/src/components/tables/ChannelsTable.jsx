@@ -421,26 +421,9 @@ const ChannelsTable = ({}) => {
     showVideo(getChannelURL(channel));
   }
 
-  // const onRowSelectionChange = (updater) => {
-  //   setRowSelection((prevRowSelection) => {
-  //     const newRowSelection =
-  //       typeof updater === 'function' ? updater(prevRowSelection) : updater;
-
-  //     const updatedSelected = new Set([...selectedChannelIds]);
-  //     getRowModel().rows.forEach((row) => {
-  //       if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
-  //         updatedSelected.delete(row.original.id);
-  //       } else {
-  //         updatedSelected.add(row.original.id);
-  //       }
-  //     });
-  //     const newSelection = [...updatedSelected];
-  //     setSelectedChannelIds(newSelection);
-  //     setSelectedTableIds(newSelection);
-
-  //     return newRowSelection;
-  //   });
-  // };
+  const onRowSelectionChange = (newSelection) => {
+    setSelectedTableIds(newSelection);
+  };
 
   // const onSelectAllChange = async (e) => {
   //   const selectAll = e.target.checked;
@@ -883,7 +866,7 @@ const ChannelsTable = ({}) => {
     manualSorting: true,
     manualFiltering: true,
     enableRowSelection: true,
-    // onRowSelectionChange: onRowSelectionChange,
+    onRowSelectionChange: onRowSelectionChange,
     getCoreRowModel: getCoreRowModel(),
     // getFilteredRowModel: getFilteredRowModel(),
     // getSortedRowModel: getSortedRowModel(),
