@@ -885,6 +885,7 @@ const ChannelsTable = ({}) => {
     },
     headerCellRenderFns: {
       name: renderHeaderCell,
+      channel_group: renderHeaderCell,
       enabled: () => (
         <Center style={{ width: '100%' }}>
           <ScanEye size="16" />
