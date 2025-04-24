@@ -78,6 +78,11 @@ const getStartDate = (uptime) => {
 const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
   const location = useLocation();
 
+  // Safety check - if channel doesn't have required data, don't render
+  if (!channel || !channel.channel_id) {
+    return null;
+  }
+
   const clientsColumns = useMemo(
     () => [
       {
@@ -149,6 +154,15 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
     return <></>;
   }
 
+  // Ensure these values exist to prevent errors
+  const channelName = channel.name || 'Unnamed Channel';
+  const uptime = channel.uptime || 0;
+  const bitrates = channel.bitrates || [];
+  const totalBytes = channel.total_bytes || 0;
+  const clientCount = channel.client_count || 0;
+  const avgBitrate = channel.avg_bitrate || '0 Kbps';
+  const streamProfileName = channel.stream_profile?.name || 'Unknown Profile';
+
   return (
     <Card
       key={channel.channel_id}
@@ -167,10 +181,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
 
           <Group>
             <Box>
-              <Tooltip label={getStartDate(channel.uptime)}>
+              <Tooltip label={getStartDate(uptime)}>
                 <Center>
                   <Timer style={{ paddingRight: 5 }} />
-                  {dayjs.duration(channel.uptime, 'seconds').humanize()}
+                  {dayjs.duration(uptime, 'seconds').humanize()}
                 </Center>
               </Tooltip>
             </Box>
@@ -190,31 +204,31 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
 
         <Flex justify="space-between" align="center">
           <Group>
-            <Text fw={500}>{channel.name}</Text>
+            <Text fw={500}>{channelName}</Text>
           </Group>
 
           <Group gap={5}>
             <Video size="18" />
-            {channel.stream_profile.name}
+            {streamProfileName}
           </Group>
         </Flex>
 
         <Group justify="space-between">
           <Group gap={4}>
             <Gauge style={{ paddingRight: 5 }} size="22" />
-            <Text size="sm">{formatSpeed(channel.bitrates.at(-1))}</Text>
+            <Text size="sm">{formatSpeed(bitrates.at(-1) || 0)}</Text>
           </Group>
 
-          <Text size="sm">Avg: {channel.avg_bitrate}</Text>
+          <Text size="sm">Avg: {avgBitrate}</Text>
 
           <Group gap={4}>
             <HardDriveDownload size="18" />
-            <Text size="sm">{formatBytes(channel.total_bytes)}</Text>
+            <Text size="sm">{formatBytes(totalBytes)}</Text>
           </Group>
 
           <Group gap={5}>
             <Users size="18" />
-            <Text size="sm">{channel.client_count}</Text>
+            <Text size="sm">{clientCount}</Text>
           </Group>
         </Group>
 
@@ -326,14 +340,21 @@ const ChannelsPage = () => {
   // The main clientsTable is no longer needed since each channel card has its own table
 
   useEffect(() => {
-    if (!channelStats.channels) {
+    if (!channelStats || !channelStats.channels || !Array.isArray(channelStats.channels) || channelStats.channels.length === 0) {
+      console.log("No channel stats available:", channelStats);
       return;
     }
 
     const stats = channelStats.channels.reduce((acc, ch) => {
+      // Make sure we have a valid channel_id
+      if (!ch.channel_id) {
+        console.warn("Found channel without channel_id:", ch);
+        return acc;
+      }
+
       let bitrates = [];
       if (activeChannels[ch.channel_id]) {
-        bitrates = activeChannels[ch.channel_id].bitrates;
+        bitrates = activeChannels[ch.channel_id].bitrates || [];
         const bitrate =
           ch.total_bytes - activeChannels[ch.channel_id].total_bytes;
         if (bitrate > 0) {
@@ -345,42 +366,65 @@ const ChannelsPage = () => {
         }
       }
 
+      // Find corresponding channel data
+      const channelData = channelsByUUID && ch.channel_id ?
+        channels[channelsByUUID[ch.channel_id]] : null;
+
+      // Find stream profile
+      const streamProfile = streamProfiles.find(
+        profile => profile.id == parseInt(ch.stream_profile)
+      );
+
       acc[ch.channel_id] = {
         ...ch,
-        ...channels[channelsByUUID[ch.channel_id]],
+        ...(channelData || {}), // Safely merge channel data if available
         bitrates,
-        stream_profile: streamProfiles.find(
-          (profile) => profile.id == parseInt(ch.stream_profile)
-        ),
+        stream_profile: streamProfile || { name: 'Unknown' },
       };
 
       return acc;
     }, {});
 
+    console.log("Processed active channels:", stats);
     setActiveChannels(stats);
 
     const clientStats = Object.values(stats).reduce((acc, ch) => {
-      return acc.concat(
-        ch.clients.map((client) => ({
-          ...client,
-          channel: ch,
-        }))
-      );
+      if (ch.clients && Array.isArray(ch.clients)) {
+        return acc.concat(
+          ch.clients.map((client) => ({
+            ...client,
+            channel: ch,
+          }))
+        );
+      }
+      return acc;
     }, []);
     setClients(clientStats);
-  }, [channelStats]);
+  }, [channelStats, channels, channelsByUUID, streamProfiles]);
+
+  // Add debug output
+  useEffect(() => {
+    console.log("Channel stats from store:", channelStats);
+    console.log("Active channels state:", activeChannels);
+  }, [channelStats, activeChannels]);
 
   return (
     <SimpleGrid cols={3} spacing="md" style={{ padding: 10 }}>
-      {Object.values(activeChannels).map((channel) => (
-        <ChannelCard
-          key={channel.channel_id}
-          channel={channel}
-          clients={clients}
-          stopClient={stopClient}
-          stopChannel={stopChannel}
-        />
-      ))}
+      {Object.keys(activeChannels).length === 0 ? (
+        <Box style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>
+          <Text size="xl" color="dimmed">No active channels currently streaming</Text>
+        </Box>
+      ) : (
+        Object.values(activeChannels).map((channel) => (
+          <ChannelCard
+            key={channel.channel_id}
+            channel={channel}
+            clients={clients}
+            stopClient={stopClient}
+            stopChannel={stopChannel}
+          />
+        ))
+      )}
     </SimpleGrid>
   );
 };
