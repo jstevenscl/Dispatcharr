@@ -196,7 +196,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       setTvgFilter('');
       setLogoFilter('');
     }
-  }, [channel, tvgsById]);
+  }, [channel, tvgsById, channelGroups]);
 
   useEffect(() => {
     setLogoOptions([{ id: '0', name: 'Default' }].concat(Object.values(logos)));
