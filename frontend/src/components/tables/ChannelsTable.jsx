@@ -596,7 +596,7 @@ const ChannelsTable = ({}) => {
         ),
       },
     ],
-    [selectedProfileId]
+    [selectedProfileId, channelGroups, logos]
   );
 
   const renderHeaderCell = (header) => {
