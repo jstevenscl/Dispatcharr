@@ -23,6 +23,7 @@ import {
 } from '@mantine/core';
 import { Search, X, Clock, Video, Calendar, Play } from 'lucide-react';
 import './guide.css';
+import useEPGsStore from '../store/epgs';
 
 /** Layout constants */
 const CHANNEL_WIDTH = 120; // Width of the channel/logo column
@@ -33,7 +34,13 @@ const MINUTE_INCREMENT = 15; // For positioning programs every 15 min
 const MINUTE_BLOCK_WIDTH = HOUR_WIDTH / (60 / MINUTE_INCREMENT);
 
 export default function TVChannelGuide({ startDate, endDate }) {
-  const { channels, recordings, channelGroups, profiles } = useChannelsStore();
+  const channels = useChannelsStore((s) => s.channels);
+  const recordings = useChannelsStore((s) => s.recordings);
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const profiles = useChannelsStore((s) => s.profiles);
+  const logos = useChannelsStore((s) => s.logos);
+
+  const tvgsById = useEPGsStore((s) => s.tvgsById);
 
   const [programs, setPrograms] = useState([]);
   const [guideChannels, setGuideChannels] = useState([]);
@@ -49,9 +56,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const [selectedGroupId, setSelectedGroupId] = useState('all');
   const [selectedProfileId, setSelectedProfileId] = useState('all');
 
-  const {
-    environment: { env_mode },
-  } = useSettingsStore();
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
   const guideRef = useRef(null);
   const timelineRef = useRef(null); // New ref for timeline scrolling
@@ -79,7 +84,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
       // Filter your Redux/Zustand channels by matching tvg_id
       const filteredChannels = Object.values(channels)
         // Include channels with matching tvg_ids OR channels with null epg_data
-        .filter((ch) => programIds.includes(ch.epg_data?.tvg_id) || programIds.includes(ch.uuid) || ch.epg_data === null)
+        .filter(
+          (ch) =>
+            programIds.includes(tvgsById[ch.epg_data_id]?.tvg_id) ||
+            programIds.includes(ch.uuid) ||
+            ch.epg_data_id === null
+        )
         // Add sorting by channel_number
         .sort(
           (a, b) =>
@@ -276,7 +286,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
   // Helper: find channel by tvg_id
   function findChannelByTvgId(tvgId) {
     return guideChannels.find(
-      (ch) => ch.epg_data?.tvg_id === tvgId || (!ch.epg_data && ch.uuid === tvgId)
+      (ch) =>
+        tvgsById[ch.epg_data_id]?.tvg_id === tvgId ||
+        (!ch.epg_data_id && ch.uuid === tvgId)
     );
   }
 
@@ -294,7 +306,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   };
 
   // The “Watch Now” click => show floating video
-  const { showVideo } = useVideoStore(); // or useVideoStore()
+  const showVideo = useVideoStore((s) => s.showVideo);
   function handleWatchStream(program) {
     const matched = findChannelByTvgId(program.tvg_id);
     if (!matched) {
@@ -839,10 +851,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
           {(searchQuery !== '' ||
             selectedGroupId !== 'all' ||
             selectedProfileId !== 'all') && (
-              <Button variant="subtle" onClick={clearFilters} size="sm" compact>
-                Clear Filters
-              </Button>
-            )}
+            <Button variant="subtle" onClick={clearFilters} size="sm" compact>
+              Clear Filters
+            </Button>
+          )}
 
           <Text size="sm" color="dimmed">
             {filteredChannels.length}{' '}
@@ -1049,8 +1061,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
             {filteredChannels.length > 0 ? (
               filteredChannels.map((channel) => {
                 const channelPrograms = programs.filter(
-                  (p) => (channel.epg_data && p.tvg_id === channel.epg_data.tvg_id) ||
-                    (!channel.epg_data && p.tvg_id === channel.uuid)
+                  (p) =>
+                    (channel.epg_data_id &&
+                      p.tvg_id === tvgsById[channel.epg_data_id].tvg_id) ||
+                    (!channel.epg_data_id && p.tvg_id === channel.uuid)
                 );
                 // Check if any program in this channel is expanded
                 const hasExpandedProgram = channelPrograms.some(
@@ -1149,7 +1163,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                           }}
                         >
                           <img
-                            src={channel.logo?.cache_url || logo}
+                            src={logos[channel.logo_id]?.cache_url || logo}
                             alt={channel.name}
                             style={{
                               maxWidth: '100%',

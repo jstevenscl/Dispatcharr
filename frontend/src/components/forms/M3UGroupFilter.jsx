@@ -26,7 +26,7 @@ import useChannelsStore from '../../store/channels';
 import { CircleCheck, CircleX } from 'lucide-react';
 
 const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
-  const { channelGroups } = useChannelsStore();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
   const [groupStates, setGroupStates] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');

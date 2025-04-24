@@ -27,7 +27,7 @@ def get_total_viewers(channel_id):
         return 0
 
 class ChannelGroup(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.TextField(unique=True, db_index=True)
 
     def related_channels(self):
         # local import if needed to avoid cyc. Usually fine in a single file though
@@ -210,7 +210,7 @@ class ChannelManager(models.Manager):
 
 
 class Channel(models.Model):
-    channel_number = models.IntegerField()
+    channel_number = models.IntegerField(db_index=True)
     name = models.CharField(max_length=255)
     logo = models.ForeignKey(
         'Logo',
@@ -426,6 +426,9 @@ class ChannelStream(models.Model):
 
     class Meta:
         ordering = ['order']  # Ensure streams are retrieved in order
+        constraints = [
+            models.UniqueConstraint(fields=['channel', 'stream'], name='unique_channel_stream')
+        ]
 
 class ChannelGroupM3UAccount(models.Model):
     channel_group = models.ForeignKey(

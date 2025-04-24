@@ -30,6 +30,7 @@ import {
   Tooltip,
   NumberInput,
   Image,
+  UnstyledButton,
 } from '@mantine/core';
 import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
@@ -41,12 +42,17 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   const listRef = useRef(null);
   const logoListRef = useRef(null);
+  const groupListRef = useRef(null);
 
-  const { channelGroups, logos, fetchLogos } = useChannelsStore();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const logos = useChannelsStore((s) => s.logos);
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
   const streams = useStreamsStore((state) => state.streams);
-  const { profiles: streamProfiles } = useStreamProfilesStore();
-  const { playlists } = usePlaylistsStore();
-  const { epgs, tvgs, tvgsById } = useEPGsStore();
+  const streamProfiles = useStreamProfilesStore((s) => s.profiles);
+  const playlists = usePlaylistsStore((s) => s.playlists);
+  const epgs = useEPGsStore((s) => s.epgs);
+  const tvgs = useEPGsStore((s) => s.tvgs);
+  const tvgsById = useEPGsStore((s) => s.tvgsById);
 
   const [logoPreview, setLogoPreview] = useState(null);
   const [channelStreams, setChannelStreams] = useState([]);
@@ -57,6 +63,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const [tvgFilter, setTvgFilter] = useState('');
   const [logoFilter, setLogoFilter] = useState('');
   const [logoOptions, setLogoOptions] = useState([]);
+
+  const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
+  const [groupFilter, setGroupFilter] = useState('');
+  const groupOptions = Object.values(channelGroups);
 
   const addStream = (stream) => {
     const streamSet = new Set(channelStreams);
@@ -85,7 +95,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     initialValues: {
       name: '',
       channel_number: 0,
-      channel_group_id: '',
+      channel_group_id: Object.keys(channelGroups)[0],
       stream_profile_id: '0',
       tvg_id: '',
       epg_data_id: '',
@@ -102,7 +112,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         const formattedValues = { ...values };
 
         // Convert empty or "0" stream_profile_id to null for the API
-        if (!formattedValues.stream_profile_id || formattedValues.stream_profile_id === '0') {
+        if (
+          !formattedValues.stream_profile_id ||
+          formattedValues.stream_profile_id === '0'
+        ) {
           formattedValues.stream_profile_id = null;
         }
 
@@ -111,9 +124,12 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
         if (channel) {
           // If there's an EPG to set, use our enhanced endpoint
-          if (values.epg_data_id !== (channel.epg_data ? `${channel.epg_data.id}` : '')) {
+          if (values.epg_data_id !== (channel.epg_data_id ?? '')) {
             // Use the special endpoint to set EPG and trigger refresh
-            const epgResponse = await API.setChannelEPG(channel.id, values.epg_data_id);
+            const epgResponse = await API.setChannelEPG(
+              channel.id,
+              values.epg_data_id
+            );
 
             // Remove epg_data_id from values since we've handled it separately
             const { epg_data_id, ...otherValues } = formattedValues;
@@ -142,9 +158,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           });
         }
       } catch (error) {
-        console.error("Error saving channel:", error);
+        console.error('Error saving channel:', error);
       }
 
+      API.requeryChannels();
       setSubmitting(false);
       setTvgFilter('');
       setLogoFilter('');
@@ -154,21 +171,23 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
   useEffect(() => {
     if (channel) {
-      if (channel.epg_data) {
-        const epgSource = epgs[channel.epg_data.epg_source];
+      if (channel.epg_data_id) {
+        const epgSource = epgs[tvgsById[channel.epg_data_id].epg_source];
         setSelectedEPG(`${epgSource.id}`);
       }
 
       formik.setValues({
         name: channel.name,
         channel_number: channel.channel_number,
-        channel_group_id: `${channel.channel_group?.id}`,
+        channel_group_id: channel.channel_group_id
+          ? `${channel.channel_group_id}`
+          : '',
         stream_profile_id: channel.stream_profile_id
           ? `${channel.stream_profile_id}`
           : '0',
         tvg_id: channel.tvg_id,
-        epg_data_id: channel.epg_data ? `${channel.epg_data?.id}` : '',
-        logo_id: `${channel.logo?.id}`,
+        epg_data_id: channel.epg_data_id ?? '',
+        logo_id: `${channel.logo_id}`,
       });
 
       setChannelStreams(channel.streams);
@@ -335,6 +354,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
     logo.name.toLowerCase().includes(logoFilter.toLowerCase())
   );
 
+  const filteredGroups = groupOptions.filter((group) =>
+    group.name.toLowerCase().includes(groupFilter.toLowerCase())
+  );
+
   return (
     <>
       <Modal
@@ -363,7 +386,83 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
               />
 
               <Flex gap="sm">
-                <Select
+                <Popover
+                  opened={groupPopoverOpened}
+                  onChange={setGroupPopoverOpened}
+                  // position="bottom-start"
+                  withArrow
+                >
+                  <Popover.Target>
+                    <TextInput
+                      id="channel_group_id"
+                      name="channel_group_id"
+                      label="Channel Group"
+                      readOnly
+                      value={channelGroups[formik.values.channel_group_id].name}
+                      onClick={() => setGroupPopoverOpened(true)}
+                      size="xs"
+                    />
+                  </Popover.Target>
+
+                  <Popover.Dropdown onMouseDown={(e) => e.stopPropagation()}>
+                    <Group>
+                      <TextInput
+                        placeholder="Filter"
+                        value={groupFilter}
+                        onChange={(event) =>
+                          setGroupFilter(event.currentTarget.value)
+                        }
+                        mb="xs"
+                        size="xs"
+                      />
+                    </Group>
+
+                    <ScrollArea style={{ height: 200 }}>
+                      <List
+                        height={200} // Set max height for visible items
+                        itemCount={filteredGroups.length}
+                        itemSize={20} // Adjust row height for each item
+                        width={200}
+                        ref={groupListRef}
+                      >
+                        {({ index, style }) => (
+                          <Box
+                            style={{ ...style, height: 20, overflow: 'hidden' }}
+                          >
+                            <Tooltip
+                              openDelay={500}
+                              label={filteredGroups[index].name}
+                              size="xs"
+                            >
+                              <UnstyledButton
+                                onClick={() => {
+                                  formik.setFieldValue(
+                                    'channel_group_id',
+                                    filteredGroups[index].id
+                                  );
+                                  setGroupPopoverOpened(false);
+                                }}
+                              >
+                                <Text
+                                  size="xs"
+                                  style={{
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
+                                >
+                                  {filteredGroups[index].name}
+                                </Text>
+                              </UnstyledButton>
+                            </Tooltip>
+                          </Box>
+                        )}
+                      </List>
+                    </ScrollArea>
+                  </Popover.Dropdown>
+                </Popover>
+
+                {/* <Select
                   id="channel_group_id"
                   name="channel_group_id"
                   label="Channel Group"
@@ -383,7 +482,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                   }))}
                   size="xs"
                   style={{ flex: 1 }}
-                />
+                /> */}
                 <Flex align="flex-end">
                   <ActionIcon
                     color={theme.tailwind.green[5]}
@@ -535,7 +634,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 name="channel_number"
                 label="Channel # (blank to auto-assign)"
                 value={formik.values.channel_number}
-                onChange={(value) => formik.setFieldValue('channel_number', value)}
+                onChange={(value) =>
+                  formik.setFieldValue('channel_number', value)
+                }
                 error={
                   formik.errors.channel_number
                     ? formik.touched.channel_number

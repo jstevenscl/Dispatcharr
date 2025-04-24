@@ -8,6 +8,7 @@ import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
 import useSettingsStore from './store/settings';
 import { notifications } from '@mantine/notifications';
+import useChannelsTableStore from './store/channelsTable';
 
 // If needed, you can set a base host or keep it empty if relative requests
 const host = import.meta.env.DEV
@@ -91,6 +92,8 @@ const request = async (url, options = {}) => {
 };
 
 export default class API {
+  static lastQueryParams = new URLSearchParams();
+
   /**
    * A static method so we can do:  await API.getAuthToken()
    */
@@ -148,8 +151,9 @@ export default class API {
 
   static async refreshToken(refresh) {
     return await request(`${host}/api/accounts/token/refresh/`, {
+      auth: false,
       method: 'POST',
-      body: { auth: false, refresh },
+      body: { refresh },
     });
   }
 
@@ -172,9 +176,29 @@ export default class API {
 
   static async queryChannels(params) {
     try {
+      API.lastQueryParams = params;
+
       const response = await request(
         `${host}/api/channels/channels/?${params.toString()}`
       );
+
+      useChannelsTableStore.getState().queryChannels(response, params);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch channels', e);
+    }
+  }
+
+  static async requeryChannels() {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/?${API.lastQueryParams.toString()}`
+      );
+
+      useChannelsTableStore
+        .getState()
+        .queryChannels(response, API.lastQueryParams);
 
       return response;
     } catch (e) {
@@ -258,6 +282,8 @@ export default class API {
         body: body,
       });
 
+      API.getLogos();
+
       if (response.id) {
         useChannelsStore.getState().addChannel(response);
       }
@@ -300,7 +326,10 @@ export default class API {
       const payload = { ...values };
 
       // Handle special values
-      if (payload.stream_profile_id === '0' || payload.stream_profile_id === 0) {
+      if (
+        payload.stream_profile_id === '0' ||
+        payload.stream_profile_id === 0
+      ) {
         payload.stream_profile_id = null;
       }
 
@@ -312,15 +341,21 @@ export default class API {
       // Handle channel_number properly
       if (payload.channel_number === '') {
         payload.channel_number = null;
-      } else if (payload.channel_number !== null && payload.channel_number !== undefined) {
+      } else if (
+        payload.channel_number !== null &&
+        payload.channel_number !== undefined
+      ) {
         const parsedNumber = parseInt(payload.channel_number, 10);
         payload.channel_number = isNaN(parsedNumber) ? null : parsedNumber;
       }
 
-      const response = await request(`${host}/api/channels/channels/${payload.id}/`, {
-        method: 'PATCH',
-        body: payload,
-      });
+      const response = await request(
+        `${host}/api/channels/channels/${payload.id}/`,
+        {
+          method: 'PATCH',
+          body: payload,
+        }
+      );
 
       useChannelsStore.getState().updateChannel(response);
       return response;
@@ -349,7 +384,7 @@ export default class API {
         notifications.show({
           title: 'EPG Status',
           message: response.task_status,
-          color: 'blue'
+          color: 'blue',
         });
       }
 
@@ -367,7 +402,7 @@ export default class API {
       });
 
       // Optionally refesh the channel list in Zustand
-      await useChannelsStore.getState().fetchChannels();
+      // await useChannelsStore.getState().fetchChannels();
 
       return response;
     } catch (e) {
@@ -651,7 +686,7 @@ export default class API {
       usePlaylistsStore.getState().removePlaylists([id]);
       // @TODO: MIGHT need to optimize this later if someone has thousands of channels
       // but I'm feeling laze right now
-      useChannelsStore.getState().fetchChannels();
+      // useChannelsStore.getState().fetchChannels();
     } catch (e) {
       errorNotification(`Failed to delete playlist ${id}`, e);
     }

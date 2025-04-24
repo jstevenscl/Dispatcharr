@@ -60,3 +60,26 @@ export function sleep(ms) {
 
 export const getDescendantProp = (obj, path) =>
   path.split('.').reduce((acc, part) => acc && acc[part], obj);
+
+export const copyToClipboard = async (value) => {
+  let copied = false;
+  if (navigator.clipboard) {
+    // Modern method, using navigator.clipboard
+    try {
+      await navigator.clipboard.writeText(value);
+      copied = true;
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
+  }
+
+  if (!copied) {
+    // Fallback method for environments without clipboard support
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+};

@@ -4,7 +4,10 @@ import useAuthStore from '../../store/auth';
 import { Paper, Title, TextInput, Button, Center, Stack } from '@mantine/core';
 
 const LoginForm = () => {
-  const { login, isAuthenticated, initData } = useAuthStore(); // Get login function from AuthContext
+  const login = useAuthStore((s) => s.login);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const initData = useAuthStore((s) => s.initData);
+
   const navigate = useNavigate(); // Hook to navigate to other routes
   const [formData, setFormData] = useState({ username: '', password: '' });
 

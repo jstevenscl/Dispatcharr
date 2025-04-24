@@ -83,12 +83,9 @@ class ChannelProfileSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'channels']
 
     def get_channels(self, obj):
-        memberships = ChannelProfileMembership.objects.filter(channel_profile=obj)
+        memberships = ChannelProfileMembership.objects.filter(channel_profile=obj, enabled=True)
         return [
-            {
-                'id': membership.channel.id,
-                'enabled': membership.enabled
-            }
+            membership.channel.id
             for membership in memberships
         ]
 
@@ -118,18 +115,14 @@ class BulkChannelProfileMembershipSerializer(serializers.Serializer):
 class ChannelSerializer(serializers.ModelSerializer):
     # Show nested group data, or ID
     channel_number = serializers.IntegerField(allow_null=True, required=False)
-    channel_group = ChannelGroupSerializer(read_only=True)
     channel_group_id = serializers.PrimaryKeyRelatedField(
         queryset=ChannelGroup.objects.all(),
         source="channel_group",
-        write_only=True,
         required=False
     )
-    epg_data = EPGDataSerializer(read_only=True)
     epg_data_id = serializers.PrimaryKeyRelatedField(
         queryset=EPGData.objects.all(),
         source="epg_data",
-        write_only=True,
         required=False,
         allow_null=True,
     )
@@ -146,13 +139,11 @@ class ChannelSerializer(serializers.ModelSerializer):
         queryset=Stream.objects.all(), many=True, write_only=True, required=False
     )
 
-    logo = LogoSerializer(read_only=True)
     logo_id = serializers.PrimaryKeyRelatedField(
         queryset=Logo.objects.all(),
         source='logo',
         allow_null=True,
         required=False,
-        write_only=True,
     )
 
     class Meta:
@@ -161,16 +152,13 @@ class ChannelSerializer(serializers.ModelSerializer):
             'id',
             'channel_number',
             'name',
-            'channel_group',
             'channel_group_id',
             'tvg_id',
-            'epg_data',
             'epg_data_id',
             'streams',
             'stream_ids',
             'stream_profile_id',
             'uuid',
-            'logo',
             'logo_id',
         ]
 
@@ -197,33 +185,52 @@ class ChannelSerializer(serializers.ModelSerializer):
             ChannelStream.objects.create(channel=channel, stream_id=stream_id, order=index)
 
         return channel
-
     def update(self, instance, validated_data):
         stream_ids = validated_data.pop('stream_ids', None)
 
-        # Update all fields from validated_data
+        # Update standard fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
 
-        # Handle streams if provided
         if stream_ids is not None:
-            # Clear existing associations
-            instance.channelstream_set.all().delete()
+            # Normalize stream IDs
+            normalized_ids = [
+                stream.id if hasattr(stream, "id") else stream
+                for stream in stream_ids
+            ]
 
-            # Create new associations with proper ordering
-            for index, stream in enumerate(stream_ids):
-                # Extract the ID from the Stream object
-                actual_stream_id = stream.id if hasattr(stream, "id") else stream
-                print(f'Setting stream {actual_stream_id} to index {index}')
-                ChannelStream.objects.create(
-                    channel=instance,
-                    stream_id=actual_stream_id,
-                    order=index
-                )
+            # Get current mapping of stream_id -> ChannelStream
+            current_links = {
+                cs.stream_id: cs for cs in instance.channelstream_set.all()
+            }
+
+            # Track existing stream IDs
+            existing_ids = set(current_links.keys())
+            new_ids = set(normalized_ids)
+
+            # Delete any links not in the new list
+            to_remove = existing_ids - new_ids
+            if to_remove:
+                instance.channelstream_set.filter(stream_id__in=to_remove).delete()
+
+            # Update or create with new order
+            for order, stream_id in enumerate(normalized_ids):
+                if stream_id in current_links:
+                    cs = current_links[stream_id]
+                    if cs.order != order:
+                        cs.order = order
+                        cs.save(update_fields=["order"])
+                else:
+                    ChannelStream.objects.create(
+                        channel=instance,
+                        stream_id=stream_id,
+                        order=order
+                    )
 
         return instance
+
 
     def validate_stream_profile(self, value):
         """Handle special case where empty/0 values mean 'use default' (null)"""

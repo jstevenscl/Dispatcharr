@@ -19,11 +19,12 @@ import {
 import { isNotEmpty, useForm } from '@mantine/form';
 import UserAgentsTable from '../components/tables/UserAgentsTable';
 import StreamProfilesTable from '../components/tables/StreamProfilesTable';
+import { useLocalStorage } from '@mantine/hooks';
 
 const SettingsPage = () => {
-  const { settings } = useSettingsStore();
-  const { userAgents } = useUserAgentsStore();
-  const { profiles: streamProfiles } = useStreamProfilesStore();
+  const settings = useSettingsStore((s) => s.settings);
+  const userAgents = useUserAgentsStore((s) => s.userAgents);
+  const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const regionChoices = [
     { value: 'ad', label: 'AD' },

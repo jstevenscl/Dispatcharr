@@ -28,7 +28,7 @@ const UserAgentsTable = () => {
   const [activeFilterValue, setActiveFilterValue] = useState('all');
 
   const userAgents = useUserAgentsStore((state) => state.userAgents);
-  const { settings } = useSettingsStore();
+  const settings = useSettingsStore((s) => s.settings);
 
   const columns = useMemo(
     //column definitions...
