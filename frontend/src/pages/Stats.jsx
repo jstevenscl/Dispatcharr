@@ -342,19 +342,32 @@ const ChannelsPage = () => {
   useEffect(() => {
     if (!channelStats || !channelStats.channels || !Array.isArray(channelStats.channels) || channelStats.channels.length === 0) {
       console.log("No channel stats available:", channelStats);
+      // Clear active channels when there are no stats
+      if (Object.keys(activeChannels).length > 0) {
+        setActiveChannels({});
+        setClients([]);
+      }
       return;
     }
 
-    const stats = channelStats.channels.reduce((acc, ch) => {
+    // Create a completely new object based only on current channel stats
+    const stats = {};
+
+    // Track which channels are currently active according to channelStats
+    const currentActiveChannelIds = new Set(
+      channelStats.channels.map(ch => ch.channel_id).filter(Boolean)
+    );
+
+    channelStats.channels.forEach(ch => {
       // Make sure we have a valid channel_id
       if (!ch.channel_id) {
         console.warn("Found channel without channel_id:", ch);
-        return acc;
+        return;
       }
 
       let bitrates = [];
       if (activeChannels[ch.channel_id]) {
-        bitrates = activeChannels[ch.channel_id].bitrates || [];
+        bitrates = [...(activeChannels[ch.channel_id].bitrates || [])];
         const bitrate =
           ch.total_bytes - activeChannels[ch.channel_id].total_bytes;
         if (bitrate > 0) {
@@ -375,15 +388,13 @@ const ChannelsPage = () => {
         profile => profile.id == parseInt(ch.stream_profile)
       );
 
-      acc[ch.channel_id] = {
+      stats[ch.channel_id] = {
         ...ch,
         ...(channelData || {}), // Safely merge channel data if available
         bitrates,
         stream_profile: streamProfile || { name: 'Unknown' },
       };
-
-      return acc;
-    }, {});
+    });
 
     console.log("Processed active channels:", stats);
     setActiveChannels(stats);
