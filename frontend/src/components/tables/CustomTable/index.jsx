@@ -14,8 +14,6 @@ const useTable = ({
   allRowIds,
   headerCellRenderFns = {},
   bodyCellRenderFns = {},
-  filters = {},
-  sorting = [],
   expandedRowRenderer = () => <></>,
   onRowSelectionChange = null,
   ...options
@@ -129,7 +127,6 @@ const useTable = ({
     () => ({
       ...table,
       ...options,
-      sorting,
       selectedTableIds,
       updateSelectedTableIds,
       rowSelection,
@@ -140,7 +137,7 @@ const useTable = ({
       expandedRowRenderer,
       setSelectedTableIds,
     }),
-    [selectedTableIdsSet, expandedRowIds]
+    [selectedTableIdsSet, expandedRowIds, allRowIds]
   );
 
   return {
