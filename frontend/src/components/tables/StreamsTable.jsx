@@ -52,7 +52,7 @@ const StreamRowActions = ({
   handleWatchStream,
   selectedChannelIds,
 }) => {
-  const channelSelectionStreamIds = useChannelsTableStore(
+  const channelSelectionStreams = useChannelsTableStore(
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
@@ -72,7 +72,9 @@ const StreamRowActions = ({
     await API.updateChannel({
       id: selectedChannelIds[0],
       streams: [
-        ...new Set(channelSelectionStreamIds.concat([row.original.id])),
+        ...new Set(
+          channelSelectionStreams.map((s) => s.id).concat([row.original.id])
+        ),
       ],
     });
     await API.requeryChannels();
@@ -101,8 +103,10 @@ const StreamRowActions = ({
           style={{ background: 'none' }}
           disabled={
             selectedChannelIds.length !== 1 ||
-            (channelSelectionStreamIds &&
-              channelSelectionStreamIds.includes(row.original.id))
+            (channelSelectionStreams &&
+              channelSelectionStreams
+                .map((s) => s.id)
+                .includes(row.original.id))
           }
         >
           <ListPlus size="18" fontSize="small" />
@@ -192,7 +196,7 @@ const StreamsTable = ({}) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
-  const channelSelectionStreamIds = useChannelsTableStore(
+  const channelSelectionStreams = useChannelsTableStore(
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
@@ -385,7 +389,9 @@ const StreamsTable = ({}) => {
     await API.updateChannel({
       id: selectedChannelIds[0],
       streams: [
-        ...new Set(channelSelectionStreamIds.concat(selectedStreamIds)),
+        ...new Set(
+          channelSelectionStreams.map((s) => s.id).concat(selectedStreamIds)
+        ),
       ],
     });
     await API.requeryChannels();
@@ -536,7 +542,7 @@ const StreamsTable = ({}) => {
           );
       }
     },
-    [selectedChannelIds, channelSelectionStreamIds]
+    [selectedChannelIds, channelSelectionStreams]
   );
 
   const table = useTable({

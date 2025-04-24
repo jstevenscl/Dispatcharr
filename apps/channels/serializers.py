@@ -174,14 +174,14 @@ class ChannelSerializer(serializers.ModelSerializer):
         return StreamSerializer(obj.streams.all().order_by('channelstream__order'), many=True).data
 
     def create(self, validated_data):
-        stream_ids = validated_data.pop('streams', [])
+        streams = validated_data.pop('streams', [])
         channel_number = validated_data.pop('channel_number', Channel.get_next_available_channel_number())
         validated_data["channel_number"] = channel_number
         channel = Channel.objects.create(**validated_data)
 
         # Add streams in the specified order
-        for index, stream_id in enumerate(stream_ids):
-            ChannelStream.objects.create(channel=channel, stream_id=stream_id, order=index)
+        for index, stream in enumerate(streams):
+            ChannelStream.objects.create(channel=channel, stream_id=stream.id, order=index)
 
         return channel
 
