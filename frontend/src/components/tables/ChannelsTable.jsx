@@ -523,7 +523,7 @@ const ChannelsTable = ({}) => {
         header: () => <Flex justify="flex-end">#</Flex>,
         cell: ({ getValue }) => (
           <Flex justify="flex-end" style={{ width: '100%' }}>
-            <Text size="xs">{getValue()}</Text>
+            <Text size="sm">{getValue()}</Text>
           </Flex>
         ),
       },
@@ -545,7 +545,7 @@ const ChannelsTable = ({}) => {
       {
         id: 'channel_group',
         accessorFn: (row) =>
-          row.channel_group_id && channelGroups
+          channelGroups[row.channel_group_id]
             ? channelGroups[row.channel_group_id].name
             : '',
         cell: ({ getValue }) => (
@@ -556,7 +556,7 @@ const ChannelsTable = ({}) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="xs">{getValue()}</Text>
+            <Text size="sm">{getValue()}</Text>
           </Box>
         ),
       },
@@ -596,7 +596,7 @@ const ChannelsTable = ({}) => {
         ),
       },
     ],
-    [selectedProfileId, data, channelGroups]
+    [selectedProfileId]
   );
 
   const renderHeaderCell = (header) => {
@@ -685,7 +685,9 @@ const ChannelsTable = ({}) => {
     manualFiltering: true,
     enableRowSelection: true,
     onRowSelectionChange: onRowSelectionChange,
-    getCoreRowModel: getCoreRowModel(),
+    getExpandedRowHeight: (row) => {
+      return 20 + 28 * row.original.streams.length;
+    },
     expandedRowRenderer: ({ row }) => {
       return (
         <Box

@@ -11,6 +11,7 @@ const CustomTable = ({ table }) => {
       className="divTable table-striped"
       style={{
         width: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -31,6 +32,7 @@ const CustomTable = ({ table }) => {
         expandedRowIds={table.expandedRowIds}
         expandedRowRenderer={table.expandedRowRenderer}
         renderBodyCell={table.renderBodyCell}
+        getExpandedRowHeight={table.getExpandedRowHeight}
       />
     </Box>
   );

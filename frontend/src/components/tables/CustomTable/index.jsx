@@ -16,6 +16,7 @@ const useTable = ({
   bodyCellRenderFns = {},
   expandedRowRenderer = () => <></>,
   onRowSelectionChange = null,
+  getExpandedRowHeight = null,
   ...options
 }) => {
   const [selectedTableIds, setSelectedTableIds] = useState([]);
@@ -145,6 +146,7 @@ const useTable = ({
     headerCellRenderFns,
     bodyCellRenderFns,
     renderBodyCell,
+    getExpandedRowHeight,
   };
 };
 

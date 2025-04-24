@@ -19,6 +19,7 @@ import {
 import { isNotEmpty, useForm } from '@mantine/form';
 import UserAgentsTable from '../components/tables/UserAgentsTable';
 import StreamProfilesTable from '../components/tables/StreamProfilesTable';
+import { useLocalStorage } from '@mantine/hooks';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
