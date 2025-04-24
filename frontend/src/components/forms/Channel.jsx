@@ -139,7 +139,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
               response = await API.updateChannel({
                 id: channel.id,
                 ...otherValues,
-                stream_ids: channelStreams.map((stream) => stream.id),
+                streams: channelStreams.map((stream) => stream.id),
               });
             }
           } else {
@@ -147,14 +147,14 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
             response = await API.updateChannel({
               id: channel.id,
               ...formattedValues,
-              stream_ids: channelStreams.map((stream) => stream.id),
+              streams: channelStreams.map((stream) => stream.id),
             });
           }
         } else {
           // New channel creation - use the standard method
           response = await API.addChannel({
             ...formattedValues,
-            stream_ids: channelStreams.map((stream) => stream.id),
+            streams: channelStreams.map((stream) => stream.id),
           });
         }
       } catch (error) {

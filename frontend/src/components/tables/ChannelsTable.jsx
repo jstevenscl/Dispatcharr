@@ -198,6 +198,7 @@ const ChannelsTable = ({}) => {
   const sorting = useChannelsTableStore((s) => s.sorting);
   const setSorting = useChannelsTableStore((s) => s.setSorting);
   const totalCount = useChannelsTableStore((s) => s.totalCount);
+  const setChannelStreams = useChannelsTableStore((s) => s.setChannelStreams);
 
   // store/channels
   const channels = useChannelsStore((s) => s.channels);
@@ -264,6 +265,7 @@ const ChannelsTable = ({}) => {
     const params = new URLSearchParams();
     params.append('page', pagination.pageIndex + 1);
     params.append('page_size', pagination.pageSize);
+    params.append('include_streams', 'true');
 
     // Apply sorting
     if (sorting.length > 0) {
@@ -277,8 +279,10 @@ const ChannelsTable = ({}) => {
       if (value) params.append(key, value);
     });
 
-    const results = await API.queryChannels(params);
-    const ids = await API.getAllChannelIds(params);
+    const [results, ids] = await Promise.all([
+      await API.queryChannels(params),
+      await API.getAllChannelIds(params),
+    ]);
 
     setTablePrefs({
       pageSize: pagination.pageSize,

@@ -450,13 +450,31 @@ export default class API {
     }
   }
 
-  static async getStreams() {
+  static async getStreams(ids = null) {
     try {
-      const response = await request(`${host}/api/channels/streams/`);
+      const params = new URLSearchParams();
+      if (ids) {
+        params.append('ids', ids.join(','));
+      }
+      const response = await request(
+        `${host}/api/channels/streams/?${params.toString()}`
+      );
 
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve streams', e);
+    }
+  }
+
+  static async getChannelStreams(id) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/${id}/streams/`
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve channel streams', e);
     }
   }
 

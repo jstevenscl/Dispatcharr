@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, get_list_or_404
 from django.db import transaction
 import os, json, requests
 
@@ -88,6 +88,16 @@ class StreamViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def list(self, request, *args, **kwargs):
+        ids = request.query_params.get('ids', None)
+        if ids:
+            ids = ids.split(',')
+            streams = get_list_or_404(Stream, id__in=ids)
+            serializer = self.get_serializer(streams, many=True)
+            return Response(serializer.data)
+
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'], url_path='ids')
     def get_ids(self, request, *args, **kwargs):
         # Get the filtered queryset
@@ -168,6 +178,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
             qs = qs.filter(channel_group__name__in=group_names)
 
         return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        include_streams = self.request.query_params.get('include_streams', 'false') == 'true'
+        context['include_streams'] = include_streams
+        return context
 
     @action(detail=False, methods=['get'], url_path='ids')
     def get_ids(self, request, *args, **kwargs):
@@ -628,6 +644,13 @@ class ChannelProfileViewSet(viewsets.ModelViewSet):
     queryset = ChannelProfile.objects.all()
     serializer_class = ChannelProfileSerializer
     permission_classes = [IsAuthenticated]
+
+class GetChannelStreamsAPIView(APIView):
+    def get(self, request, channel_id):
+        channel = get_object_or_404(Channel, id=channel_id)
+        streams = channel.streams
+        serializer = StreamSerializer(streams, many=True)
+        return Response(serializer.data)
 
 class UpdateChannelMembershipAPIView(APIView):
     def patch(self, request, profile_id, channel_id):

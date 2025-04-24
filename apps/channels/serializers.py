@@ -134,10 +134,7 @@ class ChannelSerializer(serializers.ModelSerializer):
         required=False
     )
 
-    streams = serializers.SerializerMethodField()
-    stream_ids = serializers.PrimaryKeyRelatedField(
-        queryset=Stream.objects.all(), many=True, write_only=True, required=False
-    )
+    streams = serializers.PrimaryKeyRelatedField(queryset=Stream.objects.all(), many=True, required=False)
 
     logo_id = serializers.PrimaryKeyRelatedField(
         queryset=Logo.objects.all(),
@@ -156,23 +153,25 @@ class ChannelSerializer(serializers.ModelSerializer):
             'tvg_id',
             'epg_data_id',
             'streams',
-            'stream_ids',
             'stream_profile_id',
             'uuid',
             'logo_id',
         ]
 
-    def get_streams(self, obj):
-        """Retrieve ordered stream objects for GET requests."""
-        ordered_streams = obj.streams.all().order_by('channelstream__order')
-        return StreamSerializer(ordered_streams, many=True).data
+    def to_representation(self, instance):
+        include_streams = self.context.get('include_streams', False)
+
+        if include_streams:
+            self.fields['streams'] = serializers.SerializerMethodField()
+
+        return super().to_representation(instance)
 
     def get_logo(self, obj):
         return LogoSerializer(obj.logo).data
 
-    # def get_stream_ids(self, obj):
-    #     """Retrieve ordered stream IDs for GET requests."""
-    #     return list(obj.streams.all().order_by('channelstream__order').values_list('id', flat=True))
+    def get_streams(self, obj):
+        """Retrieve ordered stream IDs for GET requests."""
+        return StreamSerializer(obj.streams.all().order_by('channelstream__order'), many=True).data
 
     def create(self, validated_data):
         stream_ids = validated_data.pop('streams', [])
@@ -185,8 +184,9 @@ class ChannelSerializer(serializers.ModelSerializer):
             ChannelStream.objects.create(channel=channel, stream_id=stream_id, order=index)
 
         return channel
+
     def update(self, instance, validated_data):
-        stream_ids = validated_data.pop('stream_ids', None)
+        streams = validated_data.pop('streams', None)
 
         # Update standard fields
         for attr, value in validated_data.items():
@@ -194,12 +194,13 @@ class ChannelSerializer(serializers.ModelSerializer):
 
         instance.save()
 
-        if stream_ids is not None:
+        if streams is not None:
             # Normalize stream IDs
             normalized_ids = [
                 stream.id if hasattr(stream, "id") else stream
-                for stream in stream_ids
+                for stream in streams
             ]
+            print(normalized_ids)
 
             # Get current mapping of stream_id -> ChannelStream
             current_links = {

@@ -52,7 +52,7 @@ const StreamRowActions = ({
   handleWatchStream,
   selectedChannelIds,
 }) => {
-  const channelSelectionStreams = useChannelsTableStore(
+  const channelSelectionStreamIds = useChannelsTableStore(
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
@@ -71,12 +71,8 @@ const StreamRowActions = ({
   const addStreamToChannel = async () => {
     await API.updateChannel({
       id: selectedChannelIds[0],
-      stream_ids: [
-        ...new Set(
-          channelSelectionStreams
-            .map((stream) => stream.id)
-            .concat([row.original.id])
-        ),
+      streams: [
+        ...new Set(channelSelectionStreamIds.concat([row.original.id])),
       ],
     });
     await API.requeryChannels();
@@ -105,10 +101,8 @@ const StreamRowActions = ({
           style={{ background: 'none' }}
           disabled={
             selectedChannelIds.length !== 1 ||
-            (channelSelectionStreams &&
-              channelSelectionStreams
-                .map((stream) => stream.id)
-                .includes(row.original.id))
+            (channelSelectionStreamIds &&
+              channelSelectionStreamIds.includes(row.original.id))
           }
         >
           <ListPlus size="18" fontSize="small" />
@@ -198,7 +192,7 @@ const StreamsTable = ({}) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
-  const channelSelectionStreams = useChannelsTableStore(
+  const channelSelectionStreamIds = useChannelsTableStore(
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
@@ -322,11 +316,16 @@ const StreamsTable = ({}) => {
     });
 
     try {
-      const result = await API.queryStreams(params);
-      const ids = await API.getAllStreamIds(params);
+      const [result, ids, groups] = await Promise.all([
+        API.queryStreams(params),
+        API.getAllStreamIds(params),
+        API.getStreamGroups(),
+      ]);
+
       setAllRowIds(ids);
       setData(result.results);
       setPageCount(Math.ceil(result.count / pagination.pageSize));
+      setGroupOptions(groups);
 
       // Calculate the starting and ending item indexes
       const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
@@ -344,9 +343,6 @@ const StreamsTable = ({}) => {
     } catch (error) {
       console.error('Error fetching data:', error);
     }
-
-    const groups = await API.getStreamGroups();
-    setGroupOptions(groups);
 
     setIsLoading(false);
   }, [pagination, sorting, debouncedFilters]);
@@ -388,12 +384,8 @@ const StreamsTable = ({}) => {
   const addStreamsToChannel = async () => {
     await API.updateChannel({
       id: selectedChannelIds[0],
-      stream_ids: [
-        ...new Set(
-          channelSelectionStreams
-            .map((stream) => stream.id)
-            .concat(selectedStreamIds)
-        ),
+      streams: [
+        ...new Set(channelSelectionStreamIds.concat(selectedStreamIds)),
       ],
     });
     await API.requeryChannels();
@@ -540,12 +532,11 @@ const StreamsTable = ({}) => {
               deleteStream={deleteStream}
               handleWatchStream={handleWatchStream}
               selectedChannelIds={selectedChannelIds}
-              channelSelectionStreams={channelSelectionStreams}
             />
           );
       }
     },
-    [selectedChannelIds, channelSelectionStreams]
+    [selectedChannelIds, channelSelectionStreamIds]
   );
 
   const table = useTable({

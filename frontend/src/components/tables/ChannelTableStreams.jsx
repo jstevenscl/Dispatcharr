@@ -133,7 +133,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     const newStreamList = data.filter((s) => s.id !== stream.id);
     await API.updateChannel({
       ...channel,
-      stream_ids: newStreamList.map((s) => s.id),
+      streams: newStreamList.map((s) => s.id),
     });
     await API.requeryChannels();
   };
@@ -203,7 +203,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
         const { streams: _, ...channelUpdate } = channel;
         API.updateChannel({
           ...channelUpdate,
-          stream_ids: retval.map((row) => row.id),
+          streams: retval.map((row) => row.id),
         }).then(() => {
           API.requeryChannels();
         });
