@@ -1,17 +1,9 @@
-import React, {
-  useEffect,
-  useMemo,
-  useCallback,
-  useState,
-  useRef,
-} from 'react';
-import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import API from '../../api';
-import { TableHelper } from '../../helpers';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 import useChannelsStore from '../../store/channels';
-import { useDebounce } from '../../utils';
+import { copyToClipboard, useDebounce } from '../../utils';
 import {
   SquarePlus,
   ListPlus,
@@ -40,11 +32,9 @@ import {
   Center,
   Pagination,
   Group,
-  NumberInput,
   NativeSelect,
   MultiSelect,
   useMantineTheme,
-  CopyButton,
   UnstyledButton,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
@@ -145,13 +135,13 @@ const StreamRowActions = ({
 
         <Menu.Dropdown>
           <Menu.Item leftSection={<Copy size="14" />}>
-            <CopyButton value={row.original.url}>
-              {({ copied, copy }) => (
-                <UnstyledButton variant="unstyled" size="xs" onClick={copy}>
-                  <Text size="xs">{copied ? 'Copied!' : 'Copy URL'}</Text>
-                </UnstyledButton>
-              )}
-            </CopyButton>
+            <UnstyledButton
+              variant="unstyled"
+              size="xs"
+              onClick={() => copyToClipboard(row.original.url)}
+            >
+              <Text size="xs">Copy URL</Text>
+            </UnstyledButton>
           </Menu.Item>
           <Menu.Item onClick={onEdit} disabled={!row.original.is_custom}>
             <Text size="xs">Edit</Text>
@@ -181,7 +171,6 @@ const StreamsTable = ({}) => {
   const [initialDataCount, setInitialDataCount] = useState(null);
 
   const [data, setData] = useState([]); // Holds fetched data
-  const [rowCount, setRowCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [paginationString, setPaginationString] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -215,9 +204,6 @@ const StreamsTable = ({}) => {
   );
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
   const showVideo = useVideoStore((s) => s.showVideo);
-
-  // Access the row virtualizer instance (optional)
-  const rowVirtualizerInstanceRef = useRef(null);
 
   const handleSelectClick = (e) => {
     e.stopPropagation();
@@ -266,7 +252,7 @@ const StreamsTable = ({}) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="xs">{getValue()}</Text>
+            <Text size="sm">{getValue()}</Text>
           </Box>
         ),
       },
@@ -275,9 +261,20 @@ const StreamsTable = ({}) => {
         size: 150,
         accessorFn: (row) =>
           playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
+        cell: ({ getValue }) => (
+          <Box
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            <Text size="sm">{getValue()}</Text>
+          </Box>
+        ),
       },
     ],
-    [playlists, groupOptions, filters, channelGroups]
+    []
   );
 
   /**
@@ -327,7 +324,6 @@ const StreamsTable = ({}) => {
       const ids = await API.getAllStreamIds(params);
       setAllRowIds(ids);
       setData(result.results);
-      setRowCount(result.count);
       setPageCount(Math.ceil(result.count / pagination.pageSize));
 
       // Calculate the starting and ending item indexes
@@ -578,21 +574,6 @@ const StreamsTable = ({}) => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Scroll to the top of the table when sorting changes
-    try {
-      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
-    } catch (error) {
-      console.error(error);
-    }
-  }, [sorting]);
 
   return (
     <>
