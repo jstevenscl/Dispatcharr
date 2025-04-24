@@ -11,7 +11,7 @@ const CustomTable = ({ table }) => {
       className="divTable table-striped"
       style={{
         width: '100%',
-        height: '100%',
+        height: '100%', // ONLY required when using virtual tables
         display: 'flex',
         flexDirection: 'column',
       }}

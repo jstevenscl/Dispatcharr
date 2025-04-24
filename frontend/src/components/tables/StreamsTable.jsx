@@ -269,7 +269,9 @@ const StreamsTable = ({}) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            <Tooltip label={getValue()} openDelay={500}>
+              <Text size="sm">{getValue()}</Text>
+            </Tooltip>
           </Box>
         ),
       },
