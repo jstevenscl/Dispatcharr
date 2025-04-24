@@ -13,6 +13,7 @@ const useChannelsTableStore = create((set, get) => ({
     pageSize: 50,
   },
   selectedChannelIds: [],
+  allQueryIds: [],
 
   queryChannels: ({ results, count }, params) => {
     set((state) => {
@@ -22,6 +23,12 @@ const useChannelsTableStore = create((set, get) => ({
         pageCount: Math.ceil(count / params.get('page_size')),
       };
     });
+  },
+
+  setAllQueryIds: (allQueryIds) => {
+    set((state) => ({
+      allQueryIds,
+    }));
   },
 
   setSelectedChannelIds: (selectedChannelIds) => {

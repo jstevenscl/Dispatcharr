@@ -199,6 +199,8 @@ const ChannelsTable = ({}) => {
   const setSorting = useChannelsTableStore((s) => s.setSorting);
   const totalCount = useChannelsTableStore((s) => s.totalCount);
   const setChannelStreams = useChannelsTableStore((s) => s.setChannelStreams);
+  const allRowIds = useChannelsTableStore((s) => s.allQueryIds);
+  const setAllRowIds = useChannelsTableStore((s) => s.setAllQueryIds);
 
   // store/channels
   const channels = useChannelsStore((s) => s.channels);
@@ -228,7 +230,6 @@ const ChannelsTable = ({}) => {
   /**
    * useState
    */
-  const [allRowIds, setAllRowIds] = useState([]);
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [recordingModalOpen, setRecordingModalOpen] = useState(false);

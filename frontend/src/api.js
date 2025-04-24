@@ -192,13 +192,17 @@ export default class API {
 
   static async requeryChannels() {
     try {
-      const response = await request(
-        `${host}/api/channels/channels/?${API.lastQueryParams.toString()}`
-      );
+      const [response, ids] = await Promise.all([
+        request(
+          `${host}/api/channels/channels/?${API.lastQueryParams.toString()}`
+        ),
+        API.getAllChannelIds(API.lastQueryParams),
+      ]);
 
       useChannelsTableStore
         .getState()
         .queryChannels(response, API.lastQueryParams);
+      useChannelsTableStore.getState().setAllQueryIds(ids);
 
       return response;
     } catch (e) {
