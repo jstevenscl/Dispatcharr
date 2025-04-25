@@ -81,6 +81,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const location = useLocation();
   const [availableStreams, setAvailableStreams] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
+  const [activeStreamId, setActiveStreamId] = useState(null);
 
   // Safety check - if channel doesn't have required data, don't render
   if (!channel || !channel.channel_id) {
@@ -96,7 +97,25 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
         const channelId = channelsByUUID[channel.channel_id];
         if (channelId) {
           const streamData = await API.getChannelStreams(channelId);
-          setAvailableStreams(streamData);
+
+          // Sort streams by ID to match the order in the channels view
+          const sortedStreamData = [...streamData].sort((a, b) => a.id - b.id);
+          setAvailableStreams(sortedStreamData);
+
+          // If we have a channel URL, try to find the matching stream
+          if (channel.url && sortedStreamData.length > 0) {
+            // Try to find matching stream based on URL
+            const matchingStream = sortedStreamData.find(stream =>
+              channel.url.includes(stream.url) || stream.url.includes(channel.url)
+            );
+
+            if (matchingStream) {
+              setActiveStreamId(matchingStream.id.toString());
+              console.log("Found matching stream:", matchingStream.id, matchingStream.name);
+            } else {
+              console.log("No matching stream found for URL:", channel.url);
+            }
+          }
         }
       } catch (error) {
         console.error("Error fetching streams:", error);
@@ -106,7 +125,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     };
 
     fetchStreams();
-  }, [channel.channel_id, channelsByUUID]);
+  }, [channel.channel_id, channel.url, channelsByUUID]);
 
   // Handle stream switching
   const handleStreamChange = async (streamId) => {
@@ -216,6 +235,16 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     label: stream.name || `Stream #${stream.id}`
   }));
 
+  // Debug logging to see what stream_id values we have
+  useEffect(() => {
+    if (availableStreams.length > 0) {
+      console.log("Available streams:", availableStreams);
+      console.log("Current channel data:", channel);
+      console.log("Active stream_id from channel:", channel.stream_id);
+      console.log("Matched active stream ID:", activeStreamId);
+    }
+  }, [availableStreams, channel, activeStreamId]);
+
   return (
     <Card
       key={channel.channel_id}
@@ -273,7 +302,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
             label="Active Stream"
             placeholder={isLoadingStreams ? "Loading streams..." : "Select stream"}
             data={streamOptions}
-            value={channel.stream_id ? channel.stream_id.toString() : null}
+            value={activeStreamId || channel.stream_id?.toString() || null}
             onChange={handleStreamChange}
             disabled={isLoadingStreams}
             style={{ marginTop: '8px' }}
@@ -461,6 +490,8 @@ const ChannelsPage = () => {
         ...(channelData || {}), // Safely merge channel data if available
         bitrates,
         stream_profile: streamProfile || { name: 'Unknown' },
+        // Make sure stream_id is set from the active stream info
+        stream_id: ch.stream_id || null,
       };
     });
 
