@@ -44,7 +44,7 @@ def generate_m3u(request, profile_name=None):
         #stream_url = request.build_absolute_uri(reverse('output:stream', args=[channel.id]))
         m3u_content += extinf_line + stream_url + "\n"
 
-    response = HttpResponse(m3u_content, content_type="application/x-mpegURL")
+    response = HttpResponse(m3u_content, content_type="audio/x-mpegurl")
     response['Content-Disposition'] = 'attachment; filename="channels.m3u"'
     return response
 
