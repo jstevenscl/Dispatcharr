@@ -98,14 +98,13 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
         if (channelId) {
           const streamData = await API.getChannelStreams(channelId);
 
-          // Sort streams by ID to match the order in the channels view
-          const sortedStreamData = [...streamData].sort((a, b) => a.id - b.id);
-          setAvailableStreams(sortedStreamData);
+          // Use streams in the order returned by the API without sorting
+          setAvailableStreams(streamData);
 
           // If we have a channel URL, try to find the matching stream
-          if (channel.url && sortedStreamData.length > 0) {
+          if (channel.url && streamData.length > 0) {
             // Try to find matching stream based on URL
-            const matchingStream = sortedStreamData.find(stream =>
+            const matchingStream = streamData.find(stream =>
               channel.url.includes(stream.url) || stream.url.includes(channel.url)
             );
 

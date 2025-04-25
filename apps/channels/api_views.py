@@ -649,7 +649,8 @@ class ChannelProfileViewSet(viewsets.ModelViewSet):
 class GetChannelStreamsAPIView(APIView):
     def get(self, request, channel_id):
         channel = get_object_or_404(Channel, id=channel_id)
-        streams = channel.streams
+        # Order the streams by channelstream__order to match the order in the channel view
+        streams = channel.streams.all().order_by('channelstream__order')
         serializer = StreamSerializer(streams, many=True)
         return Response(serializer.data)
 
