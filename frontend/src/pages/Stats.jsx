@@ -325,12 +325,23 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     >
       <Stack style={{ position: 'relative' }}>
         <Group justify="space-between">
-          <img
-            src={logoUrl || logo}
-            width="100"
-            style={{ maxHeight: '50px', objectFit: 'contain' }}
-            alt="channel logo"
-          />
+          <Box style={{
+            width: '100px',
+            height: '50px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <img
+              src={logoUrl || logo}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain'
+              }}
+              alt="channel logo"
+            />
+          </Box>
 
           <Group>
             <Box>
