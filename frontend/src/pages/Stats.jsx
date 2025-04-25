@@ -130,13 +130,40 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   // Handle stream switching
   const handleStreamChange = async (streamId) => {
     try {
-      await API.switchStream(channel.channel_id, streamId);
+      console.log("Switching to stream ID:", streamId);
+      // Find the selected stream in availableStreams for debugging
+      const selectedStream = availableStreams.find(s => s.id.toString() === streamId);
+      console.log("Selected stream details:", selectedStream);
+
+      // Make sure we're passing the correct ID to the API
+      const response = await API.switchStream(channel.channel_id, streamId);
+      console.log("Stream switch API response:", response);
+
+      // Update the local active stream ID immediately
+      setActiveStreamId(streamId);
+
+      // Show detailed notification with stream name
       notifications.show({
         title: 'Stream switching',
-        message: `Switching stream for ${channel.name}`,
+        message: `Switching to "${selectedStream?.name}" for ${channel.name}`,
         color: 'blue.5',
       });
+
+      // After a short delay, fetch streams again to confirm the switch
+      setTimeout(async () => {
+        try {
+          const channelId = channelsByUUID[channel.channel_id];
+          if (channelId) {
+            const updatedStreamData = await API.getChannelStreams(channelId);
+            console.log("Channel streams after switch:", updatedStreamData);
+          }
+        } catch (error) {
+          console.error("Error checking streams after switch:", error);
+        }
+      }, 2000);
+
     } catch (error) {
+      console.error("Stream switch error:", error);
       notifications.show({
         title: 'Error switching stream',
         message: error.toString(),
@@ -232,7 +259,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   // Create select options for available streams
   const streamOptions = availableStreams.map(stream => ({
     value: stream.id.toString(),
-    label: stream.name || `Stream #${stream.id}`
+    label: `${stream.name || `Stream #${stream.id}`}`, // Make sure stream name is clear
   }));
 
   // Debug logging to see what stream_id values we have
