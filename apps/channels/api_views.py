@@ -19,7 +19,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
 from django.db.models import Q
 from django.http import StreamingHttpResponse, FileResponse, Http404
-
+import mimetypes
 
 from rest_framework.pagination import PageNumberPagination
 
@@ -629,13 +629,14 @@ class LogoViewSet(viewsets.ModelViewSet):
         if logo_url.startswith("/data"):  # Local file
             if not os.path.exists(logo_url):
                 raise Http404("Image not found")
-            return FileResponse(open(logo_url, "rb"), content_type="image/*")
+            mimetype = mimetype.guess_type(logo_url)
+            return FileResponse(open(logo_url, "rb"), content_type=mimetype)
 
         else:  # Remote image
             try:
                 remote_response = requests.get(logo_url, stream=True)
                 if remote_response.status_code == 200:
-                    return StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type="image/*")
+                    return StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=remote_response.headers['Content-Type'])
                 raise Http404("Remote image not found")
             except requests.RequestException:
                 raise Http404("Error fetching remote image")
