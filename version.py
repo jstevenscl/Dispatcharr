@@ -2,4 +2,4 @@
 Dispatcharr version information.
 """
 __version__ = '0.3.3'  # Follow semantic versioning (MAJOR.MINOR.PATCH)
-__build__ = '21'        # Auto-incremented on builds
+__build__ = '22'        # Auto-incremented on builds
