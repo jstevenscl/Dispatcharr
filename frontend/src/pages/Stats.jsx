@@ -75,7 +75,7 @@ const getStartDate = (uptime) => {
 };
 
 // Create a separate component for each channel card to properly handle the hook
-const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
+const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos }) => {
   const location = useLocation();
 
   // Safety check - if channel doesn't have required data, don't render
@@ -154,6 +154,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
     return <></>;
   }
 
+  // Get logo URL from the logos object if available
+  const logoUrl = channel.logo_id && logos && logos[channel.logo_id] ?
+    logos[channel.logo_id].cache_url : null;
+
   // Ensure these values exist to prevent errors
   const channelName = channel.name || 'Unnamed Channel';
   const uptime = channel.uptime || 0;
@@ -177,7 +181,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel }) => {
     >
       <Stack style={{ position: 'relative' }}>
         <Group justify="space-between">
-          <img src={channel.logo_url || logo} width="30" alt="channel logo" />
+          <img src={logoUrl || logo} width="100" alt="channel logo" />
 
           <Group>
             <Box>
@@ -244,6 +248,7 @@ const ChannelsPage = () => {
   const channels = useChannelsStore((s) => s.channels);
   const channelsByUUID = useChannelsStore((s) => s.channelsByUUID);
   const channelStats = useChannelsStore((s) => s.stats);
+  const logos = useChannelsStore((s) => s.logos); // Add logos from the store
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const [activeChannels, setActiveChannels] = useState({});
@@ -433,6 +438,7 @@ const ChannelsPage = () => {
             clients={clients}
             stopClient={stopClient}
             stopChannel={stopChannel}
+            logos={logos} // Pass logos to the component
           />
         ))
       )}
