@@ -62,6 +62,9 @@ def fetch_xmltv(source):
     if not source.url:
         return
 
+    if os.path.exists(source.get_cache_file()):
+        os.remove(source.get_cache_file())
+
     logger.info(f"Fetching XMLTV data from source: {source.name}")
     try:
         response = requests.get(source.url, timeout=30)
@@ -160,7 +163,7 @@ def parse_programs_for_tvg_id(epg_id):
     file_path = epg_source.file_path
     if not file_path:
         file_path = epg_source.get_cache_file()
-        if not os.exists(file_path):
+        if not os.path.exists(file_path):
             fetch_xmltv(epg_source)
 
     # Read entire file (decompress if .gz)
