@@ -629,7 +629,7 @@ class LogoViewSet(viewsets.ModelViewSet):
         if logo_url.startswith("/data"):  # Local file
             if not os.path.exists(logo_url):
                 raise Http404("Image not found")
-            mimetype = mimetype.guess_type(logo_url)
+            mimetype = mimetypes.guess_type(logo_url)
             return FileResponse(open(logo_url, "rb"), content_type=mimetype)
 
         else:  # Remote image
