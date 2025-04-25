@@ -179,6 +179,30 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
         accessorKey: 'ip_address',
         size: 50,
       },
+      {
+        header: 'Connected',
+        accessorFn: (row) => {
+          // Calculate based on connected_since (time elapsed since connection)
+          if (row.connected_since) {
+            // Current time minus the elapsed time gives us the connection timestamp
+            const connectedTime = dayjs().subtract(row.connected_since, 'second');
+            return connectedTime.format('MM/DD HH:mm:ss');
+          }
+          return 'Unknown';
+        },
+        size: 50,
+      },
+      {
+        header: 'Duration',
+        accessorFn: (row) => {
+          // Use connected_since directly as it's already the duration
+          if (row.connected_since) {
+            return dayjs.duration(row.connected_since, 'seconds').humanize();
+          }
+          return '-';
+        },
+        size: 50,
+      }
     ],
     []
   );
