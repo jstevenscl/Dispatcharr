@@ -111,9 +111,6 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
 
             if (matchingStream) {
               setActiveStreamId(matchingStream.id.toString());
-              console.log("Found matching stream:", matchingStream.id, matchingStream.name);
-            } else {
-              console.log("No matching stream found for URL:", channel.url);
             }
           }
         }
@@ -179,27 +176,54 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
         accessorKey: 'ip_address',
         size: 50,
       },
+      // Updated Connected column with tooltip
       {
         header: 'Connected',
         accessorFn: (row) => {
-          // Calculate based on connected_since (time elapsed since connection)
+          // Check for connected_since (which is seconds since connection)
           if (row.connected_since) {
-            // Current time minus the elapsed time gives us the connection timestamp
-            const connectedTime = dayjs().subtract(row.connected_since, 'second');
+            // Calculate the actual connection time by subtracting the seconds from current time
+            const currentTime = dayjs();
+            const connectedTime = currentTime.subtract(row.connected_since, 'second');
             return connectedTime.format('MM/DD HH:mm:ss');
           }
+
+          // Fallback to connected_at if it exists
+          if (row.connected_at) {
+            const connectedTime = dayjs(row.connected_at * 1000);
+            return connectedTime.format('MM/DD HH:mm:ss');
+          }
+
           return 'Unknown';
         },
+        Cell: ({ cell }) => (
+          <Tooltip label={cell.getValue() !== 'Unknown' ? `Connected at ${cell.getValue()}` : 'Unknown connection time'}>
+            <Text size="xs">{cell.getValue()}</Text>
+          </Tooltip>
+        ),
         size: 50,
       },
+      // Update Duration column with tooltip showing exact seconds
       {
         header: 'Duration',
         accessorFn: (row) => {
-          // Use connected_since directly as it's already the duration
           if (row.connected_since) {
             return dayjs.duration(row.connected_since, 'seconds').humanize();
           }
+
+          if (row.connection_duration) {
+            return dayjs.duration(row.connection_duration, 'seconds').humanize();
+          }
+
           return '-';
+        },
+        Cell: ({ cell, row }) => {
+          const exactDuration = row.original.connected_since || row.original.connection_duration;
+          return (
+            <Tooltip label={exactDuration ? `${exactDuration.toFixed(1)} seconds` : 'Unknown duration'}>
+              <Text size="xs">{cell.getValue()}</Text>
+            </Tooltip>
+          );
         },
         size: 50,
       }
@@ -231,16 +255,18 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     renderRowActions: ({ row }) => (
       <Box sx={{ justifyContent: 'right' }}>
         <Center>
-          <ActionIcon
-            size="sm"
-            variant="transparent"
-            color="red.9"
-            onClick={() =>
-              stopClient(row.original.channel.uuid, row.original.client_id)
-            }
-          >
-            <SquareX size="18" />
-          </ActionIcon>
+          <Tooltip label="Disconnect client">
+            <ActionIcon
+              size="sm"
+              variant="transparent"
+              color="red.9"
+              onClick={() =>
+                stopClient(row.original.channel.uuid, row.original.client_id)
+              }
+            >
+              <SquareX size="18" />
+            </ActionIcon>
+          </Tooltip>
         </Center>
       </Box>
     ),
@@ -286,16 +312,6 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     label: `${stream.name || `Stream #${stream.id}`}`, // Make sure stream name is clear
   }));
 
-  // Debug logging to see what stream_id values we have
-  useEffect(() => {
-    if (availableStreams.length > 0) {
-      console.log("Available streams:", availableStreams);
-      console.log("Current channel data:", channel);
-      console.log("Active stream_id from channel:", channel.stream_id);
-      console.log("Matched active stream ID:", activeStreamId);
-    }
-  }, [availableStreams, channel, activeStreamId]);
-
   return (
     <Card
       key={channel.channel_id}
@@ -310,7 +326,12 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     >
       <Stack style={{ position: 'relative' }}>
         <Group justify="space-between">
-          <img src={logoUrl || logo} width="100" alt="channel logo" />
+          <img
+            src={logoUrl || logo}
+            width="100"
+            style={{ maxHeight: '50px', objectFit: 'contain' }}
+            alt="channel logo"
+          />
 
           <Group>
             <Box>
@@ -348,34 +369,50 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
 
         {/* Add stream selection dropdown */}
         {availableStreams.length > 0 && (
-          <Select
-            size="xs"
-            label="Active Stream"
-            placeholder={isLoadingStreams ? "Loading streams..." : "Select stream"}
-            data={streamOptions}
-            value={activeStreamId || channel.stream_id?.toString() || null}
-            onChange={handleStreamChange}
-            disabled={isLoadingStreams}
-            style={{ marginTop: '8px' }}
-          />
+          <Tooltip label="Switch to another stream source">
+            <Select
+              size="xs"
+              label="Active Stream"
+              placeholder={isLoadingStreams ? "Loading streams..." : "Select stream"}
+              data={streamOptions}
+              value={activeStreamId || channel.stream_id?.toString() || null}
+              onChange={handleStreamChange}
+              disabled={isLoadingStreams}
+              style={{ marginTop: '8px' }}
+            />
+          </Tooltip>
         )}
 
         <Group justify="space-between">
           <Group gap={4}>
-            <Gauge style={{ paddingRight: 5 }} size="22" />
-            <Text size="sm">{formatSpeed(bitrates.at(-1) || 0)}</Text>
+            <Tooltip label={`Current bitrate: ${formatSpeed(bitrates.at(-1) || 0)}`}>
+              <Group gap={4} style={{ cursor: 'help' }}>
+                <Gauge style={{ paddingRight: 5 }} size="22" />
+                <Text size="sm">{formatSpeed(bitrates.at(-1) || 0)}</Text>
+              </Group>
+            </Tooltip>
           </Group>
 
-          <Text size="sm">Avg: {avgBitrate}</Text>
+          <Tooltip label={`Average bitrate: ${avgBitrate}`}>
+            <Text size="sm" style={{ cursor: 'help' }}>Avg: {avgBitrate}</Text>
+          </Tooltip>
 
           <Group gap={4}>
-            <HardDriveDownload size="18" />
-            <Text size="sm">{formatBytes(totalBytes)}</Text>
+            <Tooltip label={`Total transferred: ${formatBytes(totalBytes)}`}>
+              <Group gap={4} style={{ cursor: 'help' }}>
+                <HardDriveDownload size="18" />
+                <Text size="sm">{formatBytes(totalBytes)}</Text>
+              </Group>
+            </Tooltip>
           </Group>
 
           <Group gap={5}>
-            <Users size="18" />
-            <Text size="sm">{clientCount}</Text>
+            <Tooltip label={`${clientCount} active client${clientCount !== 1 ? 's' : ''}`}>
+              <Group gap={4} style={{ cursor: 'help' }}>
+                <Users size="18" />
+                <Text size="sm">{clientCount}</Text>
+              </Group>
+            </Tooltip>
           </Group>
         </Group>
 
@@ -562,12 +599,6 @@ const ChannelsPage = () => {
     }, []);
     setClients(clientStats);
   }, [channelStats, channels, channelsByUUID, streamProfiles]);
-
-  // Add debug output
-  useEffect(() => {
-    console.log("Channel stats from store:", channelStats);
-    console.log("Active channels state:", activeChannels);
-  }, [channelStats, activeChannels]);
 
   return (
     <SimpleGrid cols={3} spacing="md" style={{ padding: 10 }}>
