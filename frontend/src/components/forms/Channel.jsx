@@ -398,7 +398,11 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                       name="channel_group_id"
                       label="Channel Group"
                       readOnly
-                      value={channelGroups[formik.values.channel_group_id].name}
+                      value={
+                        channelGroups
+                          ? channelGroups[formik.values.channel_group_id].name
+                          : ''
+                      }
                       onClick={() => setGroupPopoverOpened(true)}
                       size="xs"
                     />
