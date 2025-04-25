@@ -399,7 +399,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                       label="Channel Group"
                       readOnly
                       value={
-                        channelGroups
+                        channelGroups[formik.values.channel_group_id]
                           ? channelGroups[formik.values.channel_group_id].name
                           : ''
                       }
