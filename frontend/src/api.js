@@ -1238,4 +1238,18 @@ export default class API {
       errorNotification(`Failed to delete recording ${id}`, e);
     }
   }
+
+  static async switchStream(channelId, streamId) {
+    try {
+      const response = await request(`${host}/proxy/ts/next_stream/${channelId}`, {
+        method: 'POST',
+        body: { stream_id: streamId },
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to switch stream', e);
+      throw e;
+    }
+  }
 }

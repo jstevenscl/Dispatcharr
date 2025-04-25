@@ -13,6 +13,7 @@ import {
   Title,
   Tooltip,
   useMantineTheme,
+  Select,
 } from '@mantine/core';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import { TableHelper } from '../helpers';
@@ -34,6 +35,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { Sparkline } from '@mantine/charts';
 import useStreamProfilesStore from '../store/streamProfiles';
 import { useLocation } from 'react-router-dom';
+import { notifications } from '@mantine/notifications';
 
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
@@ -75,13 +77,54 @@ const getStartDate = (uptime) => {
 };
 
 // Create a separate component for each channel card to properly handle the hook
-const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos }) => {
+const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channelsByUUID }) => {
   const location = useLocation();
+  const [availableStreams, setAvailableStreams] = useState([]);
+  const [isLoadingStreams, setIsLoadingStreams] = useState(false);
 
   // Safety check - if channel doesn't have required data, don't render
   if (!channel || !channel.channel_id) {
     return null;
   }
+
+  // Fetch available streams for this channel
+  useEffect(() => {
+    const fetchStreams = async () => {
+      setIsLoadingStreams(true);
+      try {
+        // Get channel ID from UUID
+        const channelId = channelsByUUID[channel.channel_id];
+        if (channelId) {
+          const streamData = await API.getChannelStreams(channelId);
+          setAvailableStreams(streamData);
+        }
+      } catch (error) {
+        console.error("Error fetching streams:", error);
+      } finally {
+        setIsLoadingStreams(false);
+      }
+    };
+
+    fetchStreams();
+  }, [channel.channel_id, channelsByUUID]);
+
+  // Handle stream switching
+  const handleStreamChange = async (streamId) => {
+    try {
+      await API.switchStream(channel.channel_id, streamId);
+      notifications.show({
+        title: 'Stream switching',
+        message: `Switching stream for ${channel.name}`,
+        color: 'blue.5',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Error switching stream',
+        message: error.toString(),
+        color: 'red.5',
+      });
+    }
+  };
 
   const clientsColumns = useMemo(
     () => [
@@ -167,6 +210,12 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos }) => {
   const avgBitrate = channel.avg_bitrate || '0 Kbps';
   const streamProfileName = channel.stream_profile?.name || 'Unknown Profile';
 
+  // Create select options for available streams
+  const streamOptions = availableStreams.map(stream => ({
+    value: stream.id.toString(),
+    label: stream.name || `Stream #${stream.id}`
+  }));
+
   return (
     <Card
       key={channel.channel_id}
@@ -216,6 +265,20 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos }) => {
             {streamProfileName}
           </Group>
         </Flex>
+
+        {/* Add stream selection dropdown */}
+        {availableStreams.length > 0 && (
+          <Select
+            size="xs"
+            label="Active Stream"
+            placeholder={isLoadingStreams ? "Loading streams..." : "Select stream"}
+            data={streamOptions}
+            value={channel.stream_id ? channel.stream_id.toString() : null}
+            onChange={handleStreamChange}
+            disabled={isLoadingStreams}
+            style={{ marginTop: '8px' }}
+          />
+        )}
 
         <Group justify="space-between">
           <Group gap={4}>
@@ -301,7 +364,7 @@ const ChannelsPage = () => {
             minute: '2-digit',
             second: '2-digit',
             hour12: true, // 12-hour format with AM/PM
-          }); // This will give you a string like: "2025-03-14T14:00:00.000Z"
+          });
         },
       },
       {
@@ -439,6 +502,7 @@ const ChannelsPage = () => {
             stopClient={stopClient}
             stopChannel={stopChannel}
             logos={logos} // Pass logos to the component
+            channelsByUUID={channelsByUUID} // Pass channelsByUUID to fix the error
           />
         ))
       )}
