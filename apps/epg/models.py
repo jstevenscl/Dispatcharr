@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 from django.conf import settings
+import os
 
 class EPGSource(models.Model):
     SOURCE_TYPE_CHOICES = [
