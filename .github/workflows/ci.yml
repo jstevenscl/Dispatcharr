@@ -44,28 +44,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Increment Build Number
-        if: steps.check_actor.outputs.is_bot != 'true'
-        id: increment_build
+      - name: Generate timestamp for build
+        id: timestamp
         run: |
-          python scripts/increment_build.py
-          BUILD=$(python -c "import version; print(version.__build__)")
-          echo "build=${BUILD}" >> $GITHUB_OUTPUT
+          TIMESTAMP=$(date -u +'%Y%m%d%H%M%S')
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
 
-      - name: Commit Build Number Update
-        if: steps.check_actor.outputs.is_bot != 'true'
-        run: |
-          git add version.py
-          git commit -m "Increment build number to ${{ steps.increment_build.outputs.build }} [skip ci]"
-          git push
+          # Update the timestamp in version.py
+          sed -i "s/__timestamp__ = None/__timestamp__ = '${TIMESTAMP}'/" version.py
 
       - name: Extract version info
         id: version
         run: |
           VERSION=$(python -c "import version; print(version.__version__)")
-          BUILD=$(python -c "import version; print(version.__build__)")
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "build=${BUILD}" >> $GITHUB_OUTPUT
           echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Set repository and image metadata
@@ -98,7 +90,6 @@ jobs:
             echo "is_fork=true" >> $GITHUB_OUTPUT
           else
             echo "is_fork=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
@@ -108,7 +99,7 @@ jobs:
           platforms: linux/amd64  # Fast build - amd64 only
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.meta.outputs.branch_tag }}
-            ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
+            ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.version.outputs.version }}-${{ steps.timestamp.outputs.timestamp }}
             ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.version.outputs.sha_short }}
           build-args: |
             BRANCH=${{ github.ref_name }}

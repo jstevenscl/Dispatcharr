@@ -67,7 +67,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const environment = useSettingsStore((s) => s.environment);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const publicIPRef = useRef(null);
-  const [appVersion, setAppVersion] = useState({ version: '', build: '' });
+  const [appVersion, setAppVersion] = useState({ version: '', timestamp: null });
 
   // Fetch environment settings including version on component mount
   useEffect(() => {
@@ -89,7 +89,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
         const versionData = await API.getVersion();
         setAppVersion({
           version: versionData.version || '',
-          build: versionData.build || '',
+          timestamp: versionData.timestamp || null,
         });
       } catch (error) {
         console.error('Failed to fetch version information:', error);
@@ -266,7 +266,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       {!collapsed && (
         <Text size="xs" style={{ padding: '0 16px 16px' }} c="dimmed">
           v{appVersion?.version || '0.0.0'}
-          {appVersion?.build !== '0' ? `-${appVersion?.build}` : ''}
+          {appVersion?.timestamp ? `-${appVersion.timestamp}` : ''}
         </Text>
       )}
     </AppShell.Navbar>
