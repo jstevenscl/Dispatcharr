@@ -62,7 +62,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
   useEffect(() => {
     if (playlist) {
-      const customProperties = JSON.parse(playlist.custom_properties || '{}');
       form.setValues({
         name: playlist.name,
         server_url: playlist.server_url,
@@ -71,11 +70,11 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
         is_active: playlist.is_active,
         refresh_interval: playlist.refresh_interval,
         is_xc: playlist.account_type == 'XC',
-        username: customProperties.username ?? '',
+        username: playlist.username ?? '',
         password: '',
       });
 
-      if (customProperties.is_xc) {
+      if (playlist.account_type == 'XC') {
         setShowCredentialFields(true);
       } else {
         setShowCredentialFields(false);
