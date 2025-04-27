@@ -420,14 +420,14 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
                 # Associate URL with the last EXTINF line
                 extinf_data[-1]["url"] = line
 
-    send_m3u_update(account_id, "processing_groups", 0)
+        cache_path = os.path.join(m3u_dir, f"{account_id}.json")
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "extinf_data": extinf_data,
+                "groups": groups,
+            }, f)
 
-    cache_path = os.path.join(m3u_dir, f"{account_id}.json")
-    with open(cache_path, 'w', encoding='utf-8') as f:
-        json.dump({
-            "extinf_data": extinf_data,
-            "groups": groups,
-        }, f)
+    send_m3u_update(account_id, "processing_groups", 0)
 
     process_groups(account, groups)
 
