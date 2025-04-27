@@ -51,7 +51,13 @@ jobs:
           echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
 
           # Update the timestamp in version.py
-          sed -i "s/__timestamp__ = None/__timestamp__ = '${TIMESTAMP}'/" version.py
+          echo "Updating timestamp to ${TIMESTAMP} in version.py"
+          sed -i "s/__timestamp__ = None.*/__timestamp__ = '${TIMESTAMP}'    # Set during CI/CD build process/" version.py
+          cat version.py  # Verify the file was updated correctly
+
+          # Make the version.py change part of the Docker build context
+          git add version.py
+          git commit -m "Update build timestamp [skip ci]" || echo "No changes to commit"
 
       - name: Extract version info
         id: version
@@ -90,7 +96,6 @@ jobs:
             echo "is_fork=true" >> $GITHUB_OUTPUT
           else
             echo "is_fork=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
