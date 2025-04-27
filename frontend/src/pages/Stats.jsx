@@ -82,11 +82,22 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const [availableStreams, setAvailableStreams] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
+  const [currentM3UProfile, setCurrentM3UProfile] = useState(null);  // Add state for current M3U profile
 
   // Safety check - if channel doesn't have required data, don't render
   if (!channel || !channel.channel_id) {
     return null;
   }
+
+  // Update M3U profile information when channel data changes
+  useEffect(() => {
+    // If the channel data includes M3U profile information, update our state
+    if (channel.m3u_profile || channel.m3u_profile_name) {
+      setCurrentM3UProfile({
+        name: channel.m3u_profile?.name || channel.m3u_profile_name || 'Default M3U'
+      });
+    }
+  }, [channel.m3u_profile, channel.m3u_profile_name, channel.stream_id]);
 
   // Fetch available streams for this channel
   useEffect(() => {
@@ -110,6 +121,11 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
 
             if (matchingStream) {
               setActiveStreamId(matchingStream.id.toString());
+
+              // If the stream has M3U profile info, save it
+              if (matchingStream.m3u_profile) {
+                setCurrentM3UProfile(matchingStream.m3u_profile);
+              }
             }
           }
         }
@@ -138,6 +154,14 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
       // Update the local active stream ID immediately
       setActiveStreamId(streamId);
 
+      // Update M3U profile information if available in the response
+      if (response && response.m3u_profile) {
+        setCurrentM3UProfile(response.m3u_profile);
+      } else if (selectedStream && selectedStream.m3u_profile) {
+        // Fallback to the profile from the selected stream
+        setCurrentM3UProfile(selectedStream.m3u_profile);
+      }
+
       // Show detailed notification with stream name
       notifications.show({
         title: 'Stream switching',
@@ -152,6 +176,12 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           if (channelId) {
             const updatedStreamData = await API.getChannelStreams(channelId);
             console.log("Channel streams after switch:", updatedStreamData);
+
+            // Update current stream information with fresh data
+            const updatedStream = updatedStreamData.find(s => s.id.toString() === streamId);
+            if (updatedStream && updatedStream.m3u_profile) {
+              setCurrentM3UProfile(updatedStream.m3u_profile);
+            }
           }
         } catch (error) {
           console.error("Error checking streams after switch:", error);
@@ -305,6 +335,12 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const avgBitrate = channel.avg_bitrate || '0 Kbps';
   const streamProfileName = channel.stream_profile?.name || 'Unknown Profile';
 
+  // Use currentM3UProfile if available, otherwise fall back to channel data
+  const m3uProfileName = currentM3UProfile?.name ||
+    channel.m3u_profile?.name ||
+    channel.m3u_profile_name ||
+    'Default M3U';
+
   // Create select options for available streams
   const streamOptions = availableStreams.map(stream => ({
     value: stream.id.toString(),
@@ -374,6 +410,16 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           <Group gap={5}>
             <Video size="18" />
             {streamProfileName}
+          </Group>
+        </Flex>
+
+        {/* Display M3U profile information */}
+        <Flex justify="flex-end" align="center" mt={-8}>
+          <Group gap={5}>
+            <HardDriveUpload size="18" />
+            <Tooltip label="Current M3U Profile">
+              <Text size="xs">{m3uProfileName}</Text>
+            </Tooltip>
           </Group>
         </Flex>
 

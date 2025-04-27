@@ -65,6 +65,25 @@ class ChannelStatus:
             except ValueError:
                 logger.warning(f"Invalid stream_id format in Redis: {stream_id_bytes}")
 
+        # Add M3U profile information
+        m3u_profile_id_bytes = metadata.get(ChannelMetadataField.M3U_PROFILE.encode('utf-8'))
+        if m3u_profile_id_bytes:
+            try:
+                m3u_profile_id = int(m3u_profile_id_bytes.decode('utf-8'))
+                info['m3u_profile_id'] = m3u_profile_id
+
+                # Look up M3U profile name from database
+                try:
+                    from apps.m3u.models import M3UAccountProfile
+                    m3u_profile = M3UAccountProfile.objects.filter(id=m3u_profile_id).first()
+                    if m3u_profile:
+                        info['m3u_profile_name'] = m3u_profile.name
+                        logger.debug(f"Added M3U profile name '{m3u_profile.name}' for profile ID {m3u_profile_id}")
+                except (ImportError, DatabaseError) as e:
+                    logger.warning(f"Failed to get M3U profile name for ID {m3u_profile_id}: {e}")
+            except ValueError:
+                logger.warning(f"Invalid m3u_profile_id format in Redis: {m3u_profile_id_bytes}")
+
         # Add timing information
         state_changed_field = ChannelMetadataField.STATE_CHANGED_AT.encode('utf-8')
         if state_changed_field in metadata:
@@ -379,6 +398,25 @@ class ChannelStatus:
 
             # Add clients to info
             info['clients'] = clients
+
+            # Add M3U profile information
+            m3u_profile_id_bytes = metadata.get(ChannelMetadataField.M3U_PROFILE.encode('utf-8'))
+            if m3u_profile_id_bytes:
+                try:
+                    m3u_profile_id = int(m3u_profile_id_bytes.decode('utf-8'))
+                    info['m3u_profile_id'] = m3u_profile_id
+
+                    # Look up M3U profile name from database
+                    try:
+                        from apps.m3u.models import M3UAccountProfile
+                        m3u_profile = M3UAccountProfile.objects.filter(id=m3u_profile_id).first()
+                        if m3u_profile:
+                            info['m3u_profile_name'] = m3u_profile.name
+                            logger.debug(f"Added M3U profile name '{m3u_profile.name}' for profile ID {m3u_profile_id}")
+                    except (ImportError, DatabaseError) as e:
+                        logger.warning(f"Failed to get M3U profile name for ID {m3u_profile_id}: {e}")
+                except ValueError:
+                    logger.warning(f"Invalid m3u_profile_id format in Redis: {m3u_profile_id_bytes}")
 
             return info
         except Exception as e:
