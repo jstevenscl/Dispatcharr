@@ -441,6 +441,7 @@ class ChannelGroupM3UAccount(models.Model):
         on_delete=models.CASCADE,
         related_name='channel_group'
     )
+    custom_properties = models.TextField(null=True, blank=True)
     enabled = models.BooleanField(default=True)
 
     class Meta:

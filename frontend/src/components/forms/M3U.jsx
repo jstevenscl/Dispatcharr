@@ -18,6 +18,8 @@ import {
   Stack,
   Group,
   Switch,
+  Box,
+  PasswordInput,
 } from '@mantine/core';
 import M3UGroupFilter from './M3UGroupFilter';
 import useChannelsStore from '../../store/channels';
@@ -35,13 +37,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [groupFilterModalOpen, setGroupFilterModalOpen] = useState(false);
   const [loadingText, setLoadingText] = useState('');
-
-  const handleFileChange = (file) => {
-    console.log(file);
-    if (file) {
-      setFile(file);
-    }
-  };
+  const [showCredentialFields, setShowCredentialFields] = useState(false);
 
   const form = useForm({
     mode: 'uncontrolled',
@@ -52,6 +48,9 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
       is_active: true,
       max_streams: 0,
       refresh_interval: 24,
+      is_xc: false,
+      username: '',
+      password: '',
     },
 
     validate: {
@@ -63,6 +62,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
 
   useEffect(() => {
     if (playlist) {
+      const customProperties = JSON.parse(playlist.custom_properties || '{}');
       form.setValues({
         name: playlist.name,
         server_url: playlist.server_url,
@@ -70,14 +70,43 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
         user_agent: playlist.user_agent ? `${playlist.user_agent}` : '0',
         is_active: playlist.is_active,
         refresh_interval: playlist.refresh_interval,
+        is_xc: playlist.account_type == 'XC',
+        username: customProperties.username ?? '',
+        password: '',
       });
+
+      if (customProperties.is_xc) {
+        setShowCredentialFields(true);
+      } else {
+        setShowCredentialFields(false);
+      }
     } else {
       form.reset();
     }
   }, [playlist]);
 
+  useEffect(() => {
+    if (form.values.is_xc) {
+      setShowCredentialFields(true);
+    }
+  }, [form.values.is_xc]);
+
   const onSubmit = async () => {
-    const values = form.getValues();
+    const { ...values } = form.getValues();
+
+    if (values.is_xc && values.password == '') {
+      // If account XC and no password input, assuming no password change
+      // from previously stored value.
+      delete values.password;
+    }
+
+    if (values.is_xc) {
+      values.account_type = 'XC';
+    } else {
+      values.account_type = 'STD';
+    }
+
+    delete values.is_xc;
 
     if (values.user_agent == '0') {
       values.user_agent = null;
@@ -150,7 +179,6 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               {...form.getInputProps('name')}
               key={form.key('name')}
             />
-
             <TextInput
               fullWidth
               id="server_url"
@@ -159,14 +187,38 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               {...form.getInputProps('server_url')}
               key={form.key('server_url')}
             />
-
-            <FileInput
-              id="file"
-              label="Upload files"
-              placeholder="Upload files"
-              // value={formik.file}
-              onChange={handleFileChange}
+            <Switch
+              id="is_xc"
+              name="is_xc"
+              label="Is XC?"
+              {...form.getInputProps('is_xc', { type: 'checkbox' })}
             />
+
+            {form.getValues().is_xc && (
+              <Box>
+                <TextInput
+                  id="username"
+                  name="username"
+                  label="Username"
+                  {...form.getInputProps('username')}
+                />
+                <PasswordInput
+                  id="password"
+                  name="password"
+                  label="Password"
+                  {...form.getInputProps('password')}
+                />
+              </Box>
+            )}
+
+            {!form.getValues().is_xc && (
+              <FileInput
+                id="file"
+                label="Upload files"
+                placeholder="Upload files"
+                onChange={setFile}
+              />
+            )}
           </Stack>
 
           <Divider size="sm" orientation="vertical" />

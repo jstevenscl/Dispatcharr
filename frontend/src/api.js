@@ -650,6 +650,10 @@ export default class API {
   }
 
   static async addPlaylist(values) {
+    if (values.custom_properties) {
+      values.custom_properties = JSON.stringify(values.custom_properties);
+    }
+
     try {
       let body = null;
       if (values.file) {
@@ -717,6 +721,10 @@ export default class API {
   static async updatePlaylist(values) {
     const { id, ...payload } = values;
 
+    if (payload.custom_properties) {
+      payload.custom_properties = JSON.stringify(payload.custom_properties);
+    }
+
     try {
       let body = null;
       if (payload.file) {
@@ -735,6 +743,7 @@ export default class API {
         body = { ...payload };
         delete body.file;
       }
+      console.log(body);
 
       const response = await request(`${host}/api/m3u/accounts/${id}/`, {
         method: 'PATCH',
@@ -1241,10 +1250,13 @@ export default class API {
 
   static async switchStream(channelId, streamId) {
     try {
-      const response = await request(`${host}/proxy/ts/change_stream/${channelId}`, {
-        method: 'POST',
-        body: { stream_id: streamId },
-      });
+      const response = await request(
+        `${host}/proxy/ts/change_stream/${channelId}`,
+        {
+          method: 'POST',
+          body: { stream_id: streamId },
+        }
+      );
 
       return response;
     } catch (e) {
@@ -1255,10 +1267,13 @@ export default class API {
 
   static async nextStream(channelId, streamId) {
     try {
-      const response = await request(`${host}/proxy/ts/next_stream/${channelId}`, {
-        method: 'POST',
-        body: { stream_id: streamId },
-      });
+      const response = await request(
+        `${host}/proxy/ts/next_stream/${channelId}`,
+        {
+          method: 'POST',
+          body: { stream_id: streamId },
+        }
+      );
 
       return response;
     } catch (e) {

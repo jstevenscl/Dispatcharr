@@ -21,6 +21,7 @@ import json
 from core.utils import RedisClient, acquire_task_lock, release_task_lock
 from core.models import CoreSettings
 from asgiref.sync import async_to_sync
+from core.xtream_codes import Client as XCClient
 
 logger = logging.getLogger(__name__)
 
@@ -172,38 +173,111 @@ def check_field_lengths(streams_to_create):
         print("")
 
 @shared_task
-def process_groups(account, group_names):
-    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(name__in=group_names)}
+def process_groups(account, groups):
+    existing_groups = {group.name: group for group in ChannelGroup.objects.filter(name__in=groups.keys())}
     logger.info(f"Currently {len(existing_groups)} existing groups")
 
-    groups = []
+    group_objs = []
     groups_to_create = []
-    for group_name in group_names:
+    for group_name, custom_props in groups.items():
         logger.info(f"Handling group: {group_name}")
-        if group_name in existing_groups:
-            groups.append(existing_groups[group_name])
-        else:
+        if group_name not in existing_groups:
             groups_to_create.append(ChannelGroup(
                 name=group_name,
             ))
+        else:
+            group_objs.append(existing_groups[group_name])
 
     if groups_to_create:
         logger.info(f"Creating {len(groups_to_create)} groups")
         created = ChannelGroup.bulk_create_and_fetch(groups_to_create)
         logger.info(f"Created {len(created)} groups")
-        groups.extend(created)
+        group_objs.extend(created)
 
     relations = []
-    for group in groups:
+    for group in group_objs:
         relations.append(ChannelGroupM3UAccount(
             channel_group=group,
             m3u_account=account,
+            custom_properties=json.dumps(groups[group.name]),
         ))
 
     ChannelGroupM3UAccount.objects.bulk_create(
         relations,
         ignore_conflicts=True
     )
+
+@shared_task
+def process_xc_category(account_id, batch, groups, hash_keys):
+    account = M3UAccount.objects.get(id=account_id)
+
+    streams_to_create = []
+    streams_to_update = []
+    stream_hashes = {}
+
+    xc_client = XCClient(account.server_url, account.username, account.password)
+    for group_name, props in batch.items():
+        streams = xc_client.get_live_category_streams(props['xc_id'])
+        for stream in streams:
+            name = stream["name"]
+            url = xc_client.get_stream_url(stream["stream_id"])
+            tvg_id = stream["epg_channel_id"]
+            tvg_logo = stream["stream_icon"]
+            group_title = group_name
+
+            stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
+            stream_props = {
+                "name": name,
+                "url": url,
+                "logo_url": tvg_logo,
+                "tvg_id": tvg_id,
+                "m3u_account": account,
+                "channel_group_id": int(groups.get(group_title)),
+                "stream_hash": stream_hash,
+                "custom_properties": json.dumps(stream),
+            }
+
+            if stream_hash not in stream_hashes:
+                stream_hashes[stream_hash] = stream_props
+
+    existing_streams = {s.stream_hash: s for s in Stream.objects.filter(stream_hash__in=stream_hashes.keys())}
+
+    for stream_hash, stream_props in stream_hashes.items():
+        if stream_hash in existing_streams:
+            obj = existing_streams[stream_hash]
+            existing_attr = {field.name: getattr(obj, field.name) for field in Stream._meta.fields if field != 'channel_group_id'}
+            changed = any(existing_attr[key] != value for key, value in stream_props.items() if key != 'channel_group_id')
+
+            if changed:
+                for key, value in stream_props.items():
+                    setattr(obj, key, value)
+                obj.last_seen = timezone.now()
+                streams_to_update.append(obj)
+                del existing_streams[stream_hash]
+            else:
+                existing_streams[stream_hash] = obj
+        else:
+            stream_props["last_seen"] = timezone.now()
+            streams_to_create.append(Stream(**stream_props))
+
+    try:
+        with transaction.atomic():
+            if streams_to_create:
+                Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
+            if streams_to_update:
+                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys})
+            # if len(existing_streams.keys()) > 0:
+            #     Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
+    except Exception as e:
+        logger.error(f"Bulk create failed: {str(e)}")
+
+    retval = f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
+
+    # Aggressive garbage collection
+    del streams_to_create, streams_to_update, stream_hashes, existing_streams
+    gc.collect()
+
+    return retval
 
 @shared_task
 def process_m3u_batch(account_id, batch, groups, hash_keys):
@@ -227,23 +301,7 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 logger.debug(f"Skipping stream in disabled group: {group_title}")
                 continue
 
-            # if any(url.lower().endswith(ext) for ext in SKIP_EXTS) or len(url) > 2000:
-            #     continue
-
-            # if _matches_filters(name, group_title, account.filters.all()):
-            #     continue
-
-            # if any(compiled_pattern.search(current_info['name']) for ftype, compiled_pattern in compiled_filters if ftype == 'name'):
-            #     excluded_count += 1
-            #     current_info = None
-            #     continue
-
             stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
-            # if redis_client.exists(f"m3u_refresh:{stream_hash}"):
-            #     # duplicate already processed by another batch
-            #     continue
-
-            # redis_client.set(f"m3u_refresh:{stream_hash}", "true")
             stream_props = {
                 "name": name,
                 "url": url,
@@ -332,24 +390,38 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
         return f"M3UAccount with ID={account_id} not found or inactive.", None
 
     extinf_data = []
-    groups = set(["Default Group"])
+    groups = {"Default Group": {}}
 
-    for line in fetch_m3u_lines(account, use_cache):
-        line = line.strip()
-        if line.startswith("#EXTINF"):
-            parsed = parse_extinf_line(line)
-            if parsed:
-                if "group-title" in parsed["attributes"]:
-                    groups.add(parsed["attributes"]["group-title"])
+    xc_client = None
+    if account.account_type == M3UAccount.Types.XC:
+        xc_client = XCClient(account.server_url, account.username, account.password)
+        try:
+            xc_client.authenticate()
+        except Exception as e:
+            release_task_lock('refresh_m3u_account_groups', account_id)
+            return f"M3UAccount with ID={account_id} failed to authenticate with XC server.", None
 
-                extinf_data.append(parsed)
-        elif extinf_data and line.startswith("http"):
-            # Associate URL with the last EXTINF line
-            extinf_data[-1]["url"] = line
+        xc_categories = xc_client.get_live_categories()
+        for category in xc_categories:
+            groups[category["category_name"]] = {
+                "xc_id": category["category_id"],
+            }
+    else:
+        for line in fetch_m3u_lines(account, use_cache):
+            line = line.strip()
+            if line.startswith("#EXTINF"):
+                parsed = parse_extinf_line(line)
+                if parsed:
+                    if "group-title" in parsed["attributes"]:
+                        groups[parsed["attributes"]["group-title"]] = {}
+
+                    extinf_data.append(parsed)
+            elif extinf_data and line.startswith("http"):
+                # Associate URL with the last EXTINF line
+                extinf_data[-1]["url"] = line
 
     send_m3u_update(account_id, "processing_groups", 0)
 
-    groups = list(groups)
     cache_path = os.path.join(m3u_dir, f"{account_id}.json")
     with open(cache_path, 'w', encoding='utf-8') as f:
         json.dump({
@@ -412,7 +484,7 @@ def refresh_single_m3u_account(account_id):
     if not extinf_data:
         try:
             extinf_data, groups = refresh_m3u_groups(account_id, full_refresh=True)
-            if not extinf_data or not groups:
+            if not groups:
                 release_task_lock('refresh_single_m3u_account', account_id)
                 return "Failed to update m3u account, task may already be running"
         except:
@@ -426,9 +498,17 @@ def refresh_single_m3u_account(account_id):
         m3u_account__enabled=True  # Filter by the enabled flag in the join table
     )}
 
-    # Break into batches and process in parallel
-    batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
-    task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
+    if account.account_type == M3UAccount.Types.STADNARD:
+        # Break into batches and process in parallel
+        batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
+        task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
+    else:
+        filtered_groups = [(k, v) for k, v in groups.items() if k in existing_groups]
+        batches = [
+            dict(filtered_groups[i:i + 2])
+            for i in range(0, len(filtered_groups), 2)
+        ]
+        task_group = group(process_xc_category.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
 
     total_batches = len(batches)
     completed_batches = 0
