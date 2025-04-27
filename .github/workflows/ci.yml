@@ -52,7 +52,7 @@ jobs:
 
           # Update the timestamp in version.py
           echo "Updating timestamp to ${TIMESTAMP} in version.py"
-          sed -i "s/__timestamp__ = None.*/__timestamp__ = '${TIMESTAMP}'    # Set during CI/CD build process/" version.py
+          sed -i "s|__timestamp__ = None.*|__timestamp__ = '${TIMESTAMP}'    # Set during CI/CD build process|" version.py
           cat version.py  # Verify the file was updated correctly
 
           # Make the version.py change part of the Docker build context
