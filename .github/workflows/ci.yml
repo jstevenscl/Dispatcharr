@@ -50,15 +50,6 @@ jobs:
           TIMESTAMP=$(date -u +'%Y%m%d%H%M%S')
           echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
 
-          # Update the timestamp in version.py
-          echo "Updating timestamp to ${TIMESTAMP} in version.py"
-          sed -i "s|__timestamp__ = None.*|__timestamp__ = '${TIMESTAMP}'    # Set during CI/CD build process|" version.py
-          cat version.py  # Verify the file was updated correctly
-
-          # Make the version.py change part of the Docker build context
-          git add version.py
-          git commit -m "Update build timestamp [skip ci]" || echo "No changes to commit"
-
       - name: Extract version info
         id: version
         run: |
@@ -111,4 +102,5 @@ jobs:
           build-args: |
             BRANCH=${{ github.ref_name }}
             REPO_URL=https://github.com/${{ github.repository }}
+            TIMESTAMP=${{ steps.timestamp.outputs.timestamp }}
           file: ./docker/Dockerfile
