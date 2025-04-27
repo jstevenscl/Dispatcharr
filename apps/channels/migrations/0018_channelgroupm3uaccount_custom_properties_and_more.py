@@ -15,9 +15,4 @@ class Migration(migrations.Migration):
             name='custom_properties',
             field=models.TextField(blank=True, null=True),
         ),
-        migrations.AlterField(
-            model_name='channel',
-            name='channel_number',
-            field=models.IntegerField(db_index=True),
-        ),
     ]

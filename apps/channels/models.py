@@ -210,7 +210,7 @@ class ChannelManager(models.Manager):
 
 
 class Channel(models.Model):
-    channel_number = models.IntegerField(db_index=True)
+    channel_number = models.IntegerField()
     name = models.CharField(max_length=255)
     logo = models.ForeignKey(
         'Logo',
