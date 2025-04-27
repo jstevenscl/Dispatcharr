@@ -299,7 +299,14 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
         </Center>
       </Box>
     ),
-    renderDetailPanel: ({ row }) => <Box>{row.original.user_agent}</Box>,
+    renderDetailPanel: ({ row }) => (
+      <Box p="xs">
+        <Group spacing="xs" align="flex-start">
+          <Text size="xs" fw={500} color="dimmed">User Agent:</Text>
+          <Text size="xs">{row.original.user_agent || "Unknown"}</Text>
+        </Group>
+      </Box>
+    ),
     mantineExpandButtonProps: ({ row, table }) => ({
       size: 'xs',
       style: {
@@ -407,10 +414,12 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
             <Text fw={500}>{channelName}</Text>
           </Group>
 
-          <Group gap={5}>
-            <Video size="18" />
-            {streamProfileName}
-          </Group>
+          <Tooltip label="Active Stream Profile">
+            <Group gap={5}>
+              <Video size="18" />
+              {streamProfileName}
+            </Group>
+          </Tooltip>
         </Flex>
 
         {/* Display M3U profile information */}
