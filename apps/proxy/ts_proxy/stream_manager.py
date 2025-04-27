@@ -544,7 +544,7 @@ class StreamManager:
         # Set running to false to ensure thread exits
         self.running = False
 
-    def update_url(self, new_url):
+    def update_url(self, new_url, stream_id=None):
         """Update stream URL and reconnect with proper cleanup for both HTTP and transcode sessions"""
         if new_url == self.url:
             logger.info(f"URL unchanged: {new_url}")
@@ -567,6 +567,14 @@ class StreamManager:
         old_url = self.url
         self.url = new_url
         self.connected = False
+
+        # Update stream ID if provided
+        if stream_id:
+            old_stream_id = self.current_stream_id
+            self.current_stream_id = stream_id
+            # Add stream ID to tried streams for proper tracking
+            self.tried_stream_ids.add(stream_id)
+            logger.info(f"Updated stream ID from {old_stream_id} to {stream_id} for channel {self.buffer.channel_id}")
 
         # Reset retry counter to allow immediate reconnect
         self.retry_count = 0
@@ -1005,7 +1013,7 @@ class StreamManager:
                 logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id}")
 
             # IMPORTANT: Just update the URL, don't stop the channel or release resources
-            switch_result = self.update_url(new_url)
+            switch_result = self.update_url(new_url, stream_id)
             if not switch_result:
                 logger.error(f"Failed to update URL for stream ID {stream_id}")
                 return False

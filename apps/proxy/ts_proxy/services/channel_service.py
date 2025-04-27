@@ -181,7 +181,7 @@ class ChannelService:
             old_url = manager.url
 
             # Update the stream
-            success = manager.update_url(new_url)
+            success = manager.update_url(new_url, stream_id)
             logger.info(f"Stream URL changed from {old_url} to {new_url}, result: {success}")
 
             result.update({
@@ -439,6 +439,9 @@ class ChannelService:
             metadata[ChannelMetadataField.STREAM_ID] = str(stream_id)
         if m3u_profile_id:
             metadata[ChannelMetadataField.M3U_PROFILE] = str(m3u_profile_id)
+
+        # Also update the stream switch time field
+        metadata[ChannelMetadataField.STREAM_SWITCH_TIME] = str(time.time())
 
         # Use the appropriate method based on the key type
         if key_type == 'hash':
