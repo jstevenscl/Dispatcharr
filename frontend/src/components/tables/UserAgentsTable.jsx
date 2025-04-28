@@ -55,7 +55,7 @@ const UserAgentsTable = () => {
         ),
       },
       {
-        header: 'Desecription',
+        header: 'Description',
         accessorKey: 'description',
         enableSorting: false,
         Cell: ({ cell }) => (
