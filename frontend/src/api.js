@@ -337,6 +337,11 @@ export default class API {
         payload.stream_profile_id = null;
       }
 
+      // Handle logo_id properly (0 means "no logo")
+      if (payload.logo_id === '0' || payload.logo_id === 0) {
+        payload.logo_id = null;
+      }
+
       // Ensure tvg_id is included properly (not as empty string)
       if (payload.tvg_id === '') {
         payload.tvg_id = null;
