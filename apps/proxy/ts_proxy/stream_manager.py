@@ -543,15 +543,27 @@ class StreamManager:
 
         logger.info(f"Switching stream URL from {self.url} to {new_url}")
 
-        # Release old stream resources if we have a current stream ID
-        if self.current_stream_id:
+        # Import both models for proper resource management
+        from apps.channels.models import Stream, Channel
+
+        # Update stream profile if we're switching streams
+        if self.current_stream_id and stream_id and self.current_stream_id != stream_id:
             try:
-                from apps.channels.models import Stream
-                stream = Stream.objects.get(pk=self.current_stream_id)
-                stream.release_stream()
-                logger.info(f"Released stream {self.current_stream_id} for channel {self.channel_id}")
+                # Get the channel by UUID
+                channel = Channel.objects.get(uuid=self.channel_id)
+
+                # Get stream to find its profile
+                new_stream = Stream.objects.get(pk=stream_id)
+
+                # Use the new method to update the profile and manage connection counts
+                if new_stream.m3u_account_id:
+                    success = channel.update_stream_profile(new_stream.m3u_account_id)
+                    if success:
+                        logger.debug(f"Updated stream profile for channel {self.channel_id} to use profile from stream {stream_id}")
+                    else:
+                        logger.warning(f"Failed to update stream profile for channel {self.channel_id}")
             except Exception as e:
-                logger.error(f"Error releasing stream {self.current_stream_id}: {e}")
+                logger.error(f"Error updating stream profile for channel {self.channel_id}: {e}")
 
         # CRITICAL: Set a flag to prevent immediate reconnection with old URL
         self.url_switching = True
