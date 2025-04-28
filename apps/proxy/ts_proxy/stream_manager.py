@@ -502,15 +502,6 @@ class StreamManager:
                 owner_key = RedisKeys.channel_owner(self.channel_id)
                 current_owner = self.buffer.redis_client.get(owner_key)
 
-                if current_owner and current_owner.decode('utf-8') == self.worker_id:
-                    try:
-                        from apps.channels.models import Stream
-                        stream = Stream.objects.get(pk=self.current_stream_id)
-                        stream.release_stream()
-                        logger.info(f"Released stream {self.current_stream_id} for channel {self.channel_id}")
-                    except Exception as e:
-                        logger.error(f"Error releasing stream {self.current_stream_id}: {e}")
-
         # Cancel all buffer check timers
         for timer in list(self._buffer_check_timers):
             try:
@@ -551,6 +542,16 @@ class StreamManager:
             return False
 
         logger.info(f"Switching stream URL from {self.url} to {new_url}")
+
+        # Release old stream resources if we have a current stream ID
+        if self.current_stream_id:
+            try:
+                from apps.channels.models import Stream
+                stream = Stream.objects.get(pk=self.current_stream_id)
+                stream.release_stream()
+                logger.info(f"Released stream {self.current_stream_id} for channel {self.channel_id}")
+            except Exception as e:
+                logger.error(f"Error releasing stream {self.current_stream_id}: {e}")
 
         # CRITICAL: Set a flag to prevent immediate reconnection with old URL
         self.url_switching = True
