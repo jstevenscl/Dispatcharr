@@ -193,7 +193,8 @@ def stream_ts(request, channel_id):
                             break
                         else:
                             logger.warning(f"[{client_id}] Alternate stream #{alt['stream_id']} failed validation: {message}")
-
+                # Release stream lock before redirecting
+                channel.release_stream()
                 # Final decision based on validation results
                 if is_valid:
                     logger.info(f"[{client_id}] Redirecting to validated URL: {final_url} ({message})")
