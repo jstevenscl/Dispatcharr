@@ -1130,7 +1130,7 @@ export default class API {
 
       return response;
     } catch (e) {
-      errorNotification('Failed to create channle profile', e);
+      errorNotification('Failed to create channel profile', e);
     }
   }
 
@@ -1269,6 +1269,33 @@ export default class API {
     } catch (e) {
       errorNotification('Failed to switch stream', e);
       throw e;
+    }
+  }
+
+  static async batchSetEPG(associations) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/batch-set-epg/`,
+        {
+          method: 'POST',
+          body: { associations },
+        }
+      );
+
+      // If successful, requery channels to update UI
+      if (response.success) {
+        notifications.show({
+          title: 'EPG Association',
+          message: `Updated ${response.channels_updated} channels, refreshing ${response.programs_refreshed} EPG sources.`,
+          color: 'blue',
+        });
+
+        this.requeryChannels();
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel EPGs', e);
     }
   }
 }

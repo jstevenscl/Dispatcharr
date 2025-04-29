@@ -541,6 +541,71 @@ class ChannelViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    @swagger_auto_schema(
+        method='post',
+        operation_description="Associate multiple channels with EPG data without triggering a full refresh",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'associations': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'channel_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'epg_data_id': openapi.Schema(type=openapi.TYPE_INTEGER)
+                        }
+                    )
+                )
+            }
+        ),
+        responses={200: "EPG data linked for multiple channels"}
+    )
+    @action(detail=False, methods=['post'], url_path='batch-set-epg')
+    def batch_set_epg(self, request):
+        """Efficiently associate multiple channels with EPG data at once."""
+        associations = request.data.get('associations', [])
+        channels_updated = 0
+        programs_refreshed = 0
+        unique_epg_ids = set()
+
+        for assoc in associations:
+            channel_id = assoc.get('channel_id')
+            epg_data_id = assoc.get('epg_data_id')
+
+            if not channel_id:
+                continue
+
+            try:
+                # Get the channel
+                channel = Channel.objects.get(id=channel_id)
+
+                # Set the EPG data
+                channel.epg_data_id = epg_data_id
+                channel.save(update_fields=['epg_data'])
+                channels_updated += 1
+
+                # Track unique EPG data IDs
+                if epg_data_id:
+                    unique_epg_ids.add(epg_data_id)
+
+            except Channel.DoesNotExist:
+                logger.error(f"Channel with ID {channel_id} not found")
+            except Exception as e:
+                logger.error(f"Error setting EPG data for channel {channel_id}: {str(e)}")
+
+        # Trigger program refresh for unique EPG data IDs
+        from apps.epg.tasks import parse_programs_for_tvg_id
+        for epg_id in unique_epg_ids:
+            parse_programs_for_tvg_id.delay(epg_id)
+            programs_refreshed += 1
+
+        return Response({
+            'success': True,
+            'channels_updated': channels_updated,
+            'programs_refreshed': programs_refreshed
+        })
+
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams
 # ─────────────────────────────────────────────────────────
