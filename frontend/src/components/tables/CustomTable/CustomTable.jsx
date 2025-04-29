@@ -1,6 +1,6 @@
 import { Box, Flex } from '@mantine/core';
 import CustomTableHeader from './CustomTableHeader';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { flexRender } from '@tanstack/react-table';
 import table from '../../../helpers/table';
 import CustomTableBody from './CustomTableBody';
@@ -11,7 +11,6 @@ const CustomTable = ({ table }) => {
       className="divTable table-striped"
       style={{
         width: '100%',
-        // height: '100%', // ONLY required when using virtual tables
         display: 'flex',
         flexDirection: 'column',
       }}

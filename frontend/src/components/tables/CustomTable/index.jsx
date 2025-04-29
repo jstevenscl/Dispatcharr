@@ -21,6 +21,7 @@ const useTable = ({
 }) => {
   const [selectedTableIds, setSelectedTableIds] = useState([]);
   const [expandedRowIds, setExpandedRowIds] = useState([]);
+  const [lastClickedId, setLastClickedId] = useState(null);
 
   const rowCount = allRowIds.length;
 
@@ -77,6 +78,34 @@ const useTable = ({
     updateSelectedTableIds([row.original.id]);
   };
 
+  // Handle the shift+click selection
+  const handleShiftSelect = (rowId, isShiftKey) => {
+    if (!isShiftKey || lastClickedId === null) {
+      // Normal selection behavior
+      setLastClickedId(rowId);
+      return false; // Return false to indicate we're not handling it
+    }
+
+    // Handle shift-click range selection
+    const currentIndex = allRowIds.indexOf(rowId);
+    const lastIndex = allRowIds.indexOf(lastClickedId);
+
+    if (currentIndex === -1 || lastIndex === -1) return false;
+
+    // Determine range
+    const startIndex = Math.min(currentIndex, lastIndex);
+    const endIndex = Math.max(currentIndex, lastIndex);
+    const rangeIds = allRowIds.slice(startIndex, endIndex + 1);
+
+    // Preserve existing selections outside the range
+    const idsOutsideRange = selectedTableIds.filter(id => !rangeIds.includes(id));
+    const newSelection = [...new Set([...rangeIds, ...idsOutsideRange])];
+    updateSelectedTableIds(newSelection);
+
+    setLastClickedId(rowId);
+    return true; // Return true to indicate we've handled it
+  };
+
   const renderBodyCell = ({ row, cell }) => {
     if (bodyCellRenderFns[cell.column.id]) {
       return bodyCellRenderFns[cell.column.id]({ row, cell });
@@ -91,13 +120,22 @@ const useTable = ({
               size="xs"
               checked={selectedTableIdsSet.has(row.original.id)}
               onChange={(e) => {
-                const newSet = new Set(selectedTableIds);
-                if (e.target.checked) {
-                  newSet.add(row.original.id);
-                } else {
-                  newSet.delete(row.original.id);
+                const rowId = row.original.id;
+
+                // Get shift key state from the event
+                const isShiftKey = e.nativeEvent.shiftKey;
+
+                // Try to handle with shift-select logic first
+                if (!handleShiftSelect(rowId, isShiftKey)) {
+                  // If not handled by shift-select, do regular toggle
+                  const newSet = new Set(selectedTableIds);
+                  if (e.target.checked) {
+                    newSet.add(rowId);
+                  } else {
+                    newSet.delete(rowId);
+                  }
+                  updateSelectedTableIds([...newSet]);
                 }
-                updateSelectedTableIds([...newSet]);
               }}
             />
           </Center>
