@@ -7,7 +7,7 @@ import {
   getCoreRowModel,
   flexRender,
 } from '@tanstack/react-table';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 const useTable = ({
@@ -22,6 +22,63 @@ const useTable = ({
   const [selectedTableIds, setSelectedTableIds] = useState([]);
   const [expandedRowIds, setExpandedRowIds] = useState([]);
   const [lastClickedId, setLastClickedId] = useState(null);
+  const [isShiftKeyDown, setIsShiftKeyDown] = useState(false);
+
+  // Event handlers for shift key detection with improved handling
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Shift') {
+      setIsShiftKeyDown(true);
+      // Apply the class to disable text selection immediately
+      document.body.classList.add('shift-key-active');
+      // Set a style attribute directly on body for extra assurance
+      document.body.style.userSelect = 'none';
+      document.body.style.webkitUserSelect = 'none';
+      document.body.style.msUserSelect = 'none';
+      document.body.style.cursor = 'pointer';
+    }
+  }, []);
+
+  const handleKeyUp = useCallback((e) => {
+    if (e.key === 'Shift') {
+      setIsShiftKeyDown(false);
+      // Remove the class when shift is released
+      document.body.classList.remove('shift-key-active');
+      // Reset the style attributes
+      document.body.style.removeProperty('user-select');
+      document.body.style.removeProperty('-webkit-user-select');
+      document.body.style.removeProperty('-ms-user-select');
+      document.body.style.removeProperty('cursor');
+    }
+  }, []);
+
+  // Add global event listeners for shift key detection with improved cleanup
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    // Also detect blur/focus events to handle cases where shift is held and window loses focus
+    window.addEventListener('blur', () => {
+      setIsShiftKeyDown(false);
+      document.body.classList.remove('shift-key-active');
+      document.body.style.removeProperty('user-select');
+      document.body.style.removeProperty('-webkit-user-select');
+      document.body.style.removeProperty('-ms-user-select');
+      document.body.style.removeProperty('cursor');
+    });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', () => {
+        setIsShiftKeyDown(false);
+        document.body.classList.remove('shift-key-active');
+        document.body.style.removeProperty('user-select');
+        document.body.style.removeProperty('-webkit-user-select');
+        document.body.style.removeProperty('-ms-user-select');
+        document.body.style.removeProperty('cursor');
+      });
+    };
+  }, [handleKeyDown, handleKeyUp]);
 
   const rowCount = allRowIds.length;
 
@@ -175,8 +232,9 @@ const useTable = ({
       expandedRowIds,
       expandedRowRenderer,
       setSelectedTableIds,
+      isShiftKeyDown, // Include shift key state in the table instance
     }),
-    [selectedTableIdsSet, expandedRowIds, allRowIds]
+    [selectedTableIdsSet, expandedRowIds, allRowIds, isShiftKeyDown]
   );
 
   return {
