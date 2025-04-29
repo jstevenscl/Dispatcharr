@@ -644,7 +644,18 @@ class LogoViewSet(viewsets.ModelViewSet):
             try:
                 remote_response = requests.get(logo_url, stream=True)
                 if remote_response.status_code == 200:
-                    response = StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=remote_response.headers['Content-Type'])
+                    # Try to get content type from response headers first
+                    content_type = remote_response.headers.get('Content-Type')
+
+                    # If no content type in headers or it's empty, guess based on URL
+                    if not content_type:
+                        content_type, _ = mimetypes.guess_type(logo_url)
+
+                    # If still no content type, default to common image type
+                    if not content_type:
+                        content_type = 'image/jpeg'
+
+                    response = StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=content_type)
                     response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
                     return response
                 raise Http404("Remote image not found")
