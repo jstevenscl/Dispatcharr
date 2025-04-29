@@ -73,7 +73,7 @@ const CustomTableBody = ({
 
   const renderTableBodyRow = (row, index, style = {}) => {
     return (
-      <Box style={style}>
+      <Box style={style} key={`row-${row.id}`}>
         <Box
           key={`tr-${row.id}`}
           className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'}`}
