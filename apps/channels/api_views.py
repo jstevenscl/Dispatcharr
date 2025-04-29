@@ -689,7 +689,8 @@ class BulkUpdateChannelMembershipAPIView(APIView):
 
         if serializer.is_valid():
             updates = serializer.validated_data['channels']
-            channel_ids = [entry['channel_id'] for entry['channel_id'] in updates]
+            channel_ids = [entry['channel_id'] for entry in updates]
+
 
             memberships = ChannelProfileMembership.objects.filter(
                 channel_profile=channel_profile,
