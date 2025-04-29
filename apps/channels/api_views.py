@@ -629,14 +629,24 @@ class LogoViewSet(viewsets.ModelViewSet):
         if logo_url.startswith("/data"):  # Local file
             if not os.path.exists(logo_url):
                 raise Http404("Image not found")
-            mimetype = mimetypes.guess_type(logo_url)
-            return FileResponse(open(logo_url, "rb"), content_type=mimetype)
+
+            # Get proper mime type (first item of the tuple)
+            content_type, _ = mimetypes.guess_type(logo_url)
+            if not content_type:
+                content_type = 'image/jpeg'  # Default to a common image type
+
+            # Use context manager and set Content-Disposition to inline
+            response = StreamingHttpResponse(open(logo_url, "rb"), content_type=content_type)
+            response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
+            return response
 
         else:  # Remote image
             try:
                 remote_response = requests.get(logo_url, stream=True)
                 if remote_response.status_code == 200:
-                    return StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=remote_response.headers['Content-Type'])
+                    response = StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=remote_response.headers['Content-Type'])
+                    response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
+                    return response
                 raise Http404("Remote image not found")
             except requests.RequestException:
                 raise Http404("Error fetching remote image")
@@ -679,7 +689,7 @@ class BulkUpdateChannelMembershipAPIView(APIView):
 
         if serializer.is_valid():
             updates = serializer.validated_data['channels']
-            channel_ids = [entry['channel_id'] for entry in updates]
+            channel_ids = [entry['channel_id'] for entry['channel_id'] in updates]
 
             memberships = ChannelProfileMembership.objects.filter(
                 channel_profile=channel_profile,
