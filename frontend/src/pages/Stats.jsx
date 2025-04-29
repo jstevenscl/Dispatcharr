@@ -34,6 +34,7 @@ import duration from 'dayjs/plugin/duration';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Sparkline } from '@mantine/charts';
 import useStreamProfilesStore from '../store/streamProfiles';
+import usePlaylistsStore from '../store/playlists'; // Add this import
 import { useLocation } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 
@@ -83,6 +84,22 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
   const [currentM3UProfile, setCurrentM3UProfile] = useState(null);  // Add state for current M3U profile
+
+  // Get M3U account data from the playlists store
+  const m3uAccounts = usePlaylistsStore((s) => s.playlists);
+
+  // Create a map of M3U account IDs to names for quick lookup
+  const m3uAccountsMap = useMemo(() => {
+    const map = {};
+    if (m3uAccounts && Array.isArray(m3uAccounts)) {
+      m3uAccounts.forEach(account => {
+        if (account.id) {
+          map[account.id] = account.name;
+        }
+      });
+    }
+    return map;
+  }, [m3uAccounts]);
 
   // Safety check - if channel doesn't have required data, don't render
   if (!channel || !channel.channel_id) {
@@ -346,13 +363,22 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const m3uProfileName = currentM3UProfile?.name ||
     channel.m3u_profile?.name ||
     channel.m3u_profile_name ||
-    'Default M3U';
+    'Unknown M3U Profile';
 
   // Create select options for available streams
-  const streamOptions = availableStreams.map(stream => ({
-    value: stream.id.toString(),
-    label: `${stream.name || `Stream #${stream.id}`}`, // Make sure stream name is clear
-  }));
+  const streamOptions = availableStreams.map(stream => {
+    // Get account name from our mapping if it exists
+    const accountName = stream.m3u_account && m3uAccountsMap[stream.m3u_account]
+      ? m3uAccountsMap[stream.m3u_account]
+      : stream.m3u_account
+        ? `M3U #${stream.m3u_account}`
+        : 'Unknown M3U';
+
+    return {
+      value: stream.id.toString(),
+      label: `${stream.name || `Stream #${stream.id}`} [${accountName}]`,
+    };
+  });
 
   return (
     <Card
