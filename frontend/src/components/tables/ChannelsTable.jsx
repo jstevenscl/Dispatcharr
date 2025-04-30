@@ -95,19 +95,19 @@ const ChannelRowActions = React.memo(
   }) => {
     const onEdit = useCallback(() => {
       editChannel(row.original);
-    }, []);
+    }, [row.original]);
 
     const onDelete = useCallback(() => {
       deleteChannel(row.original.id);
-    }, []);
+    }, [row.original]);
 
     const onPreview = useCallback(() => {
       handleWatchStream(row.original);
-    }, []);
+    }, [row.original]);
 
     const onRecord = useCallback(() => {
       createRecording(row.original);
-    }, []);
+    }, [row.original]);
 
     return (
       <Box style={{ width: '100%', justifyContent: 'left' }}>

@@ -161,6 +161,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
         console.error('Error saving channel:', error);
       }
 
+      formik.resetForm();
       API.requeryChannels();
       setSubmitting(false);
       setTvgFilter('');
