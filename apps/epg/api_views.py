@@ -140,10 +140,6 @@ class EPGGridAPIView(APIView):
                     }
                     dummy_programs.append(dummy_program)
 
-                # Also update the channel to use this dummy tvg_id
-                channel.tvg_id = dummy_tvg_id
-                channel.save(update_fields=['tvg_id'])
-
             except Exception as e:
                 logger.error(f"Error creating dummy programs for channel {channel.name} (ID: {channel.id}): {str(e)}")
 

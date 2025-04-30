@@ -6,6 +6,7 @@ This module handles generating and delivering video streams to clients.
 import time
 import logging
 import threading
+import gevent  # Add this import at the top of your file
 from apps.proxy.config import TSConfig as Config
 from .server import ProxyServer
 from .utils import create_ts_packet, get_logger
@@ -135,7 +136,7 @@ class StreamGenerator:
                     return False
 
             # Wait a bit before checking again
-            time.sleep(0.1)
+            gevent.sleep(0.1)
 
         # Timed out waiting
         logger.warning(f"[{self.client_id}] Timed out waiting for initialization")
@@ -199,16 +200,16 @@ class StreamGenerator:
                     self.bytes_sent += len(keepalive_packet)
                     self.last_yield_time = time.time()
                     self.consecutive_empty = 0  # Reset consecutive counter but keep total empty_reads
-                    time.sleep(Config.KEEPALIVE_INTERVAL)
+                    gevent.sleep(Config.KEEPALIVE_INTERVAL)  # Replace time.sleep
                 else:
                     # Standard wait with backoff
                     sleep_time = min(0.1 * self.consecutive_empty, 1.0)
-                    time.sleep(sleep_time)
+                    gevent.sleep(sleep_time)  # Replace time.sleep
 
                 # Log empty reads periodically
                 if self.empty_reads % 50 == 0:
                     stream_status = "healthy" if (self.stream_manager and self.stream_manager.healthy) else "unknown"
-                    logger.debug(f"[{self.client_id}] Waiting for chunks beyond {self.local_index} (buffer at {self.buffer.index}, stream: {stream_status})")
+                    logger.debug(f"[{self.client_id}] Waiting for chunks beyond {self.local_index} for channel: {self.channel_id} (buffer at {self.buffer.index}, stream: {stream_status})")
 
                 # Check for ghost clients
                 if self._is_ghost_client(self.local_index):
@@ -277,7 +278,7 @@ class StreamGenerator:
                 yield chunk
                 self.bytes_sent += len(chunk)
                 self.chunks_sent += 1
-                logger.debug(f"[{self.client_id}] Sent chunk {self.chunks_sent} ({len(chunk)} bytes) to client")
+                logger.debug(f"[{self.client_id}] Sent chunk {self.chunks_sent} ({len(chunk)} bytes) for channel {self.channel_id} to client")
 
                 current_time = time.time()
 
@@ -380,14 +381,15 @@ class StreamGenerator:
                             client_count = proxy_server.client_managers[self.channel_id].get_total_client_count()
                             # Only the last client or owner should release the stream
                             if client_count <= 1 and proxy_server.am_i_owner(self.channel_id):
-                                from apps.channels.models import Stream
+                                from apps.channels.models import Channel
                                 try:
-                                    stream = Stream.objects.get(pk=stream_id)
-                                    stream.release_stream()
+                                    # Get the channel by UUID
+                                    channel = Channel.objects.get(uuid=self.channel_id)
+                                    channel.release_stream()
                                     stream_released = True
-                                    logger.debug(f"[{self.client_id}] Released stream {stream_id} for channel {self.channel_id}")
+                                    logger.debug(f"[{self.client_id}] Released stream for channel {self.channel_id}")
                                 except Exception as e:
-                                    logger.error(f"[{self.client_id}] Error releasing stream {stream_id}: {e}")
+                                    logger.error(f"[{self.client_id}] Error releasing stream for channel {self.channel_id}: {e}")
             except Exception as e:
                 logger.error(f"[{self.client_id}] Error checking stream data for release: {e}")
 
@@ -415,7 +417,7 @@ class StreamGenerator:
                 # Use the config setting instead of hardcoded value
                 shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)
                 logger.info(f"Waiting {shutdown_delay}s before checking if channel should be stopped")
-                time.sleep(shutdown_delay)
+                gevent.sleep(shutdown_delay)  # Replace time.sleep
 
                 # After delay, check global client count
                 if self.channel_id in proxy_server.client_managers:
@@ -426,9 +428,7 @@ class StreamGenerator:
                     else:
                         logger.info(f"Not shutting down channel {self.channel_id}, {total} clients still connected")
 
-            shutdown_thread = threading.Thread(target=delayed_shutdown)
-            shutdown_thread.daemon = True
-            shutdown_thread.start()
+            gevent.spawn(delayed_shutdown)
 
 def create_stream_generator(channel_id, client_id, client_ip, client_user_agent, channel_initializing=False):
     """

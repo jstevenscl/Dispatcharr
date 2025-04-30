@@ -22,7 +22,8 @@ import { SquareMinus, SquarePen } from 'lucide-react';
 const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
   const theme = useMantineTheme();
 
-  const { profiles: allProfiles } = usePlaylistsStore();
+  const allProfiles = usePlaylistsStore((s) => s.profiles);
+
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [profile, setProfile] = useState(null);
   const [profiles, setProfiles] = useState([]);

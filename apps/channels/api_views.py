@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, get_list_or_404
 from django.db import transaction
 import os, json, requests
 
@@ -19,7 +19,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
 from django.db.models import Q
 from django.http import StreamingHttpResponse, FileResponse, Http404
-
+import mimetypes
 
 from rest_framework.pagination import PageNumberPagination
 
@@ -88,6 +88,16 @@ class StreamViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def list(self, request, *args, **kwargs):
+        ids = request.query_params.get('ids', None)
+        if ids:
+            ids = ids.split(',')
+            streams = get_list_or_404(Stream, id__in=ids)
+            serializer = self.get_serializer(streams, many=True)
+            return Response(serializer.data)
+
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'], url_path='ids')
     def get_ids(self, request, *args, **kwargs):
         # Get the filtered queryset
@@ -127,6 +137,13 @@ class ChannelPagination(PageNumberPagination):
     page_size_query_param = 'page_size'  # Allow clients to specify page size
     max_page_size = 10000  # Prevent excessive page sizes
 
+
+    def paginate_queryset(self, queryset, request, view=None):
+        if not request.query_params.get(self.page_query_param):
+            return None  # disables pagination, returns full queryset
+
+        return super().paginate_queryset(queryset, request, view)
+
 class ChannelFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr='icontains')
     channel_group_name = OrInFilter(field_name="channel_group__name", lookup_expr="icontains")
@@ -139,16 +156,21 @@ class ChannelViewSet(viewsets.ModelViewSet):
     queryset = Channel.objects.all()
     serializer_class = ChannelSerializer
     permission_classes = [IsAuthenticated]
-    # pagination_class = ChannelPagination
+    pagination_class = ChannelPagination
 
-    # filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    # filterset_class = ChannelFilter
-    # search_fields = ['name', 'channel_group__name']
-    # ordering_fields = ['channel_number', 'name', 'channel_group__name']
-    # ordering = ['-channel_number']
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = ChannelFilter
+    search_fields = ['name', 'channel_group__name']
+    ordering_fields = ['channel_number', 'name', 'channel_group__name']
+    ordering = ['-channel_number']
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related(
+            'channel_group',
+            'logo',
+            'epg_data',
+            'stream_profile',
+        ).prefetch_related('streams')
 
         channel_group = self.request.query_params.get('channel_group')
         if channel_group:
@@ -156,6 +178,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
             qs = qs.filter(channel_group__name__in=group_names)
 
         return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        include_streams = self.request.query_params.get('include_streams', 'false') == 'true'
+        context['include_streams'] = include_streams
+        return context
 
     @action(detail=False, methods=['get'], url_path='ids')
     def get_ids(self, request, *args, **kwargs):
@@ -237,8 +265,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
         stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
 
         channel_number = None
-        if 'tv-chno' in stream_custom_props:
-            channel_number = int(stream_custom_props['tv-chno'])
+        if 'tvg-chno' in stream_custom_props:
+            channel_number = int(stream_custom_props['tvg-chno'])
         elif 'channel-number' in stream_custom_props:
             channel_number = int(stream_custom_props['channel-number'])
 
@@ -358,8 +386,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
             stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
 
             channel_number = None
-            if 'tv-chno' in stream_custom_props:
-                channel_number = int(stream_custom_props['tv-chno'])
+            if 'tvg-chno' in stream_custom_props:
+                channel_number = int(stream_custom_props['tvg-chno'])
             elif 'channel-number' in stream_custom_props:
                 channel_number = int(stream_custom_props['channel-number'])
 
@@ -513,6 +541,73 @@ class ChannelViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    @swagger_auto_schema(
+        method='post',
+        operation_description="Associate multiple channels with EPG data without triggering a full refresh",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'associations': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'channel_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'epg_data_id': openapi.Schema(type=openapi.TYPE_INTEGER)
+                        }
+                    )
+                )
+            }
+        ),
+        responses={200: "EPG data linked for multiple channels"}
+    )
+    @action(detail=False, methods=['post'], url_path='batch-set-epg')
+    def batch_set_epg(self, request):
+        """Efficiently associate multiple channels with EPG data at once."""
+        associations = request.data.get('associations', [])
+        channels_updated = 0
+        programs_refreshed = 0
+        unique_epg_ids = set()
+
+        for assoc in associations:
+            channel_id = assoc.get('channel_id')
+            epg_data_id = assoc.get('epg_data_id')
+
+            if not channel_id:
+                continue
+
+            try:
+                # Get the channel
+                channel = Channel.objects.get(id=channel_id)
+
+                # Set the EPG data
+                channel.epg_data_id = epg_data_id
+                channel.save(update_fields=['epg_data'])
+                channels_updated += 1
+
+                # Track unique EPG data IDs
+                if epg_data_id:
+                    unique_epg_ids.add(epg_data_id)
+
+            except Channel.DoesNotExist:
+                logger.error(f"Channel with ID {channel_id} not found")
+            except Exception as e:
+                logger.error(f"Error setting EPG data for channel {channel_id}: {str(e)}")
+
+        # Trigger program refresh for unique EPG data IDs
+        from apps.epg.tasks import parse_programs_for_tvg_id
+        for epg_id in unique_epg_ids:
+            parse_programs_for_tvg_id.delay(epg_id)
+            programs_refreshed += 1
+
+
+
+        return Response({
+            'success': True,
+            'channels_updated': channels_updated,
+            'programs_refreshed': programs_refreshed
+        })
+
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams
 # ─────────────────────────────────────────────────────────
@@ -601,13 +696,35 @@ class LogoViewSet(viewsets.ModelViewSet):
         if logo_url.startswith("/data"):  # Local file
             if not os.path.exists(logo_url):
                 raise Http404("Image not found")
-            return FileResponse(open(logo_url, "rb"), content_type="image/*")
+
+            # Get proper mime type (first item of the tuple)
+            content_type, _ = mimetypes.guess_type(logo_url)
+            if not content_type:
+                content_type = 'image/jpeg'  # Default to a common image type
+
+            # Use context manager and set Content-Disposition to inline
+            response = StreamingHttpResponse(open(logo_url, "rb"), content_type=content_type)
+            response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
+            return response
 
         else:  # Remote image
             try:
                 remote_response = requests.get(logo_url, stream=True)
                 if remote_response.status_code == 200:
-                    return StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type="image/*")
+                    # Try to get content type from response headers first
+                    content_type = remote_response.headers.get('Content-Type')
+
+                    # If no content type in headers or it's empty, guess based on URL
+                    if not content_type:
+                        content_type, _ = mimetypes.guess_type(logo_url)
+
+                    # If still no content type, default to common image type
+                    if not content_type:
+                        content_type = 'image/jpeg'
+
+                    response = StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=content_type)
+                    response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
+                    return response
                 raise Http404("Remote image not found")
             except requests.RequestException:
                 raise Http404("Error fetching remote image")
@@ -616,6 +733,14 @@ class ChannelProfileViewSet(viewsets.ModelViewSet):
     queryset = ChannelProfile.objects.all()
     serializer_class = ChannelProfileSerializer
     permission_classes = [IsAuthenticated]
+
+class GetChannelStreamsAPIView(APIView):
+    def get(self, request, channel_id):
+        channel = get_object_or_404(Channel, id=channel_id)
+        # Order the streams by channelstream__order to match the order in the channel view
+        streams = channel.streams.all().order_by('channelstream__order')
+        serializer = StreamSerializer(streams, many=True)
+        return Response(serializer.data)
 
 class UpdateChannelMembershipAPIView(APIView):
     def patch(self, request, profile_id, channel_id):
@@ -643,6 +768,7 @@ class BulkUpdateChannelMembershipAPIView(APIView):
         if serializer.is_valid():
             updates = serializer.validated_data['channels']
             channel_ids = [entry['channel_id'] for entry in updates]
+
 
             memberships = ChannelProfileMembership.objects.filter(
                 channel_profile=channel_profile,

@@ -25,7 +25,7 @@ const EPGsTable = () => {
   const [epgModalOpen, setEPGModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
 
-  const { epgs } = useEPGsStore();
+  const epgs = useEPGsStore((s) => s.epgs);
 
   const theme = useMantineTheme();
 
@@ -42,20 +42,39 @@ const EPGsTable = () => {
       {
         header: 'Name',
         accessorKey: 'name',
+        size: 150,
+        minSize: 100,
       },
       {
         header: 'Source Type',
         accessorKey: 'source_type',
+        size: 120,
+        minSize: 100,
       },
       {
         header: 'URL / API Key',
         accessorKey: 'url',
+        size: 200,
+        minSize: 120,
         enableSorting: false,
+        Cell: ({ cell }) => (
+          <div
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '100%',
+            }}
+          >
+            {cell.getValue()}
+          </div>
+        ),
       },
       {
         header: 'Active',
         accessorKey: 'is_active',
-        size: 100,
+        size: 80,
+        minSize: 60,
         sortingFn: 'basic',
         mantineTableBodyCellProps: {
           align: 'left',
@@ -73,6 +92,8 @@ const EPGsTable = () => {
       {
         header: 'Updated',
         accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        size: 180,
+        minSize: 100,
         enableSorting: false,
       },
     ],
@@ -144,6 +165,13 @@ const EPGsTable = () => {
       density: 'compact',
     },
     enableRowActions: true,
+    positionActionsColumn: 'last',
+    displayColumnDefOptions: {
+      'mrt-row-actions': {
+        size: 120, // Make action column wider
+        minSize: 120, // Ensure minimum width for action buttons
+      },
+    },
     renderRowActions: ({ row }) => (
       <>
         <ActionIcon
@@ -176,11 +204,7 @@ const EPGsTable = () => {
     mantineTableContainerProps: {
       style: {
         height: 'calc(40vh - 10px)',
-      },
-    },
-    displayColumnDefOptions: {
-      'mrt-row-actions': {
-        size: 10,
+        overflowX: 'auto', // Ensure horizontal scrolling works
       },
     },
   });

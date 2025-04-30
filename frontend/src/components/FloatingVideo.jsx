@@ -6,7 +6,9 @@ import mpegts from 'mpegts.js';
 import { CloseButton, Flex } from '@mantine/core';
 
 export default function FloatingVideo() {
-  const { isVisible, streamUrl, hideVideo } = useVideoStore();
+  const isVisible = useVideoStore((s) => s.isVisible);
+  const streamUrl = useVideoStore((s) => s.streamUrl);
+  const hideVideo = useVideoStore((s) => s.hideVideo);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const videoContainerRef = useRef(null);

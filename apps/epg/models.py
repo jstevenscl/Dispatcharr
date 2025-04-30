@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
+from django.conf import settings
+import os
 
 class EPGSource(models.Model):
     SOURCE_TYPE_CHOICES = [
@@ -28,6 +30,21 @@ class EPGSource(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_cache_file(self):
+        # Decide on file extension
+        file_ext = ".gz" if self.url.lower().endswith('.gz') else ".xml"
+        filename = f"{self.id}{file_ext}"
+
+        # Build full path in MEDIA_ROOT/cached_epg
+        cache_dir = os.path.join(settings.MEDIA_ROOT, "cached_epg")
+
+        # Create directory if it doesn't exist
+        os.makedirs(cache_dir, exist_ok=True)
+
+        cache = os.path.join(cache_dir, filename)
+
+        return cache
 
 class EPGData(models.Model):
     # Removed the Channel foreign key. We now just store the original tvg_id

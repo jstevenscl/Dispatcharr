@@ -95,8 +95,8 @@ def environment(request):
 @api_view(['GET'])
 def version(request):
     # Import version information
-    from version import __version__, __build__
+    from version import __version__, __timestamp__
     return Response({
         'version': __version__,
-        'build': __build__,
+        'timestamp': __timestamp__,
     })

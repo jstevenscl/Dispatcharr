@@ -7,7 +7,7 @@ import logging
 import time
 import json
 from django.shortcuts import get_object_or_404
-from apps.channels.models import Channel
+from apps.channels.models import Channel, Stream
 from apps.proxy.config import TSConfig as Config
 from ..server import ProxyServer
 from ..redis_keys import RedisKeys
@@ -58,7 +58,7 @@ class ChannelService:
             # Verify the stream_id was set
             stream_id_value = proxy_server.redis_client.hget(metadata_key, ChannelMetadataField.STREAM_ID)
             if stream_id_value:
-                logger.info(f"Verified stream_id {stream_id_value.decode('utf-8')} is now set in Redis")
+                logger.debug(f"Verified stream_id {stream_id_value.decode('utf-8')} is now set in Redis")
             else:
                 logger.error(f"Failed to set stream_id {stream_id} in Redis before initialization")
 
@@ -82,7 +82,7 @@ class ChannelService:
         return success
 
     @staticmethod
-    def change_stream_url(channel_id, new_url=None, user_agent=None, target_stream_id=None):
+    def change_stream_url(channel_id, new_url=None, user_agent=None, target_stream_id=None, m3u_profile_id=None):
         """
         Change the URL of an existing stream.
 
@@ -91,6 +91,7 @@ class ChannelService:
             new_url: New stream URL (optional if target_stream_id is provided)
             user_agent: Optional user agent to update
             target_stream_id: Optional target stream ID to switch to
+            m3u_profile_id: Optional M3U profile ID to update
 
         Returns:
             dict: Result information including success status and diagnostics
@@ -109,6 +110,10 @@ class ChannelService:
             new_url = stream_info['url']
             user_agent = stream_info['user_agent']
             stream_id = target_stream_id
+            # Extract M3U profile ID from stream info if available
+            if 'm3u_profile_id' in stream_info:
+                m3u_profile_id = stream_info['m3u_profile_id']
+                logger.info(f"Found M3U profile ID {m3u_profile_id} for stream ID {stream_id}")
         elif target_stream_id:
             # If we have both URL and target_stream_id, use the target_stream_id
             stream_id = target_stream_id
@@ -163,7 +168,7 @@ class ChannelService:
         # Update metadata in Redis regardless of ownership
         if proxy_server.redis_client:
             try:
-                ChannelService._update_channel_metadata(channel_id, new_url, user_agent, stream_id)
+                ChannelService._update_channel_metadata(channel_id, new_url, user_agent, stream_id, m3u_profile_id)
                 result['metadata_updated'] = True
             except Exception as e:
                 logger.error(f"Error updating Redis metadata: {e}", exc_info=True)
@@ -176,7 +181,7 @@ class ChannelService:
             old_url = manager.url
 
             # Update the stream
-            success = manager.update_url(new_url)
+            success = manager.update_url(new_url, stream_id)
             logger.info(f"Stream URL changed from {old_url} to {new_url}, result: {success}")
 
             result.update({
@@ -188,7 +193,7 @@ class ChannelService:
             # If we're not the owner, publish an event for the owner to pick up
             logger.info(f"Not the owner, requesting URL change via Redis PubSub")
             if proxy_server.redis_client:
-                ChannelService._publish_stream_switch_event(channel_id, new_url, user_agent, stream_id)
+                ChannelService._publish_stream_switch_event(channel_id, new_url, user_agent, stream_id, m3u_profile_id)
                 result.update({
                     'direct_update': False,
                     'event_published': True,
@@ -413,7 +418,7 @@ class ChannelService:
     # Helper methods for Redis operations
 
     @staticmethod
-    def _update_channel_metadata(channel_id, url, user_agent=None, stream_id=None):
+    def _update_channel_metadata(channel_id, url, user_agent=None, stream_id=None, m3u_profile_id=None):
         """Update channel metadata in Redis"""
         proxy_server = ProxyServer.get_instance()
 
@@ -432,7 +437,11 @@ class ChannelService:
             metadata[ChannelMetadataField.USER_AGENT] = user_agent
         if stream_id:
             metadata[ChannelMetadataField.STREAM_ID] = str(stream_id)
-            logger.info(f"Updating stream ID to {stream_id} in Redis for channel {channel_id}")
+        if m3u_profile_id:
+            metadata[ChannelMetadataField.M3U_PROFILE] = str(m3u_profile_id)
+
+        # Also update the stream switch time field
+        metadata[ChannelMetadataField.STREAM_SWITCH_TIME] = str(time.time())
 
         # Use the appropriate method based on the key type
         if key_type == 'hash':
@@ -448,11 +457,11 @@ class ChannelService:
         switch_key = RedisKeys.switch_request(channel_id)
         proxy_server.redis_client.setex(switch_key, 30, url)  # 30 second TTL
 
-        logger.info(f"Updated metadata for channel {channel_id} in Redis")
+        logger.debug(f"Updated metadata for channel {channel_id} in Redis")
         return True
 
     @staticmethod
-    def _publish_stream_switch_event(channel_id, new_url, user_agent=None, stream_id=None):
+    def _publish_stream_switch_event(channel_id, new_url, user_agent=None, stream_id=None, m3u_profile_id=None):
         """Publish a stream switch event to Redis pubsub"""
         proxy_server = ProxyServer.get_instance()
 
@@ -465,6 +474,7 @@ class ChannelService:
             "url": new_url,
             "user_agent": user_agent,
             "stream_id": stream_id,
+            "m3u_profile_id": m3u_profile_id,
             "requester": proxy_server.worker_id,
             "timestamp": time.time()
         }

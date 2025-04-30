@@ -8,6 +8,7 @@ import useStreamsStore from './store/streams';
 import useStreamProfilesStore from './store/streamProfiles';
 import useSettingsStore from './store/settings';
 import { notifications } from '@mantine/notifications';
+import useChannelsTableStore from './store/channelsTable';
 
 // If needed, you can set a base host or keep it empty if relative requests
 const host = import.meta.env.DEV
@@ -91,6 +92,8 @@ const request = async (url, options = {}) => {
 };
 
 export default class API {
+  static lastQueryParams = new URLSearchParams();
+
   /**
    * A static method so we can do:  await API.getAuthToken()
    */
@@ -148,8 +151,9 @@ export default class API {
 
   static async refreshToken(refresh) {
     return await request(`${host}/api/accounts/token/refresh/`, {
+      auth: false,
       method: 'POST',
-      body: { auth: false, refresh },
+      body: { refresh },
     });
   }
 
@@ -172,9 +176,33 @@ export default class API {
 
   static async queryChannels(params) {
     try {
+      API.lastQueryParams = params;
+
       const response = await request(
         `${host}/api/channels/channels/?${params.toString()}`
       );
+
+      useChannelsTableStore.getState().queryChannels(response, params);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch channels', e);
+    }
+  }
+
+  static async requeryChannels() {
+    try {
+      const [response, ids] = await Promise.all([
+        request(
+          `${host}/api/channels/channels/?${API.lastQueryParams.toString()}`
+        ),
+        API.getAllChannelIds(API.lastQueryParams),
+      ]);
+
+      useChannelsTableStore
+        .getState()
+        .queryChannels(response, API.lastQueryParams);
+      useChannelsTableStore.getState().setAllQueryIds(ids);
 
       return response;
     } catch (e) {
@@ -258,6 +286,8 @@ export default class API {
         body: body,
       });
 
+      API.getLogos();
+
       if (response.id) {
         useChannelsStore.getState().addChannel(response);
       }
@@ -300,8 +330,16 @@ export default class API {
       const payload = { ...values };
 
       // Handle special values
-      if (payload.stream_profile_id === '0' || payload.stream_profile_id === 0) {
+      if (
+        payload.stream_profile_id === '0' ||
+        payload.stream_profile_id === 0
+      ) {
         payload.stream_profile_id = null;
+      }
+
+      // Handle logo_id properly (0 means "no logo")
+      if (payload.logo_id === '0' || payload.logo_id === 0) {
+        payload.logo_id = null;
       }
 
       // Ensure tvg_id is included properly (not as empty string)
@@ -312,15 +350,21 @@ export default class API {
       // Handle channel_number properly
       if (payload.channel_number === '') {
         payload.channel_number = null;
-      } else if (payload.channel_number !== null && payload.channel_number !== undefined) {
+      } else if (
+        payload.channel_number !== null &&
+        payload.channel_number !== undefined
+      ) {
         const parsedNumber = parseInt(payload.channel_number, 10);
         payload.channel_number = isNaN(parsedNumber) ? null : parsedNumber;
       }
 
-      const response = await request(`${host}/api/channels/channels/${payload.id}/`, {
-        method: 'PATCH',
-        body: payload,
-      });
+      const response = await request(
+        `${host}/api/channels/channels/${payload.id}/`,
+        {
+          method: 'PATCH',
+          body: payload,
+        }
+      );
 
       useChannelsStore.getState().updateChannel(response);
       return response;
@@ -349,7 +393,7 @@ export default class API {
         notifications.show({
           title: 'EPG Status',
           message: response.task_status,
-          color: 'blue'
+          color: 'blue',
         });
       }
 
@@ -367,7 +411,7 @@ export default class API {
       });
 
       // Optionally refesh the channel list in Zustand
-      await useChannelsStore.getState().fetchChannels();
+      // await useChannelsStore.getState().fetchChannels();
 
       return response;
     } catch (e) {
@@ -415,13 +459,31 @@ export default class API {
     }
   }
 
-  static async getStreams() {
+  static async getStreams(ids = null) {
     try {
-      const response = await request(`${host}/api/channels/streams/`);
+      const params = new URLSearchParams();
+      if (ids) {
+        params.append('ids', ids.join(','));
+      }
+      const response = await request(
+        `${host}/api/channels/streams/?${params.toString()}`
+      );
 
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve streams', e);
+    }
+  }
+
+  static async getChannelStreams(id) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/${id}/streams/`
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve channel streams', e);
     }
   }
 
@@ -651,7 +713,7 @@ export default class API {
       usePlaylistsStore.getState().removePlaylists([id]);
       // @TODO: MIGHT need to optimize this later if someone has thousands of channels
       // but I'm feeling laze right now
-      useChannelsStore.getState().fetchChannels();
+      // useChannelsStore.getState().fetchChannels();
     } catch (e) {
       errorNotification(`Failed to delete playlist ${id}`, e);
     }
@@ -1068,7 +1130,7 @@ export default class API {
 
       return response;
     } catch (e) {
-      errorNotification('Failed to create channle profile', e);
+      errorNotification('Failed to create channel profile', e);
     }
   }
 
@@ -1179,6 +1241,64 @@ export default class API {
       useChannelsStore.getState().fetchRecordings();
     } catch (e) {
       errorNotification(`Failed to delete recording ${id}`, e);
+    }
+  }
+
+  static async switchStream(channelId, streamId) {
+    try {
+      const response = await request(`${host}/proxy/ts/change_stream/${channelId}`, {
+        method: 'POST',
+        body: { stream_id: streamId },
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to switch stream', e);
+      throw e;
+    }
+  }
+
+  static async nextStream(channelId, streamId) {
+    try {
+      const response = await request(`${host}/proxy/ts/next_stream/${channelId}`, {
+        method: 'POST',
+        body: { stream_id: streamId },
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to switch stream', e);
+      throw e;
+    }
+  }
+
+  static async batchSetEPG(associations) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/batch-set-epg/`,
+        {
+          method: 'POST',
+          body: { associations },
+        }
+      );
+
+      // If successful, requery channels to update UI
+      if (response.success) {
+        notifications.show({
+          title: 'EPG Association',
+          message: `Updated ${response.channels_updated} channels, refreshing ${response.programs_refreshed} EPG sources.`,
+          color: 'blue',
+        });
+
+        // First fetch the complete channel data
+        await useChannelsStore.getState().fetchChannels();
+        // Then refresh the current table view
+        this.requeryChannels();
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel EPGs', e);
     }
   }
 }

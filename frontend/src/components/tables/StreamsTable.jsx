@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
-import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import API from '../../api';
-import { TableHelper } from '../../helpers';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 import useChannelsStore from '../../store/channels';
-import { useDebounce } from '../../utils';
+import { copyToClipboard, useDebounce } from '../../utils';
 import {
   SquarePlus,
   ListPlus,
   SquareMinus,
   EllipsisVertical,
+  Copy,
+  ArrowUpDown,
+  ArrowUpNarrowWide,
+  ArrowDownWideNarrow,
 } from 'lucide-react';
 import {
   TextInput,
@@ -30,15 +32,129 @@ import {
   Center,
   Pagination,
   Group,
-  NumberInput,
   NativeSelect,
   MultiSelect,
   useMantineTheme,
+  UnstyledButton,
 } from '@mantine/core';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import useSettingsStore from '../../store/settings';
 import useVideoStore from '../../store/useVideoStore';
+import useChannelsTableStore from '../../store/channelsTable';
+import { CustomTable, useTable } from './CustomTable';
+
+const StreamRowActions = ({
+  theme,
+  row,
+  editStream,
+  deleteStream,
+  handleWatchStream,
+  selectedChannelIds,
+}) => {
+  const channelSelectionStreams = useChannelsTableStore(
+    (state) =>
+      state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
+  );
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
+
+  const createChannelFromStream = async () => {
+    await API.createChannelFromStream({
+      name: row.original.name,
+      channel_number: null,
+      stream_id: row.original.id,
+    });
+    await API.requeryChannels();
+    fetchLogos();
+  };
+
+  const addStreamToChannel = async () => {
+    await API.updateChannel({
+      id: selectedChannelIds[0],
+      streams: [
+        ...new Set(
+          channelSelectionStreams.map((s) => s.id).concat([row.original.id])
+        ),
+      ],
+    });
+    await API.requeryChannels();
+  };
+
+  const onEdit = useCallback(() => {
+    editStream(row.original);
+  }, []);
+
+  const onDelete = useCallback(() => {
+    deleteStream(row.original.id);
+  }, []);
+
+  const onPreview = useCallback(() => {
+    handleWatchStream(row.original.stream_hash);
+  }, []);
+
+  return (
+    <>
+      <Tooltip label="Add to Channel">
+        <ActionIcon
+          size="xs"
+          color={theme.tailwind.blue[6]}
+          variant="transparent"
+          onClick={addStreamToChannel}
+          style={{ background: 'none' }}
+          disabled={
+            selectedChannelIds.length !== 1 ||
+            (channelSelectionStreams &&
+              channelSelectionStreams
+                .map((s) => s.id)
+                .includes(row.original.id))
+          }
+        >
+          <ListPlus size="18" fontSize="small" />
+        </ActionIcon>
+      </Tooltip>
+
+      <Tooltip label="Create New Channel">
+        <ActionIcon
+          size="xs"
+          color={theme.tailwind.green[5]}
+          variant="transparent"
+          onClick={createChannelFromStream}
+        >
+          <SquarePlus size="18" fontSize="small" />
+        </ActionIcon>
+      </Tooltip>
+
+      <Menu>
+        <Menu.Target>
+          <ActionIcon variant="transparent" size="xs">
+            <EllipsisVertical size="18" />
+          </ActionIcon>
+        </Menu.Target>
+
+        <Menu.Dropdown>
+          <Menu.Item leftSection={<Copy size="14" />}>
+            <UnstyledButton
+              variant="unstyled"
+              size="xs"
+              onClick={() => copyToClipboard(row.original.url)}
+            >
+              <Text size="xs">Copy URL</Text>
+            </UnstyledButton>
+          </Menu.Item>
+          <Menu.Item onClick={onEdit} disabled={!row.original.is_custom}>
+            <Text size="xs">Edit</Text>
+          </Menu.Item>
+          <Menu.Item onClick={onDelete} disabled={!row.original.is_custom}>
+            <Text size="xs">Delete Stream</Text>
+          </Menu.Item>
+          <Menu.Item onClick={onPreview}>
+            <Text size="xs">Preview Stream</Text>
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+    </>
+  );
+};
 
 const StreamsTable = ({}) => {
   const theme = useMantineTheme();
@@ -46,14 +162,13 @@ const StreamsTable = ({}) => {
   /**
    * useState
    */
-  const [rowSelection, setRowSelection] = useState([]);
+  const [allRowIds, setAllRowIds] = useState([]);
   const [stream, setStream] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [initialDataCount, setInitialDataCount] = useState(null);
 
   const [data, setData] = useState([]); // Holds fetched data
-  const [rowCount, setRowCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [paginationString, setPaginationString] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -62,7 +177,7 @@ const StreamsTable = ({}) => {
   // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 250,
+    pageSize: 50,
   });
   const [filters, setFilters] = useState({
     name: '',
@@ -76,19 +191,17 @@ const StreamsTable = ({}) => {
   /**
    * Stores
    */
-  const { playlists } = usePlaylistsStore();
-  const { channelGroups, channelsPageSelection, fetchLogos } =
-    useChannelsStore();
-  const channelSelectionStreams = useChannelsStore(
-    (state) => state.channels[state.channelsPageSelection[0]?.id]?.streams
-  );
-  const {
-    environment: { env_mode },
-  } = useSettingsStore();
-  const { showVideo } = useVideoStore();
+  const playlists = usePlaylistsStore((s) => s.playlists);
 
-  // Access the row virtualizer instance (optional)
-  const rowVirtualizerInstanceRef = useRef(null);
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
+  const channelSelectionStreams = useChannelsTableStore(
+    (state) =>
+      state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
+  );
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
+  const showVideo = useVideoStore((s) => s.showVideo);
 
   const handleSelectClick = (e) => {
     e.stopPropagation();
@@ -101,93 +214,67 @@ const StreamsTable = ({}) => {
   const columns = useMemo(
     () => [
       {
+        id: 'actions',
+        size: 60,
+      },
+      {
+        id: 'select',
+        size: 30,
+      },
+      {
         header: 'Name',
         accessorKey: 'name',
-        Header: ({ column }) => (
-          <TextInput
-            name="name"
-            placeholder="Name"
-            value={filters.name || ''}
-            onClick={(e) => e.stopPropagation()}
-            onChange={handleFilterChange}
-            size="xs"
-            variant="unstyled"
-            className="table-input-header"
-          />
-        ),
-        Cell: ({ cell }) => (
-          <div
+        cell: ({ getValue }) => (
+          <Box
             style={{
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}
           >
-            {cell.getValue()}
-          </div>
+            <Text size="sm">{getValue()}</Text>
+          </Box>
         ),
       },
       {
-        header: 'Group',
+        id: 'group',
         accessorFn: (row) =>
           channelGroups[row.channel_group]
             ? channelGroups[row.channel_group].name
             : '',
-        size: 100,
-        Header: ({ column }) => (
-          <Box onClick={handleSelectClick} style={{ width: '100%' }}>
-            <MultiSelect
-              placeholder="Group"
-              searchable
-              size="xs"
-              nothingFoundMessage="No options"
-              onClick={handleSelectClick}
-              onChange={handleGroupChange}
-              data={groupOptions}
-              variant="unstyled"
-              className="table-input-header custom-multiselect"
-              clearable
-            />
-          </Box>
-        ),
-        Cell: ({ cell }) => (
-          <div
+        cell: ({ getValue }) => (
+          <Box
             style={{
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}
           >
-            {cell.getValue()}
-          </div>
+            <Text size="sm">{getValue()}</Text>
+          </Box>
         ),
       },
       {
-        header: 'M3U',
-        size: 75,
+        id: 'm3u',
+        size: 150,
         accessorFn: (row) =>
           playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
-        Header: ({ column }) => (
-          <Box onClick={handleSelectClick}>
-            <Select
-              placeholder="M3U"
-              searchable
-              size="xs"
-              nothingFoundMessage="No options"
-              onClick={handleSelectClick}
-              onChange={handleM3UChange}
-              data={playlists.map((playlist) => ({
-                label: playlist.name,
-                value: `${playlist.id}`,
-              }))}
-              variant="unstyled"
-              className="table-input-header"
-            />
+        cell: ({ getValue }) => (
+          <Box
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            <Tooltip label={getValue()} openDelay={500}>
+              <Text size="sm">{getValue()}</Text>
+            </Tooltip>
           </Box>
         ),
       },
     ],
-    [playlists, groupOptions, filters, channelGroups]
+    [channelGroups, playlists]
   );
 
   /**
@@ -216,8 +303,6 @@ const StreamsTable = ({}) => {
   };
 
   const fetchData = useCallback(async () => {
-    setIsLoading(true);
-
     const params = new URLSearchParams();
     params.append('page', pagination.pageIndex + 1);
     params.append('page_size', pagination.pageSize);
@@ -235,10 +320,16 @@ const StreamsTable = ({}) => {
     });
 
     try {
-      const result = await API.queryStreams(params);
+      const [result, ids, groups] = await Promise.all([
+        API.queryStreams(params),
+        API.getAllStreamIds(params),
+        API.getStreamGroups(),
+      ]);
+
+      setAllRowIds(ids);
       setData(result.results);
-      setRowCount(result.count);
       setPageCount(Math.ceil(result.count / pagination.pageSize));
+      setGroupOptions(groups);
 
       // Calculate the starting and ending item indexes
       const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
@@ -253,37 +344,12 @@ const StreamsTable = ({}) => {
 
       // Generate the string
       setPaginationString(`${startItem} to ${endItem} of ${result.count}`);
-
-      const newSelection = {};
-      result.results.forEach((item, index) => {
-        if (selectedStreamIds.includes(item.id)) {
-          newSelection[index] = true;
-        }
-      });
-
-      // ✅ Only update rowSelection if it's different
-      if (JSON.stringify(newSelection) !== JSON.stringify(rowSelection)) {
-        setRowSelection(newSelection);
-      }
     } catch (error) {
       console.error('Error fetching data:', error);
     }
 
-    const groups = await API.getStreamGroups();
-    setGroupOptions(groups);
-
     setIsLoading(false);
   }, [pagination, sorting, debouncedFilters]);
-
-  // Fallback: Individual creation (optional)
-  const createChannelFromStream = async (stream) => {
-    await API.createChannelFromStream({
-      name: stream.name,
-      channel_number: null,
-      stream_id: stream.id,
-    });
-    fetchLogos();
-  };
 
   // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
@@ -293,6 +359,7 @@ const StreamsTable = ({}) => {
         stream_id,
       }))
     );
+    await API.requeryChannels();
     fetchLogos();
     setIsLoading(false);
   };
@@ -319,69 +386,19 @@ const StreamsTable = ({}) => {
   };
 
   const addStreamsToChannel = async () => {
-    const { streams, ...channel } = { ...channelsPageSelection[0] };
     await API.updateChannel({
-      ...channel,
-      stream_ids: [
+      id: selectedChannelIds[0],
+      streams: [
         ...new Set(
-          channelSelectionStreams
-            .map((stream) => stream.id)
-            .concat(selectedStreamIds)
+          channelSelectionStreams.map((s) => s.id).concat(selectedStreamIds)
         ),
       ],
     });
+    await API.requeryChannels();
   };
 
-  const addStreamToChannel = async (streamId) => {
-    const { streams, ...channel } = { ...channelsPageSelection[0] };
-    await API.updateChannel({
-      ...channel,
-      stream_ids: [
-        ...new Set(
-          channelSelectionStreams.map((stream) => stream.id).concat([streamId])
-        ),
-      ],
-    });
-  };
-
-  const onRowSelectionChange = (updater) => {
-    setRowSelection((prevRowSelection) => {
-      const newRowSelection =
-        typeof updater === 'function' ? updater(prevRowSelection) : updater;
-
-      const updatedSelected = new Set([...selectedStreamIds]);
-      table.getRowModel().rows.forEach((row) => {
-        if (newRowSelection[row.id] === undefined || !newRowSelection[row.id]) {
-          updatedSelected.delete(row.original.id);
-        } else {
-          updatedSelected.add(row.original.id);
-        }
-      });
-      setSelectedStreamIds([...updatedSelected]);
-
-      return newRowSelection;
-    });
-  };
-
-  const onSelectAllChange = async (e) => {
-    const selectAll = e.target.checked;
-    if (selectAll) {
-      // Get all stream IDs for current view
-      const params = new URLSearchParams();
-      Object.entries(debouncedFilters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const ids = await API.getAllStreamIds(params);
-      setSelectedStreamIds(ids);
-    } else {
-      setSelectedStreamIds([]);
-    }
-
-    const newSelection = {};
-    table.getRowModel().rows.forEach((item, index) => {
-      newSelection[index] = selectAll;
-    });
-    setRowSelection(newSelection);
+  const onRowSelectionChange = (updatedIds) => {
+    setSelectedStreamIds(updatedIds);
   };
 
   const onPageSizeChange = (e) => {
@@ -402,16 +419,6 @@ const StreamsTable = ({}) => {
     });
   };
 
-  const onPaginationChange = (updater) => {
-    const newPagination = updater(pagination);
-    if (JSON.stringify(newPagination) === JSON.stringify(pagination)) {
-      // Prevent infinite re-render when there are no results
-      return;
-    }
-
-    setPagination(updater);
-  };
-
   function handleWatchStream(streamHash) {
     let vidUrl = `/proxy/ts/stream/${streamHash}`;
     if (env_mode == 'dev') {
@@ -420,193 +427,143 @@ const StreamsTable = ({}) => {
     showVideo(vidUrl);
   }
 
-  const table = useMantineReactTable({
-    ...TableHelper.defaultProperties,
+  const onSortingChange = (column) => {
+    const sortField = sorting[0]?.id;
+    const sortDirection = sorting[0]?.desc;
+
+    if (sortField == column) {
+      if (sortDirection == false) {
+        setSorting([
+          {
+            id: column,
+            desc: true,
+          },
+        ]);
+      } else {
+        setSorting([]);
+      }
+    } else {
+      setSorting([
+        {
+          id: column,
+          desc: false,
+        },
+      ]);
+    }
+  };
+
+  const renderHeaderCell = (header) => {
+    let sortingIcon = ArrowUpDown;
+    if (sorting[0]?.id == header.id) {
+      if (sorting[0].desc === false) {
+        sortingIcon = ArrowUpNarrowWide;
+      } else {
+        sortingIcon = ArrowDownWideNarrow;
+      }
+    }
+
+    switch (header.id) {
+      case 'name':
+        return (
+          <Flex gap="sm">
+            <TextInput
+              name="name"
+              placeholder="Name"
+              value={filters.name || ''}
+              onClick={(e) => e.stopPropagation()}
+              onChange={handleFilterChange}
+              size="xs"
+              variant="unstyled"
+              className="table-input-header"
+            />
+            <Center>
+              {React.createElement(sortingIcon, {
+                onClick: () => onSortingChange('name'),
+                size: 14,
+              })}
+            </Center>
+          </Flex>
+        );
+
+      case 'group':
+        return (
+          <Box onClick={handleSelectClick} style={{ width: '100%' }}>
+            <MultiSelect
+              placeholder="Group"
+              searchable
+              size="xs"
+              nothingFoundMessage="No options"
+              onClick={handleSelectClick}
+              onChange={handleGroupChange}
+              data={groupOptions}
+              variant="unstyled"
+              className="table-input-header custom-multiselect"
+              clearable
+            />
+          </Box>
+        );
+
+      case 'm3u':
+        return (
+          <Box onClick={handleSelectClick}>
+            <Select
+              placeholder="M3U"
+              searchable
+              clearable
+              size="xs"
+              nothingFoundMessage="No options"
+              onClick={handleSelectClick}
+              onChange={handleM3UChange}
+              data={playlists.map((playlist) => ({
+                label: playlist.name,
+                value: `${playlist.id}`,
+              }))}
+              variant="unstyled"
+              className="table-input-header"
+            />
+          </Box>
+        );
+    }
+  };
+
+  const renderBodyCell = useCallback(
+    ({ cell, row }) => {
+      switch (cell.column.id) {
+        case 'actions':
+          return (
+            <StreamRowActions
+              theme={theme}
+              row={row}
+              editStream={editStream}
+              deleteStream={deleteStream}
+              handleWatchStream={handleWatchStream}
+              selectedChannelIds={selectedChannelIds}
+            />
+          );
+      }
+    },
+    [selectedChannelIds, channelSelectionStreams]
+  );
+
+  const table = useTable({
     columns,
     data,
-    enablePagination: true,
-    manualPagination: true,
-    enableTopToolbar: false,
-    enableRowVirtualization: true,
-    renderTopToolbar: () => null, // Removes the entire top toolbar
-    renderToolbarInternalActions: () => null,
-    rowVirtualizerInstanceRef,
-    rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
-    enableBottomToolbar: true,
-    renderBottomToolbar: ({ table }) => (
-      <Group
-        gap={5}
-        justify="center"
-        style={{ padding: 8, borderTop: '1px solid #666' }}
-      >
-        <Text size="xs">Page Size</Text>
-        <NativeSelect
-          size="xxs"
-          value={pagination.pageSize}
-          data={['25', '50', '100', '250', '500', '1000']}
-          onChange={onPageSizeChange}
-          style={{ paddingRight: 20 }}
-        />
-        <Pagination
-          total={pageCount}
-          value={pagination.pageIndex + 1}
-          onChange={onPageIndexChange}
-          size="xs"
-          withEdges
-          style={{ paddingRight: 20 }}
-        />
-        <Text size="xs">{paginationString}</Text>
-      </Group>
-    ),
-    enableStickyHeader: true,
-    // onPaginationChange: onPaginationChange,
-    rowCount: rowCount,
-    enableRowSelection: true,
-    mantineSelectAllCheckboxProps: {
-      checked: selectedStreamIds.length == rowCount,
-      indeterminate:
-        selectedStreamIds.length > 0 && selectedStreamIds.length !== rowCount,
-      onChange: onSelectAllChange,
-      size: 'xs',
-    },
-    muiPaginationProps: {
-      size: 'small',
-      rowsPerPageOptions: [25, 50, 100, 250, 500, 1000, 10000],
-      labelRowsPerPage: 'Rows per page',
-    },
-    onSortingChange: setSorting,
+    allRowIds,
+    filters,
+    pagination,
+    sorting,
     onRowSelectionChange: onRowSelectionChange,
-    initialState: {
-      density: 'compact',
+    manualPagination: true,
+    manualSorting: true,
+    manualFiltering: true,
+    enableRowSelection: true,
+    headerCellRenderFns: {
+      name: renderHeaderCell,
+      group: renderHeaderCell,
+      m3u: renderHeaderCell,
     },
-    state: {
-      isLoading,
-      sorting,
-      // pagination,
-      rowSelection,
-    },
-    enableRowActions: true,
-    positionActionsColumn: 'first',
-
-    enableHiding: false,
-
-    // you can still use the custom toolbar callback if you like
-    renderTopToolbarCustomActions: ({ table }) => {
-      const selectedRowCount = table.getSelectedRowModel().rows.length;
-      // optionally do something with selectedRowCount
-    },
-
-    renderRowActions: ({ row }) => (
-      <>
-        <Tooltip label="Add to Channel">
-          <ActionIcon
-            size="xs"
-            color={theme.tailwind.blue[6]}
-            variant="transparent"
-            onClick={() => addStreamToChannel(row.original.id)}
-            style={{ background: 'none' }}
-            disabled={
-              channelsPageSelection.length !== 1 ||
-              (channelSelectionStreams &&
-                channelSelectionStreams
-                  .map((stream) => stream.id)
-                  .includes(row.original.id))
-            }
-          >
-            <ListPlus size="18" fontSize="small" />
-          </ActionIcon>
-        </Tooltip>
-
-        <Tooltip label="Create New Channel">
-          <ActionIcon
-            size="xs"
-            color={theme.tailwind.green[5]}
-            variant="transparent"
-            onClick={() => createChannelFromStream(row.original)}
-          >
-            <SquarePlus size="18" fontSize="small" />
-          </ActionIcon>
-        </Tooltip>
-
-        <Menu>
-          <Menu.Target>
-            <ActionIcon variant="transparent" size="xs">
-              <EllipsisVertical size="18" />
-            </ActionIcon>
-          </Menu.Target>
-
-          <Menu.Dropdown>
-            <Menu.Item
-              onClick={() => editStream(row.original)}
-              disabled={!row.original.is_custom}
-            >
-              Edit
-            </Menu.Item>
-            <Menu.Item
-              onClick={() => deleteStream(row.original.id)}
-              disabled={!row.original.is_custom}
-            >
-              Delete Stream
-            </Menu.Item>
-            <Menu.Item
-              onClick={() => handleWatchStream(row.original.stream_hash)}
-            >
-              Preview Stream
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </>
-    ),
-    mantineTableContainerProps: {
-      style: {
-        height: 'calc(100vh - 150px)',
-        overflowY: 'auto',
-      },
-    },
-    displayColumnDefOptions: {
-      'mrt-row-actions': {
-        mantineTableHeadCellProps: {
-          align: 'left',
-          style: {
-            minWidth: '65px',
-            maxWidth: '65px',
-            paddingLeft: 10,
-            fontWeight: 'normal',
-            color: 'rgb(207,207,207)',
-            backgroundColor: '#3F3F46',
-          },
-        },
-        mantineTableBodyCellProps: {
-          style: {
-            minWidth: '65px',
-            maxWidth: '65px',
-            // paddingLeft: 0,
-            // paddingRight: 10,
-          },
-        },
-      },
-      'mrt-row-select': {
-        size: 10,
-        maxSize: 10,
-        mantineTableHeadCellProps: {
-          align: 'right',
-          style: {
-            paddding: 0,
-            // paddingLeft: 7,
-            width: '20px',
-            minWidth: '20px',
-            backgroundColor: '#3F3F46',
-          },
-        },
-        mantineTableBodyCellProps: {
-          align: 'right',
-          style: {
-            paddingLeft: 0,
-            width: '20px',
-            minWidth: '20px',
-          },
-        },
-      },
+    bodyCellRenderFns: {
+      actions: renderBodyCell,
     },
   });
 
@@ -616,21 +573,6 @@ const StreamsTable = ({}) => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Scroll to the top of the table when sorting changes
-    try {
-      rowVirtualizerInstanceRef.current?.scrollToIndex?.(0);
-    } catch (error) {
-      console.error(error);
-    }
-  }, [sorting]);
 
   return (
     <>
@@ -784,7 +726,63 @@ const StreamsTable = ({}) => {
             </Card>
           </Center>
         )}
-        {initialDataCount > 0 && <MantineReactTable table={table} />}
+        {initialDataCount > 0 && (
+          <Box
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'calc(100vh - 110px)',
+            }}
+          >
+            <Box
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                border: 'solid 1px rgb(68,68,68)',
+                borderRadius: 'var(--mantine-radius-default)',
+              }}
+            >
+              <CustomTable table={table} />
+            </Box>
+
+            <Box
+              style={{
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 3,
+                backgroundColor: '#27272A',
+              }}
+            >
+              <Group
+                gap={5}
+                justify="center"
+                style={{
+                  padding: 8,
+                  borderTop: '1px solid #666',
+                }}
+              >
+                <Text size="xs">Page Size</Text>
+                <NativeSelect
+                  size="xxs"
+                  value={pagination.pageSize}
+                  data={['25', '50', '100', '250']}
+                  onChange={onPageSizeChange}
+                  style={{ paddingRight: 20 }}
+                />
+                <Pagination
+                  total={pageCount}
+                  value={pagination.pageIndex + 1}
+                  onChange={onPageIndexChange}
+                  size="xs"
+                  withEdges
+                  style={{ paddingRight: 20 }}
+                />
+                <Text size="xs">{paginationString}</Text>
+              </Group>
+            </Box>
+          </Box>
+        )}
       </Paper>
       <StreamForm
         stream={stream}

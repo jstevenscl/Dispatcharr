@@ -15,6 +15,7 @@ import time
 import sys
 import os
 import json
+import gevent  # Add gevent import
 from typing import Dict, Optional, Set
 from apps.proxy.config import TSConfig as Config
 from apps.channels.models import Channel, Stream
@@ -209,7 +210,7 @@ class ProxyServer:
 
                                                 if shutdown_delay > 0:
                                                     logger.info(f"Waiting {shutdown_delay}s before stopping channel...")
-                                                    time.sleep(shutdown_delay)
+                                                    gevent.sleep(shutdown_delay)  # REPLACE: time.sleep(shutdown_delay)
 
                                                     # Re-check client count before stopping
                                                     total = self.redis_client.scard(client_set_key) or 0
@@ -336,7 +337,7 @@ class ProxyServer:
                     final_delay = delay + jitter
 
                     logger.error(f"Error in event listener: {e}. Retrying in {final_delay:.1f}s (attempt {retry_count})")
-                    time.sleep(final_delay)
+                    gevent.sleep(final_delay)  # REPLACE: time.sleep(final_delay)
 
                     # Try to clean up the old connection
                     try:
@@ -350,7 +351,7 @@ class ProxyServer:
                 except Exception as e:
                     logger.error(f"Error in event listener: {e}")
                     # Add a short delay to prevent rapid retries on persistent errors
-                    time.sleep(5)
+                    gevent.sleep(5)  # REPLACE: time.sleep(5)
 
         thread = threading.Thread(target=event_listener, daemon=True)
         thread.name = "redis-event-listener"
@@ -1000,7 +1001,7 @@ class ProxyServer:
                 except Exception as e:
                     logger.error(f"Error in cleanup thread: {e}", exc_info=True)
 
-                time.sleep(ConfigHelper.cleanup_check_interval())
+                gevent.sleep(ConfigHelper.cleanup_check_interval())  # REPLACE: time.sleep(ConfigHelper.cleanup_check_interval())
 
         thread = threading.Thread(target=cleanup_task, daemon=True)
         thread.name = "ts-proxy-cleanup"

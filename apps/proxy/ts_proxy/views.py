@@ -193,7 +193,8 @@ def stream_ts(request, channel_id):
                             break
                         else:
                             logger.warning(f"[{client_id}] Alternate stream #{alt['stream_id']} failed validation: {message}")
-
+                # Release stream lock before redirecting
+                channel.release_stream()
                 # Final decision based on validation results
                 if is_valid:
                     logger.info(f"[{client_id}] Redirecting to validated URL: {final_url} ({message})")
@@ -261,7 +262,6 @@ def stream_ts(request, channel_id):
 
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")
             channel_initializing = True
-            logger.info(f"[{client_id}] Channel {channel_id} initialization started")
 
         # Register client - can do this regardless of initialization state
         # Create local resources if needed
@@ -335,14 +335,32 @@ def change_stream(request, channel_id):
         data = json.loads(request.body)
         new_url = data.get('url')
         user_agent = data.get('user_agent')
+        stream_id = data.get('stream_id')
 
-        if not new_url:
-            return JsonResponse({'error': 'No URL provided'}, status=400)
+        # If stream_id is provided, get the URL and user_agent from it
+        if stream_id:
+            logger.info(f"Stream ID {stream_id} provided, looking up stream info for channel {channel_id}")
+            stream_info = get_stream_info_for_switch(channel_id, stream_id)
 
-        logger.info(f"Attempting to change stream URL for channel {channel_id} to {new_url}")
+            if 'error' in stream_info:
+                return JsonResponse({
+                    'error': stream_info['error'],
+                    'stream_id': stream_id
+                }, status=404)
+
+            # Use the info from the stream
+            new_url = stream_info['url']
+            user_agent = stream_info['user_agent']
+            m3u_profile_id = stream_info.get('m3u_profile_id')
+            # Stream ID will be passed to change_stream_url later
+        elif not new_url:
+            return JsonResponse({'error': 'Either url or stream_id must be provided'}, status=400)
+
+        logger.info(f"Attempting to change stream for channel {channel_id} to {new_url}")
 
         # Use the service layer instead of direct implementation
-        result = ChannelService.change_stream_url(channel_id, new_url, user_agent)
+        # Pass stream_id to ensure proper connection tracking
+        result = ChannelService.change_stream_url(channel_id, new_url, user_agent, stream_id, m3u_profile_id)
 
         # Get the stream manager before updating URL
         stream_manager = proxy_server.stream_managers.get(channel_id)
@@ -360,22 +378,19 @@ def change_stream(request, channel_id):
             }, status=404)
 
         # Format response based on whether it was a direct update or event-based
-        if result.get('direct_update'):
-            return JsonResponse({
-                'message': 'Stream URL updated',
-                'channel': channel_id,
-                'url': new_url,
-                'owner': True,
-                'worker_id': proxy_server.worker_id
-            })
-        else:
-            return JsonResponse({
-                'message': 'Stream URL change requested',
-                'channel': channel_id,
-                'url': new_url,
-                'owner': False,
-                'worker_id': proxy_server.worker_id
-            })
+        response_data = {
+            'message': 'Stream changed successfully',
+            'channel': channel_id,
+            'url': new_url,
+            'owner': result.get('direct_update', False),
+            'worker_id': proxy_server.worker_id
+        }
+
+        # Include stream_id in response if it was used
+        if stream_id:
+            response_data['stream_id'] = stream_id
+
+        return JsonResponse(response_data)
 
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)

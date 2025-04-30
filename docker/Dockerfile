@@ -5,6 +5,8 @@ ARG BRANCH=main
 # This will be overridden by the GitHub Actions workflow
 # when building the Docker image for production.
 ARG REPO_URL=https://github.com/Dispatcharr/Dispatcharr
+# Add timestamp argument
+ARG TIMESTAMP
 
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
@@ -26,8 +28,16 @@ RUN apt-get update && \
     virtualenv /dispatcharrpy && \
     git clone -b ${BRANCH} ${REPO_URL} /app && \
     cd /app && \
-    rm -rf .git && \
-    cd /app && \
+    rm -rf .git
+
+# Update version.py with build timestamp if provided
+RUN if [ -n "$TIMESTAMP" ]; then \
+    echo "Updating timestamp to ${TIMESTAMP} in version.py" && \
+    sed -i "s|__timestamp__ = None.*|__timestamp__ = '${TIMESTAMP}'    # Set during CI/CD build process|" /app/version.py && \
+    cat /app/version.py; \
+    fi
+
+RUN cd /app && \
     pip install --no-cache-dir -r requirements.txt
 
 # Use a dedicated Node.js stage for frontend building

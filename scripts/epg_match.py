@@ -34,7 +34,7 @@ def process_data(input_data):
 
     channels = input_data["channels"]
     epg_data = input_data["epg_data"]
-    region_code = input_data["region_code"]
+    region_code = input_data.get("region_code", None)
 
     epg_embeddings = None
     if any(row["norm_name"] for row in epg_data):
@@ -47,6 +47,21 @@ def process_data(input_data):
     matched_channels = []
 
     for chan in channels:
+        normalized_tvg_id = chan.get("tvg_id", "")
+        fallback_name = chan["tvg_id"].strip() if chan["tvg_id"] else chan["name"]
+
+        # Exact TVG ID match (direct match)
+        epg_by_tvg_id = next((epg for epg in epg_data if epg["tvg_id"] == normalized_tvg_id), None)
+        if normalized_tvg_id and epg_by_tvg_id:
+            chan["epg_data_id"] = epg_by_tvg_id["id"]
+            channels_to_update.append(chan)
+
+            # Add to matched_channels list so it's counted in the total
+            matched_channels.append((chan['id'], fallback_name, epg_by_tvg_id["tvg_id"]))
+
+            eprint(f"Channel {chan['id']} '{fallback_name}' => EPG found by tvg_id={epg_by_tvg_id['tvg_id']}")
+            continue
+
         # If channel has a tvg_id that doesn't exist in EPGData, do direct check.
         # I don't THINK this should happen now that we assign EPG on channel creation.
         if chan["tvg_id"]:
@@ -59,7 +74,6 @@ def process_data(input_data):
                 continue
 
         # C) Perform name-based fuzzy matching
-        fallback_name = chan["tvg_id"].strip() if chan["tvg_id"] else chan["name"]
         if not chan["norm_chan"]:
             eprint(f"Channel {chan['id']} '{chan['name']}' => empty after normalization, skipping")
             continue

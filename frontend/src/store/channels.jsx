@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import api from '../api';
 import { notifications } from '@mantine/notifications';
 
-const defaultProfiles = { 0: { id: '0', name: 'All', channels: [] } };
+const defaultProfiles = { 0: { id: '0', name: 'All', channels: new Set() } };
 
 const useChannelsStore = create((set, get) => ({
   channels: [],
@@ -10,7 +10,6 @@ const useChannelsStore = create((set, get) => ({
   channelGroups: {},
   profiles: {},
   selectedProfileId: '0',
-  selectedProfileChannels: [],
   channelsPageSelection: [],
   stats: {},
   activeChannels: {},
@@ -19,6 +18,11 @@ const useChannelsStore = create((set, get) => ({
   recordings: [],
   isLoading: false,
   error: null,
+  forceUpdate: 0,
+
+  triggerUpdate: () => {
+    set({ forecUpdate: new Date() });
+  },
 
   fetchChannels: async () => {
     set({ isLoading: true, error: null });
@@ -64,7 +68,10 @@ const useChannelsStore = create((set, get) => ({
       const profiles = await api.getChannelProfiles();
       set({
         profiles: profiles.reduce((acc, profile) => {
-          acc[profile.id] = profile;
+          acc[profile.id] = {
+            ...profile,
+            channels: new Set(profile.channels),
+          };
           return acc;
         }, defaultProfiles),
         isLoading: false,
@@ -80,10 +87,7 @@ const useChannelsStore = create((set, get) => ({
     set((state) => {
       const profiles = { ...state.profiles };
       Object.values(profiles).forEach((item) => {
-        item.channels.push({
-          id: newChannel.id,
-          enabled: true,
-        });
+        item.channels.add(newChannel.id);
       });
 
       return {
@@ -96,11 +100,6 @@ const useChannelsStore = create((set, get) => ({
           [newChannel.uuid]: newChannel.id,
         },
         profiles,
-        selectedProfile: profiles[state.selectedProfileId],
-        selectedProfileChannels:
-          state.selectedProfileId == '0'
-            ? []
-            : profiles[state.selectedProfileId].channels,
       };
     });
   },
@@ -109,30 +108,23 @@ const useChannelsStore = create((set, get) => ({
     set((state) => {
       const channelsByUUID = {};
       const logos = {};
-      const profileChannels = [];
+      const profileChannels = new Set();
 
       const channelsByID = newChannels.reduce((acc, channel) => {
         acc[channel.id] = channel;
         channelsByUUID[channel.uuid] = channel.id;
-        if (channel.logo) {
-          logos[channel.logo.id] = channel.logo;
-        }
-
-        profileChannels.push({
-          id: channel.id,
-          enabled: true,
-        });
+        profileChannels.add(channel.id);
 
         return acc;
       }, {});
 
-      const profiles = { ...state.profiles };
-      Object.values(profiles).forEach((item) => {
-        item.channels = item.channels.concat(profileChannels); // Append a new channel object
+      const newProfiles = { ...defaultProfiles };
+      Object.entries(state.profiles).forEach(([id, profile]) => {
+        newProfiles[id] = {
+          ...profile,
+          channels: new Set([...profile.channels, ...profileChannels]),
+        };
       });
-
-      console.log(profileChannels);
-      console.log(profiles);
 
       return {
         channels: {
@@ -143,13 +135,7 @@ const useChannelsStore = create((set, get) => ({
           ...state.channelsByUUID,
           ...channelsByUUID,
         },
-        logos: {
-          ...state.logos,
-          ...logos,
-        },
-        profiles,
-        selectedProfile: profiles[state.selectedProfileId],
-        selectedProfileChannels: profiles[state.selectedProfileId].channels,
+        profiles: newProfiles,
       };
     }),
 
@@ -233,15 +219,21 @@ const useChannelsStore = create((set, get) => ({
     set((state) => ({
       profiles: {
         ...state.profiles,
-        [profile.id]: profile,
+        [profile.id]: {
+          ...profile,
+          channels: new Set(profile.channels),
+        },
       },
     })),
 
   updateProfile: (profile) =>
     set((state) => ({
-      channels: {
+      profiles: {
         ...state.profiles,
-        [profile.id]: profile,
+        [profile.id]: {
+          ...profile,
+          channels: new Set(profile.channels),
+        },
       },
     })),
 
@@ -256,8 +248,6 @@ const useChannelsStore = create((set, get) => ({
       if (profileIds.includes(state.selectedProfileId)) {
         additionalUpdates = {
           selectedProfileId: '0',
-          selectedProfileChannels: [],
-          selectedProfile: {},
         };
       }
 
@@ -272,32 +262,43 @@ const useChannelsStore = create((set, get) => ({
 
   updateProfileChannels: (channelIds, profileId, enabled) =>
     set((state) => {
-      // Get the specific profile
       const profile = state.profiles[profileId];
-      if (!profile) return state; // Profile doesn't exist, no update needed
+      if (!profile) return {};
 
-      // Efficiently update only the specific channel
-      return {
+      const currentChannelsSet = profile.channels;
+      let hasChanged = false;
+
+      if (enabled) {
+        for (const id of channelIds) {
+          if (!currentChannelsSet.has(id)) {
+            currentChannelsSet.add(id);
+            hasChanged = true;
+          }
+        }
+      } else {
+        for (const id of channelIds) {
+          if (currentChannelsSet.has(id)) {
+            currentChannelsSet.delete(id);
+            hasChanged = true;
+          }
+        }
+      }
+
+      if (!hasChanged) return {}; // No need to update anything
+
+      const updatedProfile = {
+        ...profile,
+        channels: currentChannelsSet,
+      };
+
+      const updates = {
         profiles: {
           ...state.profiles,
-          [profileId]: {
-            ...profile,
-            channels: profile.channels.map((channel) =>
-              channelIds.includes(channel.id)
-                ? { ...channel, enabled } // Update enabled flag
-                : channel
-            ),
-          },
+          [profileId]: updatedProfile,
         },
-        selectedProfileChannels: state.selectedProfileChannels.map(
-          (channel) => ({
-            id: channel.id,
-            enabled: channelIds.includes(channel.id)
-              ? enabled
-              : channel.enabled,
-          })
-        ),
       };
+
+      return updates;
     }),
 
   setChannelsPageSelection: (channelsPageSelection) =>
@@ -306,7 +307,6 @@ const useChannelsStore = create((set, get) => ({
   setSelectedProfileId: (id) =>
     set((state) => ({
       selectedProfileId: id,
-      selectedProfileChannels: id == '0' ? [] : state.profiles[id].channels,
     })),
 
   setChannelStats: (stats) => {
@@ -318,11 +318,9 @@ const useChannelsStore = create((set, get) => ({
         activeClients: oldClients,
         channelsByUUID,
       } = state;
-
       const newClients = {};
       const newChannels = stats.channels.reduce((acc, ch) => {
         acc[ch.channel_id] = ch;
-
         if (currentStats.channels) {
           if (oldChannels[ch.channel_id] === undefined) {
             notifications.show({
@@ -332,7 +330,6 @@ const useChannelsStore = create((set, get) => ({
             });
           }
         }
-
         ch.clients.map((client) => {
           newClients[client.client_id] = client;
           // This check prevents the notifications if streams are active on page load
@@ -346,10 +343,8 @@ const useChannelsStore = create((set, get) => ({
             }
           }
         });
-
         return acc;
       }, {});
-
       // This check prevents the notifications if streams are active on page load
       if (currentStats.channels) {
         for (const uuid in oldChannels) {
@@ -361,7 +356,6 @@ const useChannelsStore = create((set, get) => ({
             });
           }
         }
-
         for (const clientId in oldClients) {
           if (newClients[clientId] === undefined) {
             notifications.show({
@@ -372,7 +366,6 @@ const useChannelsStore = create((set, get) => ({
           }
         }
       }
-
       return {
         stats,
         activeChannels: newChannels,

@@ -62,29 +62,21 @@ def fetch_xmltv(source):
     if not source.url:
         return
 
+    if os.path.exists(source.get_cache_file()):
+        os.remove(source.get_cache_file())
+
     logger.info(f"Fetching XMLTV data from source: {source.name}")
     try:
         response = requests.get(source.url, timeout=30)
         response.raise_for_status()
         logger.debug("XMLTV data fetched successfully.")
 
-        # Decide on file extension
-        file_ext = ".gz" if source.url.lower().endswith('.gz') else ".xml"
-        filename = f"{source.name}_{uuid.uuid4().hex[:8]}{file_ext}"
-
-        # Build full path in MEDIA_ROOT/cached_epg
-        epg_dir = os.path.join(settings.MEDIA_ROOT, "cached_epg")
-        os.makedirs(epg_dir, exist_ok=True)
-        file_path = os.path.join(epg_dir, filename)
+        cache_file = source.get_cache_file()
 
         # Save raw data
-        with open(file_path, 'wb') as f:
+        with open(cache_file, 'wb') as f:
             f.write(response.content)
-        logger.info(f"Cached EPG file saved to {file_path}")
-
-        # Save the file_path on the EPGSource instance so it can be retrieved later.
-        source.file_path = file_path
-        source.save(update_fields=['file_path'])
+        logger.info(f"Cached EPG file saved to {cache_file}")
 
     except Exception as e:
         logger.error(f"Error fetching XMLTV from {source.name}: {e}", exc_info=True)
@@ -92,6 +84,9 @@ def fetch_xmltv(source):
 
 def parse_channels_only(source):
     file_path = source.file_path
+    if not file_path:
+        file_path = source.get_cache_file()
+
     logger.info(f"Parsing channels from EPG file: {file_path}")
     existing_epgs = {e.tvg_id: e for e in EPGData.objects.filter(epg_source=source)}
 
@@ -165,13 +160,19 @@ def parse_programs_for_tvg_id(epg_id):
     # First, remove all existing programs
     ProgramData.objects.filter(epg=epg).delete()
 
+    file_path = epg_source.file_path
+    if not file_path:
+        file_path = epg_source.get_cache_file()
+        if not os.path.exists(file_path):
+            fetch_xmltv(epg_source)
+
     # Read entire file (decompress if .gz)
-    if epg_source.file_path.endswith('.gz'):
-        with open(epg_source.file_path, 'rb') as gz_file:
+    if file_path.endswith('.gz'):
+        with open(file_path, 'rb') as gz_file:
             decompressed = gzip.decompress(gz_file.read())
             xml_data = decompressed.decode('utf-8')
     else:
-        with open(epg_source.file_path, 'r', encoding='utf-8') as xml_file:
+        with open(file_path, 'r', encoding='utf-8') as xml_file:
             xml_data = xml_file.read()
 
     root = ET.fromstring(xml_data)

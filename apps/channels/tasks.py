@@ -75,21 +75,42 @@ def match_epg_channels():
     matched_channels = []
     channels_to_update = []
 
-    channels_json = [{
-        "id": channel.id,
-        "name": channel.name,
-        "tvg_id": channel.tvg_id,
-        "fallback_name": channel.tvg_id.strip() if channel.tvg_id else channel.name,
-        "norm_chan": normalize_name(channel.tvg_id.strip() if channel.tvg_id else channel.name)
-    } for channel in Channel.objects.all() if not channel.epg_data]
+    # Get channels that don't have EPG data assigned
+    channels_without_epg = Channel.objects.filter(epg_data__isnull=True)
+    logger.info(f"Found {channels_without_epg.count()} channels without EPG data")
 
-    epg_json = [{
-        'id': epg.id,
-        'tvg_id': epg.tvg_id,
-        'name': epg.name,
-        'norm_name': normalize_name(epg.name),
-        'epg_source_id': epg.epg_source.id,
-    } for epg in EPGData.objects.all()]
+    channels_json = []
+    for channel in channels_without_epg:
+        # Normalize TVG ID - strip whitespace and convert to lowercase
+        normalized_tvg_id = channel.tvg_id.strip().lower() if channel.tvg_id else ""
+        if normalized_tvg_id:
+            logger.info(f"Processing channel {channel.id} '{channel.name}' with TVG ID='{normalized_tvg_id}'")
+
+        channels_json.append({
+            "id": channel.id,
+            "name": channel.name,
+            "tvg_id": normalized_tvg_id,  # Use normalized TVG ID
+            "original_tvg_id": channel.tvg_id,  # Keep original for reference
+            "fallback_name": normalized_tvg_id if normalized_tvg_id else channel.name,
+            "norm_chan": normalize_name(normalized_tvg_id if normalized_tvg_id else channel.name)
+        })
+
+    # Similarly normalize EPG data TVG IDs
+    epg_json = []
+    for epg in EPGData.objects.all():
+        normalized_tvg_id = epg.tvg_id.strip().lower() if epg.tvg_id else ""
+        epg_json.append({
+            'id': epg.id,
+            'tvg_id': normalized_tvg_id,  # Use normalized TVG ID
+            'original_tvg_id': epg.tvg_id,  # Keep original for reference
+            'name': epg.name,
+            'norm_name': normalize_name(epg.name),
+            'epg_source_id': epg.epg_source.id if epg.epg_source else None,
+        })
+
+    # Log available EPG data TVG IDs for debugging
+    unique_epg_tvg_ids = set(e['tvg_id'] for e in epg_json if e['tvg_id'])
+    logger.info(f"Available EPG TVG IDs: {', '.join(sorted(unique_epg_tvg_ids))}")
 
     payload = {
         "channels": channels_json,
@@ -159,12 +180,25 @@ def match_epg_channels():
 
     logger.info("Finished EPG matching logic.")
 
+    # Send update with additional information for refreshing UI
     channel_layer = get_channel_layer()
+    associations = [
+        {"channel_id": chan["id"], "epg_data_id": chan["epg_data_id"]}
+        for chan in channels_to_update_dicts
+    ]
+
     async_to_sync(channel_layer.group_send)(
         'updates',
         {
             'type': 'update',
-            "data": {"success": True, "type": "epg_match"}
+            "data": {
+                "success": True,
+                "type": "epg_match",
+                "refresh_channels": True,  # Flag to tell frontend to refresh channels
+                "matches_count": total_matched,
+                "message": f"EPG matching complete: {total_matched} channel(s) matched",
+                "associations": associations  # Add the associations data
+            }
         }
     )
 

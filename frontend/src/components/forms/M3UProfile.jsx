@@ -17,22 +17,37 @@ import { useDebounce } from '../../utils';
 
 const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
   const [websocketReady, sendMessage] = useWebSocket();
-  const { profileSearchPreview, profileResult } = usePlaylistsStore();
 
+  const profileSearchPreview = usePlaylistsStore((s) => s.profileSearchPreview);
+  const profileResult = usePlaylistsStore((s) => s.profileResult);
+
+  const [streamUrl, setStreamUrl] = useState('');
   const [searchPattern, setSearchPattern] = useState('');
   const [replacePattern, setReplacePattern] = useState('');
   const [debouncedPatterns, setDebouncedPatterns] = useState({});
 
   useEffect(() => {
+    async function fetchStreamUrl() {
+      const params = new URLSearchParams();
+      params.append('page', 1);
+      params.append('page_size', 1);
+      params.append('m3u_account', m3u.id);
+      const response = await API.queryStreams(params);
+      setStreamUrl(response.results[0].url);
+    }
+    fetchStreamUrl();
+  }, []);
+
+  useEffect(() => {
     sendMessage(
       JSON.stringify({
         type: 'm3u_profile_test',
-        url: m3u.server_url,
+        url: streamUrl,
         search: debouncedPatterns['search'] || '',
         replace: debouncedPatterns['replace'] || '',
       })
     );
-  }, [m3u, debouncedPatterns]);
+  }, [m3u, debouncedPatterns, streamUrl]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -153,7 +168,7 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
         <Text>Search</Text>
         <Text
           dangerouslySetInnerHTML={{
-            __html: profileSearchPreview || m3u.server_url,
+            __html: profileSearchPreview || streamUrl,
           }}
           sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
         />
@@ -161,7 +176,7 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
 
       <Paper p="md" radius="md" withBorder>
         <Text>Replace</Text>
-        <Text>{profileResult || m3u.server_url}</Text>
+        <Text>{profileResult || streamUrl}</Text>
       </Paper>
     </Modal>
   );
