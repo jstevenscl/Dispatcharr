@@ -208,7 +208,7 @@ class StreamGenerator:
                 # Log empty reads periodically
                 if self.empty_reads % 50 == 0:
                     stream_status = "healthy" if (self.stream_manager and self.stream_manager.healthy) else "unknown"
-                    logger.debug(f"[{self.client_id}] Waiting for chunks beyond {self.local_index} (buffer at {self.buffer.index}, stream: {stream_status})")
+                    logger.debug(f"[{self.client_id}] Waiting for chunks beyond {self.local_index} for channel: {self.channel_id} (buffer at {self.buffer.index}, stream: {stream_status})")
 
                 # Check for ghost clients
                 if self._is_ghost_client(self.local_index):
@@ -277,7 +277,7 @@ class StreamGenerator:
                 yield chunk
                 self.bytes_sent += len(chunk)
                 self.chunks_sent += 1
-                logger.debug(f"[{self.client_id}] Sent chunk {self.chunks_sent} ({len(chunk)} bytes) to client")
+                logger.debug(f"[{self.client_id}] Sent chunk {self.chunks_sent} ({len(chunk)} bytes) for channel {self.channel_id} to client")
 
                 current_time = time.time()
 
