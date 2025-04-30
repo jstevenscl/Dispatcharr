@@ -719,6 +719,29 @@ class StreamManager:
             logger.error(f"Error in reconnect attempt: {e}", exc_info=True)
             return False
 
+    def _attempt_health_recovery(self):
+        """Attempt to recover stream health by switching to another stream"""
+        try:
+            logger.info(f"Attempting health recovery for channel {self.channel_id}")
+
+            # Don't try to switch if we're already in the process of switching URLs
+            if self.url_switching:
+                logger.info("URL switching already in progress, skipping health recovery")
+                return
+
+            # Try to switch to next stream
+            switch_result = self._try_next_stream()
+            if switch_result:
+                logger.info(f"Health recovery successful - switched to new stream for channel {self.channel_id}")
+                return True
+            else:
+                logger.warning(f"Health recovery failed - no alternative streams available for channel {self.channel_id}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error in health recovery attempt: {e}", exc_info=True)
+            return False
+
     def _close_connection(self):
         """Close HTTP connection resources"""
         # Close response if it exists
