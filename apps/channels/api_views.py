@@ -600,6 +600,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
             parse_programs_for_tvg_id.delay(epg_id)
             programs_refreshed += 1
 
+
+
         return Response({
             'success': True,
             'channels_updated': channels_updated,
