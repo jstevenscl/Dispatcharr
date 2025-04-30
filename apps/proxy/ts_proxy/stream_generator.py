@@ -417,7 +417,7 @@ class StreamGenerator:
                 # Use the config setting instead of hardcoded value
                 shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)
                 logger.info(f"Waiting {shutdown_delay}s before checking if channel should be stopped")
-                gevent.sleep(shutdown_delay)
+                gevent.sleep(shutdown_delay)  # Replace time.sleep
 
                 # After delay, check global client count
                 if self.channel_id in proxy_server.client_managers:
@@ -428,9 +428,7 @@ class StreamGenerator:
                     else:
                         logger.info(f"Not shutting down channel {self.channel_id}, {total} clients still connected")
 
-            shutdown_thread = threading.Thread(target=delayed_shutdown)
-            shutdown_thread.daemon = True
-            shutdown_thread.start()
+            gevent.spawn(delayed_shutdown)
 
 def create_stream_generator(channel_id, client_id, client_ip, client_user_agent, channel_initializing=False):
     """

@@ -6,6 +6,7 @@ import time
 import socket
 import requests
 import subprocess
+import gevent  # Add this import
 from typing import Optional, List
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
@@ -157,7 +158,7 @@ class StreamManager:
                 url_failed = False
                 if self.url_switching:
                     logger.debug("Skipping connection attempt during URL switch")
-                    time.sleep(0.1)
+                    gevent.sleep(0.1)  # REPLACE time.sleep(0.1)
                     continue
                 # Connection retry loop for current URL
                 while self.running and self.retry_count < self.max_retries and not url_failed:
@@ -205,7 +206,7 @@ class StreamManager:
                             # Wait with exponential backoff before retrying
                             timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count}/{self.max_retries})")
-                            time.sleep(timeout)
+                            gevent.sleep(timeout)  # REPLACE time.sleep(timeout)
 
                     except Exception as e:
                         logger.error(f"Connection error: {e}", exc_info=True)
@@ -218,7 +219,7 @@ class StreamManager:
                             # Wait with exponential backoff before retrying
                             timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds after error... (attempt {self.retry_count}/{self.max_retries})")
-                            time.sleep(timeout)
+                            gevent.sleep(timeout)  # REPLACE time.sleep(timeout)
 
                 # If URL failed and we're still running, try switching to another stream
                 if url_failed and self.running:
@@ -425,7 +426,7 @@ class StreamManager:
                     else:
                         if not self.running:
                             break
-                        time.sleep(0.1)
+                        gevent.sleep(0.1)  # REPLACE time.sleep(0.1)
             else:
                 # Handle direct HTTP connection
                 chunk_count = 0
@@ -674,7 +675,7 @@ class StreamManager:
             except Exception as e:
                 logger.error(f"Error in health monitor: {e}")
 
-            time.sleep(self.health_check_interval)
+            gevent.sleep(self.health_check_interval)  # REPLACE time.sleep(self.health_check_interval)
 
     def _attempt_reconnect(self):
         """Attempt to reconnect to the current stream"""
