@@ -40,6 +40,8 @@ class EPGSource(models.Model):
         cache_dir = os.path.join(settings.MEDIA_ROOT, "cached_epg")
         cache = os.path.join(cache_dir, filename)
 
+        return cache
+
 class EPGData(models.Model):
     # Removed the Channel foreign key. We now just store the original tvg_id
     # and a name (which might simply be the tvg_id if no real channel exists).
