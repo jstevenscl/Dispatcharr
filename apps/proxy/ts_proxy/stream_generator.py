@@ -6,6 +6,7 @@ This module handles generating and delivering video streams to clients.
 import time
 import logging
 import threading
+import gevent  # Add this import at the top of your file
 from apps.proxy.config import TSConfig as Config
 from .server import ProxyServer
 from .utils import create_ts_packet, get_logger
@@ -135,7 +136,7 @@ class StreamGenerator:
                     return False
 
             # Wait a bit before checking again
-            time.sleep(0.1)
+            gevent.sleep(0.1)
 
         # Timed out waiting
         logger.warning(f"[{self.client_id}] Timed out waiting for initialization")
@@ -199,11 +200,11 @@ class StreamGenerator:
                     self.bytes_sent += len(keepalive_packet)
                     self.last_yield_time = time.time()
                     self.consecutive_empty = 0  # Reset consecutive counter but keep total empty_reads
-                    time.sleep(Config.KEEPALIVE_INTERVAL)
+                    gevent.sleep(Config.KEEPALIVE_INTERVAL)  # Replace time.sleep
                 else:
                     # Standard wait with backoff
                     sleep_time = min(0.1 * self.consecutive_empty, 1.0)
-                    time.sleep(sleep_time)
+                    gevent.sleep(sleep_time)  # Replace time.sleep
 
                 # Log empty reads periodically
                 if self.empty_reads % 50 == 0:
@@ -416,7 +417,7 @@ class StreamGenerator:
                 # Use the config setting instead of hardcoded value
                 shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)
                 logger.info(f"Waiting {shutdown_delay}s before checking if channel should be stopped")
-                time.sleep(shutdown_delay)
+                gevent.sleep(shutdown_delay)
 
                 # After delay, check global client count
                 if self.channel_id in proxy_server.client_managers:

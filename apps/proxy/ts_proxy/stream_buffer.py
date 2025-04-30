@@ -11,6 +11,7 @@ from .redis_keys import RedisKeys
 from .config_helper import ConfigHelper
 from .constants import TS_PACKET_SIZE
 from .utils import get_logger
+import gevent.event
 
 logger = get_logger()
 
@@ -46,6 +47,7 @@ class StreamBuffer:
         # Track timers for proper cleanup
         self.stopping = False
         self.fill_timers = []
+        self.chunk_available = gevent.event.Event()
 
     def add_chunk(self, chunk):
         """Add data with optimized Redis storage and TS packet alignment"""
@@ -95,6 +97,9 @@ class StreamBuffer:
 
             if writes_done > 0:
                 logger.debug(f"Added {writes_done} chunks ({self.target_chunk_size} bytes each) to Redis for channel {self.channel_id} at index {self.index}")
+
+            self.chunk_available.set()  # Signal that new data is available
+            self.chunk_available.clear()  # Reset for next notification
 
             return True
 
