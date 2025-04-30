@@ -177,7 +177,7 @@ const StreamsTable = ({}) => {
   // const [allRowsSelected, setAllRowsSelected] = useState(false);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 250,
+    pageSize: 50,
   });
   const [filters, setFilters] = useState({
     name: '',

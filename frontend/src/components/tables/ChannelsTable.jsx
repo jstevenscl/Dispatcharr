@@ -523,9 +523,9 @@ const ChannelsTable = ({}) => {
         },
       },
       {
+        id: 'channel_number',
         accessorKey: 'channel_number',
-        size: 30,
-        header: () => <Flex justify="flex-end">#</Flex>,
+        size: 40,
         cell: ({ getValue }) => (
           <Flex justify="flex-end" style={{ width: '100%' }}>
             <Text size="sm">{getValue()}</Text>
@@ -706,6 +706,7 @@ const ChannelsTable = ({}) => {
     },
     headerCellRenderFns: {
       name: renderHeaderCell,
+      channel_number: renderHeaderCell,
       channel_group: renderHeaderCell,
       enabled: renderHeaderCell,
     },
