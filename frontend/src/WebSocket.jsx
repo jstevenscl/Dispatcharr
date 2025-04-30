@@ -14,7 +14,7 @@ import useEPGsStore from './store/epgs';
 import { Box, Button, Stack } from '@mantine/core';
 import API from './api';
 
-export const WebsocketContext = createContext([false, () => {}, null]);
+export const WebsocketContext = createContext([false, () => { }, null]);
 
 export const WebsocketProvider = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
@@ -121,11 +121,17 @@ export const WebsocketProvider = ({ children }) => {
 
         case 'epg_match':
           notifications.show({
-            message: 'EPG match is complete!',
+            message: event.data.message || 'EPG match is complete!',
             color: 'green.5',
           });
-          // fetchChannels();
-          fetchEPGData();
+
+          // Check if we have associations data and use the more efficient batch API
+          if (event.data.associations && event.data.associations.length > 0) {
+            API.batchSetEPG(event.data.associations);
+          } else {
+            // Fall back to legacy full refresh method
+            API.requeryChannels();
+          }
           break;
 
         case 'm3u_profile_test':

@@ -541,6 +541,71 @@ class ChannelViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
+    @swagger_auto_schema(
+        method='post',
+        operation_description="Associate multiple channels with EPG data without triggering a full refresh",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'associations': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'channel_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'epg_data_id': openapi.Schema(type=openapi.TYPE_INTEGER)
+                        }
+                    )
+                )
+            }
+        ),
+        responses={200: "EPG data linked for multiple channels"}
+    )
+    @action(detail=False, methods=['post'], url_path='batch-set-epg')
+    def batch_set_epg(self, request):
+        """Efficiently associate multiple channels with EPG data at once."""
+        associations = request.data.get('associations', [])
+        channels_updated = 0
+        programs_refreshed = 0
+        unique_epg_ids = set()
+
+        for assoc in associations:
+            channel_id = assoc.get('channel_id')
+            epg_data_id = assoc.get('epg_data_id')
+
+            if not channel_id:
+                continue
+
+            try:
+                # Get the channel
+                channel = Channel.objects.get(id=channel_id)
+
+                # Set the EPG data
+                channel.epg_data_id = epg_data_id
+                channel.save(update_fields=['epg_data'])
+                channels_updated += 1
+
+                # Track unique EPG data IDs
+                if epg_data_id:
+                    unique_epg_ids.add(epg_data_id)
+
+            except Channel.DoesNotExist:
+                logger.error(f"Channel with ID {channel_id} not found")
+            except Exception as e:
+                logger.error(f"Error setting EPG data for channel {channel_id}: {str(e)}")
+
+        # Trigger program refresh for unique EPG data IDs
+        from apps.epg.tasks import parse_programs_for_tvg_id
+        for epg_id in unique_epg_ids:
+            parse_programs_for_tvg_id.delay(epg_id)
+            programs_refreshed += 1
+
+        return Response({
+            'success': True,
+            'channels_updated': channels_updated,
+            'programs_refreshed': programs_refreshed
+        })
+
 # ─────────────────────────────────────────────────────────
 # 4) Bulk Delete Streams
 # ─────────────────────────────────────────────────────────
@@ -629,14 +694,35 @@ class LogoViewSet(viewsets.ModelViewSet):
         if logo_url.startswith("/data"):  # Local file
             if not os.path.exists(logo_url):
                 raise Http404("Image not found")
-            mimetype = mimetypes.guess_type(logo_url)
-            return FileResponse(open(logo_url, "rb"), content_type=mimetype)
+
+            # Get proper mime type (first item of the tuple)
+            content_type, _ = mimetypes.guess_type(logo_url)
+            if not content_type:
+                content_type = 'image/jpeg'  # Default to a common image type
+
+            # Use context manager and set Content-Disposition to inline
+            response = StreamingHttpResponse(open(logo_url, "rb"), content_type=content_type)
+            response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
+            return response
 
         else:  # Remote image
             try:
                 remote_response = requests.get(logo_url, stream=True)
                 if remote_response.status_code == 200:
-                    return StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=remote_response.headers['Content-Type'])
+                    # Try to get content type from response headers first
+                    content_type = remote_response.headers.get('Content-Type')
+
+                    # If no content type in headers or it's empty, guess based on URL
+                    if not content_type:
+                        content_type, _ = mimetypes.guess_type(logo_url)
+
+                    # If still no content type, default to common image type
+                    if not content_type:
+                        content_type = 'image/jpeg'
+
+                    response = StreamingHttpResponse(remote_response.iter_content(chunk_size=8192), content_type=content_type)
+                    response['Content-Disposition'] = 'inline; filename="{}"'.format(os.path.basename(logo_url))
+                    return response
                 raise Http404("Remote image not found")
             except requests.RequestException:
                 raise Http404("Error fetching remote image")
@@ -680,6 +766,7 @@ class BulkUpdateChannelMembershipAPIView(APIView):
         if serializer.is_valid():
             updates = serializer.validated_data['channels']
             channel_ids = [entry['channel_id'] for entry in updates]
+
 
             memberships = ChannelProfileMembership.objects.filter(
                 channel_profile=channel_profile,

@@ -193,7 +193,8 @@ def stream_ts(request, channel_id):
                             break
                         else:
                             logger.warning(f"[{client_id}] Alternate stream #{alt['stream_id']} failed validation: {message}")
-
+                # Release stream lock before redirecting
+                channel.release_stream()
                 # Final decision based on validation results
                 if is_valid:
                     logger.info(f"[{client_id}] Redirecting to validated URL: {final_url} ({message})")
@@ -261,7 +262,6 @@ def stream_ts(request, channel_id):
 
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")
             channel_initializing = True
-            logger.info(f"[{client_id}] Channel {channel_id} initialization started")
 
         # Register client - can do this regardless of initialization state
         # Create local resources if needed
@@ -351,6 +351,7 @@ def change_stream(request, channel_id):
             # Use the info from the stream
             new_url = stream_info['url']
             user_agent = stream_info['user_agent']
+            m3u_profile_id = stream_info.get('m3u_profile_id')
             # Stream ID will be passed to change_stream_url later
         elif not new_url:
             return JsonResponse({'error': 'Either url or stream_id must be provided'}, status=400)
@@ -359,7 +360,7 @@ def change_stream(request, channel_id):
 
         # Use the service layer instead of direct implementation
         # Pass stream_id to ensure proper connection tracking
-        result = ChannelService.change_stream_url(channel_id, new_url, user_agent, stream_id)
+        result = ChannelService.change_stream_url(channel_id, new_url, user_agent, stream_id, m3u_profile_id)
 
         # Get the stream manager before updating URL
         stream_manager = proxy_server.stream_managers.get(channel_id)

@@ -337,6 +337,11 @@ export default class API {
         payload.stream_profile_id = null;
       }
 
+      // Handle logo_id properly (0 means "no logo")
+      if (payload.logo_id === '0' || payload.logo_id === 0) {
+        payload.logo_id = null;
+      }
+
       // Ensure tvg_id is included properly (not as empty string)
       if (payload.tvg_id === '') {
         payload.tvg_id = null;
@@ -1134,7 +1139,7 @@ export default class API {
 
       return response;
     } catch (e) {
-      errorNotification('Failed to create channle profile', e);
+      errorNotification('Failed to create channel profile', e);
     }
   }
 
@@ -1279,6 +1284,33 @@ export default class API {
     } catch (e) {
       errorNotification('Failed to switch stream', e);
       throw e;
+    }
+  }
+
+  static async batchSetEPG(associations) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/batch-set-epg/`,
+        {
+          method: 'POST',
+          body: { associations },
+        }
+      );
+
+      // If successful, requery channels to update UI
+      if (response.success) {
+        notifications.show({
+          title: 'EPG Association',
+          message: `Updated ${response.channels_updated} channels, refreshing ${response.programs_refreshed} EPG sources.`,
+          color: 'blue',
+        });
+
+        this.requeryChannels();
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channel EPGs', e);
     }
   }
 }

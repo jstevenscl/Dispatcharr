@@ -6,6 +6,7 @@ import time
 import socket
 import requests
 import subprocess
+import gevent  # Add this import
 from typing import Optional, List
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
@@ -157,7 +158,7 @@ class StreamManager:
                 url_failed = False
                 if self.url_switching:
                     logger.debug("Skipping connection attempt during URL switch")
-                    time.sleep(0.1)
+                    gevent.sleep(0.1)  # REPLACE time.sleep(0.1)
                     continue
                 # Connection retry loop for current URL
                 while self.running and self.retry_count < self.max_retries and not url_failed:
@@ -205,7 +206,7 @@ class StreamManager:
                             # Wait with exponential backoff before retrying
                             timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds... (attempt {self.retry_count}/{self.max_retries})")
-                            time.sleep(timeout)
+                            gevent.sleep(timeout)  # REPLACE time.sleep(timeout)
 
                     except Exception as e:
                         logger.error(f"Connection error: {e}", exc_info=True)
@@ -218,7 +219,7 @@ class StreamManager:
                             # Wait with exponential backoff before retrying
                             timeout = min(.25 * self.retry_count, 3)  # Cap at 3 seconds
                             logger.info(f"Reconnecting in {timeout} seconds after error... (attempt {self.retry_count}/{self.max_retries})")
-                            time.sleep(timeout)
+                            gevent.sleep(timeout)  # REPLACE time.sleep(timeout)
 
                 # If URL failed and we're still running, try switching to another stream
                 if url_failed and self.running:
@@ -425,7 +426,7 @@ class StreamManager:
                     else:
                         if not self.running:
                             break
-                        time.sleep(0.1)
+                        gevent.sleep(0.1)  # REPLACE time.sleep(0.1)
             else:
                 # Handle direct HTTP connection
                 chunk_count = 0
@@ -502,15 +503,6 @@ class StreamManager:
                 owner_key = RedisKeys.channel_owner(self.channel_id)
                 current_owner = self.buffer.redis_client.get(owner_key)
 
-                if current_owner and current_owner.decode('utf-8') == self.worker_id:
-                    try:
-                        from apps.channels.models import Stream
-                        stream = Stream.objects.get(pk=self.current_stream_id)
-                        stream.release_stream()
-                        logger.info(f"Released stream {self.current_stream_id} for channel {self.channel_id}")
-                    except Exception as e:
-                        logger.error(f"Error releasing stream {self.current_stream_id}: {e}")
-
         # Cancel all buffer check timers
         for timer in list(self._buffer_check_timers):
             try:
@@ -544,13 +536,35 @@ class StreamManager:
         # Set running to false to ensure thread exits
         self.running = False
 
-    def update_url(self, new_url):
+    def update_url(self, new_url, stream_id=None):
         """Update stream URL and reconnect with proper cleanup for both HTTP and transcode sessions"""
         if new_url == self.url:
             logger.info(f"URL unchanged: {new_url}")
             return False
 
         logger.info(f"Switching stream URL from {self.url} to {new_url}")
+
+        # Import both models for proper resource management
+        from apps.channels.models import Stream, Channel
+
+        # Update stream profile if we're switching streams
+        if self.current_stream_id and stream_id and self.current_stream_id != stream_id:
+            try:
+                # Get the channel by UUID
+                channel = Channel.objects.get(uuid=self.channel_id)
+
+                # Get stream to find its profile
+                new_stream = Stream.objects.get(pk=stream_id)
+
+                # Use the new method to update the profile and manage connection counts
+                if new_stream.m3u_account_id:
+                    success = channel.update_stream_profile(new_stream.m3u_account_id)
+                    if success:
+                        logger.debug(f"Updated stream profile for channel {self.channel_id} to use profile from stream {stream_id}")
+                    else:
+                        logger.warning(f"Failed to update stream profile for channel {self.channel_id}")
+            except Exception as e:
+                logger.error(f"Error updating stream profile for channel {self.channel_id}: {e}")
 
         # CRITICAL: Set a flag to prevent immediate reconnection with old URL
         self.url_switching = True
@@ -567,6 +581,14 @@ class StreamManager:
         old_url = self.url
         self.url = new_url
         self.connected = False
+
+        # Update stream ID if provided
+        if stream_id:
+            old_stream_id = self.current_stream_id
+            self.current_stream_id = stream_id
+            # Add stream ID to tried streams for proper tracking
+            self.tried_stream_ids.add(stream_id)
+            logger.info(f"Updated stream ID from {old_stream_id} to {stream_id} for channel {self.buffer.channel_id}")
 
         # Reset retry counter to allow immediate reconnect
         self.retry_count = 0
@@ -653,7 +675,7 @@ class StreamManager:
             except Exception as e:
                 logger.error(f"Error in health monitor: {e}")
 
-            time.sleep(self.health_check_interval)
+            gevent.sleep(self.health_check_interval)  # REPLACE time.sleep(self.health_check_interval)
 
     def _attempt_reconnect(self):
         """Attempt to reconnect to the current stream"""
@@ -695,6 +717,29 @@ class StreamManager:
 
         except Exception as e:
             logger.error(f"Error in reconnect attempt: {e}", exc_info=True)
+            return False
+
+    def _attempt_health_recovery(self):
+        """Attempt to recover stream health by switching to another stream"""
+        try:
+            logger.info(f"Attempting health recovery for channel {self.channel_id}")
+
+            # Don't try to switch if we're already in the process of switching URLs
+            if self.url_switching:
+                logger.info("URL switching already in progress, skipping health recovery")
+                return
+
+            # Try to switch to next stream
+            switch_result = self._try_next_stream()
+            if switch_result:
+                logger.info(f"Health recovery successful - switched to new stream for channel {self.channel_id}")
+                return True
+            else:
+                logger.warning(f"Health recovery failed - no alternative streams available for channel {self.channel_id}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error in health recovery attempt: {e}", exc_info=True)
             return False
 
     def _close_connection(self):
@@ -1005,7 +1050,7 @@ class StreamManager:
                 logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id}")
 
             # IMPORTANT: Just update the URL, don't stop the channel or release resources
-            switch_result = self.update_url(new_url)
+            switch_result = self.update_url(new_url, stream_id)
             if not switch_result:
                 logger.error(f"Failed to update URL for stream ID {stream_id}")
                 return False

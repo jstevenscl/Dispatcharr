@@ -34,6 +34,7 @@ import duration from 'dayjs/plugin/duration';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Sparkline } from '@mantine/charts';
 import useStreamProfilesStore from '../store/streamProfiles';
+import usePlaylistsStore from '../store/playlists'; // Add this import
 import { useLocation } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 
@@ -82,11 +83,38 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const [availableStreams, setAvailableStreams] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
+  const [currentM3UProfile, setCurrentM3UProfile] = useState(null);  // Add state for current M3U profile
+
+  // Get M3U account data from the playlists store
+  const m3uAccounts = usePlaylistsStore((s) => s.playlists);
+
+  // Create a map of M3U account IDs to names for quick lookup
+  const m3uAccountsMap = useMemo(() => {
+    const map = {};
+    if (m3uAccounts && Array.isArray(m3uAccounts)) {
+      m3uAccounts.forEach(account => {
+        if (account.id) {
+          map[account.id] = account.name;
+        }
+      });
+    }
+    return map;
+  }, [m3uAccounts]);
 
   // Safety check - if channel doesn't have required data, don't render
   if (!channel || !channel.channel_id) {
     return null;
   }
+
+  // Update M3U profile information when channel data changes
+  useEffect(() => {
+    // If the channel data includes M3U profile information, update our state
+    if (channel.m3u_profile || channel.m3u_profile_name) {
+      setCurrentM3UProfile({
+        name: channel.m3u_profile?.name || channel.m3u_profile_name || 'Default M3U'
+      });
+    }
+  }, [channel.m3u_profile, channel.m3u_profile_name, channel.stream_id]);
 
   // Fetch available streams for this channel
   useEffect(() => {
@@ -110,6 +138,11 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
 
             if (matchingStream) {
               setActiveStreamId(matchingStream.id.toString());
+
+              // If the stream has M3U profile info, save it
+              if (matchingStream.m3u_profile) {
+                setCurrentM3UProfile(matchingStream.m3u_profile);
+              }
             }
           }
         }
@@ -138,6 +171,14 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
       // Update the local active stream ID immediately
       setActiveStreamId(streamId);
 
+      // Update M3U profile information if available in the response
+      if (response && response.m3u_profile) {
+        setCurrentM3UProfile(response.m3u_profile);
+      } else if (selectedStream && selectedStream.m3u_profile) {
+        // Fallback to the profile from the selected stream
+        setCurrentM3UProfile(selectedStream.m3u_profile);
+      }
+
       // Show detailed notification with stream name
       notifications.show({
         title: 'Stream switching',
@@ -152,6 +193,12 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           if (channelId) {
             const updatedStreamData = await API.getChannelStreams(channelId);
             console.log("Channel streams after switch:", updatedStreamData);
+
+            // Update current stream information with fresh data
+            const updatedStream = updatedStreamData.find(s => s.id.toString() === streamId);
+            if (updatedStream && updatedStream.m3u_profile) {
+              setCurrentM3UProfile(updatedStream.m3u_profile);
+            }
           }
         } catch (error) {
           console.error("Error checking streams after switch:", error);
@@ -269,7 +316,14 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
         </Center>
       </Box>
     ),
-    renderDetailPanel: ({ row }) => <Box>{row.original.user_agent}</Box>,
+    renderDetailPanel: ({ row }) => (
+      <Box p="xs">
+        <Group spacing="xs" align="flex-start">
+          <Text size="xs" fw={500} color="dimmed">User Agent:</Text>
+          <Text size="xs">{row.original.user_agent || "Unknown"}</Text>
+        </Group>
+      </Box>
+    ),
     mantineExpandButtonProps: ({ row, table }) => ({
       size: 'xs',
       style: {
@@ -305,11 +359,26 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const avgBitrate = channel.avg_bitrate || '0 Kbps';
   const streamProfileName = channel.stream_profile?.name || 'Unknown Profile';
 
+  // Use currentM3UProfile if available, otherwise fall back to channel data
+  const m3uProfileName = currentM3UProfile?.name ||
+    channel.m3u_profile?.name ||
+    channel.m3u_profile_name ||
+    'Unknown M3U Profile';
+
   // Create select options for available streams
-  const streamOptions = availableStreams.map(stream => ({
-    value: stream.id.toString(),
-    label: `${stream.name || `Stream #${stream.id}`}`, // Make sure stream name is clear
-  }));
+  const streamOptions = availableStreams.map(stream => {
+    // Get account name from our mapping if it exists
+    const accountName = stream.m3u_account && m3uAccountsMap[stream.m3u_account]
+      ? m3uAccountsMap[stream.m3u_account]
+      : stream.m3u_account
+        ? `M3U #${stream.m3u_account}`
+        : 'Unknown M3U';
+
+    return {
+      value: stream.id.toString(),
+      label: `${stream.name || `Stream #${stream.id}`} [${accountName}]`,
+    };
+  });
 
   return (
     <Card
@@ -325,12 +394,23 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     >
       <Stack style={{ position: 'relative' }}>
         <Group justify="space-between">
-          <img
-            src={logoUrl || logo}
-            width="100"
-            style={{ maxHeight: '50px', objectFit: 'contain' }}
-            alt="channel logo"
-          />
+          <Box style={{
+            width: '100px',
+            height: '50px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <img
+              src={logoUrl || logo}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain'
+              }}
+              alt="channel logo"
+            />
+          </Box>
 
           <Group>
             <Box>
@@ -360,9 +440,21 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
             <Text fw={500}>{channelName}</Text>
           </Group>
 
+          <Tooltip label="Active Stream Profile">
+            <Group gap={5}>
+              <Video size="18" />
+              {streamProfileName}
+            </Group>
+          </Tooltip>
+        </Flex>
+
+        {/* Display M3U profile information */}
+        <Flex justify="flex-end" align="center" mt={-8}>
           <Group gap={5}>
-            <Video size="18" />
-            {streamProfileName}
+            <HardDriveUpload size="18" />
+            <Tooltip label="Current M3U Profile">
+              <Text size="xs">{m3uProfileName}</Text>
+            </Tooltip>
           </Group>
         </Flex>
 
