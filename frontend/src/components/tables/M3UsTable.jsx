@@ -358,7 +358,7 @@ const M3UTable = () => {
       <MantineReactTable table={table} />
 
       <M3UForm
-        playlist={playlist}
+        m3uAccount={playlist}
         isOpen={playlistModalOpen}
         onClose={closeModal}
         playlistCreated={playlistCreated}

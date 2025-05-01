@@ -10,6 +10,7 @@ from django.core.cache import cache
 import os
 from rest_framework.decorators import action
 from django.conf import settings
+from .tasks import refresh_m3u_groups
 
 # Import all models, including UserAgent.
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
@@ -55,6 +56,10 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
 
         # Now call super().create() to create the instance
         response = super().create(request, *args, **kwargs)
+
+        print(response.data.get('account_type'))
+        if response.data.get('account_type') == M3UAccount.Types.XC:
+            refresh_m3u_groups(response.data.get('id'))
 
         # After the instance is created, return the response
         return response

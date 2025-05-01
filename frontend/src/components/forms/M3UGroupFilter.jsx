@@ -42,7 +42,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
         name: channelGroups[group.channel_group].name,
       }))
     );
-  }, [channelGroups]);
+  }, [playlist, channelGroups]);
 
   const toggleGroupEnabled = (id) => {
     setGroupStates(

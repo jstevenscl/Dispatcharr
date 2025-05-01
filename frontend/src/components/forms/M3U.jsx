@@ -27,12 +27,19 @@ import usePlaylistsStore from '../../store/playlists';
 import { notifications } from '@mantine/notifications';
 import { isNotEmpty, useForm } from '@mantine/form';
 
-const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
+const M3U = ({
+  m3uAccount = null,
+  isOpen,
+  onClose,
+  playlistCreated = false,
+}) => {
   const theme = useMantineTheme();
 
   const userAgents = useUserAgentsStore((s) => s.userAgents);
   const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
+  const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
 
+  const [playlist, setPlaylist] = useState(null);
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [groupFilterModalOpen, setGroupFilterModalOpen] = useState(false);
@@ -61,28 +68,31 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   });
 
   useEffect(() => {
-    if (playlist) {
+    console.log(m3uAccount);
+    if (m3uAccount) {
+      setPlaylist(m3uAccount);
       form.setValues({
-        name: playlist.name,
-        server_url: playlist.server_url,
-        max_streams: playlist.max_streams,
-        user_agent: playlist.user_agent ? `${playlist.user_agent}` : '0',
-        is_active: playlist.is_active,
-        refresh_interval: playlist.refresh_interval,
-        is_xc: playlist.account_type == 'XC',
-        username: playlist.username ?? '',
+        name: m3uAccount.name,
+        server_url: m3uAccount.server_url,
+        max_streams: m3uAccount.max_streams,
+        user_agent: m3uAccount.user_agent ? `${m3uAccount.user_agent}` : '0',
+        is_active: m3uAccount.is_active,
+        refresh_interval: m3uAccount.refresh_interval,
+        is_xc: m3uAccount.account_type == 'XC',
+        username: m3uAccount.username ?? '',
         password: '',
       });
 
-      if (playlist.account_type == 'XC') {
+      if (m3uAccount.account_type == 'XC') {
         setShowCredentialFields(true);
       } else {
         setShowCredentialFields(false);
       }
     } else {
+      setPlaylist(null);
       form.reset();
     }
-  }, [playlist]);
+  }, [m3uAccount]);
 
   useEffect(() => {
     if (form.values.is_xc) {
@@ -124,15 +134,26 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
         file,
       });
 
-      notifications.show({
-        title: 'Fetching M3U Groups',
-        message: 'Filter out groups or refresh M3U once complete.',
-        // color: 'green.5',
-      });
+      if (values.account_type != 'XC') {
+        notifications.show({
+          title: 'Fetching M3U Groups',
+          message: 'Filter out groups or refresh M3U once complete.',
+          // color: 'green.5',
+        });
 
-      // Don't prompt for group filters, but keeping this here
-      // in case we want to revive it
-      newPlaylist = null;
+        // Don't prompt for group filters, but keeping this here
+        // in case we want to revive it
+        newPlaylist = null;
+        close();
+        return;
+      }
+
+      const updatedPlaylist = await API.getPlaylist(newPlaylist.id);
+      await Promise.all([fetchChannelGroups(), fetchPlaylists()]);
+      console.log('opening group options');
+      setPlaylist(updatedPlaylist);
+      setGroupFilterModalOpen(true);
+      return;
     }
 
     form.reset();
@@ -140,13 +161,16 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     onClose(newPlaylist);
   };
 
+  const close = () => {
+    form.reset();
+    setFile(null);
+    setPlaylist(null);
+    onClose();
+  };
+
   const closeGroupFilter = () => {
     setGroupFilterModalOpen(false);
-    if (playlistCreated) {
-      form.reset();
-      setFile(null);
-      onClose();
-    }
+    close();
   };
 
   useEffect(() => {
@@ -160,7 +184,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
   }
 
   return (
-    <Modal size={700} opened={isOpen} onClose={onClose} title="M3U Account">
+    <Modal size={700} opened={isOpen} onClose={close} title="M3U Account">
       <LoadingOverlay
         visible={form.submitting}
         overlayBlur={2}
