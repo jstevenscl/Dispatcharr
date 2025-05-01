@@ -292,8 +292,8 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
             if streams_to_update:
                 Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys})
-            # if len(existing_streams.keys()) > 0:
-            #     Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
+            if len(existing_streams.keys()) > 0:
+                Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
         logger.error(f"Bulk create failed: {str(e)}")
 
