@@ -44,9 +44,9 @@ RUN cd /app && \
 FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY --from=builder /app /app
-RUN corepack enable && corepack prepare yarn@stable --activate && \
-    yarn install && \
-    yarn build && \
+RUN npm install --ignore-scripts && \
+    npm rebuild && \
+    npm run build && \
     find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
 
 FROM python:3.13-slim
