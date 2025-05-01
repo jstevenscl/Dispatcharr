@@ -12,6 +12,7 @@ from .config_helper import ConfigHelper
 from .constants import TS_PACKET_SIZE
 from .utils import get_logger
 import gevent.event
+import gevent  # Make sure this import is at the top
 
 logger = get_logger()
 
@@ -236,8 +237,8 @@ class StreamBuffer:
         timers_cancelled = 0
         for timer in list(self.fill_timers):
             try:
-                if timer and timer.is_alive():
-                    timer.cancel()
+                if timer and not timer.dead:  # Changed from timer.is_alive()
+                    timer.kill()  # Changed from timer.cancel()
                     timers_cancelled += 1
             except Exception as e:
                 logger.error(f"Error canceling timer: {e}")
@@ -325,8 +326,7 @@ class StreamBuffer:
         if self.stopping:
             return None
 
-        timer = threading.Timer(delay, callback, args=args, kwargs=kwargs)
-        timer.daemon = True
-        timer.start()
+        # Replace threading.Timer with gevent.spawn_later for better compatibility
+        timer = gevent.spawn_later(delay, callback, *args, **kwargs)
         self.fill_timers.append(timer)
         return timer

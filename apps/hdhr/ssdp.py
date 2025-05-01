@@ -2,6 +2,7 @@ import os
 import socket
 import threading
 import time
+import gevent  # Add this import
 from django.conf import settings
 
 # SSDP Multicast Address and Port
@@ -59,7 +60,7 @@ def ssdp_broadcaster(host_ip):
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
     while True:
         sock.sendto(notify.encode("utf-8"), (SSDP_MULTICAST, SSDP_PORT))
-        time.sleep(30)
+        gevent.sleep(30)  # Replace time.sleep with gevent.sleep
 
 def start_ssdp():
     host_ip = get_host_ip()
