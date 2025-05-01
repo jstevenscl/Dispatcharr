@@ -41,12 +41,12 @@ RUN cd /app && \
     pip install --no-cache-dir -r requirements.txt
 
 # Use a dedicated Node.js stage for frontend building
-FROM node:20-slim AS frontend-builder
+FROM node:20 AS frontend-builder
 WORKDIR /app/frontend
 COPY --from=builder /app /app
-RUN npm install --ignore-scripts && \
-    npm rebuild && \
-    npm run build && \
+RUN corepack enable && corepack prepare yarn@stable --activate && \
+    yarn install && \
+    yarn build && \
     find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
 
 FROM python:3.13-slim
