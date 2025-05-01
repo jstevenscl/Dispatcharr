@@ -128,9 +128,6 @@ export const WebsocketProvider = ({ children }) => {
           // Check if we have associations data and use the more efficient batch API
           if (event.data.associations && event.data.associations.length > 0) {
             API.batchSetEPG(event.data.associations);
-          } else {
-            // Fall back to legacy full refresh method
-            API.requeryChannels();
           }
           break;
 

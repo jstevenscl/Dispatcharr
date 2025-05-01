@@ -15,7 +15,9 @@ const M3UPage = () => {
     <Stack
       style={{
         padding: 10,
+        height: 'calc(100vh - 60px)', // Set a specific height to ensure proper display
       }}
+      spacing="xs" // Reduce spacing to give tables more room
     >
       <Box sx={{ flex: '1 1 50%', overflow: 'hidden' }}>
         <M3UsTable />

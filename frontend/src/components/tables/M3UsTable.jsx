@@ -99,16 +99,21 @@ const M3UTable = () => {
       {
         header: 'Name',
         accessorKey: 'name',
+        size: 150,
+        minSize: 100, // Minimum width
       },
       {
         header: 'URL / File',
         accessorKey: 'server_url',
+        size: 200,
+        minSize: 120,
         Cell: ({ cell }) => (
           <div
             style={{
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
+              maxWidth: '100%',
             }}
           >
             {cell.getValue()}
@@ -118,7 +123,8 @@ const M3UTable = () => {
       {
         header: 'Max Streams',
         accessorKey: 'max_streams',
-        size: 200,
+        size: 120,
+        minSize: 80,
       },
       {
         header: 'Status',
@@ -132,12 +138,14 @@ const M3UTable = () => {
 
           return generateStatusString(refreshProgress[row.id]);
         },
-        size: 200,
+        size: 150,
+        minSize: 80,
       },
       {
         header: 'Active',
         accessorKey: 'is_active',
-        size: 100,
+        size: 80,
+        minSize: 60,
         sortingFn: 'basic',
         mantineTableBodyCellProps: {
           align: 'left',
@@ -155,6 +163,8 @@ const M3UTable = () => {
       {
         header: 'Updated',
         accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        size: 180,
+        minSize: 100,
         enableSorting: false,
       },
     ],
@@ -239,6 +249,13 @@ const M3UTable = () => {
       density: 'compact',
     },
     enableRowActions: true,
+    positionActionsColumn: 'last',
+    displayColumnDefOptions: {
+      'mrt-row-actions': {
+        size: 120, // Make action column wider
+        minSize: 120, // Ensure minimum width for action buttons
+      },
+    },
     renderRowActions: ({ row }) => (
       <>
         <ActionIcon
@@ -273,6 +290,7 @@ const M3UTable = () => {
     mantineTableContainerProps: {
       style: {
         height: 'calc(40vh - 10px)',
+        overflowX: 'auto', // Ensure horizontal scrolling works
       },
     },
   });

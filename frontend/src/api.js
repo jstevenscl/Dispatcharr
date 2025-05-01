@@ -1305,6 +1305,9 @@ export default class API {
           color: 'blue',
         });
 
+        // First fetch the complete channel data
+        await useChannelsStore.getState().fetchChannels();
+        // Then refresh the current table view
         this.requeryChannels();
       }
 
