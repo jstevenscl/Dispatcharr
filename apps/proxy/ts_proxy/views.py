@@ -24,6 +24,7 @@ from .services.channel_service import ChannelService
 from .url_utils import generate_stream_url, transform_url, get_stream_info_for_switch, get_stream_object, get_alternate_streams
 from .utils import get_logger
 from uuid import UUID
+import gevent
 
 logger = get_logger()
 
@@ -119,7 +120,7 @@ def stream_ts(request, channel_id):
                 # Wait before retrying (using exponential backoff with a cap)
                 wait_time = min(0.5 * (2 ** attempt), 2.0)  # Caps at 2 seconds
                 logger.info(f"[{client_id}] Waiting {wait_time:.1f}s for a connection to become available (attempt {attempt+1}/{max_retries})")
-                time.sleep(wait_time)
+                gevent.sleep(wait_time)  # FIXED: Using gevent.sleep instead of time.sleep
 
             if stream_url is None:
                 # Make sure to release any stream locks that might have been acquired
@@ -258,7 +259,7 @@ def stream_ts(request, channel_id):
                             proxy_server.stop_channel(channel_id)
                             return JsonResponse({'error': 'Failed to connect'}, status=502)
 
-                        time.sleep(0.1)
+                        gevent.sleep(0.1)  # FIXED: Using gevent.sleep instead of time.sleep
 
             logger.info(f"[{client_id}] Successfully initialized channel {channel_id}")
             channel_initializing = True
