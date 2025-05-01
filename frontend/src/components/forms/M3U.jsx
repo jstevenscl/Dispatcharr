@@ -52,6 +52,7 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
       is_active: true,
       max_streams: 0,
       refresh_interval: 24,
+      stale_stream_days: 7,
     },
 
     validate: {
@@ -65,10 +66,11 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
     if (playlist) {
       form.setValues({
         name: playlist.name,
-        server_url: playlist.server_url,
+        server_url: playlist.server_url || '',
         max_streams: playlist.max_streams,
         user_agent: playlist.user_agent ? `${playlist.user_agent}` : '0',
         is_active: playlist.is_active,
+        stale_stream_days: playlist.stale_stream_days || 7,
         refresh_interval: playlist.refresh_interval,
       });
     } else {
@@ -200,6 +202,14 @@ const M3U = ({ playlist = null, isOpen, onClose, playlistCreated = false }) => {
               label="Refresh Interval (hours)"
               {...form.getInputProps('refresh_interval')}
               key={form.key('refresh_interval')}
+            />
+
+            <NumberInput
+              min={1}
+              max={365}
+              label="Stale Stream Retention (days)"
+              description="Streams not seen for this many days will be removed"
+              {...form.getInputProps('stale_stream_days')}
             />
 
             <Checkbox

@@ -312,18 +312,31 @@ def cleanup_streams(account_id):
         m3u_account__enabled=True,
     ).values_list('id', flat=True)
     logger.info(f"Found {len(existing_groups)} active groups")
-    streams = Stream.objects.filter(m3u_account=account)
 
+    # Calculate cutoff date for stale streams
+    stale_cutoff = timezone.now() - timezone.timedelta(days=account.stale_stream_days)
+    logger.info(f"Removing streams not seen since {stale_cutoff}")
+
+    # Delete streams that are not in active groups
     streams_to_delete = Stream.objects.filter(
         m3u_account=account
     ).exclude(
-        channel_group__in=existing_groups  # Exclude products having any of the excluded tags
+        channel_group__in=existing_groups
     )
 
-    # Delete the filtered products
-    streams_to_delete.delete()
+    # Also delete streams that haven't been seen for longer than stale_stream_days
+    stale_streams = Stream.objects.filter(
+        m3u_account=account,
+        last_seen__lt=stale_cutoff
+    )
 
-    logger.info(f"Cleanup complete")
+    deleted_count = streams_to_delete.count()
+    stale_count = stale_streams.count()
+
+    streams_to_delete.delete()
+    stale_streams.delete()
+
+    logger.info(f"Cleanup complete: {deleted_count} streams removed due to group filter, {stale_count} removed as stale")
 
 @shared_task
 def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
