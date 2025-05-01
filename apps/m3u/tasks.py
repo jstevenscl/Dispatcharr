@@ -35,10 +35,15 @@ def fetch_m3u_lines(account, use_cache=False):
     """Fetch M3U file lines efficiently."""
     if account.server_url:
         if not use_cache or not os.path.exists(file_path):
-            user_agent = account.get_user_agent()
-            headers = {"User-Agent": user_agent.user_agent}
-            logger.info(f"Fetching from URL {account.server_url}")
             try:
+                # Try to get account-specific user agent first
+                user_agent_obj = account.get_user_agent()
+                user_agent = user_agent_obj.user_agent if user_agent_obj else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+                logger.debug(f"Using user agent: {user_agent} for M3U account: {account.name}")
+                headers = {"User-Agent": user_agent}
+                logger.info(f"Fetching from URL {account.server_url}")
+
                 response = requests.get(account.server_url, headers=headers, stream=True)
                 response.raise_for_status()
 
@@ -74,7 +79,7 @@ def fetch_m3u_lines(account, use_cache=False):
                                     send_m3u_update(account.id, "downloading", progress, speed=speed, elapsed_time=elapsed_time, time_remaining=time_remaining)
 
                 send_m3u_update(account.id, "downloading", 100)
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
                 return []
 
