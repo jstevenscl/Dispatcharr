@@ -13,6 +13,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from apps.channels.models import Channel
+from core.models import UserAgent, CoreSettings
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -67,7 +68,22 @@ def fetch_xmltv(source):
 
     logger.info(f"Fetching XMLTV data from source: {source.name}")
     try:
-        response = requests.get(source.url, timeout=30)
+        # Get default user agent from settings
+        default_user_agent_setting = CoreSettings.objects.filter(key='default-user-agent').first()
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0"  # Fallback default
+        if default_user_agent_setting and default_user_agent_setting.value:
+            try:
+                user_agent_obj = UserAgent.objects.filter(id=int(default_user_agent_setting.value)).first()
+                if user_agent_obj and user_agent_obj.user_agent:
+                    user_agent = user_agent_obj.user_agent
+                    logger.debug(f"Using default user agent: {user_agent}")
+            except (ValueError, Exception) as e:
+                logger.warning(f"Error retrieving default user agent, using fallback: {e}")
+        headers = {
+            'User-Agent': user_agent
+        }
+
+        response = requests.get(source.url, headers=headers, timeout=30)
         response.raise_for_status()
         logger.debug("XMLTV data fetched successfully.")
 
@@ -296,10 +312,24 @@ def parse_programs_for_source(epg_source, tvg_id=None):
 def fetch_schedules_direct(source):
     logger.info(f"Fetching Schedules Direct data from source: {source.name}")
     try:
+        # Get default user agent from settings
+        default_user_agent_setting = CoreSettings.objects.filter(key='default-user-agent').first()
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0"  # Fallback default
+
+        if default_user_agent_setting and default_user_agent_setting.value:
+            try:
+                user_agent_obj = UserAgent.objects.filter(id=int(default_user_agent_setting.value)).first()
+                if user_agent_obj and user_agent_obj.user_agent:
+                    user_agent = user_agent_obj.user_agent
+                    logger.debug(f"Using default user agent: {user_agent}")
+            except (ValueError, Exception) as e:
+                logger.warning(f"Error retrieving default user agent, using fallback: {e}")
+
         api_url = ''
         headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {source.api_key}',
+            'User-Agent': user_agent
         }
         logger.debug(f"Requesting subscriptions from Schedules Direct using URL: {api_url}")
         response = requests.get(api_url, headers=headers, timeout=30)

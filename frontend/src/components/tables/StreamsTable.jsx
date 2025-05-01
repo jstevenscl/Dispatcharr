@@ -156,7 +156,7 @@ const StreamRowActions = ({
   );
 };
 
-const StreamsTable = ({}) => {
+const StreamsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -606,23 +606,22 @@ const StreamsTable = ({}) => {
         {/* Top toolbar with Remove, Assign, Auto-match, and Add buttons */}
         <Group justify="space-between" style={{ paddingLeft: 10 }}>
           <Box>
-            {selectedStreamIds.length > 0 && (
-              <Button
-                leftSection={<IconSquarePlus size={18} />}
-                variant="light"
-                size="xs"
-                onClick={addStreamsToChannel}
-                p={5}
-                color={theme.tailwind.green[5]}
-                style={{
-                  borderWidth: '1px',
-                  borderColor: theme.tailwind.green[5],
-                  color: 'white',
-                }}
-              >
-                Add Streams to Channel
-              </Button>
-            )}
+            <Button
+              leftSection={<IconSquarePlus size={18} />}
+              variant={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? "light" : "default"}
+              size="xs"
+              onClick={addStreamsToChannel}
+              p={5}
+              color={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? theme.tailwind.green[5] : undefined}
+              style={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? {
+                borderWidth: '1px',
+                borderColor: theme.tailwind.green[5],
+                color: 'white',
+              } : undefined}
+              disabled={!(selectedStreamIds.length > 0 && selectedChannelIds.length === 1)}
+            >
+              Add Streams to Channel
+            </Button>
           </Box>
 
           <Box
