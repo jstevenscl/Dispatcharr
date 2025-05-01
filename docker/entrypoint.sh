@@ -40,8 +40,14 @@ export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
 
 # Extract version information from version.py
 export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
-export DISPATCHARR_BUILD=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__build__)")
-echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}-${DISPATCHARR_BUILD}"
+export DISPATCHARR_TIMESTAMP=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__timestamp__ or '')")
+
+# Display version information with timestamp if available
+if [ -n "$DISPATCHARR_TIMESTAMP" ]; then
+    echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION} (build: ${DISPATCHARR_TIMESTAMP})"
+else
+    echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}"
+fi
 
 # READ-ONLY - don't let users change these
 export POSTGRES_DIR=/data/db
@@ -64,7 +70,7 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_BUILD=$DISPATCHARR_BUILD" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
