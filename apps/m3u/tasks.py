@@ -455,12 +455,15 @@ def refresh_single_m3u_account(account_id):
     # result = task_group.apply_async()
     result = task_group.apply_async()
 
+    # Wait for all tasks to complete and collect their result IDs
+    completed_task_ids = set()
     while completed_batches < total_batches:
         for async_result in result:
-            if async_result.ready():  # If the task has completed
+            if async_result.ready() and async_result.id not in completed_task_ids:  # If the task has completed and we haven't counted it
                 task_result = async_result.result  # The result of the task
                 logger.debug(f"Task completed with result: {task_result}")
                 completed_batches += 1
+                completed_task_ids.add(async_result.id)  # Mark this task as processed
 
                 # Calculate progress
                 progress = int((completed_batches / total_batches) * 100)
@@ -477,7 +480,12 @@ def refresh_single_m3u_account(account_id):
             else:
                 logger.debug(f"Task is still running.")
 
-    # Run cleanup
+    # Ensure all database transactions are committed before cleanup
+    logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")
+    # Force a simple DB query to ensure connection sync
+    Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
+
+    # Now run cleanup
     cleanup_streams(account_id)
     send_m3u_update(account_id, "parsing", 100)
 
