@@ -103,17 +103,40 @@ def parse_channels_only(source):
     if not file_path:
         file_path = source.get_cache_file()
 
+    # Add check for file existence
+    if not os.path.exists(file_path):
+        logger.error(f"EPG file does not exist at path: {file_path}")
+        # Get a new cache file path and update the source
+        new_path = source.get_cache_file()
+        logger.info(f"Updating file_path from '{file_path}' to '{new_path}'")
+        source.file_path = new_path
+        source.save(update_fields=['file_path'])
+
+        # Still need to check if we need to fetch it
+        if not os.path.exists(new_path):
+            logger.info(f"New cache file does not exist, need to fetch EPG data first")
+            return
+
+        file_path = new_path
+
     logger.info(f"Parsing channels from EPG file: {file_path}")
     existing_epgs = {e.tvg_id: e for e in EPGData.objects.filter(epg_source=source)}
 
     # Read entire file (decompress if .gz)
-    if file_path.endswith('.gz'):
-        with open(file_path, 'rb') as gz_file:
-            decompressed = gzip.decompress(gz_file.read())
-            xml_data = decompressed.decode('utf-8')
-    else:
-        with open(file_path, 'r', encoding='utf-8') as xml_file:
-            xml_data = xml_file.read()
+    try:
+        if file_path.endswith('.gz'):
+            with open(file_path, 'rb') as gz_file:
+                decompressed = gzip.decompress(gz_file.read())
+                xml_data = decompressed.decode('utf-8')
+        else:
+            with open(file_path, 'r', encoding='utf-8') as xml_file:
+                xml_data = xml_file.read()
+    except FileNotFoundError:
+        logger.error(f"EPG file not found at: {file_path}")
+        return
+    except Exception as e:
+        logger.error(f"Error reading EPG file {file_path}: {e}", exc_info=True)
+        return
 
     root = ET.fromstring(xml_data)
     channels = root.findall('channel')
