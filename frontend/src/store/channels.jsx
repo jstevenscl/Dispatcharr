@@ -323,11 +323,17 @@ const useChannelsStore = create((set, get) => ({
         acc[ch.channel_id] = ch;
         if (currentStats.channels) {
           if (oldChannels[ch.channel_id] === undefined) {
-            notifications.show({
-              title: 'New channel streaming',
-              message: channels[channelsByUUID[ch.channel_id]].name,
-              color: 'blue.5',
-            });
+            // Add null checks to prevent accessing properties on undefined
+            const channelId = channelsByUUID[ch.channel_id];
+            const channel = channelId ? channels[channelId] : null;
+
+            if (channel) {
+              notifications.show({
+                title: 'New channel streaming',
+                message: channel.name,
+                color: 'blue.5',
+              });
+            }
           }
         }
         ch.clients.map((client) => {
