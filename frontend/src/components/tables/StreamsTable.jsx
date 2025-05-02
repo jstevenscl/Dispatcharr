@@ -89,8 +89,9 @@ const StreamRowActions = ({
   }, []);
 
   const onPreview = useCallback(() => {
+    console.log('Previewing stream:', row.original.name, 'ID:', row.original.id, 'Hash:', row.original.stream_hash);
     handleWatchStream(row.original.stream_hash);
-  }, []);
+  }, [row.original.id]); // Add proper dependency to ensure correct stream
 
   return (
     <>
