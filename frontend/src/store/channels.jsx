@@ -355,11 +355,23 @@ const useChannelsStore = create((set, get) => ({
       if (currentStats.channels) {
         for (const uuid in oldChannels) {
           if (newChannels[uuid] === undefined) {
-            notifications.show({
-              title: 'Channel streaming stopped',
-              message: channels[channelsByUUID[uuid]].name,
-              color: 'blue.5',
-            });
+            // Add null check for channel name
+            const channelId = channelsByUUID[uuid];
+            const channel = channelId && channels[channelId];
+
+            if (channel) {
+              notifications.show({
+                title: 'Channel streaming stopped',
+                message: channel.name,
+                color: 'blue.5',
+              });
+            } else {
+              notifications.show({
+                title: 'Channel streaming stopped',
+                message: `Channel (${uuid})`,
+                color: 'blue.5',
+              });
+            }
           }
         }
         for (const clientId in oldClients) {
