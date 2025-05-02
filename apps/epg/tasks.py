@@ -103,18 +103,27 @@ def parse_channels_only(source):
     if not file_path:
         file_path = source.get_cache_file()
 
-    # Add check for file existence
+    # Check if the file exists
     if not os.path.exists(file_path):
         logger.error(f"EPG file does not exist at path: {file_path}")
-        # Get a new cache file path and update the source
+
+        # Update the source's file_path to the default cache location
         new_path = source.get_cache_file()
         logger.info(f"Updating file_path from '{file_path}' to '{new_path}'")
         source.file_path = new_path
         source.save(update_fields=['file_path'])
 
-        # Still need to check if we need to fetch it
-        if not os.path.exists(new_path):
-            logger.info(f"New cache file does not exist, need to fetch EPG data first")
+        # If the source has a URL, fetch the data before continuing
+        if source.url:
+            logger.info(f"Fetching new EPG data from URL: {source.url}")
+            fetch_xmltv(source)
+
+            # Verify the file was downloaded successfully
+            if not os.path.exists(new_path):
+                logger.error(f"Failed to fetch EPG data, file still missing at: {new_path}")
+                return
+        else:
+            logger.error(f"No URL provided for EPG source {source.name}, cannot fetch new data")
             return
 
         file_path = new_path
@@ -202,17 +211,51 @@ def parse_programs_for_tvg_id(epg_id):
     file_path = epg_source.file_path
     if not file_path:
         file_path = epg_source.get_cache_file()
-        if not os.path.exists(file_path):
+
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        logger.error(f"EPG file not found at: {file_path}")
+
+        # Update the file path in the database
+        new_path = epg_source.get_cache_file()
+        logger.info(f"Updating file_path from '{file_path}' to '{new_path}'")
+        epg_source.file_path = new_path
+        epg_source.save(update_fields=['file_path'])
+
+        # Fetch new data before continuing
+        if epg_source.url:
+            logger.info(f"Fetching new EPG data from URL: {epg_source.url}")
             fetch_xmltv(epg_source)
 
+            # Check if fetch was successful
+            if not os.path.exists(new_path):
+                logger.error(f"Failed to fetch EPG data, file still missing at: {new_path}")
+                release_task_lock('parse_epg_programs', epg_id)
+                return
+        else:
+            logger.error(f"No URL provided for EPG source {epg_source.name}, cannot fetch new data")
+            release_task_lock('parse_epg_programs', epg_id)
+            return
+
+        file_path = new_path
+
     # Read entire file (decompress if .gz)
-    if file_path.endswith('.gz'):
-        with open(file_path, 'rb') as gz_file:
-            decompressed = gzip.decompress(gz_file.read())
-            xml_data = decompressed.decode('utf-8')
-    else:
-        with open(file_path, 'r', encoding='utf-8') as xml_file:
-            xml_data = xml_file.read()
+    try:
+        if file_path.endswith('.gz'):
+            with open(file_path, 'rb') as gz_file:
+                decompressed = gzip.decompress(gz_file.read())
+                xml_data = decompressed.decode('utf-8')
+        else:
+            with open(file_path, 'r', encoding='utf-8') as xml_file:
+                xml_data = xml_file.read()
+    except FileNotFoundError:
+        logger.error(f"EPG file not found at: {file_path}")
+        release_task_lock('parse_epg_programs', epg_id)
+        return
+    except Exception as e:
+        logger.error(f"Error reading EPG file {file_path}: {e}", exc_info=True)
+        release_task_lock('parse_epg_programs', epg_id)
+        return
 
     root = ET.fromstring(xml_data)
 
