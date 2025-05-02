@@ -12,17 +12,55 @@ export default function FloatingVideo() {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const videoContainerRef = useRef(null);
+  const isLoadingRef = useRef(false);
+
+  // Safely destroy the player to prevent errors
+  const safeDestroyPlayer = () => {
+    try {
+      if (playerRef.current) {
+        // Set a flag to ignore abort errors
+        isLoadingRef.current = false;
+
+        // First unload the source to stop any in-progress fetches
+        if (videoRef.current) {
+          // Remove src attribute and force a load to clear any pending requests
+          videoRef.current.removeAttribute('src');
+          videoRef.current.load();
+        }
+
+        // Pause the player first
+        try {
+          playerRef.current.pause();
+        } catch (e) {
+          // Ignore pause errors
+        }
+
+        // Use a try-catch block specifically for the destroy call
+        try {
+          playerRef.current.destroy();
+        } catch (error) {
+          // Ignore expected abort errors
+          if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+            console.log("Error during player destruction:", error.message);
+          }
+        } finally {
+          playerRef.current = null;
+        }
+      }
+    } catch (error) {
+      console.log("Error during player cleanup:", error);
+      playerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (!isVisible || !streamUrl) {
+      safeDestroyPlayer();
       return;
     }
 
     // Check if we have an existing player and clean it up
-    if (playerRef.current) {
-      playerRef.current.destroy();
-      playerRef.current = null;
-    }
+    safeDestroyPlayer();
 
     // Debug log to help diagnose stream issues
     console.log("Attempting to play stream:", streamUrl);
@@ -30,6 +68,9 @@ export default function FloatingVideo() {
     try {
       // If the browser supports MSE for live playback, initialize mpegts.js
       if (mpegts.getFeatureList().mseLivePlayback) {
+        // Set loading flag
+        isLoadingRef.current = true;
+
         const player = mpegts.createPlayer({
           type: 'mpegts', // MPEG-TS format
           url: streamUrl,
@@ -39,15 +80,35 @@ export default function FloatingVideo() {
           liveBufferLatencyChasing: true,
           liveSync: true,
           cors: true, // Enable CORS for cross-domain requests
+          // Add error recovery options
+          autoCleanupSourceBuffer: true,
+          autoCleanupMaxBackwardDuration: 10,
+          autoCleanupMinBackwardDuration: 5,
+          reuseRedirectedURL: true,
         });
 
         player.attachMediaElement(videoRef.current);
 
+        // Add events to track loading state
+        player.on(mpegts.Events.LOADING_COMPLETE, () => {
+          isLoadingRef.current = false;
+        });
+
+        player.on(mpegts.Events.METADATA_ARRIVED, () => {
+          isLoadingRef.current = false;
+        });
+
         // Add error event handler
         player.on(mpegts.Events.ERROR, (errorType, errorDetail) => {
-          console.error('Player error:', errorType, errorDetail);
+          isLoadingRef.current = false;
+
+          // Filter out aborted errors
+          if (errorType !== 'NetworkError' || !errorDetail?.includes('aborted')) {
+            console.error('Player error:', errorType, errorDetail);
+          }
+
           // If it's a format issue, show a helpful message
-          if (errorDetail.includes('Unsupported media type')) {
+          if (errorDetail?.includes('Unsupported media type')) {
             const message = document.createElement('div');
             message.textContent = "Unsupported stream format. Please try a different stream.";
             message.style.position = 'absolute';
@@ -57,28 +118,47 @@ export default function FloatingVideo() {
             message.style.color = 'white';
             message.style.textAlign = 'center';
             message.style.width = '100%';
-            videoRef.current.parentNode.appendChild(message);
+            if (videoRef.current?.parentNode) {
+              videoRef.current.parentNode.appendChild(message);
+            }
           }
         });
 
         player.load();
-        player.play();
+
+        // Don't auto-play until we've loaded properly
+        player.on(mpegts.Events.MEDIA_INFO, () => {
+          try {
+            player.play().catch(e => {
+              console.log("Auto-play prevented:", e);
+            });
+          } catch (e) {
+            console.log("Error during play:", e);
+          }
+        });
 
         // Store player instance so we can clean up later
         playerRef.current = player;
       }
     } catch (error) {
+      isLoadingRef.current = false;
       console.error("Error initializing player:", error);
     }
 
     // Cleanup when component unmounts or streamUrl changes
     return () => {
-      if (playerRef.current) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
+      safeDestroyPlayer();
     };
   }, [isVisible, streamUrl]);
+
+  // Modified hideVideo handler to clean up player first
+  const handleClose = () => {
+    safeDestroyPlayer();
+    // Small delay before hiding the video component to ensure cleanup is complete
+    setTimeout(() => {
+      hideVideo();
+    }, 50);
+  };
 
   // If the floating video is hidden or no URL is selected, do not render
   if (!isVisible || !streamUrl) {
@@ -103,7 +183,7 @@ export default function FloatingVideo() {
       >
         {/* Simple header row with a close button */}
         <Flex justify="flex-end" style={{ padding: 3 }}>
-          <CloseButton onClick={hideVideo} />
+          <CloseButton onClick={handleClose} />
         </Flex>
 
         {/* The <video> element used by mpegts.js */}
