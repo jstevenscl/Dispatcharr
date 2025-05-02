@@ -66,7 +66,7 @@ class M3UAccountSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'server_url', 'file_path', 'server_group',
             'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked',
-            'channel_groups', 'refresh_interval', 'custom_properties', 'account_type', 'username', 'password'
+            'channel_groups', 'refresh_interval', 'custom_properties', 'account_type', 'username', 'password', 'stale_stream_days',
         ]
         extra_kwargs = {
             'password': {

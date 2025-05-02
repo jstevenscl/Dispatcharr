@@ -18,23 +18,57 @@ export default function FloatingVideo() {
       return;
     }
 
-    // If the browser supports MSE for live playback, initialize mpegts.js
-    if (mpegts.getFeatureList().mseLivePlayback) {
-      const player = mpegts.createPlayer({
-        type: 'mpegts',
-        url: streamUrl,
-        isLive: true,
-        // You can include other custom MPEGTS.js config fields here, e.g.:
-        // cors: true,
-        // withCredentials: false,
-      });
+    // Check if we have an existing player and clean it up
+    if (playerRef.current) {
+      playerRef.current.destroy();
+      playerRef.current = null;
+    }
 
-      player.attachMediaElement(videoRef.current);
-      player.load();
-      player.play();
+    // Debug log to help diagnose stream issues
+    console.log("Attempting to play stream:", streamUrl);
 
-      // Store player instance so we can clean up later
-      playerRef.current = player;
+    try {
+      // If the browser supports MSE for live playback, initialize mpegts.js
+      if (mpegts.getFeatureList().mseLivePlayback) {
+        const player = mpegts.createPlayer({
+          type: 'mpegts', // MPEG-TS format
+          url: streamUrl,
+          isLive: true,
+          enableWorker: true,
+          enableStashBuffer: false, // Try disabling stash buffer for live streams
+          liveBufferLatencyChasing: true,
+          liveSync: true,
+          cors: true, // Enable CORS for cross-domain requests
+        });
+
+        player.attachMediaElement(videoRef.current);
+
+        // Add error event handler
+        player.on(mpegts.Events.ERROR, (errorType, errorDetail) => {
+          console.error('Player error:', errorType, errorDetail);
+          // If it's a format issue, show a helpful message
+          if (errorDetail.includes('Unsupported media type')) {
+            const message = document.createElement('div');
+            message.textContent = "Unsupported stream format. Please try a different stream.";
+            message.style.position = 'absolute';
+            message.style.top = '50%';
+            message.style.left = '50%';
+            message.style.transform = 'translate(-50%, -50%)';
+            message.style.color = 'white';
+            message.style.textAlign = 'center';
+            message.style.width = '100%';
+            videoRef.current.parentNode.appendChild(message);
+          }
+        });
+
+        player.load();
+        player.play();
+
+        // Store player instance so we can clean up later
+        playerRef.current = player;
+      }
+    } catch (error) {
+      console.error("Error initializing player:", error);
     }
 
     // Cleanup when component unmounts or streamUrl changes

@@ -36,10 +36,15 @@ def fetch_m3u_lines(account, use_cache=False):
     """Fetch M3U file lines efficiently."""
     if account.server_url:
         if not use_cache or not os.path.exists(file_path):
-            user_agent = account.get_user_agent()
-            headers = {"User-Agent": user_agent.user_agent}
-            logger.info(f"Fetching from URL {account.server_url}")
             try:
+                # Try to get account-specific user agent first
+                user_agent_obj = account.get_user_agent()
+                user_agent = user_agent_obj.user_agent if user_agent_obj else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+                logger.debug(f"Using user agent: {user_agent} for M3U account: {account.name}")
+                headers = {"User-Agent": user_agent}
+                logger.info(f"Fetching from URL {account.server_url}")
+
                 response = requests.get(account.server_url, headers=headers, stream=True)
                 response.raise_for_status()
 
@@ -75,7 +80,7 @@ def fetch_m3u_lines(account, use_cache=False):
                                     send_m3u_update(account.id, "downloading", progress, speed=speed, elapsed_time=elapsed_time, time_remaining=time_remaining)
 
                 send_m3u_update(account.id, "downloading", 100)
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
                 return []
 
@@ -345,8 +350,8 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
             if streams_to_update:
                 Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys})
-            # if len(existing_streams.keys()) > 0:
-            #     Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
+            if len(existing_streams.keys()) > 0:
+                Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
         logger.error(f"Bulk create failed: {str(e)}")
 
@@ -365,18 +370,31 @@ def cleanup_streams(account_id):
         m3u_account__enabled=True,
     ).values_list('id', flat=True)
     logger.info(f"Found {len(existing_groups)} active groups")
-    streams = Stream.objects.filter(m3u_account=account)
 
+    # Calculate cutoff date for stale streams
+    stale_cutoff = timezone.now() - timezone.timedelta(days=account.stale_stream_days)
+    logger.info(f"Removing streams not seen since {stale_cutoff}")
+
+    # Delete streams that are not in active groups
     streams_to_delete = Stream.objects.filter(
         m3u_account=account
     ).exclude(
-        channel_group__in=existing_groups  # Exclude products having any of the excluded tags
+        channel_group__in=existing_groups
     )
 
-    # Delete the filtered products
-    streams_to_delete.delete()
+    # Also delete streams that haven't been seen for longer than stale_stream_days
+    stale_streams = Stream.objects.filter(
+        m3u_account=account,
+        last_seen__lt=stale_cutoff
+    )
 
-    logger.info(f"Cleanup complete")
+    deleted_count = streams_to_delete.count()
+    stale_count = stale_streams.count()
+
+    streams_to_delete.delete()
+    stale_streams.delete()
+
+    logger.info(f"Cleanup complete: {deleted_count} streams removed due to group filter, {stale_count} removed as stale")
 
 @shared_task
 def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):

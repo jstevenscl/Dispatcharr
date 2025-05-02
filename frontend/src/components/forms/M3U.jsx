@@ -61,6 +61,7 @@ const M3U = ({
       create_epg: false,
       username: '',
       password: '',
+      stale_stream_days: 7,
     },
 
     validate: {
@@ -84,6 +85,7 @@ const M3U = ({
         account_type: m3uAccount.account_type,
         username: m3uAccount.username ?? '',
         password: '',
+        stale_stream_days: m3uAccount.stale_stream_days || 7,
       });
 
       if (m3uAccount.account_type == 'XC') {
@@ -237,15 +239,19 @@ const M3U = ({
 
             {form.getValues().account_type == 'XC' && (
               <Box>
-                <Group justify="space-between">
-                  <Box>Create EPG</Box>
-                  <Switch
-                    id="create_epg"
-                    name="create_epg"
-                    key={form.key('create_epg')}
-                    {...form.getInputProps('create_epg', { type: 'checkbox' })}
-                  />
-                </Group>
+                {!m3uAccount && (
+                  <Group justify="space-between">
+                    <Box>Create EPG</Box>
+                    <Switch
+                      id="create_epg"
+                      name="create_epg"
+                      key={form.key('create_epg')}
+                      {...form.getInputProps('create_epg', {
+                        type: 'checkbox',
+                      })}
+                    />
+                  </Group>
+                )}
 
                 <TextInput
                   id="username"
@@ -304,6 +310,14 @@ const M3U = ({
               label="Refresh Interval (hours)"
               {...form.getInputProps('refresh_interval')}
               key={form.key('refresh_interval')}
+            />
+
+            <NumberInput
+              min={1}
+              max={365}
+              label="Stale Stream Retention (days)"
+              description="Streams not seen for this many days will be removed"
+              {...form.getInputProps('stale_stream_days')}
             />
 
             <Checkbox

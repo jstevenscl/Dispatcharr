@@ -81,6 +81,10 @@ class M3UAccount(models.Model):
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
     )
+    stale_stream_days = models.PositiveIntegerField(
+        default=7,
+        help_text="Number of days after which a stream will be removed if not seen in the M3U source."
+    )
 
     def __str__(self):
         return self.name

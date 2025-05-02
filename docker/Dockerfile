@@ -76,7 +76,15 @@ RUN apt-get update && \
     streamlink \
     wget \
     gnupg2 \
-    lsb-release && \
+    lsb-release \
+    libva-drm2 \
+    libva-x11-2 \
+    libva-dev \
+    libva-wayland2 \
+    vainfo \
+    i965-va-driver \
+    intel-media-va-driver \
+    mesa-va-drivers && \
     cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
