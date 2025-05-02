@@ -1,9 +1,9 @@
 // frontend/src/components/FloatingVideo.js
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Draggable from 'react-draggable';
 import useVideoStore from '../store/useVideoStore';
 import mpegts from 'mpegts.js';
-import { CloseButton, Flex } from '@mantine/core';
+import { CloseButton, Flex, Loader, Text, Box } from '@mantine/core';
 
 export default function FloatingVideo() {
   const isVisible = useVideoStore((s) => s.isVisible);
@@ -12,14 +12,17 @@ export default function FloatingVideo() {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const videoContainerRef = useRef(null);
-  const isLoadingRef = useRef(false);
+  // Convert ref to state so we can use it for rendering
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Safely destroy the player to prevent errors
   const safeDestroyPlayer = () => {
     try {
       if (playerRef.current) {
-        // Set a flag to ignore abort errors
-        isLoadingRef.current = false;
+        // Set loading to false when destroying player
+        setIsLoading(false);
+        setLoadError(null);
 
         // First unload the source to stop any in-progress fetches
         if (videoRef.current) {
@@ -62,6 +65,10 @@ export default function FloatingVideo() {
     // Check if we have an existing player and clean it up
     safeDestroyPlayer();
 
+    // Set loading state to true when starting a new stream
+    setIsLoading(true);
+    setLoadError(null);
+
     // Debug log to help diagnose stream issues
     console.log("Attempting to play stream:", streamUrl);
 
@@ -69,7 +76,7 @@ export default function FloatingVideo() {
       // If the browser supports MSE for live playback, initialize mpegts.js
       if (mpegts.getFeatureList().mseLivePlayback) {
         // Set loading flag
-        isLoadingRef.current = true;
+        setIsLoading(true);
 
         const player = mpegts.createPlayer({
           type: 'mpegts', // MPEG-TS format
@@ -91,36 +98,21 @@ export default function FloatingVideo() {
 
         // Add events to track loading state
         player.on(mpegts.Events.LOADING_COMPLETE, () => {
-          isLoadingRef.current = false;
+          setIsLoading(false);
         });
 
         player.on(mpegts.Events.METADATA_ARRIVED, () => {
-          isLoadingRef.current = false;
+          setIsLoading(false);
         });
 
         // Add error event handler
         player.on(mpegts.Events.ERROR, (errorType, errorDetail) => {
-          isLoadingRef.current = false;
+          setIsLoading(false);
 
           // Filter out aborted errors
           if (errorType !== 'NetworkError' || !errorDetail?.includes('aborted')) {
             console.error('Player error:', errorType, errorDetail);
-          }
-
-          // If it's a format issue, show a helpful message
-          if (errorDetail?.includes('Unsupported media type')) {
-            const message = document.createElement('div');
-            message.textContent = "Unsupported stream format. Please try a different stream.";
-            message.style.position = 'absolute';
-            message.style.top = '50%';
-            message.style.left = '50%';
-            message.style.transform = 'translate(-50%, -50%)';
-            message.style.color = 'white';
-            message.style.textAlign = 'center';
-            message.style.width = '100%';
-            if (videoRef.current?.parentNode) {
-              videoRef.current.parentNode.appendChild(message);
-            }
+            setLoadError(`Error: ${errorType}${errorDetail ? ` - ${errorDetail}` : ''}`);
           }
         });
 
@@ -128,12 +120,15 @@ export default function FloatingVideo() {
 
         // Don't auto-play until we've loaded properly
         player.on(mpegts.Events.MEDIA_INFO, () => {
+          setIsLoading(false);
           try {
             player.play().catch(e => {
               console.log("Auto-play prevented:", e);
+              setLoadError("Auto-play was prevented. Click play to start.");
             });
           } catch (e) {
             console.log("Error during play:", e);
+            setLoadError(`Playback error: ${e.message}`);
           }
         });
 
@@ -141,7 +136,8 @@ export default function FloatingVideo() {
         playerRef.current = player;
       }
     } catch (error) {
-      isLoadingRef.current = false;
+      setIsLoading(false);
+      setLoadError(`Initialization error: ${error.message}`);
       console.error("Error initializing player:", error);
     }
 
@@ -186,12 +182,63 @@ export default function FloatingVideo() {
           <CloseButton onClick={handleClose} />
         </Flex>
 
-        {/* The <video> element used by mpegts.js */}
-        <video
-          ref={videoRef}
-          controls
-          style={{ width: '100%', height: '180px', backgroundColor: '#000' }}
-        />
+        {/* Video container with relative positioning for the overlay */}
+        <Box style={{ position: 'relative' }}>
+          {/* The <video> element used by mpegts.js */}
+          <video
+            ref={videoRef}
+            controls
+            style={{ width: '100%', height: '180px', backgroundColor: '#000' }}
+          />
+
+          {/* Loading overlay */}
+          {isLoading && (
+            <Box
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 5,
+              }}
+            >
+              <Loader color="cyan" size="md" />
+              <Text color="white" size="sm" mt={10}>
+                Loading stream...
+              </Text>
+            </Box>
+          )}
+
+          {/* Error message overlay */}
+          {!isLoading && loadError && (
+            <Box
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 5,
+                padding: '0 10px',
+                textAlign: 'center',
+              }}
+            >
+              <Text color="red" size="sm">
+                {loadError}
+              </Text>
+            </Box>
+          )}
+        </Box>
       </div>
     </Draggable>
   );
