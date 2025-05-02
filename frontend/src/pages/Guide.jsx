@@ -851,10 +851,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
           {(searchQuery !== '' ||
             selectedGroupId !== 'all' ||
             selectedProfileId !== 'all') && (
-            <Button variant="subtle" onClick={clearFilters} size="sm" compact>
-              Clear Filters
-            </Button>
-          )}
+              <Button variant="subtle" onClick={clearFilters} size="sm" compact>
+                Clear Filters
+              </Button>
+            )}
 
           <Text size="sm" color="dimmed">
             {filteredChannels.length}{' '}
@@ -1209,9 +1209,13 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         paddingLeft: 0, // Remove any padding that might push content
                       }}
                     >
-                      {channelPrograms.map((prog) =>
-                        renderProgram(prog, start)
-                      )}
+                      {channelPrograms.map((program) => {
+                        return (
+                          <div key={`${channel.id}-${program.id}-${program.start_time}`}>
+                            {renderProgram(program, start)}
+                          </div>
+                        );
+                      })}
                     </Box>
                   </Box>
                 );
