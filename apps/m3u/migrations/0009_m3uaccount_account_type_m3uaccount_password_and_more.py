@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('m3u', '0007_remove_m3uaccount_uploaded_file_m3uaccount_file_path'),
+        ('m3u', '0008_m3uaccount_stale_stream_days'),
     ]
 
     operations = [
