@@ -26,6 +26,7 @@ import useChannelsStore from '../../store/channels';
 import usePlaylistsStore from '../../store/playlists';
 import { notifications } from '@mantine/notifications';
 import { isNotEmpty, useForm } from '@mantine/form';
+import useEPGsStore from '../../store/epgs';
 
 const M3U = ({
   m3uAccount = null,
@@ -38,6 +39,7 @@ const M3U = ({
   const userAgents = useUserAgentsStore((s) => s.userAgents);
   const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
   const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
+  const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
 
   const [playlist, setPlaylist] = useState(null);
   const [file, setFile] = useState(null);
@@ -55,7 +57,8 @@ const M3U = ({
       is_active: true,
       max_streams: 0,
       refresh_interval: 24,
-      is_xc: false,
+      account_type: 'STD',
+      create_epg: false,
       username: '',
       password: '',
     },
@@ -78,7 +81,7 @@ const M3U = ({
         user_agent: m3uAccount.user_agent ? `${m3uAccount.user_agent}` : '0',
         is_active: m3uAccount.is_active,
         refresh_interval: m3uAccount.refresh_interval,
-        is_xc: m3uAccount.account_type == 'XC',
+        account_type: m3uAccount.account_type,
         username: m3uAccount.username ?? '',
         password: '',
       });
@@ -95,27 +98,19 @@ const M3U = ({
   }, [m3uAccount]);
 
   useEffect(() => {
-    if (form.values.is_xc) {
+    if (form.values.account_type == 'XC') {
       setShowCredentialFields(true);
     }
-  }, [form.values.is_xc]);
+  }, [form.values.account_type]);
 
   const onSubmit = async () => {
-    const { ...values } = form.getValues();
+    const { create_epg, ...values } = form.getValues();
 
-    if (values.is_xc && values.password == '') {
+    if (values.account_type == 'XC' && values.password == '') {
       // If account XC and no password input, assuming no password change
       // from previously stored value.
       delete values.password;
     }
-
-    if (values.is_xc) {
-      values.account_type = 'XC';
-    } else {
-      values.account_type = 'STD';
-    }
-
-    delete values.is_xc;
 
     if (values.user_agent == '0') {
       values.user_agent = null;
@@ -134,6 +129,17 @@ const M3U = ({
         file,
       });
 
+      if (create_epg) {
+        API.addEPG({
+          name: values.name,
+          source_type: 'xmltv',
+          url: `${values.server_url}/xmltv.php?username=${values.username}&password=${values.password}`,
+          api_key: '',
+          is_active: true,
+          refresh_interval: 24,
+        });
+      }
+
       if (values.account_type != 'XC') {
         notifications.show({
           title: 'Fetching M3U Groups',
@@ -149,7 +155,7 @@ const M3U = ({
       }
 
       const updatedPlaylist = await API.getPlaylist(newPlaylist.id);
-      await Promise.all([fetchChannelGroups(), fetchPlaylists()]);
+      await Promise.all([fetchChannelGroups(), fetchPlaylists(), fetchEPGs()]);
       console.log('opening group options');
       setPlaylist(updatedPlaylist);
       setGroupFilterModalOpen(true);
@@ -210,21 +216,44 @@ const M3U = ({
               {...form.getInputProps('server_url')}
               key={form.key('server_url')}
             />
-            <Switch
-              id="is_xc"
-              name="is_xc"
-              label="Is XC?"
-              {...form.getInputProps('is_xc', { type: 'checkbox' })}
+
+            <Select
+              id="account_type"
+              name="account_type"
+              label="Account Type"
+              data={[
+                {
+                  value: 'STD',
+                  label: 'Standard',
+                },
+                {
+                  value: 'XC',
+                  label: 'XTream Codes',
+                },
+              ]}
+              key={form.key('account_type')}
+              {...form.getInputProps('account_type')}
             />
 
-            {form.getValues().is_xc && (
+            {form.getValues().account_type == 'XC' && (
               <Box>
+                <Group justify="space-between">
+                  <Box>Create EPG</Box>
+                  <Switch
+                    id="create_epg"
+                    name="create_epg"
+                    key={form.key('create_epg')}
+                    {...form.getInputProps('create_epg', { type: 'checkbox' })}
+                  />
+                </Group>
+
                 <TextInput
                   id="username"
                   name="username"
                   label="Username"
                   {...form.getInputProps('username')}
                 />
+
                 <PasswordInput
                   id="password"
                   name="password"
@@ -234,7 +263,7 @@ const M3U = ({
               </Box>
             )}
 
-            {!form.getValues().is_xc && (
+            {form.getValues().account_type != 'XC' && (
               <FileInput
                 id="file"
                 label="Upload files"
