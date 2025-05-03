@@ -149,6 +149,15 @@ export const WebsocketProvider = ({ children }) => {
           });
           break;
 
+        case 'epg_fetch_error':
+          notifications.show({
+            title: 'EPG Source Error',
+            message: event.data.message,
+            color: 'orange.5',
+            autoClose: 8000,
+          });
+          break;
+
         default:
           console.error(`Unknown websocket event type: ${event.type}`);
           break;

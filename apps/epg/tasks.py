@@ -61,7 +61,7 @@ def refresh_epg_data(source_id):
 
 def fetch_xmltv(source):
     if not source.url:
-        return
+        return False
 
     if os.path.exists(source.get_cache_file()):
         os.remove(source.get_cache_file())
@@ -84,6 +84,31 @@ def fetch_xmltv(source):
         }
 
         response = requests.get(source.url, headers=headers, timeout=30)
+
+        # Handle 404 specifically
+        if response.status_code == 404:
+            logger.error(f"EPG URL not found (404): {source.url}")
+            # Just log the error without marking inactive, will retry on next scheduled run
+            logger.warning(f"EPG source '{source.name}' encountered a 404 error - will retry on next scheduled run")
+
+            # Notify users through the WebSocket about the EPG fetch failure
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                'updates',
+                {
+                    'type': 'update',
+                    'data': {
+                        "success": False,
+                        "type": "epg_fetch_error",
+                        "source_id": source.id,
+                        "source_name": source.name,
+                        "error_code": 404,
+                        "message": f"EPG source '{source.name}' returned 404 error - will retry on next scheduled run"
+                    }
+                }
+            )
+            return False
+
         response.raise_for_status()
         logger.debug("XMLTV data fetched successfully.")
 
@@ -93,9 +118,49 @@ def fetch_xmltv(source):
         with open(cache_file, 'wb') as f:
             f.write(response.content)
         logger.info(f"Cached EPG file saved to {cache_file}")
+        return True
 
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error fetching XMLTV from {source.name}: {e}", exc_info=True)
+
+        # Get error details
+        status_code = e.response.status_code if hasattr(e, 'response') and e.response else 'unknown'
+        error_message = str(e)
+
+        # Create a user-friendly message
+        user_message = f"EPG source '{source.name}' encountered HTTP error {status_code}"
+
+        # Add specific handling for common HTTP errors
+        if status_code == 404:
+            user_message = f"EPG source '{source.name}' URL not found (404) - will retry on next scheduled run"
+        elif status_code == 401 or status_code == 403:
+            user_message = f"EPG source '{source.name}' access denied (HTTP {status_code}) - check credentials"
+        elif status_code == 429:
+            user_message = f"EPG source '{source.name}' rate limited (429) - try again later"
+        elif status_code >= 500:
+            user_message = f"EPG source '{source.name}' server error (HTTP {status_code}) - will retry later"
+
+        # Notify users through the WebSocket about the EPG fetch failure
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            'updates',
+            {
+                'type': 'update',
+                'data': {
+                    "success": False,
+                    "type": "epg_fetch_error",
+                    "source_id": source.id,
+                    "source_name": source.name,
+                    "error_code": status_code,
+                    "message": user_message,
+                    "details": error_message
+                }
+            }
+        )
+        return False
     except Exception as e:
         logger.error(f"Error fetching XMLTV from {source.name}: {e}", exc_info=True)
+        return False
 
 
 def parse_channels_only(source):
