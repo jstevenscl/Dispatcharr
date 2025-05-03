@@ -169,7 +169,7 @@ const StreamRowActions = ({
   );
 };
 
-const StreamsTable = ({}) => {
+const StreamsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -300,6 +300,12 @@ const StreamsTable = ({}) => {
       ...prev,
       [name]: value,
     }));
+
+    // Reset to first page whenever filters change to avoid "Invalid page" errors
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: 0,
+    }));
   };
 
   const handleGroupChange = (value) => {
@@ -307,12 +313,24 @@ const StreamsTable = ({}) => {
       ...prev,
       channel_group: value ? value : '',
     }));
+
+    // Reset to first page whenever filters change to avoid "Invalid page" errors
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: 0,
+    }));
   };
 
   const handleM3UChange = (value) => {
     setFilters((prev) => ({
       ...prev,
       m3u_account: value ? value : '',
+    }));
+
+    // Reset to first page whenever filters change to avoid "Invalid page" errors
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: 0,
     }));
   };
 
@@ -638,10 +656,10 @@ const StreamsTable = ({}) => {
               style={
                 selectedStreamIds.length > 0 && selectedChannelIds.length === 1
                   ? {
-                      borderWidth: '1px',
-                      borderColor: theme.tailwind.green[5],
-                      color: 'white',
-                    }
+                    borderWidth: '1px',
+                    borderColor: theme.tailwind.green[5],
+                    color: 'white',
+                  }
                   : undefined
               }
               disabled={

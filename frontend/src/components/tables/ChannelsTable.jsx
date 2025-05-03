@@ -321,15 +321,28 @@ const ChannelsTable = ({ }) => {
     e.stopPropagation();
   }, []);
 
-  const handleFilterChange = useCallback((e) => {
+  // Remove useCallback to ensure we're using the latest setPagination function
+  const handleFilterChange = (e) => {
     const { name, value } = e.target;
+    // First reset pagination to page 0
+    setPagination({
+      ...pagination,
+      pageIndex: 0,
+    });
+    // Then update filters
     setFilters((prev) => ({
       ...prev,
       [name]: value,
     }));
-  }, []);
+  };
 
   const handleGroupChange = (value) => {
+    // First reset pagination to page 0
+    setPagination({
+      ...pagination,
+      pageIndex: 0,
+    });
+    // Then update filters
     setFilters((prev) => ({
       ...prev,
       channel_group: value ? value : '',
