@@ -45,8 +45,22 @@ html {
 }
 
 .td {
-  height: 28px;
   border-bottom: solid 1px rgb(68, 68, 68);
+}
+
+.divTable.table-size-compact .td {
+  height: 28px;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.divTable.table-size-default .td {
+  height: 40px;
+  font-size: var(--mantine-font-size-md);
+}
+
+.divTable.table-size-large .td {
+  height: 48px;
+  font-size: var(--mantine-font-size-md);
 }
 
 .resizer {

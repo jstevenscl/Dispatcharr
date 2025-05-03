@@ -24,8 +24,10 @@ export default function M3URefreshNotification() {
       return;
     }
 
-    console.log(data);
     const playlist = playlists.find((pl) => pl.id == data.account);
+    if (!playlist) {
+      return;
+    }
 
     setNotificationStatus({
       ...notificationStatus,

@@ -4,11 +4,14 @@ import { useCallback, useState, useRef } from 'react';
 import { flexRender } from '@tanstack/react-table';
 import table from '../../../helpers/table';
 import CustomTableBody from './CustomTableBody';
+import useLocalStorage from '../../../hooks/useLocalStorage';
 
 const CustomTable = ({ table }) => {
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
+
   return (
     <Box
-      className="divTable table-striped"
+      className={`divTable table-striped table-size-${tableSize}`}
       style={{
         width: '100%',
         display: 'flex',

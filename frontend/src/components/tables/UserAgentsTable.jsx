@@ -221,7 +221,7 @@ const UserAgentsTable = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(60vh - 100px)',
+        maxHeight: 300,
         overflowY: 'auto',
         // margin: 5,
       },
@@ -234,34 +234,7 @@ const UserAgentsTable = () => {
   });
 
   return (
-    <Stack gap={0} style={{ width: '49%', padding: 0 }}>
-      <Flex
-        style={
-          {
-            // display: 'flex',
-            // alignItems: 'center',
-            // paddingTop: 10,
-            // paddingBottom: 10,
-          }
-        }
-        // gap={15}
-      >
-        <Text
-          h={24}
-          style={{
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 500,
-            fontSize: '20px',
-            lineHeight: 1,
-            letterSpacing: '-0.3px',
-            color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
-            // marginBottom: 0,
-          }}
-        >
-          User-Agents
-        </Text>
-      </Flex>
-
+    <Stack gap={0} style={{ padding: 0 }}>
       <Paper
         style={
           {

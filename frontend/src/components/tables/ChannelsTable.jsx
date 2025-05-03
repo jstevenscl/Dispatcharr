@@ -96,6 +96,7 @@ const ChannelRowActions = React.memo(
     // Extract the channel ID once to ensure consistency
     const channelId = row.original.id;
     const channelUuid = row.original.uuid;
+    const [tableSize, _] = useLocalStorage('table-size', 'default');
 
     const onEdit = useCallback(() => {
       // Use the ID directly to avoid issues with filtered tables
@@ -119,11 +120,14 @@ const ChannelRowActions = React.memo(
       createRecording(row.original);
     }, [channelId]);
 
+    const iconSize =
+      tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
+
     return (
       <Box style={{ width: '100%', justifyContent: 'left' }}>
         <Center>
           <ActionIcon
-            size="xs"
+            size={iconSize}
             variant="transparent"
             color={theme.tailwind.yellow[3]}
             onClick={onEdit}
@@ -132,7 +136,7 @@ const ChannelRowActions = React.memo(
           </ActionIcon>
 
           <ActionIcon
-            size="xs"
+            size={iconSize}
             variant="transparent"
             color={theme.tailwind.red[6]}
             onClick={onDelete}
@@ -141,7 +145,7 @@ const ChannelRowActions = React.memo(
           </ActionIcon>
 
           <ActionIcon
-            size="xs"
+            size={iconSize}
             variant="transparent"
             color={theme.tailwind.green[5]}
             onClick={onPreview}
@@ -151,7 +155,7 @@ const ChannelRowActions = React.memo(
 
           <Menu>
             <Menu.Target>
-              <ActionIcon variant="transparent" size="sm">
+              <ActionIcon variant="transparent" size={iconSize}>
                 <EllipsisVertical size="18" />
               </ActionIcon>
             </Menu.Target>
@@ -228,6 +232,7 @@ const ChannelsTable = ({ }) => {
   // store/settings
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
   const showVideo = useVideoStore((s) => s.showVideo);
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
 
   /**
    * useMemo
@@ -555,26 +560,24 @@ const ChannelsTable = ({ }) => {
         size: 40,
         cell: ({ getValue }) => (
           <Flex justify="flex-end" style={{ width: '100%' }}>
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Flex>
         ),
       },
       {
         id: 'name',
         accessorKey: 'name',
-        cell: ({ row, getValue }) => {
-          return (
-            <Box
-              style={{
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
-            >
-              <Text size="sm">{getValue()}</Text>
-            </Box>
-          );
-        },
+        cell: ({ getValue }) => (
+          <Box
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {getValue()}
+          </Box>
+        ),
       },
       {
         id: 'channel_group',
@@ -590,7 +593,7 @@ const ChannelsTable = ({ }) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -615,7 +618,7 @@ const ChannelsTable = ({ }) => {
       },
       {
         id: 'actions',
-        size: 75,
+        size: tableSize == 'compact' ? 75 : 100,
         header: '',
         cell: ({ row }) => (
           <ChannelRowActions

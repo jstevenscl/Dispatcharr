@@ -10,6 +10,10 @@ from core.models import CoreSettings, UserAgent
 CUSTOM_M3U_ACCOUNT_NAME="custom"
 
 class M3UAccount(models.Model):
+    class Types(models.TextChoices):
+        STADNARD = "STD", "Standard"
+        XC = "XC", "Xtream Codes"
+
     """Represents an M3U Account for IPTV streams."""
     name = models.CharField(
         max_length=255,
@@ -69,6 +73,9 @@ class M3UAccount(models.Model):
         blank=True,
         related_name='m3u_accounts'
     )
+    account_type = models.CharField(choices=Types.choices, default=Types.STADNARD)
+    username = models.CharField(max_length=255, null=True, blank=True)
+    password = models.CharField(max_length=255, null=True, blank=True)
     custom_properties = models.TextField(null=True, blank=True)
     refresh_interval = models.IntegerField(default=24)
     refresh_task = models.ForeignKey(

@@ -213,38 +213,14 @@ const StreamProfiles = () => {
     ),
     mantineTableContainerProps: {
       style: {
-        height: 'calc(60vh - 100px)',
+        // height: 'calc(60vh - 100px)',
         overflowY: 'auto',
       },
     },
   });
 
   return (
-    <Stack gap={0} style={{ width: '49%', padding: 0 }}>
-      <Flex
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          // paddingBottom: 10,
-        }}
-        gap={15}
-      >
-        <Text
-          h={24}
-          style={{
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 500,
-            fontSize: '20px',
-            lineHeight: 1,
-            letterSpacing: '-0.3px',
-            color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
-            marginBottom: 0,
-          }}
-        >
-          Stream Profiles
-        </Text>
-      </Flex>
-
+    <Stack gap={0} style={{ padding: 0 }}>
       <Paper
         style={{
           bgcolor: theme.palette.background.paper,

@@ -65,9 +65,15 @@ class M3UAccountSerializer(serializers.ModelSerializer):
         model = M3UAccount
         fields = [
             'id', 'name', 'server_url', 'file_path', 'server_group',
-            'max_streams', 'is_active', 'stale_stream_days', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked',
-            'channel_groups', 'refresh_interval'
+            'max_streams', 'is_active', 'created_at', 'updated_at', 'filters', 'user_agent', 'profiles', 'locked',
+            'channel_groups', 'refresh_interval', 'custom_properties', 'account_type', 'username', 'password', 'stale_stream_days',
         ]
+        extra_kwargs = {
+            'password': {
+                'required': False,
+                'allow_blank': True,
+            },
+        }
 
     def update(self, instance, validated_data):
         # Pop out channel group memberships so we can handle them manually
