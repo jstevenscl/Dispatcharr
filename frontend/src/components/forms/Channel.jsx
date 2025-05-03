@@ -339,6 +339,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   //   },
   // });
 
+  // Update the handler for when channel group modal is closed
+  const handleChannelGroupModalClose = (newGroup) => {
+    setChannelGroupModalOpen(false);
+
+    // If a new group was created and returned, update the form with it
+    if (newGroup && newGroup.id) {
+      // Preserve all current form values while updating just the channel_group_id
+      formik.setValues({
+        ...formik.values,
+        channel_group_id: `${newGroup.id}`
+      });
+    }
+  };
+
   if (!isOpen) {
     return <></>;
   }
@@ -804,7 +818,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
       <ChannelGroupForm
         isOpen={channelGroupModelOpen}
-        onClose={() => setChannelGroupModalOpen(false)}
+        onClose={handleChannelGroupModalClose}
       />
     </>
   );
