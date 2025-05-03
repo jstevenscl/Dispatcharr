@@ -49,6 +49,8 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import { CustomTable, useTable } from './CustomTable';
 import ChannelsTableOnboarding from './ChannelsTable/ChannelsTableOnboarding';
 import ChannelTableHeader from './ChannelsTable/ChannelTableHeader';
+import useWarningsStore from '../../store/warnings';
+import ConfirmationDialog from '../ConfirmationDialog';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
@@ -234,6 +236,10 @@ const ChannelsTable = ({ }) => {
   const showVideo = useVideoStore((s) => s.showVideo);
   const [tableSize, _] = useLocalStorage('table-size', 'default');
 
+  // store/warnings
+  const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
+  const suppressWarning = useWarningsStore((s) => s.suppressWarning);
+
   /**
    * useMemo
    */
@@ -262,6 +268,11 @@ const ChannelsTable = ({ }) => {
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
   const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
+
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+  const [channelToDelete, setChannelToDelete] = useState(null);
 
   /**
    * Dereived variables
@@ -338,11 +349,58 @@ const ChannelsTable = ({ }) => {
   const deleteChannel = async (id) => {
     console.log(`Deleting channel with ID: ${id}`);
     table.setSelectedTableIds([]);
+
     if (selectedChannelIds.length > 0) {
-      return deleteChannels();
+      // Use bulk delete for multiple selections
+      setIsBulkDelete(true);
+      setChannelToDelete(null);
+
+      if (isWarningSuppressed('delete-channels')) {
+        // Skip warning if suppressed
+        return executeDeleteChannels();
+      }
+
+      setConfirmDeleteOpen(true);
+      return;
     }
+
+    // Single channel delete
+    setIsBulkDelete(false);
+    setDeleteTarget(id);
+    setChannelToDelete(channels[id]); // Store the channel object for displaying details
+
+    if (isWarningSuppressed('delete-channel')) {
+      // Skip warning if suppressed
+      return executeDeleteChannel(id);
+    }
+
+    setConfirmDeleteOpen(true);
+  };
+
+  const executeDeleteChannel = async (id) => {
     await API.deleteChannel(id);
     API.requeryChannels();
+    setConfirmDeleteOpen(false);
+  };
+
+  const deleteChannels = async () => {
+    if (isWarningSuppressed('delete-channels')) {
+      // Skip warning if suppressed
+      return executeDeleteChannels();
+    }
+
+    setIsBulkDelete(true);
+    setConfirmDeleteOpen(true);
+  };
+
+  const executeDeleteChannels = async () => {
+    setIsLoading(true);
+    await API.deleteChannels(table.selectedTableIds);
+    await API.requeryChannels();
+    setSelectedChannelIds([]);
+    table.setSelectedTableIds([]);
+    setIsLoading(false);
+    setConfirmDeleteOpen(false);
   };
 
   const createRecording = (channel) => {
@@ -411,16 +469,6 @@ const ChannelsTable = ({ }) => {
     },
     [selectedProfileId]
   );
-
-  // (Optional) bulk delete, but your endpoint is @TODO
-  const deleteChannels = async () => {
-    setIsLoading(true);
-    await API.deleteChannels(table.selectedTableIds);
-    await API.requeryChannels();
-    setSelectedChannelIds([]);
-    table.setSelectedTableIds([]);
-    setIsLoading(false);
-  };
 
   const closeChannelForm = () => {
     setChannel(null);
@@ -755,236 +803,264 @@ const ChannelsTable = ({ }) => {
   const rows = table.getRowModel().rows;
 
   return (
-    <Box>
-      {/* Header Row: outside the Paper */}
-      <Flex style={{ alignItems: 'center', paddingBottom: 10 }} gap={15}>
-        <Text
-          w={88}
-          h={24}
-          style={{
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 500,
-            fontSize: '20px',
-            lineHeight: 1,
-            letterSpacing: '-0.3px',
-            color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
-            marginBottom: 0,
-          }}
-        >
-          Channels
-        </Text>
-        <Flex
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            marginLeft: 10,
-          }}
-        >
+    <>
+      <Box>
+        {/* Header Row: outside the Paper */}
+        <Flex style={{ alignItems: 'center', paddingBottom: 10 }} gap={15}>
           <Text
-            w={37}
-            h={17}
+            w={88}
+            h={24}
             style={{
               fontFamily: 'Inter, sans-serif',
-              fontWeight: 400,
-              fontSize: '14px',
+              fontWeight: 500,
+              fontSize: '20px',
               lineHeight: 1,
               letterSpacing: '-0.3px',
               color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
+              marginBottom: 0,
             }}
           >
-            Links:
+            Channels
           </Text>
-
-          <Group gap={5} style={{ paddingLeft: 10 }}>
-            <Popover withArrow shadow="md">
-              <Popover.Target>
-                <Button
-                  leftSection={<Tv2 size={18} />}
-                  size="compact-sm"
-                  p={5}
-                  color="green"
-                  variant="subtle"
-                  style={{
-                    borderColor: theme.palette.custom.greenMain,
-                    color: theme.palette.custom.greenMain,
-                  }}
-                >
-                  HDHR
-                </Button>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Group>
-                  <TextInput value={hdhrUrl} size="small" readOnly />
-                  <ActionIcon
-                    onClick={copyHDHRUrl}
-                    size="sm"
-                    variant="transparent"
-                    color="gray.5"
-                  >
-                    <Copy size="18" fontSize="small" />
-                  </ActionIcon>
-                </Group>
-              </Popover.Dropdown>
-            </Popover>
-
-            <Popover withArrow shadow="md">
-              <Popover.Target>
-                <Button
-                  leftSection={<ScreenShare size={18} />}
-                  size="compact-sm"
-                  p={5}
-                  variant="subtle"
-                  style={{
-                    borderColor: theme.palette.custom.indigoMain,
-                    color: theme.palette.custom.indigoMain,
-                  }}
-                >
-                  M3U
-                </Button>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Group>
-                  <TextInput value={m3uUrl} size="small" readOnly />
-                  <ActionIcon
-                    onClick={copyM3UUrl}
-                    size="sm"
-                    variant="transparent"
-                    color="gray.5"
-                  >
-                    <Copy size="18" fontSize="small" />
-                  </ActionIcon>
-                </Group>
-              </Popover.Dropdown>
-            </Popover>
-
-            <Popover withArrow shadow="md">
-              <Popover.Target>
-                <Button
-                  leftSection={<Scroll size={18} />}
-                  size="compact-sm"
-                  p={5}
-                  variant="subtle"
-                  color="gray.5"
-                  style={{
-                    borderColor: theme.palette.custom.greyBorder,
-                    color: theme.palette.custom.greyBorder,
-                  }}
-                >
-                  EPG
-                </Button>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Group>
-                  <TextInput value={epgUrl} size="small" readOnly />
-                  <ActionIcon
-                    onClick={copyEPGUrl}
-                    size="sm"
-                    variant="transparent"
-                    color="gray.5"
-                  >
-                    <Copy size="18" fontSize="small" />
-                  </ActionIcon>
-                </Group>
-              </Popover.Dropdown>
-            </Popover>
-          </Group>
-        </Flex>
-      </Flex>
-
-      {/* Paper container: contains top toolbar and table (or ghost state) */}
-      <Paper
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          height: 'calc(100vh - 58px)',
-          backgroundColor: '#27272A',
-        }}
-      >
-        <ChannelTableHeader
-          rows={rows}
-          editChannel={editChannel}
-          deleteChannels={deleteChannels}
-          selectedTableIds={table.selectedTableIds}
-        />
-
-        {/* Table or ghost empty state inside Paper */}
-        <Box>
-          {Object.keys(channels).length === 0 && (
-            <ChannelsTableOnboarding editChannel={editChannel} />
-          )}
-        </Box>
-
-        {Object.keys(channels).length > 0 && (
-          <Box
+          <Flex
             style={{
               display: 'flex',
-              flexDirection: 'column',
-              height: 'calc(100vh - 110px)',
+              alignItems: 'center',
+              marginLeft: 10,
             }}
           >
-            <Box
+            <Text
+              w={37}
+              h={17}
               style={{
-                flex: 1,
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                border: 'solid 1px rgb(68,68,68)',
-                borderRadius: 'var(--mantine-radius-default)',
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: 400,
+                fontSize: '14px',
+                lineHeight: 1,
+                letterSpacing: '-0.3px',
+                color: 'gray.6', // Adjust this to match MUI's theme.palette.text.secondary
               }}
             >
-              <CustomTable table={table} />
-            </Box>
+              Links:
+            </Text>
 
+            <Group gap={5} style={{ paddingLeft: 10 }}>
+              <Popover withArrow shadow="md">
+                <Popover.Target>
+                  <Button
+                    leftSection={<Tv2 size={18} />}
+                    size="compact-sm"
+                    p={5}
+                    color="green"
+                    variant="subtle"
+                    style={{
+                      borderColor: theme.palette.custom.greenMain,
+                      color: theme.palette.custom.greenMain,
+                    }}
+                  >
+                    HDHR
+                  </Button>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Group>
+                    <TextInput value={hdhrUrl} size="small" readOnly />
+                    <ActionIcon
+                      onClick={copyHDHRUrl}
+                      size="sm"
+                      variant="transparent"
+                      color="gray.5"
+                    >
+                      <Copy size="18" fontSize="small" />
+                    </ActionIcon>
+                  </Group>
+                </Popover.Dropdown>
+              </Popover>
+
+              <Popover withArrow shadow="md">
+                <Popover.Target>
+                  <Button
+                    leftSection={<ScreenShare size={18} />}
+                    size="compact-sm"
+                    p={5}
+                    variant="subtle"
+                    style={{
+                      borderColor: theme.palette.custom.indigoMain,
+                      color: theme.palette.custom.indigoMain,
+                    }}
+                  >
+                    M3U
+                  </Button>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Group>
+                    <TextInput value={m3uUrl} size="small" readOnly />
+                    <ActionIcon
+                      onClick={copyM3UUrl}
+                      size="sm"
+                      variant="transparent"
+                      color="gray.5"
+                    >
+                      <Copy size="18" fontSize="small" />
+                    </ActionIcon>
+                  </Group>
+                </Popover.Dropdown>
+              </Popover>
+
+              <Popover withArrow shadow="md">
+                <Popover.Target>
+                  <Button
+                    leftSection={<Scroll size={18} />}
+                    size="compact-sm"
+                    p={5}
+                    variant="subtle"
+                    color="gray.5"
+                    style={{
+                      borderColor: theme.palette.custom.greyBorder,
+                      color: theme.palette.custom.greyBorder,
+                    }}
+                  >
+                    EPG
+                  </Button>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Group>
+                    <TextInput value={epgUrl} size="small" readOnly />
+                    <ActionIcon
+                      onClick={copyEPGUrl}
+                      size="sm"
+                      variant="transparent"
+                      color="gray.5"
+                    >
+                      <Copy size="18" fontSize="small" />
+                    </ActionIcon>
+                  </Group>
+                </Popover.Dropdown>
+              </Popover>
+            </Group>
+          </Flex>
+        </Flex>
+
+        {/* Paper container: contains top toolbar and table (or ghost state) */}
+        <Paper
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            height: 'calc(100vh - 58px)',
+            backgroundColor: '#27272A',
+          }}
+        >
+          <ChannelTableHeader
+            rows={rows}
+            editChannel={editChannel}
+            deleteChannels={deleteChannels}
+            selectedTableIds={table.selectedTableIds}
+          />
+
+          {/* Table or ghost empty state inside Paper */}
+          <Box>
+            {Object.keys(channels).length === 0 && (
+              <ChannelsTableOnboarding editChannel={editChannel} />
+            )}
+          </Box>
+
+          {Object.keys(channels).length > 0 && (
             <Box
               style={{
-                position: 'sticky',
-                bottom: 0,
-                zIndex: 3,
-                backgroundColor: '#27272A',
+                display: 'flex',
+                flexDirection: 'column',
+                height: 'calc(100vh - 110px)',
               }}
             >
-              <Group
-                gap={5}
-                justify="center"
+              <Box
                 style={{
-                  padding: 8,
-                  borderTop: '1px solid #666',
+                  flex: 1,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  border: 'solid 1px rgb(68,68,68)',
+                  borderRadius: 'var(--mantine-radius-default)',
                 }}
               >
-                <Text size="xs">Page Size</Text>
-                <NativeSelect
-                  size="xxs"
-                  value={pagination.pageSize}
-                  data={['25', '50', '100', '250']}
-                  onChange={onPageSizeChange}
-                  style={{ paddingRight: 20 }}
-                />
-                <Pagination
-                  total={pageCount}
-                  value={pagination.pageIndex + 1}
-                  onChange={onPageIndexChange}
-                  size="xs"
-                  withEdges
-                  style={{ paddingRight: 20 }}
-                />
-                <Text size="xs">{paginationString}</Text>
-              </Group>
+                <CustomTable table={table} />
+              </Box>
+
+              <Box
+                style={{
+                  position: 'sticky',
+                  bottom: 0,
+                  zIndex: 3,
+                  backgroundColor: '#27272A',
+                }}
+              >
+                <Group
+                  gap={5}
+                  justify="center"
+                  style={{
+                    padding: 8,
+                    borderTop: '1px solid #666',
+                  }}
+                >
+                  <Text size="xs">Page Size</Text>
+                  <NativeSelect
+                    size="xxs"
+                    value={pagination.pageSize}
+                    data={['25', '50', '100', '250']}
+                    onChange={onPageSizeChange}
+                    style={{ paddingRight: 20 }}
+                  />
+                  <Pagination
+                    total={pageCount}
+                    value={pagination.pageIndex + 1}
+                    onChange={onPageIndexChange}
+                    size="xs"
+                    withEdges
+                    style={{ paddingRight: 20 }}
+                  />
+                  <Text size="xs">{paginationString}</Text>
+                </Group>
+              </Box>
             </Box>
-          </Box>
-        )}
-      </Paper>
+          )}
+        </Paper>
 
-      <ChannelForm
-        channel={channel}
-        isOpen={channelModalOpen}
-        onClose={closeChannelForm}
-      />
+        <ChannelForm
+          channel={channel}
+          isOpen={channelModalOpen}
+          onClose={closeChannelForm}
+        />
 
-      <RecordingForm
-        channel={channel}
-        isOpen={recordingModalOpen}
-        onClose={closeRecordingForm}
+        <RecordingForm
+          channel={channel}
+          isOpen={recordingModalOpen}
+          onClose={closeRecordingForm}
+        />
+      </Box>
+
+      <ConfirmationDialog
+        opened={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => isBulkDelete ? executeDeleteChannels() : executeDeleteChannel(deleteTarget)}
+        title={`Confirm ${isBulkDelete ? 'Bulk ' : ''}Channel Deletion`}
+        message={
+          isBulkDelete
+            ? `Are you sure you want to delete ${table.selectedTableIds.length} channels? This action cannot be undone.`
+            : channelToDelete
+              ? <div style={{ whiteSpace: 'pre-line' }}>
+                {`Are you sure you want to delete the following channel?
+
+Name: ${channelToDelete.name}
+Channel Number: ${channelToDelete.channel_number}
+
+This action cannot be undone.`}
+              </div>
+              : "Are you sure you want to delete this channel? This action cannot be undone."
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        actionKey={isBulkDelete ? 'delete-channels' : 'delete-channel'}
+        onSuppressChange={suppressWarning}
+        size="md"
       />
-    </Box>
+    </>
   );
 };
 
