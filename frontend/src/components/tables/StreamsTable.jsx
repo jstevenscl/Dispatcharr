@@ -199,6 +199,9 @@ const StreamsTable = ({ }) => {
   });
   const debouncedFilters = useDebounce(filters, 500);
 
+  // Add state to track if stream groups are loaded
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+
   const navigate = useNavigate();
 
   /**
@@ -206,7 +209,10 @@ const StreamsTable = ({ }) => {
    */
   const playlists = usePlaylistsStore((s) => s.playlists);
 
+  // Get direct access to channel groups without depending on other data
+  const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
+
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
   const channelSelectionStreams = useChannelsTableStore(
@@ -335,6 +341,18 @@ const StreamsTable = ({ }) => {
   };
 
   const fetchData = useCallback(async () => {
+    setIsLoading(true);
+
+    // Ensure we have channel groups first (if not already loaded)
+    if (!groupsLoaded && Object.keys(channelGroups).length === 0) {
+      try {
+        await fetchChannelGroups();
+        setGroupsLoaded(true);
+      } catch (error) {
+        console.error('Error fetching channel groups:', error);
+      }
+    }
+
     const params = new URLSearchParams();
     params.append('page', pagination.pageIndex + 1);
     params.append('page_size', pagination.pageSize);
@@ -381,7 +399,7 @@ const StreamsTable = ({ }) => {
     }
 
     setIsLoading(false);
-  }, [pagination, sorting, debouncedFilters]);
+  }, [pagination, sorting, debouncedFilters, groupsLoaded, channelGroups, fetchChannelGroups]);
 
   // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
@@ -603,6 +621,7 @@ const StreamsTable = ({ }) => {
    * useEffects
    */
   useEffect(() => {
+    // Load data independently, don't wait for logos or other data
     fetchData();
   }, [fetchData]);
 
