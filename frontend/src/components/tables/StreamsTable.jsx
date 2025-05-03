@@ -43,6 +43,7 @@ import useSettingsStore from '../../store/settings';
 import useVideoStore from '../../store/useVideoStore';
 import useChannelsTableStore from '../../store/channelsTable';
 import { CustomTable, useTable } from './CustomTable';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 const StreamRowActions = ({
   theme,
@@ -52,6 +53,7 @@ const StreamRowActions = ({
   handleWatchStream,
   selectedChannelIds,
 }) => {
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
   const channelSelectionStreams = useChannelsTableStore(
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
@@ -89,15 +91,25 @@ const StreamRowActions = ({
   }, []);
 
   const onPreview = useCallback(() => {
-    console.log('Previewing stream:', row.original.name, 'ID:', row.original.id, 'Hash:', row.original.stream_hash);
+    console.log(
+      'Previewing stream:',
+      row.original.name,
+      'ID:',
+      row.original.id,
+      'Hash:',
+      row.original.stream_hash
+    );
     handleWatchStream(row.original.stream_hash);
   }, [row.original.id]); // Add proper dependency to ensure correct stream
+
+  const iconSize =
+    tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
 
   return (
     <>
       <Tooltip label="Add to Channel">
         <ActionIcon
-          size="xs"
+          size={iconSize}
           color={theme.tailwind.blue[6]}
           variant="transparent"
           onClick={addStreamToChannel}
@@ -116,7 +128,7 @@ const StreamRowActions = ({
 
       <Tooltip label="Create New Channel">
         <ActionIcon
-          size="xs"
+          size={iconSize}
           color={theme.tailwind.green[5]}
           variant="transparent"
           onClick={createChannelFromStream}
@@ -127,7 +139,7 @@ const StreamRowActions = ({
 
       <Menu>
         <Menu.Target>
-          <ActionIcon variant="transparent" size="xs">
+          <ActionIcon variant="transparent" size={iconSize}>
             <EllipsisVertical size="18" />
           </ActionIcon>
         </Menu.Target>
@@ -157,7 +169,7 @@ const StreamRowActions = ({
   );
 };
 
-const StreamsTable = ({ }) => {
+const StreamsTable = ({}) => {
   const theme = useMantineTheme();
 
   /**
@@ -203,6 +215,7 @@ const StreamsTable = ({ }) => {
   );
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
   const showVideo = useVideoStore((s) => s.showVideo);
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
 
   const handleSelectClick = (e) => {
     e.stopPropagation();
@@ -216,7 +229,7 @@ const StreamsTable = ({ }) => {
     () => [
       {
         id: 'actions',
-        size: 60,
+        size: tableSize == 'compact' ? 60 : 80,
       },
       {
         id: 'select',
@@ -233,7 +246,7 @@ const StreamsTable = ({ }) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -251,7 +264,7 @@ const StreamsTable = ({ }) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -269,7 +282,7 @@ const StreamsTable = ({ }) => {
             }}
           >
             <Tooltip label={getValue()} openDelay={500}>
-              <Text size="sm">{getValue()}</Text>
+              <Box>{getValue()}</Box>
             </Tooltip>
           </Box>
         ),
@@ -609,17 +622,34 @@ const StreamsTable = ({ }) => {
           <Box>
             <Button
               leftSection={<IconSquarePlus size={18} />}
-              variant={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? "light" : "default"}
+              variant={
+                selectedStreamIds.length > 0 && selectedChannelIds.length === 1
+                  ? 'light'
+                  : 'default'
+              }
               size="xs"
               onClick={addStreamsToChannel}
               p={5}
-              color={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? theme.tailwind.green[5] : undefined}
-              style={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? {
-                borderWidth: '1px',
-                borderColor: theme.tailwind.green[5],
-                color: 'white',
-              } : undefined}
-              disabled={!(selectedStreamIds.length > 0 && selectedChannelIds.length === 1)}
+              color={
+                selectedStreamIds.length > 0 && selectedChannelIds.length === 1
+                  ? theme.tailwind.green[5]
+                  : undefined
+              }
+              style={
+                selectedStreamIds.length > 0 && selectedChannelIds.length === 1
+                  ? {
+                      borderWidth: '1px',
+                      borderColor: theme.tailwind.green[5],
+                      color: 'white',
+                    }
+                  : undefined
+              }
+              disabled={
+                !(
+                  selectedStreamIds.length > 0 &&
+                  selectedChannelIds.length === 1
+                )
+              }
             >
               Add Streams to Channel
             </Button>

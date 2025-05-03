@@ -93,6 +93,8 @@ const ChannelRowActions = React.memo(
     createRecording,
     getChannelURL,
   }) => {
+    const [tableSize, _] = useLocalStorage('table-size', 'default');
+
     const onEdit = useCallback(() => {
       editChannel(row.original);
     }, [row.original]);
@@ -109,11 +111,14 @@ const ChannelRowActions = React.memo(
       createRecording(row.original);
     }, [row.original]);
 
+    const iconSize =
+      tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
+
     return (
       <Box style={{ width: '100%', justifyContent: 'left' }}>
         <Center>
           <ActionIcon
-            size="xs"
+            size={iconSize}
             variant="transparent"
             color={theme.tailwind.yellow[3]}
             onClick={onEdit}
@@ -122,7 +127,7 @@ const ChannelRowActions = React.memo(
           </ActionIcon>
 
           <ActionIcon
-            size="xs"
+            size={iconSize}
             variant="transparent"
             color={theme.tailwind.red[6]}
             onClick={onDelete}
@@ -131,7 +136,7 @@ const ChannelRowActions = React.memo(
           </ActionIcon>
 
           <ActionIcon
-            size="xs"
+            size={iconSize}
             variant="transparent"
             color={theme.tailwind.green[5]}
             onClick={onPreview}
@@ -141,7 +146,7 @@ const ChannelRowActions = React.memo(
 
           <Menu>
             <Menu.Target>
-              <ActionIcon variant="transparent" size="sm">
+              <ActionIcon variant="transparent" size={iconSize}>
                 <EllipsisVertical size="18" />
               </ActionIcon>
             </Menu.Target>
@@ -218,6 +223,7 @@ const ChannelsTable = ({}) => {
   // store/settings
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
   const showVideo = useVideoStore((s) => s.showVideo);
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
 
   /**
    * useMemo
@@ -528,7 +534,7 @@ const ChannelsTable = ({}) => {
         size: 40,
         cell: ({ getValue }) => (
           <Flex justify="flex-end" style={{ width: '100%' }}>
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Flex>
         ),
       },
@@ -543,7 +549,7 @@ const ChannelsTable = ({}) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -561,7 +567,7 @@ const ChannelsTable = ({}) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -586,7 +592,7 @@ const ChannelsTable = ({}) => {
       },
       {
         id: 'actions',
-        size: 75,
+        size: tableSize == 'compact' ? 75 : 100,
         header: '',
         cell: ({ row }) => (
           <ChannelRowActions

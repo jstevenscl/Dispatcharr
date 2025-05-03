@@ -1,6 +1,5 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from core.models import StreamProfile
 from django.conf import settings
 from core.models import StreamProfile, CoreSettings
 from core.utils import RedisClient
