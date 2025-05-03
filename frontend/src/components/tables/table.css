@@ -93,6 +93,16 @@ html {
   background-color: #27272A;
 }
 
+/* Style for rows with no streams */
+.no-streams-row {
+  background-color: rgba(255, 68, 68, 0.15) !important;
+}
+
+/* Make sure hover effect still works on rows with no streams */
+.table-striped .tbody .tr.no-streams-row:hover {
+  background-color: rgb(68, 68, 68) !important;
+}
+
 /* Prevent text selection when shift key is pressed */
 .shift-key-active {
   cursor: pointer !important;

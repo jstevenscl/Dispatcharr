@@ -743,7 +743,9 @@ const ChannelsTable = ({ }) => {
       const hasStreams = row.original.streams && row.original.streams.length > 0;
       return hasStreams
         ? {} // Default style for channels with streams
-        : { backgroundColor: 'rgba(255, 0, 0, 0.15)' }; // Increase opacity to 15% for better visibility
+        : {
+          className: 'no-streams-row' // Add a class instead of background color
+        };
     }
   });
 
