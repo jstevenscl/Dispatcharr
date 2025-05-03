@@ -14,11 +14,26 @@ import {
   Flex,
   useMantineTheme,
   Switch,
+  Badge,
+  Progress,
+  Stack,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
 import dayjs from 'dayjs';
+
+// Helper function to get status badge color
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'idle': return 'gray';
+    case 'fetching': return 'blue';
+    case 'parsing': return 'indigo';
+    case 'error': return 'red';
+    case 'success': return 'green';
+    default: return 'gray';
+  }
+};
 
 const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
@@ -26,6 +41,7 @@ const EPGsTable = () => {
   const [rowSelection, setRowSelection] = useState([]);
 
   const epgs = useEPGsStore((s) => s.epgs);
+  const refreshProgress = useEPGsStore((s) => s.refreshProgress);
 
   const theme = useMantineTheme();
 
@@ -34,6 +50,35 @@ const EPGsTable = () => {
       ...epg,
       is_active: !epg.is_active,
     });
+  };
+
+  const buildProgressDisplay = (data) => {
+    const progress = refreshProgress[data.id] || null;
+
+    if (!progress) return null;
+
+    let label = '';
+    switch (progress.action) {
+      case 'downloading':
+        label = 'Downloading';
+        break;
+      case 'parsing_channels':
+        label = 'Parsing Channels';
+        break;
+      case 'parsing_programs':
+        label = 'Parsing Programs';
+        break;
+      default:
+        return null;
+    }
+
+    return (
+      <Stack spacing={5}>
+        <Text size="xs">{label}: {parseInt(progress.progress)}%</Text>
+        <Progress value={parseInt(progress.progress)} size="xs" />
+        {progress.speed && <Text size="xs">Speed: {parseInt(progress.speed)} KB/s</Text>}
+      </Stack>
+    );
   };
 
   const columns = useMemo(
@@ -52,23 +97,49 @@ const EPGsTable = () => {
         minSize: 100,
       },
       {
+        header: 'Status',
+        accessorKey: 'status',
+        size: 100,
+        minSize: 80,
+        Cell: ({ row }) => {
+          const data = row.original;
+
+          // Check if there's an active progress for this EPG
+          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
+            return buildProgressDisplay(data);
+          }
+
+          // Return the original status display if no active progress
+          return (
+            <Badge color={getStatusColor(data.status)}>
+              {data.status}
+            </Badge>
+          );
+        },
+      },
+      {
         header: 'URL / API Key',
         accessorKey: 'url',
         size: 200,
         minSize: 120,
         enableSorting: false,
-        Cell: ({ cell }) => (
-          <div
-            style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '100%',
-            }}
-          >
-            {cell.getValue()}
-          </div>
-        ),
+        Cell: ({ cell, row }) => {
+          const value = cell.getValue() || row.original.api_key || '';
+          return (
+            <Tooltip label={value} disabled={!value}>
+              <div
+                style={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+              >
+                {value}
+              </div>
+            </Tooltip>
+          );
+        },
       },
       {
         header: 'Active',
@@ -97,7 +168,7 @@ const EPGsTable = () => {
         enableSorting: false,
       },
     ],
-    []
+    [refreshProgress]
   );
 
   //optionally access the underlying virtualizer instance

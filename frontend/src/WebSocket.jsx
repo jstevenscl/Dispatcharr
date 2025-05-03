@@ -116,6 +116,19 @@ export const WebsocketProvider = ({ children }) => {
             message: 'EPG channels updated!',
             color: 'green.5',
           });
+
+          // If source_id is provided, update that specific EPG's status
+          if (event.data.source_id) {
+            const epgsState = useEPGsStore.getState();
+            const epg = epgsState.epgs[event.data.source_id];
+            if (epg) {
+              epgsState.updateEPG({
+                ...epg,
+                status: 'success'
+              });
+            }
+          }
+
           fetchEPGData();
           break;
 
@@ -156,6 +169,36 @@ export const WebsocketProvider = ({ children }) => {
             color: 'orange.5',
             autoClose: 8000,
           });
+
+          // Update EPG status in store
+          if (event.data.source_id) {
+            const epgsState = useEPGsStore.getState();
+            const epg = epgsState.epgs[event.data.source_id];
+            if (epg) {
+              epgsState.updateEPG({
+                ...epg,
+                status: 'error',
+                last_error: event.data.message
+              });
+            }
+          }
+          break;
+
+        case 'epg_refresh':
+          // Update the store with progress information
+          const epgsState = useEPGsStore.getState();
+          epgsState.updateEPGProgress(event.data);
+
+          // If progress is complete (100%), show a notification and refresh EPG data
+          if (event.data.progress === 100 && event.data.action === "parsing_programs") {
+            notifications.show({
+              title: 'EPG Processing Complete',
+              message: 'EPG data has been updated successfully',
+              color: 'green.5',
+            });
+
+            fetchEPGData();
+          }
           break;
 
         default:

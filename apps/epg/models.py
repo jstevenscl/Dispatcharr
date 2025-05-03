@@ -9,6 +9,14 @@ class EPGSource(models.Model):
         ('xmltv', 'XMLTV URL'),
         ('schedules_direct', 'Schedules Direct API'),
     ]
+    STATUS_CHOICES = [
+        ('idle', 'Idle'),
+        ('fetching', 'Fetching'),
+        ('parsing', 'Parsing'),
+        ('error', 'Error'),
+        ('success', 'Success'),
+    ]
+
     name = models.CharField(max_length=255, unique=True)
     source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES)
     url = models.URLField(blank=True, null=True)  # For XMLTV
@@ -19,6 +27,8 @@ class EPGSource(models.Model):
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
     )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='idle')
+    last_error = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(
         auto_now_add=True,
         help_text="Time when this source was created"
