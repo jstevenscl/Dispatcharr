@@ -93,21 +93,31 @@ const ChannelRowActions = React.memo(
     createRecording,
     getChannelURL,
   }) => {
+    // Extract the channel ID once to ensure consistency
+    const channelId = row.original.id;
+    const channelUuid = row.original.uuid;
+
     const onEdit = useCallback(() => {
+      // Use the ID directly to avoid issues with filtered tables
+      console.log(`Editing channel ID: ${channelId}`);
       editChannel(row.original);
-    }, [row.original]);
+    }, [channelId]);
 
     const onDelete = useCallback(() => {
-      deleteChannel(row.original.id);
-    }, [row.original]);
+      console.log(`Deleting channel ID: ${channelId}`);
+      deleteChannel(channelId);
+    }, [channelId]);
 
     const onPreview = useCallback(() => {
+      // Use direct channel UUID for preview to avoid issues
+      console.log(`Previewing channel UUID: ${channelUuid}`);
       handleWatchStream(row.original);
-    }, [row.original]);
+    }, [channelUuid]);
 
     const onRecord = useCallback(() => {
+      console.log(`Recording channel ID: ${channelId}`);
       createRecording(row.original);
-    }, [row.original]);
+    }, [channelId]);
 
     return (
       <Box style={{ width: '100%', justifyContent: 'left' }}>
@@ -179,7 +189,7 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = ({}) => {
+const ChannelsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -311,11 +321,17 @@ const ChannelsTable = ({}) => {
   };
 
   const editChannel = async (ch = null) => {
+    if (ch) {
+      console.log(`Opening editor for channel: ${ch.name} (${ch.id})`);
+    } else {
+      console.log('Creating new channel');
+    }
     setChannel(ch);
     setChannelModalOpen(true);
   };
 
   const deleteChannel = async (id) => {
+    console.log(`Deleting channel with ID: ${id}`);
     table.setSelectedTableIds([]);
     if (selectedChannelIds.length > 0) {
       return deleteChannels();
@@ -325,11 +341,18 @@ const ChannelsTable = ({}) => {
   };
 
   const createRecording = (channel) => {
+    console.log(`Recording channel ID: ${channel.id}`);
     setChannel(channel);
     setRecordingModalOpen(true);
   };
 
   const getChannelURL = (channel) => {
+    // Make sure we're using the channel UUID consistently
+    if (!channel || !channel.uuid) {
+      console.error('Invalid channel object or missing UUID:', channel);
+      return '';
+    }
+
     const uri = `/proxy/ts/stream/${channel.uuid}`;
     let channelUrl = `${window.location.protocol}//${window.location.host}${uri}`;
     if (env_mode == 'dev') {
@@ -340,7 +363,11 @@ const ChannelsTable = ({}) => {
   };
 
   const handleWatchStream = (channel) => {
-    showVideo(getChannelURL(channel));
+    // Add additional logging to help debug issues
+    console.log(`Watching stream for channel: ${channel.name} (${channel.id}), UUID: ${channel.uuid}`);
+    const url = getChannelURL(channel);
+    console.log(`Stream URL: ${url}`);
+    showVideo(url);
   };
 
   const onRowSelectionChange = (newSelection) => {
@@ -535,17 +562,19 @@ const ChannelsTable = ({}) => {
       {
         id: 'name',
         accessorKey: 'name',
-        cell: ({ getValue }) => (
-          <Box
-            style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            <Text size="sm">{getValue()}</Text>
-          </Box>
-        ),
+        cell: ({ row, getValue }) => {
+          return (
+            <Box
+              style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              <Text size="sm">{getValue()}</Text>
+            </Box>
+          );
+        },
       },
       {
         id: 'channel_group',
@@ -601,7 +630,7 @@ const ChannelsTable = ({}) => {
         ),
       },
     ],
-    [selectedProfileId, channelGroups, logos]
+    [selectedProfileId, channelGroups, logos, theme]
   );
 
   const renderHeaderCell = (header) => {
@@ -710,6 +739,12 @@ const ChannelsTable = ({}) => {
       channel_group: renderHeaderCell,
       enabled: renderHeaderCell,
     },
+    getRowStyles: (row) => {
+      const hasStreams = row.original.streams && row.original.streams.length > 0;
+      return hasStreams
+        ? {} // Default style for channels with streams
+        : { backgroundColor: 'rgba(255, 0, 0, 0.15)' }; // Increase opacity to 15% for better visibility
+    }
   });
 
   const rows = table.getRowModel().rows;

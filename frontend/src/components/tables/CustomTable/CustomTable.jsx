@@ -32,6 +32,7 @@ const CustomTable = ({ table }) => {
         expandedRowRenderer={table.expandedRowRenderer}
         renderBodyCell={table.renderBodyCell}
         getExpandedRowHeight={table.getExpandedRowHeight}
+        getRowStyles={table.getRowStyles} // Pass the getRowStyles function
       />
     </Box>
   );
