@@ -82,11 +82,11 @@ const StreamRowActions = ({
 
   const onEdit = useCallback(() => {
     editStream(row.original);
-  }, []);
+  }, [row.original.id, editStream]);
 
   const onDelete = useCallback(() => {
     deleteStream(row.original.id);
-  }, []);
+  }, [row.original.id, deleteStream]);
 
   const onPreview = useCallback(() => {
     console.log('Previewing stream:', row.original.name, 'ID:', row.original.id, 'Hash:', row.original.stream_hash);
@@ -543,7 +543,7 @@ const StreamsTable = ({ }) => {
           );
       }
     },
-    [selectedChannelIds, channelSelectionStreams]
+    [selectedChannelIds, channelSelectionStreams, theme, editStream, deleteStream, handleWatchStream]
   );
 
   const table = useTable({
