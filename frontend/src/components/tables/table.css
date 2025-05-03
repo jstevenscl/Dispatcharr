@@ -95,12 +95,15 @@ html {
 
 /* Style for rows with no streams */
 .no-streams-row {
-  background-color: rgba(255, 68, 68, 0.15) !important;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.3);
+  /* Add subtle border */
 }
 
-/* Make sure hover effect still works on rows with no streams */
+/* Special hover effect for rows with no streams */
 .table-striped .tbody .tr.no-streams-row:hover {
-  background-color: rgb(68, 68, 68) !important;
+  background-color: rgba(239, 68, 68, 0.3) !important;
+  /* Darker red on hover */
 }
 
 /* Prevent text selection when shift key is pressed */
