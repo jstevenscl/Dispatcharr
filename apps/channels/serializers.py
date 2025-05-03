@@ -45,6 +45,7 @@ class StreamSerializer(serializers.ModelSerializer):
             'local_file',
             'current_viewers',
             'updated_at',
+            'last_seen',
             'stream_profile_id',
             'is_custom',
             'channel_group',
