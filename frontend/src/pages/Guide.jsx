@@ -604,6 +604,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
         >
           <Box>
             <Text
+              component="div"
               size={isExpanded ? 'lg' : 'md'}
               style={{
                 fontWeight: 'bold',
