@@ -285,6 +285,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         {"error": f"Channel number {channel_number} is already in use. Please choose a different number."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+        #Get the tvc_guide_stationid from custom properties if it exists
+        tvc_guide_stationid = None
+        if 'tvc-guide-stationid' in stream_custom_props:
+            tvc_guide_stationid = stream_custom_props['tvc-guide-stationid']
 
 
 
@@ -292,6 +296,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             'channel_number': channel_number,
             'name': name,
             'tvg_id': stream.tvg_id,
+            'tvc_guide_stationid': tvc_guide_stationid,
             'channel_group_id': channel_group.id,
             'streams': [stream_id],
         }
