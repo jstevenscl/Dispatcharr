@@ -261,7 +261,7 @@ export const WebsocketProvider = ({ children }) => {
                   epgsState.updateEPG({
                     ...epg,
                     status: 'error',
-                    last_error: parsedEvent.data.message
+                    last_message: parsedEvent.data.message
                   });
                 }
               }

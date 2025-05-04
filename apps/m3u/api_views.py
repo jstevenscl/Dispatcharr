@@ -94,6 +94,19 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
         # After the instance is created, return the response
         return response
 
+    def partial_update(self, request, *args, **kwargs):
+        """Handle PATCH requests with special handling for is_active toggle"""
+        # Check if this is just an is_active toggle
+        if len(request.data) == 1 and 'is_active' in request.data:
+            instance = self.get_object()
+            instance.is_active = request.data['is_active']
+            instance.save(update_fields=['is_active'])
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+
+        # Otherwise, handle as normal update
+        return super().partial_update(request, *args, **kwargs)
+
 class M3UFilterViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U filters"""
     queryset = M3UFilter.objects.all()

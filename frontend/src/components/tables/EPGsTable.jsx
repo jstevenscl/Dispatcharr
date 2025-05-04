@@ -53,10 +53,15 @@ const EPGsTable = () => {
   const theme = useMantineTheme();
 
   const toggleActive = async (epg) => {
-    await API.updateEPG({
-      ...epg,
-      is_active: !epg.is_active,
-    });
+    try {
+      // Send only the is_active field to trigger our special handling
+      await API.updateEPG({
+        id: epg.id,
+        is_active: !epg.is_active,
+      }, true); // Add a new parameter to indicate this is just a toggle
+    } catch (error) {
+      console.error('Error toggling active state:', error);
+    }
   };
 
   const buildProgressDisplay = (data) => {
@@ -154,7 +159,7 @@ const EPGsTable = () => {
       },
       {
         header: 'Status Message',
-        accessorKey: 'last_error',
+        accessorKey: 'last_message',
         size: 250,
         minSize: 150,
         enableSorting: false,
@@ -162,11 +167,11 @@ const EPGsTable = () => {
           const data = row.original;
 
           // Show error message when status is error
-          if (data.status === 'error' && data.last_error) {
+          if (data.status === 'error' && data.last_message) {
             return (
-              <Tooltip label={data.last_error} multiline width={300}>
+              <Tooltip label={data.last_message} multiline width={300}>
                 <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6] }}>
-                  {data.last_error}
+                  {data.last_message}
                 </Text>
               </Tooltip>
             );

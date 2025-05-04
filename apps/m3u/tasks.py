@@ -513,15 +513,21 @@ def refresh_single_m3u_account(account_id):
     if not acquire_task_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
 
-    # redis_client = RedisClient.get_client()
     # Record start time
     start_time = time.time()
+    streams_created = 0
+    streams_updated = 0
+    streams_deleted = 0
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
         if not account.is_active:
             logger.info(f"Account {account_id} is not active, skipping.")
             return
+
+        # Set status to fetching
+        account.status = M3UAccount.Status.FETCHING
+        account.save(update_fields=['status'])
 
         filters = list(account.filters.all())
     except M3UAccount.DoesNotExist:
@@ -558,105 +564,134 @@ def refresh_single_m3u_account(account_id):
         m3u_account__enabled=True  # Filter by the enabled flag in the join table
     )}
 
-    if account.account_type == M3UAccount.Types.STADNARD:
-        # Break into batches and process in parallel
-        batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
-        task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
-    else:
-        filtered_groups = [(k, v) for k, v in groups.items() if k in existing_groups]
-        batches = [
-            dict(filtered_groups[i:i + 2])
-            for i in range(0, len(filtered_groups), 2)
-        ]
-        task_group = group(process_xc_category.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
+    try:
+        # Set status to parsing
+        account.status = M3UAccount.Status.PARSING
+        account.save(update_fields=['status'])
 
-    total_batches = len(batches)
-    completed_batches = 0
-    streams_processed = 0  # Track total streams processed
-    logger.debug(f"Dispatched {len(batches)} parallel tasks for account_id={account_id}.")
+        if account.account_type == M3UAccount.Types.STADNARD:
+            # Break into batches and process in parallel
+            batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
+            task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
+        else:
+            filtered_groups = [(k, v) for k, v in groups.items() if k in existing_groups]
+            batches = [
+                dict(filtered_groups[i:i + 2])
+                for i in range(0, len(filtered_groups), 2)
+            ]
+            task_group = group(process_xc_category.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
 
-    # result = task_group.apply_async()
-    result = task_group.apply_async()
+        total_batches = len(batches)
+        completed_batches = 0
+        streams_processed = 0  # Track total streams processed
+        logger.debug(f"Dispatched {len(batches)} parallel tasks for account_id={account_id}.")
 
-    # Wait for all tasks to complete and collect their result IDs
-    completed_task_ids = set()
-    while completed_batches < total_batches:
-        for async_result in result:
-            if async_result.ready() and async_result.id not in completed_task_ids:  # If the task has completed and we haven't counted it
-                task_result = async_result.result  # The result of the task
-                logger.debug(f"Task completed with result: {task_result}")
+        # result = task_group.apply_async()
+        result = task_group.apply_async()
 
-                # Extract stream counts from result string if available
-                if isinstance(task_result, str):
-                    try:
-                        created_match = re.search(r"(\d+) created", task_result)
-                        updated_match = re.search(r"(\d+) updated", task_result)
+        # Wait for all tasks to complete and collect their result IDs
+        completed_task_ids = set()
+        while completed_batches < total_batches:
+            for async_result in result:
+                if async_result.ready() and async_result.id not in completed_task_ids:  # If the task has completed and we haven't counted it
+                    task_result = async_result.result  # The result of the task
+                    logger.debug(f"Task completed with result: {task_result}")
 
-                        if created_match and updated_match:
-                            created_count = int(created_match.group(1))
-                            updated_count = int(updated_match.group(1))
-                            streams_processed += created_count + updated_count
-                    except (AttributeError, ValueError):
-                        pass
+                    # Extract stream counts from result string if available
+                    if isinstance(task_result, str):
+                        try:
+                            created_match = re.search(r"(\d+) created", task_result)
+                            updated_match = re.search(r"(\d+) updated", task_result)
 
-                completed_batches += 1
-                completed_task_ids.add(async_result.id)  # Mark this task as processed
+                            if created_match and updated_match:
+                                created_count = int(created_match.group(1))
+                                updated_count = int(updated_match.group(1))
+                                streams_processed += created_count + updated_count
+                                streams_created += created_count
+                                streams_updated += updated_count
+                        except (AttributeError, ValueError):
+                            pass
 
-                # Calculate progress
-                progress = int((completed_batches / total_batches) * 100)
+                    completed_batches += 1
+                    completed_task_ids.add(async_result.id)  # Mark this task as processed
 
-                # Calculate elapsed time and estimated remaining time
-                current_elapsed = time.time() - start_time
-                if progress > 0:
-                    estimated_total = (current_elapsed / progress) * 100
-                    time_remaining = max(0, estimated_total - current_elapsed)
+                    # Calculate progress
+                    progress = int((completed_batches / total_batches) * 100)
+
+                    # Calculate elapsed time and estimated remaining time
+                    current_elapsed = time.time() - start_time
+                    if progress > 0:
+                        estimated_total = (current_elapsed / progress) * 100
+                        time_remaining = max(0, estimated_total - current_elapsed)
+                    else:
+                        time_remaining = 0
+
+                    # Send progress update via Channels
+                    # Don't send 100% because we want to clean up after
+                    if progress == 100:
+                        progress = 99
+
+                    send_m3u_update(
+                        account_id,
+                        "parsing",
+                        progress,
+                        elapsed_time=current_elapsed,
+                        time_remaining=time_remaining,
+                        streams_processed=streams_processed
+                    )
+
+                    # Optionally remove completed task from the group to prevent processing it again
+                    result.remove(async_result)
                 else:
-                    time_remaining = 0
+                    logger.debug(f"Task is still running.")
 
-                # Send progress update via Channels
-                # Don't send 100% because we want to clean up after
-                if progress == 100:
-                    progress = 99
+        # Ensure all database transactions are committed before cleanup
+        logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")
+        # Force a simple DB query to ensure connection sync
+        Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
 
-                send_m3u_update(
-                    account_id,
-                    "parsing",
-                    progress,
-                    elapsed_time=current_elapsed,
-                    time_remaining=time_remaining,
-                    streams_processed=streams_processed
-                )
+        # Now run cleanup
+        cleanup_streams(account_id)
+        # Send final update with complete metrics
+        elapsed_time = time.time() - start_time
+        send_m3u_update(
+            account_id,
+            "parsing",
+            100,
+            elapsed_time=elapsed_time,
+            time_remaining=0,
+            streams_processed=streams_processed,
+            streams_created=streams_created,
+            streams_updated=streams_updated,
+            streams_deleted=streams_deleted,
+            message=account.last_message
+        )
 
-                # Optionally remove completed task from the group to prevent processing it again
-                result.remove(async_result)
-            else:
-                logger.debug(f"Task is still running.")
+        end_time = time.time()
 
-    # Ensure all database transactions are committed before cleanup
-    logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")
-    # Force a simple DB query to ensure connection sync
-    Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
+        # Calculate elapsed time
+        elapsed_time = end_time - start_time
 
-    # Now run cleanup
-    cleanup_streams(account_id)
-    # Send final update with complete metrics
-    elapsed_time = time.time() - start_time
-    send_m3u_update(
-        account_id,
-        "parsing",
-        100,
-        elapsed_time=elapsed_time,
-        time_remaining=0,
-        streams_processed=streams_processed
-    )
+        # Set status to success and update timestamp
+        account.status = M3UAccount.Status.SUCCESS
+        account.last_message = (
+            f"Processing completed in {elapsed_time:.1f} seconds. "
+            f"Streams: {streams_created} created, {streams_updated} updated, {streams_deleted} removed. "
+            f"Total processed: {streams_processed}."
+        )
+        account.updated_at = timezone.now()
+        account.save(update_fields=['status', 'last_message', 'updated_at'])
 
-    end_time = time.time()
+        print(f"Function took {elapsed_time} seconds to execute.")
 
-    # Calculate elapsed time
-    elapsed_time = end_time - start_time
-    account.save(update_fields=['updated_at'])
+    except Exception as e:
+        logger.error(f"Error processing M3U for account {account_id}: {str(e)}")
+        account.status = M3UAccount.Status.ERROR
+        account.last_message = f"Error processing M3U: {str(e)}"
+        account.save(update_fields=['status', 'last_message'])
+        raise  # Re-raise the exception for Celery to handle
 
-    print(f"Function took {elapsed_time} seconds to execute.")
+    release_task_lock('refresh_single_m3u_account', account_id)
 
     # Aggressive garbage collection
     del existing_groups, extinf_data, groups, batches
@@ -665,16 +700,6 @@ def refresh_single_m3u_account(account_id):
     # Clean up cache file since we've fully processed it
     if os.path.exists(cache_path):
         os.remove(cache_path)
-
-    release_task_lock('refresh_single_m3u_account', account_id)
-
-    # cursor = 0
-    # while True:
-    #     cursor, keys = redis_client.scan(cursor, match=f"m3u_refresh:*", count=BATCH_SIZE)
-    #     if keys:
-    #         redis_client.delete(*keys)  # Delete the matching keys
-    #     if cursor == 0:
-    #         break
 
     return f"Dispatched jobs complete."
 
@@ -686,6 +711,17 @@ def send_m3u_update(account_id, action, progress, **kwargs):
         "account": account_id,
         "action": action,
     }
+
+    # Add the status and message if not already in kwargs
+    try:
+        account = M3UAccount.objects.get(id=account_id)
+        if account:
+            if "status" not in kwargs:
+                data["status"] = account.status
+            if "message" not in kwargs and account.last_message:
+                data["message"] = account.last_message
+    except:
+        pass  # If account can't be retrieved, continue without these fields
 
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)

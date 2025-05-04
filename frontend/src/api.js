@@ -728,14 +728,22 @@ export default class API {
     }
   }
 
-  static async updatePlaylist(values) {
+  static async updatePlaylist(values, isToggle = false) {
     const { id, ...payload } = values;
 
-    if (payload.custom_properties) {
-      payload.custom_properties = JSON.stringify(payload.custom_properties);
-    }
-
     try {
+      // If this is just toggling the active state, make a simpler request
+      if (isToggle && 'is_active' in payload && Object.keys(payload).length === 1) {
+        const response = await request(`${host}/api/m3u/accounts/${id}/`, {
+          method: 'PATCH',
+          body: { is_active: payload.is_active },
+        });
+
+        usePlaylistsStore.getState().updatePlaylist(response);
+        return response;
+      }
+
+      // Original implementation for full updates
       let body = null;
       if (payload.file) {
         delete payload.server_url;
@@ -817,10 +825,22 @@ export default class API {
     }
   }
 
-  static async updateEPG(values) {
+  static async updateEPG(values, isToggle = false) {
     const { id, ...payload } = values;
 
     try {
+      // If this is just toggling the active state, make a simpler request
+      if (isToggle && 'is_active' in payload && Object.keys(payload).length === 1) {
+        const response = await request(`${host}/api/epg/sources/${id}/`, {
+          method: 'PATCH',
+          body: { is_active: payload.is_active },
+        });
+
+        useEPGsStore.getState().updateEPG(response);
+        return response;
+      }
+
+      // Original implementation for full updates
       let body = null;
       if (payload.files) {
         body = new FormData();

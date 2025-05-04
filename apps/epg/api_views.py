@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 # 1) EPG Source API (CRUD)
 # ─────────────────────────────
 class EPGSourceViewSet(viewsets.ModelViewSet):
-    """Handles CRUD operations for EPG sources"""
+    """
+    API endpoint that allows EPG sources to be viewed or edited.
+    """
     queryset = EPGSource.objects.all()
     serializer_class = EPGSourceSerializer
     permission_classes = [IsAuthenticated]
@@ -49,6 +51,19 @@ class EPGSourceViewSet(viewsets.ModelViewSet):
         self.perform_create(serializer)
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Handle PATCH requests with special handling for is_active toggle"""
+        # Check if this is just an is_active toggle
+        if len(request.data) == 1 and 'is_active' in request.data:
+            instance = self.get_object()
+            instance.is_active = request.data['is_active']
+            instance.save(update_fields=['is_active'])
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+
+        # Otherwise, handle as normal update
+        return super().partial_update(request, *args, **kwargs)
 
 # ─────────────────────────────
 # 2) Program API (CRUD)

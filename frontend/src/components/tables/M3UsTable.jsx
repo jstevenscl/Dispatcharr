@@ -207,10 +207,15 @@ const M3UTable = () => {
   };
 
   const toggleActive = async (playlist) => {
-    await API.updatePlaylist({
-      ...playlist,
-      is_active: !playlist.is_active,
-    });
+    try {
+      // Send only the is_active field to trigger our special handling
+      await API.updatePlaylist({
+        id: playlist.id,
+        is_active: !playlist.is_active,
+      }, true); // Add a new parameter to indicate this is just a toggle
+    } catch (error) {
+      console.error('Error toggling active state:', error);
+    }
   };
 
   const columns = useMemo(
