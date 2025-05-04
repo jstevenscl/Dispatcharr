@@ -6,12 +6,35 @@ logger = logging.getLogger(__name__)
 
 class MyWebSocketConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        await self.accept()
-        self.room_name = "updates"
-        await self.channel_layer.group_add(self.room_name, self.channel_name)
+        try:
+            await self.accept()
+            self.room_name = "updates"
+            await self.channel_layer.group_add(self.room_name, self.channel_name)
+            # Send a connection confirmation to the client with consistent format
+            await self.send(text_data=json.dumps({
+                'type': 'connection_established',
+                'data': {
+                    'success': True,
+                    'message': 'WebSocket connection established successfully'
+                }
+            }))
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in WebSocket connect: {str(e)}")
+            # If an error occurs during connection, attempt to close
+            try:
+                await self.close(code=1011)  # Internal server error
+            except:
+                pass
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.room_name, self.channel_name)
+        try:
+            await self.channel_layer.group_discard(self.room_name, self.channel_name)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in WebSocket disconnect: {str(e)}")
 
     async def receive(self, text_data):
         data = json.loads(text_data)

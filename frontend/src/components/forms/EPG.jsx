@@ -134,7 +134,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           <Button
             type="submit"
             variant="contained"
-            disabled={form.submiting}
+            disabled={form.submitting} // Fix the typo: submiting -> submitting
             size="small"
           >
             Submit
