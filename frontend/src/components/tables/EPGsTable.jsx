@@ -91,12 +91,6 @@ const EPGsTable = () => {
         minSize: 100,
       },
       {
-        header: 'Source Type',
-        accessorKey: 'source_type',
-        size: 120,
-        minSize: 100,
-      },
-      {
         header: 'Status',
         accessorKey: 'status',
         size: 100,
@@ -116,6 +110,45 @@ const EPGsTable = () => {
             </Badge>
           );
         },
+      },
+      {
+        header: 'Status Message',
+        accessorKey: 'last_error',
+        size: 250,
+        minSize: 150,
+        enableSorting: false,
+        Cell: ({ row }) => {
+          const data = row.original;
+
+          // Show error message when status is error
+          if (data.status === 'error' && data.last_error) {
+            return (
+              <Tooltip label={data.last_error} multiline width={300}>
+                <Text color="red" size="xs" lineClamp={2}>
+                  {data.last_error}
+                </Text>
+              </Tooltip>
+            );
+          }
+
+          // Show success message for successful sources
+          if (data.status === 'success') {
+            return (
+              <Text color="green.7" size="xs">
+                EPG data refreshed successfully
+              </Text>
+            );
+          }
+
+          // Otherwise return empty cell
+          return null;
+        },
+      },
+      {
+        header: 'Source Type',
+        accessorKey: 'source_type',
+        size: 120,
+        minSize: 100,
       },
       {
         header: 'URL / API Key',
