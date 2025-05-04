@@ -107,18 +107,23 @@ const M3UTable = () => {
         accessorKey: 'server_url',
         size: 200,
         minSize: 120,
-        Cell: ({ cell }) => (
-          <div
-            style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '100%',
-            }}
-          >
-            {cell.getValue()}
-          </div>
-        ),
+        Cell: ({ cell, row }) => {
+          const value = cell.getValue() || row.original.file_path || '';
+          return (
+            <Tooltip label={value} disabled={!value}>
+              <div
+                style={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+              >
+                {value}
+              </div>
+            </Tooltip>
+          );
+        },
       },
       {
         header: 'Max Streams',

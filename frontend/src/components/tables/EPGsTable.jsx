@@ -104,13 +104,13 @@ const EPGsTable = () => {
         minSize: 100,
       },
       {
-        header: 'URL / API Key',
+        header: 'URL / API Key / File Path',
         accessorKey: 'url',
         size: 200,
         minSize: 120,
         enableSorting: false,
         Cell: ({ cell, row }) => {
-          const value = cell.getValue() || row.original.api_key || '';
+          const value = cell.getValue() || row.original.api_key || row.original.file_path || '';
           return (
             <Tooltip label={value} disabled={!value}>
               <div
