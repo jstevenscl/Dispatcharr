@@ -352,10 +352,27 @@ const ChannelsTable = ({ }) => {
   const editChannel = async (ch = null) => {
     if (ch) {
       console.log(`Opening editor for channel: ${ch.name} (${ch.id})`);
+
+      try {
+        // Fetch the full channel with streams data directly from the API instead of the store
+        const fullChannelData = await API.getChannel(ch.id);
+        if (fullChannelData) {
+          setChannel(fullChannelData);
+        } else {
+          // Fallback to store data if API call fails
+          const latestChannel = useChannelsStore.getState().channels[ch.id];
+          setChannel(latestChannel);
+        }
+      } catch (error) {
+        console.error("Error fetching channel data:", error);
+        // Fallback to store data if API call fails
+        const latestChannel = useChannelsStore.getState().channels[ch.id];
+        setChannel(latestChannel);
+      }
     } else {
       console.log('Creating new channel');
+      setChannel(null);
     }
-    setChannel(ch);
     setChannelModalOpen(true);
   };
 

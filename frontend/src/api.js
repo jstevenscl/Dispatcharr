@@ -1321,4 +1321,14 @@ export default class API {
       errorNotification('Failed to update channel EPGs', e);
     }
   }
+
+  static async getChannel(id) {
+    try {
+      const response = await request(`${host}/api/channels/channels/${id}/?include_streams=true`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch channel details', e);
+      return null;
+    }
+  }
 }
