@@ -39,6 +39,9 @@ const M3UTable = () => {
     }
 
     switch (data.action) {
+      case 'initializing':
+        return buildInitializingStats();
+
       case 'downloading':
         return buildDownloadingStats(data);
 
@@ -191,6 +194,18 @@ const M3UTable = () => {
     );
   };
 
+  const buildInitializingStats = () => {
+    return (
+      <Box>
+        <Flex direction="column" gap="xs">
+          <Flex align="center">
+            <Text size="xs" fw={500}>Initializing refresh...</Text>
+          </Flex>
+        </Flex>
+      </Box>
+    );
+  };
+
   const toggleActive = async (playlist) => {
     await API.updatePlaylist({
       ...playlist,
@@ -310,8 +325,28 @@ const M3UTable = () => {
   };
 
   const refreshPlaylist = async (id) => {
-    await API.refreshPlaylist(id);
-    setRefreshProgress(id, 0);
+    // Provide immediate visual feedback before the API call
+    setRefreshProgress(id, {
+      action: 'initializing',
+      progress: 0,
+      account: id,
+      type: 'm3u_refresh'
+    });
+
+    try {
+      await API.refreshPlaylist(id);
+      // No need to set again since WebSocket will update us once the task starts
+    } catch (error) {
+      // If the API call fails, show an error state
+      setRefreshProgress(id, {
+        action: 'error',
+        progress: 0,
+        account: id,
+        type: 'm3u_refresh',
+        error: 'Failed to start refresh task',
+        status: 'error'
+      });
+    }
   };
 
   const deletePlaylist = async (id) => {
