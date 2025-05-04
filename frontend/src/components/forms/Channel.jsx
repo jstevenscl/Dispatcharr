@@ -37,7 +37,7 @@ import useEPGsStore from '../../store/epgs';
 import { Dropzone } from '@mantine/dropzone';
 import { FixedSizeList as List } from 'react-window';
 
-const Channel = ({ channel = null, isOpen, onClose }) => {
+const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const theme = useMantineTheme();
 
   const listRef = useRef(null);
@@ -59,7 +59,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
   const [epgPopoverOpened, setEpgPopoverOpened] = useState(false);
   const [logoPopoverOpened, setLogoPopoverOpened] = useState(false);
-  const [selectedEPG, setSelectedEPG] = useState({});
+  const [selectedEPG, setSelectedEPG] = useState('');
   const [tvgFilter, setTvgFilter] = useState('');
   const [logoFilter, setLogoFilter] = useState('');
   const [logoOptions, setLogoOptions] = useState([]);
@@ -94,11 +94,11 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
       name: '',
-      channel_number: 0,
-      channel_group_id: Object.keys(channelGroups)[0],
+      channel_number: '',  // Change from 0 to empty string for consistency
+      channel_group_id: Object.keys(channelGroups).length > 0 ? Object.keys(channelGroups)[0] : '',
       stream_profile_id: '0',
       tvg_id: '',
-      tvc_guide_stationid: '',      
+      tvc_guide_stationid: '',
       epg_data_id: '',
       logo_id: '',
     },
@@ -177,26 +177,26 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   useEffect(() => {
     if (channel) {
       if (channel.epg_data_id) {
-        const epgSource = epgs[tvgsById[channel.epg_data_id].epg_source];
-        setSelectedEPG(`${epgSource.id}`);
+        const epgSource = epgs[tvgsById[channel.epg_data_id]?.epg_source];
+        setSelectedEPG(epgSource ? `${epgSource.id}` : '');
       }
 
       formik.setValues({
-        name: channel.name,
-        channel_number: channel.channel_number,
+        name: channel.name || '',
+        channel_number: channel.channel_number !== null ? channel.channel_number : '',
         channel_group_id: channel.channel_group_id
           ? `${channel.channel_group_id}`
           : '',
         stream_profile_id: channel.stream_profile_id
           ? `${channel.stream_profile_id}`
           : '0',
-        tvg_id: channel.tvg_id,
-        tvc_guide_stationid: channel.tvc_guide_stationid,
+        tvg_id: channel.tvg_id || '',
+        tvc_guide_stationid: channel.tvc_guide_stationid || '',
         epg_data_id: channel.epg_data_id ?? '',
-        logo_id: `${channel.logo_id}`,
+        logo_id: channel.logo_id ? `${channel.logo_id}` : '',
       });
 
-      setChannelStreams(channel.streams);
+      setChannelStreams(channel.streams || []);
     } else {
       formik.resetForm();
       setTvgFilter('');
@@ -678,7 +678,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 error={formik.errors.tvg_id ? formik.touched.tvg_id : ''}
                 size="xs"
               />
-              
+
               <TextInput
                 id="tvc_guide_stationid"
                 name="tvc_guide_stationid"
@@ -839,4 +839,4 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   );
 };
 
-export default Channel;
+export default ChannelForm;

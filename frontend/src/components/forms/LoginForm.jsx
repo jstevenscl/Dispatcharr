@@ -31,16 +31,6 @@ const LoginForm = () => {
     navigate('/channels'); // Or any other route you'd like
   };
 
-  // // Handle form submission
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-  //   setLoading(true);
-  //   setError(''); // Reset error on each new submission
-
-  //   await login(username, password)
-  //   navigate('/channels'); // Or any other route you'd like
-  // };
-
   return (
     <Center
       style={{
@@ -73,8 +63,8 @@ const LoginForm = () => {
               required
             />
 
-            <Button type="submit" size="sm" sx={{ pt: 1 }}>
-              Submit
+            <Button type="submit" mt="sm">
+              Login
             </Button>
           </Stack>
         </form>

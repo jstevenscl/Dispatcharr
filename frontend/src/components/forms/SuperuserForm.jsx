@@ -4,7 +4,7 @@ import { TextInput, Center, Button, Paper, Title, Stack } from '@mantine/core';
 import API from '../../api';
 import useAuthStore from '../../store/auth';
 
-function SuperuserForm({}) {
+function SuperuserForm() {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -34,11 +34,7 @@ function SuperuserForm({}) {
       }
     } catch (err) {
       console.log(err);
-      // let msg = 'Failed to create superuser.';
-      // if (err.response && err.response.data && err.response.data.error) {
-      //   msg += ` ${err.response.data.error}`;
-      // }
-      // setError(msg);
+      setError('Failed to create superuser.');
     }
   };
 

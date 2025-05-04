@@ -290,9 +290,9 @@ const SettingsPage = () => {
     },
 
     validate: {
-      'default-user-agent': isNotEmpty('Select a channel'),
-      'default-stream-profile': isNotEmpty('Select a start time'),
-      'preferred-region': isNotEmpty('Select an end time'),
+      'default-user-agent': isNotEmpty('Select a user agent'),
+      'default-stream-profile': isNotEmpty('Select a stream profile'),
+      'preferred-region': isNotEmpty('Select a region'),
     },
   });
 
@@ -399,9 +399,9 @@ const SettingsPage = () => {
                   searchable
                   {...form.getInputProps('default-user-agent')}
                   key={form.key('default-user-agent')}
-                  id={settings['default-user-agent']?.id}
-                  name={settings['default-user-agent']?.key}
-                  label={settings['default-user-agent']?.name}
+                  id={settings['default-user-agent']?.id || 'default-user-agent'}
+                  name={settings['default-user-agent']?.key || 'default-user-agent'}
+                  label={settings['default-user-agent']?.name || 'Default User Agent'}
                   data={userAgents.map((option) => ({
                     value: `${option.id}`,
                     label: option.name,
@@ -412,9 +412,9 @@ const SettingsPage = () => {
                   searchable
                   {...form.getInputProps('default-stream-profile')}
                   key={form.key('default-stream-profile')}
-                  id={settings['default-stream-profile']?.id}
-                  name={settings['default-stream-profile']?.key}
-                  label={settings['default-stream-profile']?.name}
+                  id={settings['default-stream-profile']?.id || 'default-stream-profile'}
+                  name={settings['default-stream-profile']?.key || 'default-stream-profile'}
+                  label={settings['default-stream-profile']?.name || 'Default Stream Profile'}
                   data={streamProfiles.map((option) => ({
                     value: `${option.id}`,
                     label: option.name,
@@ -426,9 +426,7 @@ const SettingsPage = () => {
                   key={form.key('preferred-region')}
                   id={settings['preferred-region']?.id || 'preferred-region'}
                   name={settings['preferred-region']?.key || 'preferred-region'}
-                  label={
-                    settings['preferred-region']?.name || 'Preferred Region'
-                  }
+                  label={settings['preferred-region']?.name || 'Preferred Region'}
                   data={regionChoices.map((r) => ({
                     label: r.label,
                     value: `${r.value}`,
