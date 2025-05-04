@@ -257,16 +257,18 @@ def process_xc_category(account_id, batch, groups, hash_keys):
                 for key, value in stream_props.items():
                     setattr(obj, key, value)
                 obj.last_seen = timezone.now()
-                obj.updated_at = timezone.now()  # Add this line to update the timestamp
+                obj.updated_at = timezone.now()  # Update timestamp only for changed streams
                 streams_to_update.append(obj)
                 del existing_streams[stream_hash]
             else:
                 # Always update last_seen, even if nothing else changed
                 obj.last_seen = timezone.now()
+                # Don't update updated_at for unchanged streams
                 streams_to_update.append(obj)
                 existing_streams[stream_hash] = obj
         else:
             stream_props["last_seen"] = timezone.now()
+            stream_props["updated_at"] = timezone.now()  # Set initial updated_at for new streams
             streams_to_create.append(Stream(**stream_props))
 
     try:
@@ -274,8 +276,22 @@ def process_xc_category(account_id, batch, groups, hash_keys):
             if streams_to_create:
                 Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
             if streams_to_update:
-                # Add "updated_at" to the fields being updated
-                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys} | {"last_seen", "updated_at"})
+                # We need to split the bulk update to correctly handle updated_at
+                # First, get the subset of streams that have content changes
+                changed_streams = [s for s in streams_to_update if hasattr(s, 'updated_at') and s.updated_at]
+                unchanged_streams = [s for s in streams_to_update if not hasattr(s, 'updated_at') or not s.updated_at]
+
+                # Update changed streams with all fields including updated_at
+                if changed_streams:
+                    Stream.objects.bulk_update(
+                        changed_streams,
+                        {key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys} | {"last_seen", "updated_at"}
+                    )
+
+                # Update unchanged streams with only last_seen
+                if unchanged_streams:
+                    Stream.objects.bulk_update(unchanged_streams, ["last_seen"])
+
             if len(existing_streams.keys()) > 0:
                 Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
@@ -341,16 +357,18 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 for key, value in stream_props.items():
                     setattr(obj, key, value)
                 obj.last_seen = timezone.now()
-                obj.updated_at = timezone.now()  # Add this line to update the timestamp
+                obj.updated_at = timezone.now()  # Update timestamp only for changed streams
                 streams_to_update.append(obj)
                 del existing_streams[stream_hash]
             else:
                 # Always update last_seen, even if nothing else changed
                 obj.last_seen = timezone.now()
+                # Don't update updated_at for unchanged streams
                 streams_to_update.append(obj)
                 existing_streams[stream_hash] = obj
         else:
             stream_props["last_seen"] = timezone.now()
+            stream_props["updated_at"] = timezone.now()  # Set initial updated_at for new streams
             streams_to_create.append(Stream(**stream_props))
 
     try:
@@ -358,8 +376,22 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
             if streams_to_create:
                 Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
             if streams_to_update:
-                # Add "updated_at" to the fields being updated
-                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys} | {"last_seen", "updated_at"})
+                # We need to split the bulk update to correctly handle updated_at
+                # First, get the subset of streams that have content changes
+                changed_streams = [s for s in streams_to_update if hasattr(s, 'updated_at') and s.updated_at]
+                unchanged_streams = [s for s in streams_to_update if not hasattr(s, 'updated_at') or not s.updated_at]
+
+                # Update changed streams with all fields including updated_at
+                if changed_streams:
+                    Stream.objects.bulk_update(
+                        changed_streams,
+                        {key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys} | {"last_seen", "updated_at"}
+                    )
+
+                # Update unchanged streams with only last_seen
+                if unchanged_streams:
+                    Stream.objects.bulk_update(unchanged_streams, ["last_seen"])
+
             if len(existing_streams.keys()) > 0:
                 Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
