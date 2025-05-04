@@ -43,17 +43,18 @@ const M3UTable = () => {
         return buildDownloadingStats(data);
 
       case 'processing_groups':
-        return 'Processing groups...';
+        return buildGroupProcessingStats(data);
+
+      case 'parsing':
+        return buildParsingStats(data);
 
       default:
-        return buildParsingStats(data);
+        return data.status === 'error' ? buildErrorStats(data) : `${data.action || 'Processing'}...`;
     }
   };
 
   const buildDownloadingStats = (data) => {
     if (data.progress == 100) {
-      // fetchChannelGroups();
-      // fetchPlaylists();
       return 'Download complete!';
     }
 
@@ -61,21 +62,89 @@ const M3UTable = () => {
       return 'Downloading...';
     }
 
+    // Format time remaining in minutes:seconds
+    const timeRemaining = data.time_remaining ?
+      `${Math.floor(data.time_remaining / 60)}:${String(Math.floor(data.time_remaining % 60)).padStart(2, '0')}` :
+      'calculating...';
+
+    // Format speed with appropriate unit (KB/s or MB/s)
+    const speed = data.speed >= 1024 ?
+      `${(data.speed / 1024).toFixed(2)} MB/s` :
+      `${Math.round(data.speed)} KB/s`;
+
     return (
       <Box>
-        <Text size="xs">Downloading: {parseInt(data.progress)}%</Text>
-        {/* <Text size="xs">Speed: {parseInt(data.speed)} KB/s</Text>
-        <Text size="xs">Time Remaining: {parseInt(data.time_remaining)}</Text> */}
+        <Flex direction="column" gap="xs">
+          <Flex justify="space-between" align="center">
+            <Text size="xs" fw={500}>Downloading:</Text>
+            <Text size="xs">{parseInt(data.progress)}%</Text>
+          </Flex>
+          <Flex justify="space-between" align="center">
+            <Text size="xs" fw={500}>Speed:</Text>
+            <Text size="xs">{speed}</Text>
+          </Flex>
+          <Flex justify="space-between" align="center">
+            <Text size="xs" fw={500}>Time left:</Text>
+            <Text size="xs">{timeRemaining}</Text>
+          </Flex>
+        </Flex>
+      </Box>
+    );
+  };
+
+  const buildGroupProcessingStats = (data) => {
+    if (data.progress == 100) {
+      return 'Groups processed!';
+    }
+
+    if (data.progress == 0) {
+      return 'Processing groups...';
+    }
+
+    // Format time displays if available
+    const elapsedTime = data.elapsed_time ?
+      `${Math.floor(data.elapsed_time / 60)}:${String(Math.floor(data.elapsed_time % 60)).padStart(2, '0')}` :
+      null;
+
+    return (
+      <Box>
+        <Flex direction="column" gap="xs">
+          <Flex justify="space-between" align="center">
+            <Text size="xs" fw={500}>Processing groups:</Text>
+            <Text size="xs">{parseInt(data.progress)}%</Text>
+          </Flex>
+          {elapsedTime && (
+            <Flex justify="space-between" align="center">
+              <Text size="xs" fw={500}>Elapsed:</Text>
+              <Text size="xs">{elapsedTime}</Text>
+            </Flex>
+          )}
+          {data.groups_processed && (
+            <Flex justify="space-between" align="center">
+              <Text size="xs" fw={500}>Groups:</Text>
+              <Text size="xs">{data.groups_processed}</Text>
+            </Flex>
+          )}
+        </Flex>
+      </Box>
+    );
+  };
+
+  const buildErrorStats = (data) => {
+    return (
+      <Box>
+        <Flex direction="column" gap="xs">
+          <Flex align="center">
+            <Text size="xs" fw={500} color="red">Error:</Text>
+          </Flex>
+          <Text size="xs" color="red">{data.error || "Unknown error occurred"}</Text>
+        </Flex>
       </Box>
     );
   };
 
   const buildParsingStats = (data) => {
     if (data.progress == 100) {
-      // fetchStreams();
-      // fetchChannelGroups();
-      // fetchEPGData();
-      // fetchPlaylists();
       return 'Parsing complete!';
     }
 
@@ -83,7 +152,43 @@ const M3UTable = () => {
       return 'Parsing...';
     }
 
-    return `Parsing: ${data.progress}%`;
+    // Format time displays
+    const timeRemaining = data.time_remaining ?
+      `${Math.floor(data.time_remaining / 60)}:${String(Math.floor(data.time_remaining % 60)).padStart(2, '0')}` :
+      'calculating...';
+
+    const elapsedTime = data.elapsed_time ?
+      `${Math.floor(data.elapsed_time / 60)}:${String(Math.floor(data.elapsed_time % 60)).padStart(2, '0')}` :
+      '0:00';
+
+    return (
+      <Box>
+        <Flex direction="column" gap="xs">
+          <Flex justify="space-between" align="center">
+            <Text size="xs" fw={500}>Parsing:</Text>
+            <Text size="xs">{parseInt(data.progress)}%</Text>
+          </Flex>
+          {data.elapsed_time && (
+            <Flex justify="space-between" align="center">
+              <Text size="xs" fw={500}>Elapsed:</Text>
+              <Text size="xs">{elapsedTime}</Text>
+            </Flex>
+          )}
+          {data.time_remaining && (
+            <Flex justify="space-between" align="center">
+              <Text size="xs" fw={500}>Remaining:</Text>
+              <Text size="xs">{timeRemaining}</Text>
+            </Flex>
+          )}
+          {data.streams_processed && (
+            <Flex justify="space-between" align="center">
+              <Text size="xs" fw={500}>Streams:</Text>
+              <Text size="xs">{data.streams_processed}</Text>
+            </Flex>
+          )}
+        </Flex>
+      </Box>
+    );
   };
 
   const toggleActive = async (playlist) => {
@@ -143,8 +248,23 @@ const M3UTable = () => {
 
           return generateStatusString(refreshProgress[row.id]);
         },
-        size: 150,
-        minSize: 80,
+        size: 180,
+        minSize: 150,
+        Cell: ({ cell }) => {
+          const value = cell.getValue();
+
+          // Return a visual component for the status
+          if (typeof value === 'object') {
+            return value;
+          }
+
+          // For simple string statuses
+          return (
+            <Text size="xs">
+              {value}
+            </Text>
+          );
+        },
       },
       {
         header: 'Active',

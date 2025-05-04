@@ -530,6 +530,7 @@ def refresh_single_m3u_account(account_id):
 
     total_batches = len(batches)
     completed_batches = 0
+    streams_processed = 0  # Track total streams processed
     logger.debug(f"Dispatched {len(batches)} parallel tasks for account_id={account_id}.")
 
     # result = task_group.apply_async()
@@ -542,18 +543,47 @@ def refresh_single_m3u_account(account_id):
             if async_result.ready() and async_result.id not in completed_task_ids:  # If the task has completed and we haven't counted it
                 task_result = async_result.result  # The result of the task
                 logger.debug(f"Task completed with result: {task_result}")
+
+                # Extract stream counts from result string if available
+                if isinstance(task_result, str):
+                    try:
+                        created_match = re.search(r"(\d+) created", task_result)
+                        updated_match = re.search(r"(\d+) updated", task_result)
+
+                        if created_match and updated_match:
+                            created_count = int(created_match.group(1))
+                            updated_count = int(updated_match.group(1))
+                            streams_processed += created_count + updated_count
+                    except (AttributeError, ValueError):
+                        pass
+
                 completed_batches += 1
                 completed_task_ids.add(async_result.id)  # Mark this task as processed
 
                 # Calculate progress
                 progress = int((completed_batches / total_batches) * 100)
 
+                # Calculate elapsed time and estimated remaining time
+                current_elapsed = time.time() - start_time
+                if progress > 0:
+                    estimated_total = (current_elapsed / progress) * 100
+                    time_remaining = max(0, estimated_total - current_elapsed)
+                else:
+                    time_remaining = 0
+
                 # Send progress update via Channels
                 # Don't send 100% because we want to clean up after
                 if progress == 100:
                     progress = 99
 
-                send_m3u_update(account_id, "parsing", progress)
+                send_m3u_update(
+                    account_id,
+                    "parsing",
+                    progress,
+                    elapsed_time=current_elapsed,
+                    time_remaining=time_remaining,
+                    streams_processed=streams_processed
+                )
 
                 # Optionally remove completed task from the group to prevent processing it again
                 result.remove(async_result)
@@ -567,7 +597,16 @@ def refresh_single_m3u_account(account_id):
 
     # Now run cleanup
     cleanup_streams(account_id)
-    send_m3u_update(account_id, "parsing", 100)
+    # Send final update with complete metrics
+    elapsed_time = time.time() - start_time
+    send_m3u_update(
+        account_id,
+        "parsing",
+        100,
+        elapsed_time=elapsed_time,
+        time_remaining=0,
+        streams_processed=streams_processed
+    )
 
     end_time = time.time()
 
