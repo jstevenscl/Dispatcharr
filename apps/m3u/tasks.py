@@ -260,6 +260,9 @@ def process_xc_category(account_id, batch, groups, hash_keys):
                 streams_to_update.append(obj)
                 del existing_streams[stream_hash]
             else:
+                # Always update last_seen, even if nothing else changed
+                obj.last_seen = timezone.now()
+                streams_to_update.append(obj)
                 existing_streams[stream_hash] = obj
         else:
             stream_props["last_seen"] = timezone.now()
@@ -270,9 +273,9 @@ def process_xc_category(account_id, batch, groups, hash_keys):
             if streams_to_create:
                 Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
             if streams_to_update:
-                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys})
-            # if len(existing_streams.keys()) > 0:
-            #     Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
+                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys} | {"last_seen"})
+            if len(existing_streams.keys()) > 0:
+                Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
         logger.error(f"Bulk create failed: {str(e)}")
 
@@ -339,6 +342,9 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 streams_to_update.append(obj)
                 del existing_streams[stream_hash]
             else:
+                # Always update last_seen, even if nothing else changed
+                obj.last_seen = timezone.now()
+                streams_to_update.append(obj)
                 existing_streams[stream_hash] = obj
         else:
             stream_props["last_seen"] = timezone.now()
@@ -349,7 +355,7 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
             if streams_to_create:
                 Stream.objects.bulk_create(streams_to_create, ignore_conflicts=True)
             if streams_to_update:
-                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys})
+                Stream.objects.bulk_update(streams_to_update, { key for key in stream_props.keys() if key not in ["m3u_account", "stream_hash"] and key not in hash_keys} | {"last_seen"})
             if len(existing_streams.keys()) > 0:
                 Stream.objects.bulk_update(existing_streams.values(), ["last_seen"])
     except Exception as e:
