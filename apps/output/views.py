@@ -30,12 +30,17 @@ def generate_m3u(request, profile_name=None):
         tvg_logo = ""
         if channel.logo:
             tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+        
+        # create possible gracenote id insertion
+        tvc_guide_stationid = ""
+        if len(channel.tvc_guide_stationid) > 0:
+            tvc_guide_stationid = f'tvc-guide-stationid="{channel.tvc_guide_stationid}" '
 
         channel_number = channel.channel_number
 
         extinf_line = (
             f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{tvg_name}" tvg-logo="{tvg_logo}" '
-            f'tvg-chno="{channel_number}" group-title="{group_title}",{channel.name}\n'
+            f'tvg-chno="{channel_number}" {tvc_guide_stationid}group-title="{group_title}",{channel.name}\n'
         )
 
         base_url = request.build_absolute_uri('/')[:-1]

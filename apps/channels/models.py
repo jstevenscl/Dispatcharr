@@ -236,6 +236,8 @@ class Channel(models.Model):
         help_text="Channel group this channel belongs to."
     )
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
+    tvc_guide_stationid = models.CharField(max_length=255, blank=True, null=True)
+    
     epg_data = models.ForeignKey(
         EPGData,
         on_delete=models.SET_NULL,

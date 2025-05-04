@@ -347,6 +347,11 @@ export default class API {
         payload.tvg_id = null;
       }
 
+      // Ensure tvc_guide_stationid is included properly (not as empty string)
+      if (payload.tvc_guide_stationid === '') {
+        payload.tvc_guide_stationid = null;
+      }
+
       // Handle channel_number properly
       if (payload.channel_number === '') {
         payload.channel_number = null;
