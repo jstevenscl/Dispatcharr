@@ -23,15 +23,22 @@ import { IconSquarePlus } from '@tabler/icons-react';
 import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
 import dayjs from 'dayjs';
 
-// Helper function to get status badge color
+
+// Helper function to format status text
+const formatStatusText = (status) => {
+  if (!status) return 'Unknown';
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+};
+
+// Helper function to get status text color
 const getStatusColor = (status) => {
   switch (status) {
-    case 'idle': return 'gray';
-    case 'fetching': return 'blue';
-    case 'parsing': return 'indigo';
-    case 'error': return 'red';
-    case 'success': return 'green';
-    default: return 'gray';
+    case 'idle': return 'gray.5';
+    case 'fetching': return 'blue.5';
+    case 'parsing': return 'indigo.5';
+    case 'error': return 'red.5';
+    case 'success': return 'green.5';
+    default: return 'gray.5';
   }
 };
 
@@ -91,60 +98,6 @@ const EPGsTable = () => {
         minSize: 100,
       },
       {
-        header: 'Status',
-        accessorKey: 'status',
-        size: 100,
-        minSize: 80,
-        Cell: ({ row }) => {
-          const data = row.original;
-
-          // Check if there's an active progress for this EPG
-          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
-            return buildProgressDisplay(data);
-          }
-
-          // Return the original status display if no active progress
-          return (
-            <Badge color={getStatusColor(data.status)}>
-              {data.status}
-            </Badge>
-          );
-        },
-      },
-      {
-        header: 'Status Message',
-        accessorKey: 'last_error',
-        size: 250,
-        minSize: 150,
-        enableSorting: false,
-        Cell: ({ row }) => {
-          const data = row.original;
-
-          // Show error message when status is error
-          if (data.status === 'error' && data.last_error) {
-            return (
-              <Tooltip label={data.last_error} multiline width={300}>
-                <Text color="red" size="xs" lineClamp={2}>
-                  {data.last_error}
-                </Text>
-              </Tooltip>
-            );
-          }
-
-          // Show success message for successful sources
-          if (data.status === 'success') {
-            return (
-              <Text color="green.7" size="xs">
-                EPG data refreshed successfully
-              </Text>
-            );
-          }
-
-          // Otherwise return empty cell
-          return null;
-        },
-      },
-      {
         header: 'Source Type',
         accessorKey: 'source_type',
         size: 120,
@@ -175,6 +128,71 @@ const EPGsTable = () => {
         },
       },
       {
+        header: 'Status',
+        accessorKey: 'status',
+        size: 100,
+        minSize: 80,
+        Cell: ({ row }) => {
+          const data = row.original;
+
+          // Check if there's an active progress for this EPG
+          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
+            return buildProgressDisplay(data);
+          }
+
+          // Return simple text display instead of badge
+          return (
+            <Text
+              size="sm"
+              fw={500}
+              c={getStatusColor(data.status)}
+            >
+              {formatStatusText(data.status)}
+            </Text>
+          );
+        },
+      },
+      {
+        header: 'Status Message',
+        accessorKey: 'last_error',
+        size: 250,
+        minSize: 150,
+        enableSorting: false,
+        Cell: ({ row }) => {
+          const data = row.original;
+
+          // Show error message when status is error
+          if (data.status === 'error' && data.last_error) {
+            return (
+              <Tooltip label={data.last_error} multiline width={300}>
+                <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6] }}>
+                  {data.last_error}
+                </Text>
+              </Tooltip>
+            );
+          }
+
+          // Show success message for successful sources
+          if (data.status === 'success') {
+            return (
+              <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6] }}>
+                EPG data refreshed successfully
+              </Text>
+            );
+          }
+
+          // Otherwise return empty cell
+          return null;
+        },
+      },
+      {
+        header: 'Updated',
+        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        size: 180,
+        minSize: 100,
+        enableSorting: false,
+      },
+      {
         header: 'Active',
         accessorKey: 'is_active',
         size: 80,
@@ -192,13 +210,6 @@ const EPGsTable = () => {
             />
           </Box>
         ),
-      },
-      {
-        header: 'Updated',
-        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
-        size: 180,
-        minSize: 100,
-        enableSorting: false,
       },
     ],
     [refreshProgress]
