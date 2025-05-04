@@ -98,6 +98,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
       channel_group_id: Object.keys(channelGroups)[0],
       stream_profile_id: '0',
       tvg_id: '',
+      tvc_guide_stationid: '',      
       epg_data_id: '',
       logo_id: '',
     },
@@ -121,6 +122,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
         // Ensure tvg_id is properly included (no empty strings)
         formattedValues.tvg_id = formattedValues.tvg_id || null;
+
+        // Ensure tvc_guide_stationid is properly included (no empty strings)
+        formattedValues.tvc_guide_stationid = formattedValues.tvc_guide_stationid || null;
 
         if (channel) {
           // If there's an EPG to set, use our enhanced endpoint
@@ -187,6 +191,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
           ? `${channel.stream_profile_id}`
           : '0',
         tvg_id: channel.tvg_id,
+        tvc_guide_stationid: channel.tvc_guide_stationid,
         epg_data_id: channel.epg_data_id ?? '',
         logo_id: `${channel.logo_id}`,
       });
@@ -671,6 +676,16 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 value={formik.values.tvg_id}
                 onChange={formik.handleChange}
                 error={formik.errors.tvg_id ? formik.touched.tvg_id : ''}
+                size="xs"
+              />
+              
+              <TextInput
+                id="tvc_guide_stationid"
+                name="tvc_guide_stationid"
+                label="Gracenote StationId"
+                value={formik.values.tvc_guide_stationid}
+                onChange={formik.handleChange}
+                error={formik.errors.tvc_guide_stationid ? formik.touched.tvc_guide_stationid : ''}
                 size="xs"
               />
 
