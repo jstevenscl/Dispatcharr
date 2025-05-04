@@ -152,6 +152,7 @@ class ChannelSerializer(serializers.ModelSerializer):
             'name',
             'channel_group_id',
             'tvg_id',
+            'tvc_guide_stationid',
             'epg_data_id',
             'streams',
             'stream_profile_id',
