@@ -677,12 +677,21 @@ const ChannelsTable = ({ }) => {
       },
       {
         id: 'logo',
-        accessorFn: (row) => logos[row.logo_id] ?? logo,
+        accessorFn: (row) => {
+          // Just pass the logo_id directly, not the full logo object
+          return row.logo_id;
+        },
         size: 75,
         header: '',
         cell: ({ getValue }) => {
-          const value = getValue();
-          const src = value?.cache_url || logo;
+          const logoId = getValue();
+          let src = logo; // Default fallback
+
+          if (logoId && logos[logoId]) {
+            // Try to use cache_url if available, otherwise construct it from the ID
+            src = logos[logoId].cache_url || `/api/channels/logos/${logoId}/cache/`;
+          }
+
           return (
             <Center style={{ width: '100%' }}>
               <img
