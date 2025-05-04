@@ -14,6 +14,7 @@ import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
 import { Box, Button, Stack, Alert } from '@mantine/core';
 import API from './api';
+import useSettingsStore from './store/settings';
 
 export const WebsocketContext = createContext([false, () => { }, null]);
 
@@ -26,6 +27,7 @@ export const WebsocketProvider = ({ children }) => {
   const [connectionError, setConnectionError] = useState(null);
   const maxReconnectAttempts = 5;
   const initialBackoffDelay = 1000; // 1 second initial delay
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
   // Calculate reconnection delay with exponential backoff
   const getReconnectDelay = useCallback(() => {
@@ -44,10 +46,19 @@ export const WebsocketProvider = ({ children }) => {
   const getWebSocketUrl = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
+    const appPort = window.location.port;
 
-    // WebSockets always run on port 8001
-    return `${protocol}//${host}:8001/ws/`;
-  }, []);
+    // In development mode, connect directly to the WebSocket server on port 8001
+    if (env_mode === 'dev') {
+      return `${protocol}//${host}:8001/ws/`;
+    } else {
+      // In production mode, use the same port as the main application
+      // This allows nginx to handle the WebSocket forwarding
+      return appPort
+        ? `${protocol}//${host}:${appPort}/ws/`
+        : `${protocol}//${host}/ws/`;
+    }
+  }, [env_mode]);
 
   // Function to handle websocket connection
   const connectWebSocket = useCallback(() => {
