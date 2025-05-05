@@ -261,7 +261,7 @@ def process_xc_category(account_id, batch, groups, hash_keys):
     streams_to_update = []
     stream_hashes = {}
 
-    xc_client = XCClient(account.server_url, account.username, account.password)
+    xc_client = XCClient(account.server_url, account.username, account.password, account.get_user_agent())
     for group_name, props in batch.items():
         streams = xc_client.get_live_category_streams(props['xc_id'])
         for stream in streams:
@@ -495,7 +495,7 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
 
     xc_client = None
     if account.account_type == M3UAccount.Types.XC:
-        xc_client = XCClient(account.server_url, account.username, account.password)
+        xc_client = XCClient(account.server_url, account.username, account.password, account.get_user_agent())
         try:
             xc_client.authenticate()
         except Exception as e:
