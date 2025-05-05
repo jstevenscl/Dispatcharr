@@ -9,12 +9,18 @@ class EPGSource(models.Model):
         ('xmltv', 'XMLTV URL'),
         ('schedules_direct', 'Schedules Direct API'),
     ]
+
+    STATUS_IDLE = 'idle'
+    STATUS_FETCHING = 'fetching'
+    STATUS_PARSING = 'parsing'
+    STATUS_ERROR = 'error'
+    STATUS_SUCCESS = 'success'
     STATUS_CHOICES = [
-        ('idle', 'Idle'),
-        ('fetching', 'Fetching'),
-        ('parsing', 'Parsing'),
-        ('error', 'Error'),
-        ('success', 'Success'),
+        (STATUS_IDLE, 'Idle'),
+        (STATUS_FETCHING, 'Fetching'),
+        (STATUS_PARSING, 'Parsing'),
+        (STATUS_ERROR, 'Error'),
+        (STATUS_SUCCESS, 'Success'),
     ]
 
     name = models.CharField(max_length=255, unique=True)
@@ -27,15 +33,23 @@ class EPGSource(models.Model):
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
     )
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='idle')
-    last_error = models.TextField(blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_IDLE
+    )
+    last_message = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Last status message, including success results or error information"
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         help_text="Time when this source was created"
     )
     updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="Time when this source was last updated"
+        null=True, blank=True,
+        help_text="Time when this source was last successfully refreshed"
     )
 
     def __str__(self):
@@ -55,6 +69,15 @@ class EPGSource(models.Model):
         cache = os.path.join(cache_dir, filename)
 
         return cache
+
+    def save(self, *args, **kwargs):
+        # Prevent auto_now behavior by handling updated_at manually
+        if 'update_fields' in kwargs and 'updated_at' not in kwargs['update_fields']:
+            # Don't modify updated_at for regular updates
+            kwargs.setdefault('update_fields', [])
+            if 'updated_at' in kwargs['update_fields']:
+                kwargs['update_fields'].remove('updated_at')
+        super().save(*args, **kwargs)
 
 class EPGData(models.Model):
     # Removed the Channel foreign key. We now just store the original tvg_id

@@ -98,7 +98,7 @@ const useEPGsStore = create((set) => ({
         [data.source]: {
           ...state.epgs[data.source],
           status: sourceStatus,
-          last_error: data.status === 'error' ? (data.error || 'Unknown error') : state.epgs[data.source]?.last_error
+          last_message: data.status === 'error' ? (data.error || 'Unknown error') : state.epgs[data.source]?.last_message
         }
       };
 

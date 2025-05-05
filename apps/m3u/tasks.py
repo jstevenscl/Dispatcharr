@@ -82,36 +82,77 @@ def fetch_m3u_lines(account, use_cache=False):
                 send_m3u_update(account.id, "downloading", 100)
             except Exception as e:
                 logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
-                return []
+                # Update account status and send error notification
+                account.status = M3UAccount.Status.ERROR
+                account.last_message = f"Error downloading M3U file: {str(e)}"
+                account.save(update_fields=['status', 'last_message'])
+                send_m3u_update(account.id, "downloading", 100, status="error", error=f"Error downloading M3U file: {str(e)}")
+                return [], False  # Return empty list and False for success
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.readlines()
+        # Check if the file exists and is not empty
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            error_msg = f"M3U file not found or empty: {file_path}"
+            logger.error(error_msg)
+            account.status = M3UAccount.Status.ERROR
+            account.last_message = error_msg
+            account.save(update_fields=['status', 'last_message'])
+            send_m3u_update(account.id, "downloading", 100, status="error", error=error_msg)
+            return [], False  # Return empty list and False for success
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.readlines(), True
+        except Exception as e:
+            error_msg = f"Error reading M3U file: {str(e)}"
+            logger.error(error_msg)
+            account.status = M3UAccount.Status.ERROR
+            account.last_message = error_msg
+            account.save(update_fields=['status', 'last_message'])
+            send_m3u_update(account.id, "downloading", 100, status="error", error=error_msg)
+            return [], False
+
     elif account.file_path:
         try:
             if account.file_path.endswith('.gz'):
                 with gzip.open(account.file_path, 'rt', encoding='utf-8') as f:
-                    return f.readlines()
+                    return f.readlines(), True
 
             elif account.file_path.endswith('.zip'):
                 with zipfile.ZipFile(account.file_path, 'r') as zip_file:
                     for name in zip_file.namelist():
                         if name.endswith('.m3u'):
                             with zip_file.open(name) as f:
-                                return [line.decode('utf-8') for line in f.readlines()]
-                    logger.warning(f"No .m3u file found in ZIP archive: {account.file_path}")
-                    return []
+                                return [line.decode('utf-8') for line in f.readlines()], True
+
+                    error_msg = f"No .m3u file found in ZIP archive: {account.file_path}"
+                    logger.warning(error_msg)
+                    account.status = M3UAccount.Status.ERROR
+                    account.last_message = error_msg
+                    account.save(update_fields=['status', 'last_message'])
+                    send_m3u_update(account.id, "downloading", 100, status="error", error=error_msg)
+                    return [], False
 
             else:
                 with open(account.file_path, 'r', encoding='utf-8') as f:
-                    return f.readlines()
+                    return f.readlines(), True
 
         except (IOError, OSError, zipfile.BadZipFile, gzip.BadGzipFile) as e:
-            logger.error(f"Error opening file {account.file_path}: {e}")
-            return []
+            error_msg = f"Error opening file {account.file_path}: {e}"
+            logger.error(error_msg)
+            account.status = M3UAccount.Status.ERROR
+            account.last_message = error_msg
+            account.save(update_fields=['status', 'last_message'])
+            send_m3u_update(account.id, "downloading", 100, status="error", error=error_msg)
+            return [], False
 
-
-    # Return an empty list if neither server_url nor uploaded_file is available
-    return []
+    # Neither server_url nor uploaded_file is available
+    error_msg = "No M3U source available (missing URL and file)"
+    logger.error(error_msg)
+    account.status = M3UAccount.Status.ERROR
+    account.last_message = error_msg
+    account.save(update_fields=['status', 'last_message'])
+    send_m3u_update(account.id, "downloading", 100, status="error", error=error_msg)
+    return [], False
 
 def parse_extinf_line(line: str) -> dict:
     """
@@ -458,6 +499,12 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
         try:
             xc_client.authenticate()
         except Exception as e:
+            error_msg = f"Failed to authenticate with XC server: {str(e)}"
+            logger.error(error_msg)
+            account.status = M3UAccount.Status.ERROR
+            account.last_message = error_msg
+            account.save(update_fields=['status', 'last_message'])
+            send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
             release_task_lock('refresh_m3u_account_groups', account_id)
             return f"M3UAccount with ID={account_id} failed to authenticate with XC server.", None
 
@@ -467,7 +514,14 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
                 "xc_id": category["category_id"],
             }
     else:
-        for line in fetch_m3u_lines(account, use_cache):
+        # Here's the key change - use the success flag from fetch_m3u_lines
+        lines, success = fetch_m3u_lines(account, use_cache)
+        if not success:
+            # If fetch failed, don't continue processing
+            release_task_lock('refresh_m3u_account_groups', account_id)
+            return f"Failed to fetch M3U data for account_id={account_id}.", None
+
+        for line in lines:
             line = line.strip()
             if line.startswith("#EXTINF"):
                 parsed = parse_extinf_line(line)
@@ -513,15 +567,22 @@ def refresh_single_m3u_account(account_id):
     if not acquire_task_lock('refresh_single_m3u_account', account_id):
         return f"Task already running for account_id={account_id}."
 
-    # redis_client = RedisClient.get_client()
     # Record start time
     start_time = time.time()
+    streams_created = 0
+    streams_updated = 0
+    streams_deleted = 0
 
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
         if not account.is_active:
             logger.info(f"Account {account_id} is not active, skipping.")
+            release_task_lock('refresh_single_m3u_account', account_id)
             return
+
+        # Set status to fetching
+        account.status = M3UAccount.Status.FETCHING
+        account.save(update_fields=['status'])
 
         filters = list(account.filters.all())
     except M3UAccount.DoesNotExist:
@@ -529,7 +590,6 @@ def refresh_single_m3u_account(account_id):
         return f"M3UAccount with ID={account_id} not found or inactive."
 
     # Fetch M3U lines and handle potential issues
-    # lines = fetch_m3u_lines(account)  # Extracted fetch logic into separate function
     extinf_data = []
     groups = None
 
@@ -543,13 +603,44 @@ def refresh_single_m3u_account(account_id):
 
     if not extinf_data:
         try:
-            extinf_data, groups = refresh_m3u_groups(account_id, full_refresh=True)
-            if not groups:
+            result = refresh_m3u_groups(account_id, full_refresh=True)
+
+            # Check if the result indicates an error (None tuple or tuple with empty values)
+            if not result or not result[0] or not result[1]:
+                logger.error(f"Failed to refresh M3U groups for account {account_id}")
+                # The error already has been recorded by refresh_m3u_groups
+# Just release the lock and exit - no need to set parsing status at all
                 release_task_lock('refresh_single_m3u_account', account_id)
-                return "Failed to update m3u account, task may already be running"
-        except:
+                return "Failed to update m3u account - download failed or other error"
+
+            extinf_data, groups = result
+            if not groups:
+                logger.error(f"No groups found for account {account_id}")
+                account.status = M3UAccount.Status.ERROR
+                account.last_message = "No channel groups found in M3U source"
+                account.save(update_fields=['status', 'last_message'])
+                send_m3u_update(account_id, "parsing", 100, status="error", error="No channel groups found")
+                release_task_lock('refresh_single_m3u_account', account_id)
+                return "Failed to update m3u account, no groups found"
+
+        except Exception as e:
+            logger.error(f"Exception in refresh_m3u_groups: {str(e)}")
+            account.status = M3UAccount.Status.ERROR
+            account.last_message = f"Error refreshing M3U groups: {str(e)}"
+            account.save(update_fields=['status', 'last_message'])
+            send_m3u_update(account_id, "parsing", 100, status="error", error=f"Error refreshing M3U groups: {str(e)}")
             release_task_lock('refresh_single_m3u_account', account_id)
             return "Failed to update m3u account"
+
+# Only proceed with parsing if we actually have data and no errors were encountered
+    if not extinf_data or not groups:
+        logger.error(f"No data to process for account {account_id}")
+        account.status = M3UAccount.Status.ERROR
+        account.last_message = "No data available for processing"
+        account.save(update_fields=['status', 'last_message'])
+        send_m3u_update(account_id, "parsing", 100, status="error", error="No data available for processing")
+        release_task_lock('refresh_single_m3u_account', account_id)
+        return "Failed to update m3u account, no data available"
 
     hash_keys = CoreSettings.get_m3u_hash_key().split(",")
 
@@ -558,105 +649,133 @@ def refresh_single_m3u_account(account_id):
         m3u_account__enabled=True  # Filter by the enabled flag in the join table
     )}
 
-    if account.account_type == M3UAccount.Types.STADNARD:
-        # Break into batches and process in parallel
-        batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
-        task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
-    else:
-        filtered_groups = [(k, v) for k, v in groups.items() if k in existing_groups]
-        batches = [
-            dict(filtered_groups[i:i + 2])
-            for i in range(0, len(filtered_groups), 2)
-        ]
-        task_group = group(process_xc_category.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
+    try:
+        # Set status to parsing
+        account.status = M3UAccount.Status.PARSING
+        account.save(update_fields=['status'])
 
-    total_batches = len(batches)
-    completed_batches = 0
-    streams_processed = 0  # Track total streams processed
-    logger.debug(f"Dispatched {len(batches)} parallel tasks for account_id={account_id}.")
+        if account.account_type == M3UAccount.Types.STADNARD:
+            # Break into batches and process in parallel
+            batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
+            task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
+        else:
+            filtered_groups = [(k, v) for k, v in groups.items() if k in existing_groups]
+            batches = [
+                dict(filtered_groups[i:i + 2])
+                for i in range(0, len(filtered_groups), 2)
+            ]
+            task_group = group(process_xc_category.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
 
-    # result = task_group.apply_async()
-    result = task_group.apply_async()
+        total_batches = len(batches)
+        completed_batches = 0
+        streams_processed = 0  # Track total streams processed
+        logger.debug(f"Dispatched {len(batches)} parallel tasks for account_id={account_id}.")
 
-    # Wait for all tasks to complete and collect their result IDs
-    completed_task_ids = set()
-    while completed_batches < total_batches:
-        for async_result in result:
-            if async_result.ready() and async_result.id not in completed_task_ids:  # If the task has completed and we haven't counted it
-                task_result = async_result.result  # The result of the task
-                logger.debug(f"Task completed with result: {task_result}")
+        # result = task_group.apply_async()
+        result = task_group.apply_async()
 
-                # Extract stream counts from result string if available
-                if isinstance(task_result, str):
-                    try:
-                        created_match = re.search(r"(\d+) created", task_result)
-                        updated_match = re.search(r"(\d+) updated", task_result)
+        # Wait for all tasks to complete and collect their result IDs
+        completed_task_ids = set()
+        while completed_batches < total_batches:
+            for async_result in result:
+                if async_result.ready() and async_result.id not in completed_task_ids:  # If the task has completed and we haven't counted it
+                    task_result = async_result.result  # The result of the task
+                    logger.debug(f"Task completed with result: {task_result}")
 
-                        if created_match and updated_match:
-                            created_count = int(created_match.group(1))
-                            updated_count = int(updated_match.group(1))
-                            streams_processed += created_count + updated_count
-                    except (AttributeError, ValueError):
-                        pass
+                    # Extract stream counts from result string if available
+                    if isinstance(task_result, str):
+                        try:
+                            created_match = re.search(r"(\d+) created", task_result)
+                            updated_match = re.search(r"(\d+) updated", task_result)
 
-                completed_batches += 1
-                completed_task_ids.add(async_result.id)  # Mark this task as processed
+                            if created_match and updated_match:
+                                created_count = int(created_match.group(1))
+                                updated_count = int(updated_match.group(1))
+                                streams_processed += created_count + updated_count
+                                streams_created += created_count
+                                streams_updated += updated_count
+                        except (AttributeError, ValueError):
+                            pass
 
-                # Calculate progress
-                progress = int((completed_batches / total_batches) * 100)
+                    completed_batches += 1
+                    completed_task_ids.add(async_result.id)  # Mark this task as processed
 
-                # Calculate elapsed time and estimated remaining time
-                current_elapsed = time.time() - start_time
-                if progress > 0:
-                    estimated_total = (current_elapsed / progress) * 100
-                    time_remaining = max(0, estimated_total - current_elapsed)
+                    # Calculate progress
+                    progress = int((completed_batches / total_batches) * 100)
+
+                    # Calculate elapsed time and estimated remaining time
+                    current_elapsed = time.time() - start_time
+                    if progress > 0:
+                        estimated_total = (current_elapsed / progress) * 100
+                        time_remaining = max(0, estimated_total - current_elapsed)
+                    else:
+                        time_remaining = 0
+
+                    # Send progress update via Channels
+                    # Don't send 100% because we want to clean up after
+                    if progress == 100:
+                        progress = 99
+
+                    send_m3u_update(
+                        account_id,
+                        "parsing",
+                        progress,
+                        elapsed_time=current_elapsed,
+                        time_remaining=time_remaining,
+                        streams_processed=streams_processed
+                    )
+
+                    # Optionally remove completed task from the group to prevent processing it again
+                    result.remove(async_result)
                 else:
-                    time_remaining = 0
+                    logger.debug(f"Task is still running.")
 
-                # Send progress update via Channels
-                # Don't send 100% because we want to clean up after
-                if progress == 100:
-                    progress = 99
+        # Ensure all database transactions are committed before cleanup
+        logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")
+        # Force a simple DB query to ensure connection sync
+        Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
 
-                send_m3u_update(
-                    account_id,
-                    "parsing",
-                    progress,
-                    elapsed_time=current_elapsed,
-                    time_remaining=time_remaining,
-                    streams_processed=streams_processed
-                )
+        # Now run cleanup
+        cleanup_streams(account_id)
 
-                # Optionally remove completed task from the group to prevent processing it again
-                result.remove(async_result)
-            else:
-                logger.debug(f"Task is still running.")
+        # Calculate elapsed time
+        elapsed_time = time.time() - start_time
 
-    # Ensure all database transactions are committed before cleanup
-    logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")
-    # Force a simple DB query to ensure connection sync
-    Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
+        # Set status to success and update timestamp BEFORE sending the final update
+        account.status = M3UAccount.Status.SUCCESS
+        account.last_message = (
+            f"Processing completed in {elapsed_time:.1f} seconds. "
+            f"Streams: {streams_created} created, {streams_updated} updated, {streams_deleted} removed. "
+            f"Total processed: {streams_processed}."
+        )
+        account.updated_at = timezone.now()
+        account.save(update_fields=['status', 'last_message', 'updated_at'])
 
-    # Now run cleanup
-    cleanup_streams(account_id)
-    # Send final update with complete metrics
-    elapsed_time = time.time() - start_time
-    send_m3u_update(
-        account_id,
-        "parsing",
-        100,
-        elapsed_time=elapsed_time,
-        time_remaining=0,
-        streams_processed=streams_processed
-    )
+        # Send final update with complete metrics and explicitly include success status
+        send_m3u_update(
+            account_id,
+            "parsing",
+            100,
+            status="success",  # Explicitly set status to success
+            elapsed_time=elapsed_time,
+            time_remaining=0,
+            streams_processed=streams_processed,
+            streams_created=streams_created,
+            streams_updated=streams_updated,
+            streams_deleted=streams_deleted,
+            message=account.last_message
+        )
 
-    end_time = time.time()
+        print(f"Function took {elapsed_time} seconds to execute.")
 
-    # Calculate elapsed time
-    elapsed_time = end_time - start_time
-    account.save(update_fields=['updated_at'])
+    except Exception as e:
+        logger.error(f"Error processing M3U for account {account_id}: {str(e)}")
+        account.status = M3UAccount.Status.ERROR
+        account.last_message = f"Error processing M3U: {str(e)}"
+        account.save(update_fields=['status', 'last_message'])
+        raise  # Re-raise the exception for Celery to handle
 
-    print(f"Function took {elapsed_time} seconds to execute.")
+    release_task_lock('refresh_single_m3u_account', account_id)
 
     # Aggressive garbage collection
     del existing_groups, extinf_data, groups, batches
@@ -665,16 +784,6 @@ def refresh_single_m3u_account(account_id):
     # Clean up cache file since we've fully processed it
     if os.path.exists(cache_path):
         os.remove(cache_path)
-
-    release_task_lock('refresh_single_m3u_account', account_id)
-
-    # cursor = 0
-    # while True:
-    #     cursor, keys = redis_client.scan(cursor, match=f"m3u_refresh:*", count=BATCH_SIZE)
-    #     if keys:
-    #         redis_client.delete(*keys)  # Delete the matching keys
-    #     if cursor == 0:
-    #         break
 
     return f"Dispatched jobs complete."
 
@@ -686,6 +795,17 @@ def send_m3u_update(account_id, action, progress, **kwargs):
         "account": account_id,
         "action": action,
     }
+
+    # Add the status and message if not already in kwargs
+    try:
+        account = M3UAccount.objects.get(id=account_id)
+        if account:
+            if "status" not in kwargs:
+                data["status"] = account.status
+            if "message" not in kwargs and account.last_message:
+                data["message"] = account.last_message
+    except:
+        pass  # If account can't be retrieved, continue without these fields
 
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)

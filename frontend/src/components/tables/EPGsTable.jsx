@@ -22,7 +22,8 @@ import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
 import dayjs from 'dayjs';
-
+import useSettingsStore from '../../store/settings';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 // Helper function to format status text
 const formatStatusText = (status) => {
@@ -51,12 +52,25 @@ const EPGsTable = () => {
   const refreshProgress = useEPGsStore((s) => s.refreshProgress);
 
   const theme = useMantineTheme();
+  // Get tableSize directly from localStorage instead of the store
+  const [tableSize] = useLocalStorage('table-size', 'default');
+
+  // Get proper size for action icons to match ChannelsTable
+  const iconSize = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'md' : 'sm';
+
+  // Calculate density for Mantine Table
+  const tableDensity = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'xl' : 'md';
 
   const toggleActive = async (epg) => {
-    await API.updateEPG({
-      ...epg,
-      is_active: !epg.is_active,
-    });
+    try {
+      // Send only the is_active field to trigger our special handling
+      await API.updateEPG({
+        id: epg.id,
+        is_active: !epg.is_active,
+      }, true); // Add a new parameter to indicate this is just a toggle
+    } catch (error) {
+      console.error('Error toggling active state:', error);
+    }
   };
 
   const buildProgressDisplay = (data) => {
@@ -135,12 +149,7 @@ const EPGsTable = () => {
         Cell: ({ row }) => {
           const data = row.original;
 
-          // Check if there's an active progress for this EPG
-          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
-            return buildProgressDisplay(data);
-          }
-
-          // Return simple text display instead of badge
+          // Always show status text, even when there's progress happening
           return (
             <Text
               size="sm"
@@ -154,19 +163,24 @@ const EPGsTable = () => {
       },
       {
         header: 'Status Message',
-        accessorKey: 'last_error',
+        accessorKey: 'last_message',
         size: 250,
         minSize: 150,
         enableSorting: false,
         Cell: ({ row }) => {
           const data = row.original;
 
+          // Check if there's an active progress for this EPG - show progress first if active
+          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
+            return buildProgressDisplay(data);
+          }
+
           // Show error message when status is error
-          if (data.status === 'error' && data.last_error) {
+          if (data.status === 'error' && data.last_message) {
             return (
-              <Tooltip label={data.last_error} multiline width={300}>
+              <Tooltip label={data.last_message} multiline width={300}>
                 <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6] }}>
-                  {data.last_error}
+                  {data.last_message}
                 </Text>
               </Tooltip>
             );
@@ -187,10 +201,14 @@ const EPGsTable = () => {
       },
       {
         header: 'Updated',
-        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        accessorKey: 'updated_at',
         size: 180,
         minSize: 100,
         enableSorting: false,
+        Cell: ({ cell }) => {
+          const value = cell.getValue();
+          return value ? dayjs(value).format('MMMM D, YYYY h:mma') : 'Never';
+        },
       },
       {
         header: 'Active',
@@ -262,7 +280,16 @@ const EPGsTable = () => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: Object.values(epgs),
+    // Sort data before passing to table: active first, then by name
+    data: Object.values(epgs)
+      .sort((a, b) => {
+        // First sort by active status (active items first)
+        if (a.is_active !== b.is_active) {
+          return a.is_active ? -1 : 1;
+        }
+        // Then sort by name (case-insensitive)
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      }),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: false,
@@ -273,11 +300,12 @@ const EPGsTable = () => {
       isLoading,
       sorting,
       rowSelection,
+      density: tableDensity,
     },
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      density: tableDensity,
     },
     enableRowActions: true,
     positionActionsColumn: 'last',
@@ -291,28 +319,28 @@ const EPGsTable = () => {
       <>
         <ActionIcon
           variant="transparent"
-          size="sm" // Makes the button smaller
+          size={iconSize} // Use standardized icon size
           color="yellow.5" // Red color for delete actions
           onClick={() => editEPG(row.original)}
         >
-          <SquarePen size="18" /> {/* Small icon size */}
+          <SquarePen size={tableSize === 'compact' ? 16 : 18} /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="sm" // Makes the button smaller
+          size={iconSize} // Use standardized icon size
           color="red.9" // Red color for delete actions
           onClick={() => deleteEPG(row.original.id)}
         >
-          <SquareMinus size="18" /> {/* Small icon size */}
+          <SquareMinus size={tableSize === 'compact' ? 16 : 18} /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="sm" // Makes the button smaller
+          size={iconSize} // Use standardized icon size
           color="blue.5" // Red color for delete actions
           onClick={() => refreshEPG(row.original.id)}
           disabled={!row.original.is_active}
         >
-          <RefreshCcw size="18" /> {/* Small icon size */}
+          <RefreshCcw size={tableSize === 'compact' ? 16 : 18} /> {/* Small icon size */}
         </ActionIcon>
       </>
     ),
@@ -321,6 +349,33 @@ const EPGsTable = () => {
         height: 'calc(40vh - 10px)',
         overflowX: 'auto', // Ensure horizontal scrolling works
       },
+    },
+    mantineTableProps: {
+      ...TableHelper.defaultProperties.mantineTableProps,
+      className: `table-size-${tableSize}`,
+    },
+    // Add custom cell styles to match CustomTable's sizing
+    mantineTableBodyCellProps: ({ cell }) => {
+      // Check if this is a status message cell with active progress
+      const progressData = cell.column.id === 'last_message' &&
+        refreshProgress[cell.row.original.id] &&
+        refreshProgress[cell.row.original.id].progress < 100 ?
+        refreshProgress[cell.row.original.id] : null;
+
+      // Only expand height for certain actions that need more space
+      const needsExpandedHeight = progressData &&
+        ['downloading', 'parsing_channels', 'parsing_programs'].includes(progressData.action);
+
+      return {
+        style: {
+          // Apply taller height for progress cells (except initializing), otherwise use standard height
+          height: needsExpandedHeight ? '80px' : (
+            tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px'
+          ),
+          fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-xs)' : 'var(--mantine-font-size-sm)',
+          padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
+        }
+      };
     },
   });
 

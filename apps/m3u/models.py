@@ -14,6 +14,13 @@ class M3UAccount(models.Model):
         STADNARD = "STD", "Standard"
         XC = "XC", "Xtream Codes"
 
+    class Status(models.TextChoices):
+        IDLE = "idle", "Idle"
+        FETCHING = "fetching", "Fetching"
+        PARSING = "parsing", "Parsing"
+        ERROR = "error", "Error"
+        SUCCESS = "success", "Success"
+
     """Represents an M3U Account for IPTV streams."""
     name = models.CharField(
         max_length=255,
@@ -51,8 +58,18 @@ class M3UAccount(models.Model):
         help_text="Time when this account was created"
     )
     updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="Time when this account was last updated"
+        null=True, blank=True,
+        help_text="Time when this account was last successfully refreshed"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.IDLE
+    )
+    last_message = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Last status message, including success results or error information"
     )
     user_agent = models.ForeignKey(
         'core.UserAgent',
@@ -118,6 +135,15 @@ class M3UAccount(models.Model):
             user_agent = UserAgent.objects.get(id=CoreSettings.get_default_user_agent_id())
 
         return user_agent
+
+    def save(self, *args, **kwargs):
+        # Prevent auto_now behavior by handling updated_at manually
+        if 'update_fields' in kwargs and 'updated_at' not in kwargs['update_fields']:
+            # Don't modify updated_at for regular updates
+            kwargs.setdefault('update_fields', [])
+            if 'updated_at' in kwargs['update_fields']:
+                kwargs['update_fields'].remove('updated_at')
+        super().save(*args, **kwargs)
 
     # def get_channel_groups(self):
     #     return ChannelGroup.objects.filter(m3u_account__m3u_account=self)
