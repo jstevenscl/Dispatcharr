@@ -14,10 +14,36 @@ import {
   ActionIcon,
   Tooltip,
   Switch,
+  Progress,
+  Stack,
 } from '@mantine/core';
 import { SquareMinus, SquarePen, RefreshCcw, Check, X } from 'lucide-react';
 import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
 import dayjs from 'dayjs';
+
+// Helper function to format status text
+const formatStatusText = (status) => {
+  switch (status) {
+    case 'idle': return 'Idle';
+    case 'fetching': return 'Fetching';
+    case 'parsing': return 'Parsing';
+    case 'error': return 'Error';
+    case 'success': return 'Success';
+    default: return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown';
+  }
+};
+
+// Helper function to get status text color
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'idle': return 'gray.5';
+    case 'fetching': return 'blue.5';
+    case 'parsing': return 'indigo.5';
+    case 'error': return 'red.5';
+    case 'success': return 'green.5';
+    default: return 'gray.5';
+  }
+};
 
 const M3UTable = () => {
   const [playlist, setPlaylist] = useState(null);
@@ -258,32 +284,60 @@ const M3UTable = () => {
       },
       {
         header: 'Status',
-        accessorFn: (row) => {
-          if (!row.id) {
-            return '';
-          }
-          if (!refreshProgress[row.id]) {
-            return 'Idle';
-          }
+        accessorKey: 'status',
+        size: 100,
+        minSize: 80,
+        Cell: ({ row }) => {
+          const data = row.original;
 
-          return generateStatusString(refreshProgress[row.id]);
-        },
-        size: 180,
-        minSize: 150,
-        Cell: ({ cell }) => {
-          const value = cell.getValue();
-
-          // Return a visual component for the status
-          if (typeof value === 'object') {
-            return value;
+          // Check if there's an active progress for this M3U
+          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
+            return generateStatusString(refreshProgress[data.id]);
           }
 
-          // For simple string statuses
+          // Return simple text display with appropriate color
           return (
-            <Text size="xs">
-              {value}
+            <Text
+              size="sm"
+              fw={500}
+              c={getStatusColor(data.status)}
+            >
+              {formatStatusText(data.status)}
             </Text>
           );
+        },
+      },
+      {
+        header: 'Status Message',
+        accessorKey: 'last_message',
+        size: 250,
+        minSize: 150,
+        enableSorting: false,
+        Cell: ({ row }) => {
+          const data = row.original;
+
+          // Show error message when status is error
+          if (data.status === 'error' && data.last_message) {
+            return (
+              <Tooltip label={data.last_message} multiline width={300}>
+                <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6] }}>
+                  {data.last_message}
+                </Text>
+              </Tooltip>
+            );
+          }
+
+          // Show success message for successful sources
+          if (data.status === 'success' && data.last_message) {
+            return (
+              <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6] }}>
+                {data.last_message}
+              </Text>
+            );
+          }
+
+          // Otherwise return empty cell
+          return null;
         },
       },
       {
@@ -313,7 +367,7 @@ const M3UTable = () => {
         enableSorting: false,
       },
     ],
-    [refreshProgress]
+    [refreshProgress, theme]
   );
 
   //optionally access the underlying virtualizer instance

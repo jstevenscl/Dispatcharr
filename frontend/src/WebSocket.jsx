@@ -187,7 +187,22 @@ export const WebsocketProvider = ({ children }) => {
               break;
 
             case 'm3u_refresh':
+              // Update the store with progress information
               setRefreshProgress(parsedEvent.data);
+
+              // If complete (progress is 100%), also update the playlist status
+              if (parsedEvent.data.progress === 100 && parsedEvent.data.account) {
+                const playlistsState = usePlaylistsStore.getState();
+                const playlist = playlistsState.playlists.find(p => p.id === parsedEvent.data.account);
+
+                if (playlist) {
+                  playlistsState.updatePlaylist({
+                    ...playlist,
+                    status: parsedEvent.data.status || 'success',
+                    last_message: parsedEvent.data.message || playlist.last_message
+                  });
+                }
+              }
               break;
 
             case 'channel_stats':
@@ -272,15 +287,54 @@ export const WebsocketProvider = ({ children }) => {
               const epgsState = useEPGsStore.getState();
               epgsState.updateEPGProgress(parsedEvent.data);
 
-              // If progress is complete (100%), show a notification and refresh EPG data
-              if (parsedEvent.data.progress === 100 && parsedEvent.data.action === "parsing_programs") {
-                notifications.show({
-                  title: 'EPG Processing Complete',
-                  message: 'EPG data has been updated successfully',
-                  color: 'green.5',
-                });
+              // If we have source_id/account info, update the EPG source status
+              if (parsedEvent.data.source_id || parsedEvent.data.account) {
+                const sourceId = parsedEvent.data.source_id || parsedEvent.data.account;
+                const epg = epgsState.epgs[sourceId];
 
-                fetchEPGData();
+                if (epg) {
+                  // Check for any indication of an error (either via status or error field)
+                  const hasError = parsedEvent.data.status === "error" ||
+                    !!parsedEvent.data.error ||
+                    (parsedEvent.data.message && parsedEvent.data.message.toLowerCase().includes("error"));
+
+                  if (hasError) {
+                    // Handle error state
+                    const errorMessage = parsedEvent.data.error || parsedEvent.data.message || "Unknown error occurred";
+
+                    epgsState.updateEPG({
+                      ...epg,
+                      status: 'error',
+                      last_message: errorMessage
+                    });
+
+                    // Show notification for the error
+                    notifications.show({
+                      title: 'EPG Refresh Error',
+                      message: errorMessage,
+                      color: 'red.5',
+                    });
+                  }
+                  // Update status on completion only if no errors
+                  else if (parsedEvent.data.progress === 100) {
+                    epgsState.updateEPG({
+                      ...epg,
+                      status: parsedEvent.data.status || 'success',
+                      last_message: parsedEvent.data.message || epg.last_message
+                    });
+
+                    // Only show success notification if we've finished parsing programs and had no errors
+                    if (parsedEvent.data.action === "parsing_programs") {
+                      notifications.show({
+                        title: 'EPG Processing Complete',
+                        message: 'EPG data has been updated successfully',
+                        color: 'green.5',
+                      });
+
+                      fetchEPGData();
+                    }
+                  }
+                }
               }
               break;
 

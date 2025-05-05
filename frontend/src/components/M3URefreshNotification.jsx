@@ -34,8 +34,24 @@ export default function M3URefreshNotification() {
       [data.account]: data,
     });
 
+    // Check for error status FIRST before doing anything else
+    if (data.status === "error") {
+      // Only show the error notification if we have a complete task (progress=100)
+      // or if it's explicitly flagged as an error
+      if (data.progress === 100) {
+        notifications.show({
+          title: `M3U Processing: ${playlist.name}`,
+          message: `${data.action || 'Processing'} failed: ${data.error || "Unknown error"}`,
+          color: 'red',
+          autoClose: 5000,  // Keep error visible a bit longer
+        });
+      }
+      return; // Exit early for any error status
+    }
+
     const taskProgress = data.progress;
 
+    // Only show start and completion notifications for normal operation
     if (data.progress != 0 && data.progress != 100) {
       console.log('not 0 or 100');
       return;
@@ -61,6 +77,7 @@ export default function M3URefreshNotification() {
     } else if (taskProgress == 100) {
       message = `${message} complete!`;
 
+      // Only trigger additional fetches on successful completion
       if (data.action == 'parsing') {
         fetchStreams();
       } else if (data.action == 'processing_groups') {

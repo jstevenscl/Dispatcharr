@@ -386,7 +386,10 @@ def parse_channels_only(source):
             # If the source has a URL, fetch the data before continuing
             if source.url:
                 logger.info(f"Fetching new EPG data from URL: {source.url}")
-                if not fetch_xmltv(source):  # Check if fetch was successful
+                fetch_success = fetch_xmltv(source)  # Store the result
+
+                # Only proceed if fetch was successful AND file exists
+                if not fetch_success:
                     logger.error(f"Failed to fetch EPG data from URL: {source.url}")
                     # Update status to error
                     source.status = 'error'
@@ -545,15 +548,36 @@ def parse_programs_for_tvg_id(epg_id):
         # Fetch new data before continuing
         if epg_source.url:
             logger.info(f"Fetching new EPG data from URL: {epg_source.url}")
-            fetch_xmltv(epg_source)
+            # Properly check the return value from fetch_xmltv
+            fetch_success = fetch_xmltv(epg_source)
 
-            # Check if fetch was successful
+            # If fetch was not successful or the file still doesn't exist, abort
+            if not fetch_success:
+                logger.error(f"Failed to fetch EPG data, cannot parse programs for tvg_id: {epg.tvg_id}")
+                # Update status to error if not already set
+                epg_source.status = 'error'
+                epg_source.last_message = f"Failed to download EPG data, cannot parse programs"
+                epg_source.save(update_fields=['status', 'last_message'])
+                send_epg_update(epg_source.id, "parsing_programs", 100, status="error", error="Failed to download EPG file")
+                release_task_lock('parse_epg_programs', epg_id)
+                return
+
+            # Also check if the file exists after download
             if not os.path.exists(new_path):
                 logger.error(f"Failed to fetch EPG data, file still missing at: {new_path}")
+                epg_source.status = 'error'
+                epg_source.last_message = f"Failed to download EPG data, file missing after download"
+                epg_source.save(update_fields=['status', 'last_message'])
+                send_epg_update(epg_source.id, "parsing_programs", 100, status="error", error="File not found after download")
                 release_task_lock('parse_epg_programs', epg_id)
                 return
         else:
             logger.error(f"No URL provided for EPG source {epg_source.name}, cannot fetch new data")
+            # Update status to error
+            epg_source.status = 'error'
+            epg_source.last_message = f"No URL provided, cannot fetch EPG data"
+            epg_source.save(update_fields=['status', 'last_message'])
+            send_epg_update(epg_source.id, "parsing_programs", 100, status="error", error="No URL provided")
             release_task_lock('parse_epg_programs', epg_id)
             return
 
