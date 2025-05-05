@@ -489,7 +489,17 @@ const M3UTable = () => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: playlists.filter((playlist) => playlist.locked === false),
+    // Sort data before passing to table: active first, then by name
+    data: playlists
+      .filter((playlist) => playlist.locked === false)
+      .sort((a, b) => {
+        // First sort by active status (active items first)
+        if (a.is_active !== b.is_active) {
+          return a.is_active ? -1 : 1;
+        }
+        // Then sort by name (case-insensitive)
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      }),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: false,

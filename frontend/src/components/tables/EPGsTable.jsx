@@ -276,7 +276,16 @@ const EPGsTable = () => {
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
-    data: Object.values(epgs),
+    // Sort data before passing to table: active first, then by name
+    data: Object.values(epgs)
+      .sort((a, b) => {
+        // First sort by active status (active items first)
+        if (a.is_active !== b.is_active) {
+          return a.is_active ? -1 : 1;
+        }
+        // Then sort by name (case-insensitive)
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      }),
     enablePagination: false,
     enableRowVirtualization: true,
     enableRowSelection: false,
