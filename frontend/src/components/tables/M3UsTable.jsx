@@ -351,12 +351,24 @@ const M3UTable = () => {
       {
         header: 'Status Message',
         accessorKey: 'last_message',
-        size: 200,
+        size: 250,         // Increase default size
+        minSize: 200,      // Set minimum size
+        maxSize: 400,      // Allow expansion up to this size
         Cell: ({ cell, row }) => {
           const value = cell.getValue();
-          if (!value) return null;
-
           const data = row.original;
+
+          // Get account id to check for refresh progress
+          const accountId = data.id;
+          const progressData = refreshProgress[accountId];
+
+          // If we have active progress data for this account, show that instead
+          if (progressData && progressData.progress < 100) {
+            return generateStatusString(progressData);
+          }
+
+          // No progress data, display normal status message
+          if (!value) return null;
 
           // Show error message with red styling for errors
           if (data.status === 'error') {
