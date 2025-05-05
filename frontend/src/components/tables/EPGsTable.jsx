@@ -149,12 +149,7 @@ const EPGsTable = () => {
         Cell: ({ row }) => {
           const data = row.original;
 
-          // Check if there's an active progress for this EPG
-          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
-            return buildProgressDisplay(data);
-          }
-
-          // Return simple text display instead of badge
+          // Always show status text, even when there's progress happening
           return (
             <Text
               size="sm"
@@ -174,6 +169,11 @@ const EPGsTable = () => {
         enableSorting: false,
         Cell: ({ row }) => {
           const data = row.original;
+
+          // Check if there's an active progress for this EPG - show progress first if active
+          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
+            return buildProgressDisplay(data);
+          }
 
           // Show error message when status is error
           if (data.status === 'error' && data.last_message) {
@@ -342,12 +342,27 @@ const EPGsTable = () => {
       className: `table-size-${tableSize}`,
     },
     // Add custom cell styles to match CustomTable's sizing
-    mantineTableBodyCellProps: {
-      style: {
-        height: tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px',
-        fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-sm)' : 'var(--mantine-font-size-md)',
-        padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
-      }
+    mantineTableBodyCellProps: ({ cell }) => {
+      // Check if this is a status message cell with active progress
+      const progressData = cell.column.id === 'last_message' &&
+        refreshProgress[cell.row.original.id] &&
+        refreshProgress[cell.row.original.id].progress < 100 ?
+        refreshProgress[cell.row.original.id] : null;
+
+      // Only expand height for certain actions that need more space
+      const needsExpandedHeight = progressData &&
+        ['downloading', 'parsing_channels', 'parsing_programs'].includes(progressData.action);
+
+      return {
+        style: {
+          // Apply taller height for progress cells (except initializing), otherwise use standard height
+          height: needsExpandedHeight ? '80px' : (
+            tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px'
+          ),
+          fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-xs)' : 'var(--mantine-font-size-sm)',
+          padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
+        }
+      };
     },
   });
 
