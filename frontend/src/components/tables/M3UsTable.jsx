@@ -108,7 +108,7 @@ const M3UTable = () => {
 
     return (
       <Box>
-        <Flex direction="column" gap={4}>
+        <Flex direction="column" gap={2}>
           <Flex justify="space-between" align="center">
             <Text size="xs" fw={500}>Downloading:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
@@ -142,7 +142,7 @@ const M3UTable = () => {
 
     return (
       <Box>
-        <Flex direction="column" gap={4}>
+        <Flex direction="column" gap={2}>
           <Flex justify="space-between" align="center">
             <Text size="xs" fw={500}>Processing groups:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
@@ -167,11 +167,11 @@ const M3UTable = () => {
   const buildErrorStats = (data) => {
     return (
       <Box>
-        <Flex direction="column" gap={4}>
+        <Flex direction="column" gap={2}>
           <Flex align="center">
             <Text size="xs" fw={500} color="red">Error:</Text>
           </Flex>
-          <Text size="xs" color="red">{data.error || "Unknown error occurred"}</Text>
+          <Text size="xs" color="red" style={{ lineHeight: 1.3 }}>{data.error || "Unknown error occurred"}</Text>
         </Flex>
       </Box>
     );
@@ -197,7 +197,7 @@ const M3UTable = () => {
 
     return (
       <Box>
-        <Flex direction="column" gap={4}>
+        <Flex direction="column" gap={2}>
           <Flex justify="space-between" align="center">
             <Text size="xs" fw={500}>Parsing:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
@@ -228,7 +228,7 @@ const M3UTable = () => {
   const buildInitializingStats = () => {
     return (
       <Box>
-        <Flex direction="column" gap={4}>
+        <Flex direction="column" gap={2}>
           <Flex align="center">
             <Text size="xs" fw={500}>Initializing refresh...</Text>
           </Flex>
@@ -340,9 +340,9 @@ const M3UTable = () => {
           const value = cell.getValue();
           if (!value) return null;
 
-          // Match EPG table styling with Text component
+          // Match EPG table styling with Text component - always use xs size
           return (
-            <Text size={tableSize === 'compact' ? 'xs' : 'sm'} c={getStatusColor(value)}>
+            <Text size="xs" c={getStatusColor(value)}>
               {formatStatusText(value)}
             </Text>
           );
@@ -387,7 +387,7 @@ const M3UTable = () => {
           if (data.status === 'error') {
             return (
               <Tooltip label={value} multiline width={300}>
-                <Text c="dimmed" size={tableSize === 'compact' ? 'xs' : 'sm'} lineClamp={2} style={{ color: theme.colors.red[6] }}>
+                <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6], lineHeight: 1.3 }}>
                   {value}
                 </Text>
               </Tooltip>
@@ -398,7 +398,7 @@ const M3UTable = () => {
           if (data.status === 'success') {
             return (
               <Tooltip label={value} multiline width={300}>
-                <Text c="dimmed" size={tableSize === 'compact' ? 'xs' : 'sm'} style={{ color: theme.colors.green[6] }}>
+                <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6], lineHeight: 1.3 }}>
                   {value}
                 </Text>
               </Tooltip>
@@ -408,7 +408,7 @@ const M3UTable = () => {
           // For all other status values, just use dimmed text
           return (
             <Tooltip label={value} multiline width={300}>
-              <Text c="dimmed" size={tableSize === 'compact' ? 'xs' : 'sm'} lineClamp={2}>
+              <Text c="dimmed" size="xs" lineClamp={2} style={{ lineHeight: 1.3 }}>
                 {value}
               </Text>
             </Tooltip>
@@ -421,7 +421,7 @@ const M3UTable = () => {
         size: 120,
         Cell: ({ cell }) => {
           const value = cell.getValue();
-          return value ? new Date(value).toLocaleString() : 'Never';
+          return value ? <Text size="xs">{new Date(value).toLocaleString()}</Text> : <Text size="xs">Never</Text>;
         },
       },
       {

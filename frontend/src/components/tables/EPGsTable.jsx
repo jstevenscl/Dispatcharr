@@ -94,9 +94,9 @@ const EPGsTable = () => {
     }
 
     return (
-      <Stack spacing={5}>
+      <Stack spacing={2}>
         <Text size="xs">{label}: {parseInt(progress.progress)}%</Text>
-        <Progress value={parseInt(progress.progress)} size="xs" />
+        <Progress value={parseInt(progress.progress)} size="xs" style={{ margin: '2px 0' }} />
         {progress.speed && <Text size="xs">Speed: {parseInt(progress.speed)} KB/s</Text>}
       </Stack>
     );
@@ -179,7 +179,7 @@ const EPGsTable = () => {
           if (data.status === 'error' && data.last_message) {
             return (
               <Tooltip label={data.last_message} multiline width={300}>
-                <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6] }}>
+                <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6], lineHeight: 1.3 }}>
                   {data.last_message}
                 </Text>
               </Tooltip>
@@ -189,7 +189,7 @@ const EPGsTable = () => {
           // Show success message for successful sources
           if (data.status === 'success') {
             return (
-              <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6] }}>
+              <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6], lineHeight: 1.3 }}>
                 EPG data refreshed successfully
               </Text>
             );
