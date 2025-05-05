@@ -16,10 +16,14 @@ import {
   Switch,
   Progress,
   Stack,
+  Badge,
+  Group,
 } from '@mantine/core';
 import { SquareMinus, SquarePen, RefreshCcw, Check, X } from 'lucide-react';
 import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
 import dayjs from 'dayjs';
+import useSettingsStore from '../../store/settings';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 // Helper function to format status text
 const formatStatusText = (status) => {
@@ -58,6 +62,7 @@ const M3UTable = () => {
   const setRefreshProgress = usePlaylistsStore((s) => s.setRefreshProgress);
 
   const theme = useMantineTheme();
+  const [tableSize] = useLocalStorage('table-size', 'default');
 
   const generateStatusString = (data) => {
     if (data.progress == 100) {
@@ -232,150 +237,6 @@ const M3UTable = () => {
     );
   };
 
-  const toggleActive = async (playlist) => {
-    try {
-      // Send only the is_active field to trigger our special handling
-      await API.updatePlaylist({
-        id: playlist.id,
-        is_active: !playlist.is_active,
-      }, true); // Add a new parameter to indicate this is just a toggle
-    } catch (error) {
-      console.error('Error toggling active state:', error);
-    }
-  };
-
-  const columns = useMemo(
-    //column definitions...
-    () => [
-      {
-        header: 'Name',
-        accessorKey: 'name',
-        size: 150,
-        minSize: 100, // Minimum width
-      },
-      {
-        header: 'URL / File',
-        accessorKey: 'server_url',
-        size: 200,
-        minSize: 120,
-        Cell: ({ cell, row }) => {
-          const value = cell.getValue() || row.original.file_path || '';
-          return (
-            <Tooltip label={value} disabled={!value}>
-              <div
-                style={{
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: '100%',
-                }}
-              >
-                {value}
-              </div>
-            </Tooltip>
-          );
-        },
-      },
-      {
-        header: 'Max Streams',
-        accessorKey: 'max_streams',
-        size: 120,
-        minSize: 80,
-      },
-      {
-        header: 'Status',
-        accessorKey: 'status',
-        size: 100,
-        minSize: 80,
-        Cell: ({ row }) => {
-          const data = row.original;
-
-          // Check if there's an active progress for this M3U
-          if (refreshProgress[data.id] && refreshProgress[data.id].progress < 100) {
-            return generateStatusString(refreshProgress[data.id]);
-          }
-
-          // Return simple text display with appropriate color
-          return (
-            <Text
-              size="sm"
-              fw={500}
-              c={getStatusColor(data.status)}
-            >
-              {formatStatusText(data.status)}
-            </Text>
-          );
-        },
-      },
-      {
-        header: 'Status Message',
-        accessorKey: 'last_message',
-        size: 250,
-        minSize: 150,
-        enableSorting: false,
-        Cell: ({ row }) => {
-          const data = row.original;
-
-          // Show error message when status is error
-          if (data.status === 'error' && data.last_message) {
-            return (
-              <Tooltip label={data.last_message} multiline width={300}>
-                <Text c="dimmed" size="xs" lineClamp={2} style={{ color: theme.colors.red[6] }}>
-                  {data.last_message}
-                </Text>
-              </Tooltip>
-            );
-          }
-
-          // Show success message for successful sources
-          if (data.status === 'success' && data.last_message) {
-            return (
-              <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6] }}>
-                {data.last_message}
-              </Text>
-            );
-          }
-
-          // Otherwise return empty cell
-          return null;
-        },
-      },
-      {
-        header: 'Active',
-        accessorKey: 'is_active',
-        size: 80,
-        minSize: 60,
-        sortingFn: 'basic',
-        mantineTableBodyCellProps: {
-          align: 'left',
-        },
-        Cell: ({ row, cell }) => (
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            <Switch
-              size="xs"
-              checked={cell.getValue()}
-              onChange={() => toggleActive(row.original)}
-            />
-          </Box>
-        ),
-      },
-      {
-        header: 'Updated',
-        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
-        size: 180,
-        minSize: 100,
-        enableSorting: false,
-      },
-    ],
-    [refreshProgress, theme]
-  );
-
-  //optionally access the underlying virtualizer instance
-  const rowVirtualizerInstanceRef = useRef(null);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [sorting, setSorting] = useState([]);
-
   const editPlaylist = async (playlist = null) => {
     if (playlist) {
       setPlaylist(playlist);
@@ -414,6 +275,157 @@ const M3UTable = () => {
     setIsLoading(false);
   };
 
+  const toggleActive = async (playlist) => {
+    try {
+      // Send only the is_active field to trigger our special handling
+      await API.updatePlaylist({
+        id: playlist.id,
+        is_active: !playlist.is_active,
+      }, true); // Add a new parameter to indicate this is just a toggle
+    } catch (error) {
+      console.error('Error toggling active state:', error);
+    }
+  };
+
+  const columns = useMemo(
+    () => [
+      {
+        header: 'Name',
+        accessorKey: 'name',
+        size: 150,
+        minSize: 100, // Minimum width
+      },
+      {
+        header: 'Account Type',
+        accessorKey: 'account_type',
+        size: 100,
+        Cell: ({ cell }) => {
+          const value = cell.getValue();
+          return value === 'XC' ? 'XC' : 'M3U';
+        },
+      },
+      {
+        header: 'URL / File',
+        accessorKey: 'server_url',
+        size: 200,
+        minSize: 120,
+        Cell: ({ cell, row }) => {
+          const value = cell.getValue() || row.original.file_path || '';
+          return (
+            <Tooltip label={value} disabled={!value}>
+              <div
+                style={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+              >
+                {value}
+              </div>
+            </Tooltip>
+          );
+        },
+      },
+      {
+        header: 'Max Streams',
+        accessorKey: 'max_streams',
+        size: 100,
+      },
+      {
+        header: 'Status',
+        accessorKey: 'status',
+        size: 100,
+        Cell: ({ cell }) => {
+          const value = cell.getValue();
+          if (!value) return null;
+
+          // Match EPG table styling with Text component
+          return (
+            <Text size={tableSize === 'compact' ? 'xs' : 'sm'} c={getStatusColor(value)}>
+              {formatStatusText(value)}
+            </Text>
+          );
+        },
+      },
+      {
+        header: 'Status Message',
+        accessorKey: 'last_message',
+        size: 200,
+        Cell: ({ cell, row }) => {
+          const value = cell.getValue();
+          if (!value) return null;
+
+          const data = row.original;
+
+          // Show error message with red styling for errors
+          if (data.status === 'error') {
+            return (
+              <Tooltip label={value} multiline width={300}>
+                <Text c="dimmed" size={tableSize === 'compact' ? 'xs' : 'sm'} lineClamp={2} style={{ color: theme.colors.red[6] }}>
+                  {value}
+                </Text>
+              </Tooltip>
+            );
+          }
+
+          // Show success message with green styling for success
+          if (data.status === 'success') {
+            return (
+              <Tooltip label={value} multiline width={300}>
+                <Text c="dimmed" size={tableSize === 'compact' ? 'xs' : 'sm'} style={{ color: theme.colors.green[6] }}>
+                  {value}
+                </Text>
+              </Tooltip>
+            );
+          }
+
+          // For all other status values, just use dimmed text
+          return (
+            <Tooltip label={value} multiline width={300}>
+              <Text c="dimmed" size={tableSize === 'compact' ? 'xs' : 'sm'} lineClamp={2}>
+                {value}
+              </Text>
+            </Tooltip>
+          );
+        },
+      },
+      {
+        header: 'Updated',
+        accessorKey: 'updated_at',
+        size: 120,
+        Cell: ({ cell }) => {
+          const value = cell.getValue();
+          return value ? new Date(value).toLocaleString() : 'Never';
+        },
+      },
+      {
+        header: 'Active',
+        accessorKey: 'is_active',
+        size: 80,
+        Cell: ({ cell, row }) => {
+          return (
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <Switch
+                size="xs"
+                checked={cell.getValue()}
+                onChange={() => toggleActive(row.original)}
+              />
+            </Box>
+          );
+        },
+      },
+      // Remove the custom Actions column here
+    ],
+    [refreshPlaylist, editPlaylist, deletePlaylist, toggleActive]
+  );
+
+  //optionally access the underlying virtualizer instance
+  const rowVirtualizerInstanceRef = useRef(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [sorting, setSorting] = useState([]);
+
   const closeModal = (newPlaylist = null) => {
     if (newPlaylist) {
       setPlaylistCreated(true);
@@ -447,6 +459,8 @@ const M3UTable = () => {
     }
   }, [sorting]);
 
+  const tableDensity = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'xl' : 'md';
+
   const table = useMantineReactTable({
     ...TableHelper.defaultProperties,
     columns,
@@ -461,13 +475,16 @@ const M3UTable = () => {
       isLoading,
       sorting,
       rowSelection,
+      // Use density directly from tableSize
+      density: tableDensity,
     },
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      // Use density directly from tableSize
+      density: tableDensity,
     },
-    enableRowActions: true,
+    enableRowActions: true, // Enable row actions
     positionActionsColumn: 'last',
     displayColumnDefOptions: {
       'mrt-row-actions': {
@@ -479,30 +496,30 @@ const M3UTable = () => {
       <>
         <ActionIcon
           variant="transparent"
-          size="sm"
+          size={tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'md' : 'sm'} // Use standardized icon size
           color="yellow.5"
           onClick={() => {
             editPlaylist(row.original);
           }}
         >
-          <SquarePen size="18" />
+          <SquarePen size={tableSize === 'compact' ? 16 : 18} />
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="sm"
+          size={tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'md' : 'sm'} // Use standardized icon size
           color="red.9"
           onClick={() => deletePlaylist(row.original.id)}
         >
-          <SquareMinus size="18" />
+          <SquareMinus size={tableSize === 'compact' ? 16 : 18} />
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="sm"
+          size={tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'md' : 'sm'} // Use standardized icon size
           color="blue.5"
           onClick={() => refreshPlaylist(row.original.id)}
           disabled={!row.original.is_active}
         >
-          <RefreshCcw size="18" />
+          <RefreshCcw size={tableSize === 'compact' ? 16 : 18} />
         </ActionIcon>
       </>
     ),
@@ -511,6 +528,24 @@ const M3UTable = () => {
         height: 'calc(40vh - 10px)',
         overflowX: 'auto', // Ensure horizontal scrolling works
       },
+    },
+    mantineTableProps: {
+      ...TableHelper.defaultProperties.mantineTableProps,
+      className: `table-size-${tableSize}`,
+    },
+    // Add custom cell styles to match CustomTable's sizing
+    mantineTableBodyCellProps: {
+      style: {
+        height: tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px',
+        fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-xs)' : 'var(--mantine-font-size-sm)',
+        padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
+      }
+    },
+    // Additional text styling to match ChannelsTable
+    mantineTableBodyProps: {
+      style: {
+        fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-xs)' : 'var(--mantine-font-size-sm)',
+      }
     },
   });
 

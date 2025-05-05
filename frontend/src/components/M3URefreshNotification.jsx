@@ -29,6 +29,7 @@ export default function M3URefreshNotification() {
       return;
     }
 
+    // Store the updated status first
     setNotificationStatus({
       ...notificationStatus,
       [data.account]: data,
@@ -49,11 +50,17 @@ export default function M3URefreshNotification() {
       return; // Exit early for any error status
     }
 
+    // Check if we already have an error stored for this account, and if so, don't show further notifications
+    const currentStatus = notificationStatus[data.account];
+    if (currentStatus && currentStatus.status === "error") {
+      // Don't show any other notifications once we've hit an error
+      return;
+    }
+
     const taskProgress = data.progress;
 
     // Only show start and completion notifications for normal operation
     if (data.progress != 0 && data.progress != 100) {
-      console.log('not 0 or 100');
       return;
     }
 
@@ -98,6 +105,18 @@ export default function M3URefreshNotification() {
   };
 
   useEffect(() => {
+    // Reset notificationStatus when playlists change to prevent stale data
+    if (playlists.length > 0 && Object.keys(notificationStatus).length > 0) {
+      const validIds = playlists.map(p => p.id);
+      const currentIds = Object.keys(notificationStatus).map(Number);
+
+      // If we have notification statuses for playlists that no longer exist, reset the state
+      if (!currentIds.every(id => validIds.includes(id))) {
+        setNotificationStatus({});
+      }
+    }
+
+    // Process all refresh progress updates
     Object.values(refreshProgress).map((data) => handleM3UUpdate(data));
   }, [playlists, refreshProgress]);
 

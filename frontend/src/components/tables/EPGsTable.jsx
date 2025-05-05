@@ -22,7 +22,8 @@ import { notifications } from '@mantine/notifications';
 import { IconSquarePlus } from '@tabler/icons-react';
 import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
 import dayjs from 'dayjs';
-
+import useSettingsStore from '../../store/settings';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 // Helper function to format status text
 const formatStatusText = (status) => {
@@ -51,6 +52,14 @@ const EPGsTable = () => {
   const refreshProgress = useEPGsStore((s) => s.refreshProgress);
 
   const theme = useMantineTheme();
+  // Get tableSize directly from localStorage instead of the store
+  const [tableSize] = useLocalStorage('table-size', 'default');
+
+  // Get proper size for action icons to match ChannelsTable
+  const iconSize = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'md' : 'sm';
+
+  // Calculate density for Mantine Table
+  const tableDensity = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'xl' : 'md';
 
   const toggleActive = async (epg) => {
     try {
@@ -278,11 +287,12 @@ const EPGsTable = () => {
       isLoading,
       sorting,
       rowSelection,
+      density: tableDensity,
     },
     rowVirtualizerInstanceRef, //optional
     rowVirtualizerOptions: { overscan: 5 }, //optionally customize the row virtualizer
     initialState: {
-      density: 'compact',
+      density: tableDensity,
     },
     enableRowActions: true,
     positionActionsColumn: 'last',
@@ -296,28 +306,28 @@ const EPGsTable = () => {
       <>
         <ActionIcon
           variant="transparent"
-          size="sm" // Makes the button smaller
+          size={iconSize} // Use standardized icon size
           color="yellow.5" // Red color for delete actions
           onClick={() => editEPG(row.original)}
         >
-          <SquarePen size="18" /> {/* Small icon size */}
+          <SquarePen size={tableSize === 'compact' ? 16 : 18} /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="sm" // Makes the button smaller
+          size={iconSize} // Use standardized icon size
           color="red.9" // Red color for delete actions
           onClick={() => deleteEPG(row.original.id)}
         >
-          <SquareMinus size="18" /> {/* Small icon size */}
+          <SquareMinus size={tableSize === 'compact' ? 16 : 18} /> {/* Small icon size */}
         </ActionIcon>
         <ActionIcon
           variant="transparent"
-          size="sm" // Makes the button smaller
+          size={iconSize} // Use standardized icon size
           color="blue.5" // Red color for delete actions
           onClick={() => refreshEPG(row.original.id)}
           disabled={!row.original.is_active}
         >
-          <RefreshCcw size="18" /> {/* Small icon size */}
+          <RefreshCcw size={tableSize === 'compact' ? 16 : 18} /> {/* Small icon size */}
         </ActionIcon>
       </>
     ),
@@ -326,6 +336,18 @@ const EPGsTable = () => {
         height: 'calc(40vh - 10px)',
         overflowX: 'auto', // Ensure horizontal scrolling works
       },
+    },
+    mantineTableProps: {
+      ...TableHelper.defaultProperties.mantineTableProps,
+      className: `table-size-${tableSize}`,
+    },
+    // Add custom cell styles to match CustomTable's sizing
+    mantineTableBodyCellProps: {
+      style: {
+        height: tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px',
+        fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-sm)' : 'var(--mantine-font-size-md)',
+        padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
+      }
     },
   });
 
