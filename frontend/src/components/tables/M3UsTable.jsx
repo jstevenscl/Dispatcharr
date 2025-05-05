@@ -428,6 +428,11 @@ const M3UTable = () => {
         header: 'Active',
         accessorKey: 'is_active',
         size: 80,
+        minSize: 60,
+        sortingFn: 'basic',
+        mantineTableBodyCellProps: {
+          align: 'left',
+        },
         Cell: ({ cell, row }) => {
           return (
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
