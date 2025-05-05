@@ -108,7 +108,7 @@ const M3UTable = () => {
 
     return (
       <Box>
-        <Flex direction="column" gap="xs">
+        <Flex direction="column" gap={4}>
           <Flex justify="space-between" align="center">
             <Text size="xs" fw={500}>Downloading:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
@@ -142,7 +142,7 @@ const M3UTable = () => {
 
     return (
       <Box>
-        <Flex direction="column" gap="xs">
+        <Flex direction="column" gap={4}>
           <Flex justify="space-between" align="center">
             <Text size="xs" fw={500}>Processing groups:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
@@ -167,7 +167,7 @@ const M3UTable = () => {
   const buildErrorStats = (data) => {
     return (
       <Box>
-        <Flex direction="column" gap="xs">
+        <Flex direction="column" gap={4}>
           <Flex align="center">
             <Text size="xs" fw={500} color="red">Error:</Text>
           </Flex>
@@ -197,7 +197,7 @@ const M3UTable = () => {
 
     return (
       <Box>
-        <Flex direction="column" gap="xs">
+        <Flex direction="column" gap={4}>
           <Flex justify="space-between" align="center">
             <Text size="xs" fw={500}>Parsing:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
@@ -228,7 +228,7 @@ const M3UTable = () => {
   const buildInitializingStats = () => {
     return (
       <Box>
-        <Flex direction="column" gap="xs">
+        <Flex direction="column" gap={4}>
           <Flex align="center">
             <Text size="xs" fw={500}>Initializing refresh...</Text>
           </Flex>
@@ -364,7 +364,20 @@ const M3UTable = () => {
 
           // If we have active progress data for this account, show that instead
           if (progressData && progressData.progress < 100) {
-            return generateStatusString(progressData);
+            return (
+              <Box style={{
+                // Use full height of the cell with proper spacing
+                height: '100%',
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                // Add some padding to give content room to breathe
+                padding: '4px 0'
+              }}>
+                {generateStatusString(progressData)}
+              </Box>
+            );
           }
 
           // No progress data, display normal status message
@@ -546,12 +559,27 @@ const M3UTable = () => {
       className: `table-size-${tableSize}`,
     },
     // Add custom cell styles to match CustomTable's sizing
-    mantineTableBodyCellProps: {
-      style: {
-        height: tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px',
-        fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-xs)' : 'var(--mantine-font-size-sm)',
-        padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
-      }
+    mantineTableBodyCellProps: ({ cell }) => {
+      // Check if this is a status message cell with active progress
+      const progressData = cell.column.id === 'last_message' &&
+        refreshProgress[cell.row.original.id] &&
+        refreshProgress[cell.row.original.id].progress < 100 ?
+        refreshProgress[cell.row.original.id] : null;
+
+      // Only expand height for certain actions that need more space
+      const needsExpandedHeight = progressData &&
+        ['downloading', 'parsing', 'processing_groups'].includes(progressData.action);
+
+      return {
+        style: {
+          // Apply taller height for progress cells (except initializing), otherwise use standard height
+          height: needsExpandedHeight ? '80px' : (
+            tableSize === 'compact' ? '28px' : tableSize === 'large' ? '48px' : '40px'
+          ),
+          fontSize: tableSize === 'compact' ? 'var(--mantine-font-size-xs)' : 'var(--mantine-font-size-sm)',
+          padding: tableSize === 'compact' ? '2px 8px' : '4px 10px'
+        }
+      };
     },
     // Additional text styling to match ChannelsTable
     mantineTableBodyProps: {
