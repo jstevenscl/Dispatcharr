@@ -201,10 +201,14 @@ const EPGsTable = () => {
       },
       {
         header: 'Updated',
-        accessorFn: (row) => dayjs(row.updated_at).format('MMMM D, YYYY h:mma'),
+        accessorKey: 'updated_at',
         size: 180,
         minSize: 100,
         enableSorting: false,
+        Cell: ({ cell }) => {
+          const value = cell.getValue();
+          return value ? dayjs(value).format('MMMM D, YYYY h:mma') : 'Never';
+        },
       },
       {
         header: 'Active',
