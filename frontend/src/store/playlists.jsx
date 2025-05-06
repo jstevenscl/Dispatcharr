@@ -11,6 +11,14 @@ const usePlaylistsStore = create((set) => ({
   profileSearchPreview: '',
   profileResult: '',
 
+  // Add a state variable to trigger M3U editing
+  editPlaylistId: null,
+
+  setEditPlaylistId: (id) =>
+    set((state) => ({
+      editPlaylistId: id,
+    })),
+
   fetchPlaylists: async () => {
     set({ isLoading: true, error: null });
     try {

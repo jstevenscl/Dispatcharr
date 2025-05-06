@@ -6,6 +6,8 @@ import { IconCheck } from '@tabler/icons-react';
 import useStreamsStore from '../store/streams';
 import useChannelsStore from '../store/channels';
 import useEPGsStore from '../store/epgs';
+import { Stack, Button, Group } from '@mantine/core';
+import API from '../api';
 
 export default function M3URefreshNotification() {
   const playlists = usePlaylistsStore((s) => s.playlists);
@@ -37,9 +39,37 @@ export default function M3URefreshNotification() {
 
     // Special handling for pending setup status
     if (data.status === "pending_setup") {
+      fetchChannelGroups();
+      fetchPlaylists();
+
       notifications.show({
         title: `M3U Setup: ${playlist.name}`,
-        message: data.message || "M3U groups loaded. Please select groups or refresh M3U to complete setup.",
+        message: (
+          <Stack>
+            {data.message || "M3U groups loaded. Please select groups or refresh M3U to complete setup."}
+            <Group grow>
+              <Button
+                size="xs"
+                variant="default"
+                onClick={() => {
+                  API.refreshPlaylist(data.account);
+                }}
+              >
+                Refresh Now
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  // Open the M3U edit modal for this account
+                  usePlaylistsStore.getState().setEditPlaylistId(data.account);
+                }}
+              >
+                Edit Groups
+              </Button>
+            </Group>
+          </Stack>
+        ),
         color: 'orange.5',
         autoClose: 5000,  // Keep visible a bit longer
       });

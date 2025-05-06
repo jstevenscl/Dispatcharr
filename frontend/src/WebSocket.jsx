@@ -12,7 +12,7 @@ import { notifications } from '@mantine/notifications';
 import useChannelsStore from './store/channels';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
-import { Box, Button, Stack, Alert } from '@mantine/core';
+import { Box, Button, Stack, Alert, Group } from '@mantine/core';
 import API from './api';
 import useSettingsStore from './store/settings';
 
@@ -157,32 +157,6 @@ export const WebsocketProvider = ({ children }) => {
               notifications.show({
                 title: 'M3U File Detected',
                 message: `Processing ${parsedEvent.data.filename}`,
-              });
-              break;
-
-            case 'm3u_group_refresh':
-              fetchChannelGroups();
-              fetchPlaylists();
-
-              notifications.show({
-                title: 'Group processing finished!',
-                autoClose: 5000,
-                message: (
-                  <Stack>
-                    Refresh M3U or filter out groups to pull in streams.
-                    <Button
-                      size="xs"
-                      variant="default"
-                      onClick={() => {
-                        API.refreshPlaylist(parsedEvent.data.account);
-                        setRefreshProgress(parsedEvent.data.account, 0);
-                      }}
-                    >
-                      Refresh Now
-                    </Button>
-                  </Stack>
-                ),
-                color: 'green.5',
               });
               break;
 

@@ -62,6 +62,8 @@ const M3UTable = () => {
   const playlists = usePlaylistsStore((s) => s.playlists);
   const refreshProgress = usePlaylistsStore((s) => s.refreshProgress);
   const setRefreshProgress = usePlaylistsStore((s) => s.setRefreshProgress);
+  const editPlaylistId = usePlaylistsStore((s) => s.editPlaylistId);
+  const setEditPlaylistId = usePlaylistsStore((s) => s.setEditPlaylistId);
 
   const theme = useMantineTheme();
   const [tableSize] = useLocalStorage('table-size', 'default');
@@ -490,6 +492,18 @@ const M3UTable = () => {
       console.error(error);
     }
   }, [sorting]);
+
+  // Listen for edit playlist requests from notifications
+  useEffect(() => {
+    if (editPlaylistId) {
+      const playlistToEdit = playlists.find(p => p.id === editPlaylistId);
+      if (playlistToEdit) {
+        editPlaylist(playlistToEdit);
+        // Reset the ID after handling
+        setEditPlaylistId(null);
+      }
+    }
+  }, [editPlaylistId, playlists]);
 
   const tableDensity = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'xl' : 'md';
 
