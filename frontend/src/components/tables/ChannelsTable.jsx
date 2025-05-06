@@ -104,7 +104,7 @@ const ChannelRowActions = React.memo(
       // Use the ID directly to avoid issues with filtered tables
       console.log(`Editing channel ID: ${channelId}`);
       editChannel(row.original);
-    }, [channelId]);
+    }, [channelId, row.original]);
 
     const onDelete = useCallback(() => {
       console.log(`Deleting channel ID: ${channelId}`);
@@ -195,7 +195,7 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = ({ }) => {
+const ChannelsTable = ({}) => {
   const theme = useMantineTheme();
 
   /**
@@ -350,29 +350,7 @@ const ChannelsTable = ({ }) => {
   };
 
   const editChannel = async (ch = null) => {
-    if (ch) {
-      console.log(`Opening editor for channel: ${ch.name} (${ch.id})`);
-
-      try {
-        // Fetch the full channel with streams data directly from the API instead of the store
-        const fullChannelData = await API.getChannel(ch.id);
-        if (fullChannelData) {
-          setChannel(fullChannelData);
-        } else {
-          // Fallback to store data if API call fails
-          const latestChannel = useChannelsStore.getState().channels[ch.id];
-          setChannel(latestChannel);
-        }
-      } catch (error) {
-        console.error("Error fetching channel data:", error);
-        // Fallback to store data if API call fails
-        const latestChannel = useChannelsStore.getState().channels[ch.id];
-        setChannel(latestChannel);
-      }
-    } else {
-      console.log('Creating new channel');
-      setChannel(null);
-    }
+    setChannel(ch);
     setChannelModalOpen(true);
   };
 
@@ -457,7 +435,9 @@ const ChannelsTable = ({ }) => {
 
   const handleWatchStream = (channel) => {
     // Add additional logging to help debug issues
-    console.log(`Watching stream for channel: ${channel.name} (${channel.id}), UUID: ${channel.uuid}`);
+    console.log(
+      `Watching stream for channel: ${channel.name} (${channel.id}), UUID: ${channel.uuid}`
+    );
     const url = getChannelURL(channel);
     console.log(`Stream URL: ${url}`);
     showVideo(url);
@@ -689,7 +669,8 @@ const ChannelsTable = ({ }) => {
 
           if (logoId && logos[logoId]) {
             // Try to use cache_url if available, otherwise construct it from the ID
-            src = logos[logoId].cache_url || `/api/channels/logos/${logoId}/cache/`;
+            src =
+              logos[logoId].cache_url || `/api/channels/logos/${logoId}/cache/`;
           }
 
           return (
@@ -830,13 +811,14 @@ const ChannelsTable = ({ }) => {
       enabled: renderHeaderCell,
     },
     getRowStyles: (row) => {
-      const hasStreams = row.original.streams && row.original.streams.length > 0;
+      const hasStreams =
+        row.original.streams && row.original.streams.length > 0;
       return hasStreams
         ? {} // Default style for channels with streams
         : {
-          className: 'no-streams-row' // Add a class instead of background color
-        };
-    }
+            className: 'no-streams-row', // Add a class instead of background color
+          };
+    },
   });
 
   const rows = table.getRowModel().rows;
@@ -1077,21 +1059,27 @@ const ChannelsTable = ({ }) => {
       <ConfirmationDialog
         opened={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
-        onConfirm={() => isBulkDelete ? executeDeleteChannels() : executeDeleteChannel(deleteTarget)}
+        onConfirm={() =>
+          isBulkDelete
+            ? executeDeleteChannels()
+            : executeDeleteChannel(deleteTarget)
+        }
         title={`Confirm ${isBulkDelete ? 'Bulk ' : ''}Channel Deletion`}
         message={
-          isBulkDelete
-            ? `Are you sure you want to delete ${table.selectedTableIds.length} channels? This action cannot be undone.`
-            : channelToDelete
-              ? <div style={{ whiteSpace: 'pre-line' }}>
-                {`Are you sure you want to delete the following channel?
+          isBulkDelete ? (
+            `Are you sure you want to delete ${table.selectedTableIds.length} channels? This action cannot be undone.`
+          ) : channelToDelete ? (
+            <div style={{ whiteSpace: 'pre-line' }}>
+              {`Are you sure you want to delete the following channel?
 
 Name: ${channelToDelete.name}
 Channel Number: ${channelToDelete.channel_number}
 
 This action cannot be undone.`}
-              </div>
-              : "Are you sure you want to delete this channel? This action cannot be undone."
+            </div>
+          ) : (
+            'Are you sure you want to delete this channel? This action cannot be undone.'
+          )
         }
         confirmLabel="Delete"
         cancelLabel="Cancel"
