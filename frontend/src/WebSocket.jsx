@@ -197,11 +197,20 @@ export const WebsocketProvider = ({ children }) => {
                 const playlist = playlistsState.playlists.find(p => p.id === parsedEvent.data.account);
 
                 if (playlist) {
-                  playlistsState.updatePlaylist({
+                  // When we receive a "success" status with 100% progress, this is a completed refresh
+                  // So we should also update the updated_at timestamp
+                  const updateData = {
                     ...playlist,
                     status: parsedEvent.data.status,
                     last_message: parsedEvent.data.message || playlist.last_message
-                  });
+                  };
+
+                  // Update the timestamp when we complete a successful refresh
+                  if (parsedEvent.data.status === 'success' && parsedEvent.data.progress === 100) {
+                    updateData.updated_at = new Date().toISOString();
+                  }
+
+                  playlistsState.updatePlaylist(updateData);
                 }
               }
               break;
