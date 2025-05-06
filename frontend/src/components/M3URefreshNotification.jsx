@@ -8,6 +8,7 @@ import useChannelsStore from '../store/channels';
 import useEPGsStore from '../store/epgs';
 import { Stack, Button, Group } from '@mantine/core';
 import API from '../api';
+import { useNavigate } from 'react-router-dom';
 
 export default function M3URefreshNotification() {
   const playlists = usePlaylistsStore((s) => s.playlists);
@@ -18,6 +19,7 @@ export default function M3URefreshNotification() {
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
 
   const [notificationStatus, setNotificationStatus] = useState({});
+  const navigate = useNavigate();
 
   const handleM3UUpdate = (data) => {
     if (
@@ -61,8 +63,12 @@ export default function M3URefreshNotification() {
                 size="xs"
                 variant="outline"
                 onClick={() => {
-                  // Open the M3U edit modal for this account
+                  // Store the ID we want to edit in the store first
                   usePlaylistsStore.getState().setEditPlaylistId(data.account);
+
+                  // Then navigate to the content sources page
+                  // Using the exact path that matches your app's routing structure
+                  navigate('/sources');
                 }}
               >
                 Edit Groups
