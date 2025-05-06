@@ -33,7 +33,7 @@ const formatStatusText = (status) => {
     case 'parsing': return 'Parsing';
     case 'error': return 'Error';
     case 'success': return 'Success';
-    case 'pending_setup': return '⚠️ Pending Setup';
+    case 'pending_setup': return 'Pending Setup';
     default: return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown';
   }
 };
