@@ -33,6 +33,7 @@ const formatStatusText = (status) => {
     case 'parsing': return 'Parsing';
     case 'error': return 'Error';
     case 'success': return 'Success';
+    case 'pending_setup': return '⚠️ Pending Setup';
     default: return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown';
   }
 };
@@ -45,6 +46,7 @@ const getStatusColor = (status) => {
     case 'parsing': return 'indigo.5';
     case 'error': return 'red.5';
     case 'success': return 'green.5';
+    case 'pending_setup': return 'orange.5'; // Orange to indicate action needed
     default: return 'gray.5';
   }
 };

@@ -28,17 +28,10 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
         period=IntervalSchedule.HOURS
     )
 
-    if not instance.refresh_task:
-        refresh_task = PeriodicTask.objects.create(
-            name=task_name,
-            interval=interval,
-            task="apps.m3u.tasks.refresh_single_m3u_account",
-            kwargs=json.dumps({"account_id": instance.id}),
-            enabled=instance.refresh_interval != 0,
-        )
-        M3UAccount.objects.filter(id=instance.id).update(refresh_task=refresh_task)
-    else:
-        task = instance.refresh_task
+    # First check if the task already exists to avoid validation errors
+    try:
+        task = PeriodicTask.objects.get(name=task_name)
+        # Task exists, just update it
         updated_fields = []
 
         if task.enabled != (instance.refresh_interval != 0):
@@ -51,6 +44,21 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
 
         if updated_fields:
             task.save(update_fields=updated_fields)
+
+        # Ensure instance has the task
+        if instance.refresh_task_id != task.id:
+            M3UAccount.objects.filter(id=instance.id).update(refresh_task=task)
+
+    except PeriodicTask.DoesNotExist:
+        # Create new task if it doesn't exist
+        refresh_task = PeriodicTask.objects.create(
+            name=task_name,
+            interval=interval,
+            task="apps.m3u.tasks.refresh_single_m3u_account",
+            kwargs=json.dumps({"account_id": instance.id}),
+            enabled=instance.refresh_interval != 0,
+        )
+        M3UAccount.objects.filter(id=instance.id).update(refresh_task=refresh_task)
 
 @receiver(post_delete, sender=M3UAccount)
 def delete_refresh_task(sender, instance, **kwargs):

@@ -35,6 +35,17 @@ export default function M3URefreshNotification() {
       [data.account]: data,
     });
 
+    // Special handling for pending setup status
+    if (data.status === "pending_setup") {
+      notifications.show({
+        title: `M3U Setup: ${playlist.name}`,
+        message: data.message || "M3U groups loaded. Please select groups or refresh M3U to complete setup.",
+        color: 'orange.5',
+        autoClose: 5000,  // Keep visible a bit longer
+      });
+      return;
+    }
+
     // Check for error status FIRST before doing anything else
     if (data.status === "error") {
       // Only show the error notification if we have a complete task (progress=100)
