@@ -190,15 +190,16 @@ export const WebsocketProvider = ({ children }) => {
               // Update the store with progress information
               setRefreshProgress(parsedEvent.data);
 
-              // Always update status for pending_setup, not just when progress is 100%
-              if ((parsedEvent.data.progress === 100 || parsedEvent.data.status === "pending_setup") && parsedEvent.data.account) {
+              // Update the playlist status whenever we receive a status update
+              // Not just when progress is 100% or status is pending_setup
+              if (parsedEvent.data.status && parsedEvent.data.account) {
                 const playlistsState = usePlaylistsStore.getState();
                 const playlist = playlistsState.playlists.find(p => p.id === parsedEvent.data.account);
 
                 if (playlist) {
                   playlistsState.updatePlaylist({
                     ...playlist,
-                    status: parsedEvent.data.status || 'success',
+                    status: parsedEvent.data.status,
                     last_message: parsedEvent.data.message || playlist.last_message
                   });
                 }
