@@ -9,7 +9,13 @@ class Client:
     def __init__(self, host, username, password, user_agent):
         self.host = host
         self.username = username
-        self.password = user_agent
+        self.password = password
+
+        # Handle UserAgent objects by extracting the string value
+        if hasattr(user_agent, 'user_agent'):  # Check if it's a UserAgent model object
+            self.user_agent = user_agent.user_agent  # Extract the string attribute
+        else:
+            self.user_agent = str(user_agent)  # Ensure it's a string in any case
 
     def authenticate(self):
         response = requests.get(f"{self.host}/player_api.php?username={self.username}&password={self.password}", headers={
