@@ -139,7 +139,8 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
 
         <NumberInput
           label="Refresh Interval (hours)"
-          description="How often to automatically refresh EPG data"
+          description={<>How often to automatically refresh EPG data<br />
+            (0 to disable automatic refreshes)</>}
           {...form.getInputProps('refresh_interval')}
           key={form.key('refresh_interval')}
         />

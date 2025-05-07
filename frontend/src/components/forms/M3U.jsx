@@ -317,7 +317,8 @@ const M3U = ({
 
             <NumberInput
               label="Refresh Interval (hours)"
-              description="How often to automatically refresh M3U data"
+              description={<>How often to automatically refresh M3U data<br />
+                (0 to disable automatic refreshes)</>}
               {...form.getInputProps('refresh_interval')}
               key={form.key('refresh_interval')}
             />
