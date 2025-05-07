@@ -24,6 +24,8 @@ import { RefreshCcw, SquareMinus, SquarePen } from 'lucide-react';
 import dayjs from 'dayjs';
 import useSettingsStore from '../../store/settings';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+import useWarningsStore from '../../store/warnings';
 
 // Helper function to format status text
 const formatStatusText = (status) => {
@@ -47,6 +49,9 @@ const EPGsTable = () => {
   const [epg, setEPG] = useState(null);
   const [epgModalOpen, setEPGModalOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState([]);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [epgToDelete, setEpgToDelete] = useState(null);
 
   const epgs = useEPGsStore((s) => s.epgs);
   const refreshProgress = useEPGsStore((s) => s.refreshProgress);
@@ -60,6 +65,9 @@ const EPGsTable = () => {
 
   // Calculate density for Mantine Table
   const tableDensity = tableSize === 'compact' ? 'xs' : tableSize === 'large' ? 'xl' : 'md';
+
+  const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
+  const suppressWarning = useWarningsStore((s) => s.suppressWarning);
 
   const toggleActive = async (epg) => {
     try {
@@ -245,9 +253,24 @@ const EPGsTable = () => {
   };
 
   const deleteEPG = async (id) => {
+    // Get EPG details for the confirmation dialog
+    const epgObj = epgs[id];
+    setEpgToDelete(epgObj);
+    setDeleteTarget(id);
+
+    // Skip warning if it's been suppressed
+    if (isWarningSuppressed('delete-epg')) {
+      return executeDeleteEPG(id);
+    }
+
+    setConfirmDeleteOpen(true);
+  };
+
+  const executeDeleteEPG = async (id) => {
     setIsLoading(true);
     await API.deleteEPG(id);
     setIsLoading(false);
+    setConfirmDeleteOpen(false);
   };
 
   const refreshEPG = async (id) => {
@@ -446,6 +469,36 @@ const EPGsTable = () => {
 
       <MantineReactTable table={table} />
       <EPGForm epg={epg} isOpen={epgModalOpen} onClose={closeEPGForm} />
+
+      <ConfirmationDialog
+        opened={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => executeDeleteEPG(deleteTarget)}
+        title="Confirm EPG Source Deletion"
+        message={
+          epgToDelete ? (
+            <div style={{ whiteSpace: 'pre-line' }}>
+              {`Are you sure you want to delete the following EPG source?
+
+Name: ${epgToDelete.name}
+Source Type: ${epgToDelete.source_type}
+${epgToDelete.url ? `URL: ${epgToDelete.url}` :
+                  epgToDelete.api_key ? `API Key: ${epgToDelete.api_key}` :
+                    epgToDelete.file_path ? `File Path: ${epgToDelete.file_path}` : ''}
+
+This will remove all related program information and channel associations.
+This action cannot be undone.`}
+            </div>
+          ) : (
+            'Are you sure you want to delete this EPG source? This action cannot be undone.'
+          )
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        actionKey="delete-epg"
+        onSuppressChange={suppressWarning}
+        size="lg"
+      />
     </Box>
   );
 };

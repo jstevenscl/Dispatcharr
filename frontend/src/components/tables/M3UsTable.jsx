@@ -24,6 +24,8 @@ import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
 import dayjs from 'dayjs';
 import useSettingsStore from '../../store/settings';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+import useWarningsStore from '../../store/warnings';
 
 // Helper function to format status text
 const formatStatusText = (status) => {
@@ -58,12 +60,17 @@ const M3UTable = () => {
   const [rowSelection, setRowSelection] = useState([]);
   const [activeFilterValue, setActiveFilterValue] = useState('all');
   const [playlistCreated, setPlaylistCreated] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [playlistToDelete, setPlaylistToDelete] = useState(null);
 
   const playlists = usePlaylistsStore((s) => s.playlists);
   const refreshProgress = usePlaylistsStore((s) => s.refreshProgress);
   const setRefreshProgress = usePlaylistsStore((s) => s.setRefreshProgress);
   const editPlaylistId = usePlaylistsStore((s) => s.editPlaylistId);
   const setEditPlaylistId = usePlaylistsStore((s) => s.setEditPlaylistId);
+  const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
+  const suppressWarning = useWarningsStore((s) => s.suppressWarning);
 
   const theme = useMantineTheme();
   const [tableSize] = useLocalStorage('table-size', 'default');
@@ -274,9 +281,24 @@ const M3UTable = () => {
   };
 
   const deletePlaylist = async (id) => {
+    // Get playlist details for the confirmation dialog
+    const playlist = playlists.find(p => p.id === id);
+    setPlaylistToDelete(playlist);
+    setDeleteTarget(id);
+
+    // Skip warning if it's been suppressed
+    if (isWarningSuppressed('delete-m3u')) {
+      return executeDeletePlaylist(id);
+    }
+
+    setConfirmDeleteOpen(true);
+  };
+
+  const executeDeletePlaylist = async (id) => {
     setIsLoading(true);
     await API.deletePlaylist(id);
     setIsLoading(false);
+    setConfirmDeleteOpen(false);
   };
 
   const toggleActive = async (playlist) => {
@@ -687,6 +709,34 @@ const M3UTable = () => {
         isOpen={playlistModalOpen}
         onClose={closeModal}
         playlistCreated={playlistCreated}
+      />
+
+      <ConfirmationDialog
+        opened={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => executeDeletePlaylist(deleteTarget)}
+        title="Confirm M3U Account Deletion"
+        message={
+          playlistToDelete ? (
+            <div style={{ whiteSpace: 'pre-line' }}>
+              {`Are you sure you want to delete the following M3U account?
+
+Name: ${playlistToDelete.name}
+Type: ${playlistToDelete.account_type === 'XC' ? 'Xtream Codes' : 'Standard'}
+Server: ${playlistToDelete.server_url || 'Local file'}
+
+This will remove all related streams and may affect channels using these streams.
+This action cannot be undone.`}
+            </div>
+          ) : (
+            'Are you sure you want to delete this M3U account? This action cannot be undone.'
+          )
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        actionKey="delete-m3u"
+        onSuppressChange={suppressWarning}
+        size="lg"
       />
     </Box>
   );
