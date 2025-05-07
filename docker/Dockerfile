@@ -94,40 +94,32 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install static FFmpeg 7 binary from John Van Sickle (multi-arch)
-RUN set -e && \
-    # BuildKit's TARGETARCH variable handling for multi-arch builds
-    if [ -n "$TARGETARCH" ]; then \
-    if [ "$TARGETARCH" = "amd64" ]; then \
+RUN echo "Detecting architecture" && \
+    TARGETPLATFORM=${TARGETPLATFORM:-linux/$(uname -m)} && \
+    echo "Target platform: $TARGETPLATFORM" && \
+    if echo "$TARGETPLATFORM" | grep -q "amd64"; then \
     ARCH="x86_64"; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
+    elif echo "$TARGETPLATFORM" | grep -q "arm64"; then \
     ARCH="arm64"; \
     else \
-    echo "Unsupported architecture: $TARGETARCH" && exit 1; \
-    fi; \
-    else \
-    ARCH=$(uname -m); \
-    if [ "$ARCH" = "x86_64" ]; then \
-    ARCH="x86_64"; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-    ARCH="arm64"; \
-    else \
-    echo "Unsupported architecture: $ARCH" && exit 1; \
-    fi; \
+    echo "Unsupported architecture: $TARGETPLATFORM" && exit 1; \
     fi && \
-    echo "Installing FFmpeg for architecture: $ARCH" && \
+    echo "Using architecture: $ARCH" && \
     mkdir -p /tmp/ffmpeg && \
     cd /tmp/ffmpeg && \
     FFMPEG_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${ARCH}-static.tar.xz" && \
-    echo "Downloading from $FFMPEG_URL" && \
-    curl -sSL "$FFMPEG_URL" -o ffmpeg.tar.xz && \
-    tar -xf ffmpeg.tar.xz && \
+    echo "Downloading FFmpeg from: $FFMPEG_URL" && \
+    curl -fsSL "$FFMPEG_URL" -o ffmpeg.tar.xz && \
+    echo "Extracting archive..." && \
+    tar xf ffmpeg.tar.xz --strip-components=1 && \
+    echo "Extracted files:" && \
     ls -la && \
-    if [ ! -d "ffmpeg-"* ]; then echo "Failed to extract FFmpeg archive"; exit 1; fi && \
-    cp $(find . -type f -name "ffmpeg") /usr/local/bin/ && \
-    cp $(find . -type f -name "ffprobe") /usr/local/bin/ && \
-    chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
-    /usr/local/bin/ffmpeg -version && \
-    /usr/local/bin/ffprobe -version && \
+    echo "Installing binaries..." && \
+    install -v ffmpeg ffprobe /usr/local/bin/ && \
+    echo "Verifying installation..." && \
+    ffmpeg -version && \
+    ffprobe -version && \
+    echo "Cleanup..." && \
     cd / && \
     rm -rf /tmp/ffmpeg
 
