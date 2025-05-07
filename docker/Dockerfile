@@ -94,22 +94,42 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install static FFmpeg 7 binary from John Van Sickle (multi-arch)
-RUN set -eux; \
-    # BuildKit's TARGETARCH variable handling
-    ARCH=$(case "${TARGETARCH:-$(uname -m)}" in \
-    amd64|x86_64) echo "x86_64" ;; \
-    arm64|aarch64) echo "arm64" ;; \
-    *) echo "Unsupported architecture: ${TARGETARCH:-$(uname -m)}" && exit 1 ;; \
-    esac); \
-    echo "Installing FFmpeg for architecture: $ARCH"; \
-    mkdir -p /tmp/ffmpeg && cd /tmp/ffmpeg && \
-    curl -sSL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-$ARCH-static.tar.xz" | tar -xJ && \
-    find . -type f -name "ffmpeg" -o -name "ffprobe" && \
-    cp ffmpeg-*/ffmpeg ffmpeg-*/ffprobe /usr/local/bin/ && \
+RUN set -e && \
+    # BuildKit's TARGETARCH variable handling for multi-arch builds
+    if [ -n "$TARGETARCH" ]; then \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+    ARCH="x86_64"; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+    ARCH="arm64"; \
+    else \
+    echo "Unsupported architecture: $TARGETARCH" && exit 1; \
+    fi; \
+    else \
+    ARCH=$(uname -m); \
+    if [ "$ARCH" = "x86_64" ]; then \
+    ARCH="x86_64"; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+    ARCH="arm64"; \
+    else \
+    echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi; \
+    fi && \
+    echo "Installing FFmpeg for architecture: $ARCH" && \
+    mkdir -p /tmp/ffmpeg && \
+    cd /tmp/ffmpeg && \
+    FFMPEG_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${ARCH}-static.tar.xz" && \
+    echo "Downloading from $FFMPEG_URL" && \
+    curl -sSL "$FFMPEG_URL" -o ffmpeg.tar.xz && \
+    tar -xf ffmpeg.tar.xz && \
+    ls -la && \
+    if [ ! -d "ffmpeg-"* ]; then echo "Failed to extract FFmpeg archive"; exit 1; fi && \
+    cp $(find . -type f -name "ffmpeg") /usr/local/bin/ && \
+    cp $(find . -type f -name "ffprobe") /usr/local/bin/ && \
     chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
     /usr/local/bin/ffmpeg -version && \
     /usr/local/bin/ffprobe -version && \
-    rm -rf /tmp/ffmpeg /tmp/*.tar.* /tmp/*.xz
+    cd / && \
+    rm -rf /tmp/ffmpeg
 
 # Set up Redis repository in a separate step
 RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
