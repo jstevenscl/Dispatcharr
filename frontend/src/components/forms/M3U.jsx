@@ -207,6 +207,7 @@ const M3U = ({
               id="name"
               name="name"
               label="Name"
+              description="Unique identifier for this M3U account"
               {...form.getInputProps('name')}
               key={form.key('name')}
             />
@@ -215,6 +216,7 @@ const M3U = ({
               id="server_url"
               name="server_url"
               label="URL"
+              description="Direct URL to the M3U playlist or server"
               {...form.getInputProps('server_url')}
               key={form.key('server_url')}
             />
@@ -223,6 +225,7 @@ const M3U = ({
               id="account_type"
               name="account_type"
               label="Account Type"
+              description="Standard for direct M3U URLs, Xtream Codes for panel-based services"
               data={[
                 {
                   value: 'STD',
@@ -245,6 +248,7 @@ const M3U = ({
                     <Switch
                       id="create_epg"
                       name="create_epg"
+                      description="Automatically create matching EPG source for this Xtream account"
                       key={form.key('create_epg')}
                       {...form.getInputProps('create_epg', {
                         type: 'checkbox',
@@ -257,6 +261,7 @@ const M3U = ({
                   id="username"
                   name="username"
                   label="Username"
+                  description="Username for Xtream Codes authentication"
                   {...form.getInputProps('username')}
                 />
 
@@ -264,6 +269,7 @@ const M3U = ({
                   id="password"
                   name="password"
                   label="Password"
+                  description="Password for Xtream Codes authentication (leave empty to keep existing)"
                   {...form.getInputProps('password')}
                 />
               </Box>
@@ -274,6 +280,7 @@ const M3U = ({
                 id="file"
                 label="Upload files"
                 placeholder="Upload files"
+                description="Upload a local M3U file instead of using URL"
                 onChange={setFile}
               />
             )}
@@ -288,6 +295,7 @@ const M3U = ({
               name="max_streams"
               label="Max Streams"
               placeholder="0 = Unlimited"
+              description="Maximum number of concurrent streams (0 for unlimited)"
               {...form.getInputProps('max_streams')}
               key={form.key('max_streams')}
             />
@@ -296,6 +304,7 @@ const M3U = ({
               id="user_agent"
               name="user_agent"
               label="User-Agent"
+              description="User-Agent header to use when accessing this M3U source"
               {...form.getInputProps('user_agent')}
               key={form.key('user_agent')}
               data={[{ value: '0', label: '(use default)' }].concat(
@@ -308,6 +317,7 @@ const M3U = ({
 
             <NumberInput
               label="Refresh Interval (hours)"
+              description="How often to automatically refresh M3U data"
               {...form.getInputProps('refresh_interval')}
               key={form.key('refresh_interval')}
             />
@@ -322,6 +332,7 @@ const M3U = ({
 
             <Checkbox
               label="Is Active"
+              description="Enable or disable this M3U account"
               {...form.getInputProps('is_active', { type: 'checkbox' })}
               key={form.key('is_active')}
             />
