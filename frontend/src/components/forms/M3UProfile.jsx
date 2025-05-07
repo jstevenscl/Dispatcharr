@@ -28,26 +28,41 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
 
   useEffect(() => {
     async function fetchStreamUrl() {
-      const params = new URLSearchParams();
-      params.append('page', 1);
-      params.append('page_size', 1);
-      params.append('m3u_account', m3u.id);
-      const response = await API.queryStreams(params);
-      setStreamUrl(response.results[0].url);
+      try {
+        if (!m3u?.id) return;
+
+        const params = new URLSearchParams();
+        params.append('page', 1);
+        params.append('page_size', 1);
+        params.append('m3u_account', m3u.id);
+        const response = await API.queryStreams(params);
+
+        if (response?.results?.length > 0) {
+          setStreamUrl(response.results[0].url);
+        }
+      } catch (error) {
+        console.error('Error fetching stream URL:', error);
+      }
     }
     fetchStreamUrl();
-  }, []);
+  }, [m3u]);
 
   useEffect(() => {
-    sendMessage(
-      JSON.stringify({
-        type: 'm3u_profile_test',
-        url: streamUrl,
-        search: debouncedPatterns['search'] || '',
-        replace: debouncedPatterns['replace'] || '',
-      })
-    );
-  }, [m3u, debouncedPatterns, streamUrl]);
+    if (!websocketReady || !streamUrl) return;
+
+    try {
+      sendMessage(
+        JSON.stringify({
+          type: 'm3u_profile_test',
+          url: streamUrl,
+          search: debouncedPatterns['search'] || '',
+          replace: debouncedPatterns['replace'] || '',
+        })
+      );
+    } catch (error) {
+      console.error('Error sending WebSocket message:', error);
+    }
+  }, [websocketReady, m3u, debouncedPatterns, streamUrl]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
