@@ -1,5 +1,5 @@
 # apps/m3u/signals.py
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from .models import M3UAccount
 from .tasks import refresh_single_m3u_account, refresh_m3u_groups
@@ -68,3 +68,25 @@ def delete_refresh_task(sender, instance, **kwargs):
     if instance.refresh_task:
         instance.refresh_task.interval.delete()
         instance.refresh_task.delete()
+
+@receiver(pre_save, sender=M3UAccount)
+def update_status_on_active_change(sender, instance, **kwargs):
+    """
+    When an M3UAccount's is_active field changes, update the status accordingly.
+    """
+    if instance.pk:  # Only for existing records, not new ones
+        try:
+            # Get the current record from the database
+            old_instance = M3UAccount.objects.get(pk=instance.pk)
+
+            # If is_active changed, update the status
+            if old_instance.is_active != instance.is_active:
+                if instance.is_active:
+                    # When activating, set status to idle
+                    instance.status = M3UAccount.Status.IDLE
+                else:
+                    # When deactivating, set status to disabled
+                    instance.status = M3UAccount.Status.DISABLED
+        except M3UAccount.DoesNotExist:
+            # New record, will use default status
+            pass

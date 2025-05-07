@@ -15,12 +15,15 @@ class EPGSource(models.Model):
     STATUS_PARSING = 'parsing'
     STATUS_ERROR = 'error'
     STATUS_SUCCESS = 'success'
+    STATUS_DISABLED = 'disabled'
+
     STATUS_CHOICES = [
         (STATUS_IDLE, 'Idle'),
         (STATUS_FETCHING, 'Fetching'),
         (STATUS_PARSING, 'Parsing'),
         (STATUS_ERROR, 'Error'),
         (STATUS_SUCCESS, 'Success'),
+        (STATUS_DISABLED, 'Disabled'),
     ]
 
     name = models.CharField(max_length=255, unique=True)

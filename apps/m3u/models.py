@@ -21,6 +21,7 @@ class M3UAccount(models.Model):
         ERROR = "error", "Error"
         SUCCESS = "success", "Success"
         PENDING_SETUP = "pending_setup", "Pending Setup"
+        DISABLED = "disabled", "Disabled"
 
     """Represents an M3U Account for IPTV streams."""
     name = models.CharField(
