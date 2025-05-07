@@ -28,7 +28,10 @@ RUN apt-get update && \
     virtualenv /dispatcharrpy && \
     git clone -b ${BRANCH} ${REPO_URL} /app && \
     cd /app && \
-    rm -rf .git
+    rm -rf .git && \
+    # Clean apt cache in builder stage
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Update version.py with build timestamp if provided
 RUN if [ -n "$TIMESTAMP" ]; then \
@@ -47,7 +50,9 @@ COPY --from=builder /app /app
 RUN corepack enable && corepack prepare yarn@stable --activate && \
     yarn install && \
     yarn build && \
-    find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \;
+    find . -maxdepth 1 ! -name '.' ! -name 'dist' -exec rm -rf '{}' \; && \
+    # Clean yarn cache to reduce layer size
+    yarn cache clean
 
 FROM python:3.13-slim
 
@@ -68,7 +73,6 @@ RUN cd /app && python manage.py collectstatic --noinput
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     curl \
-    ffmpeg \
     libpcre3 \
     libpq-dev \
     nginx \
@@ -88,6 +92,24 @@ RUN apt-get update && \
     cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Install static FFmpeg 7 binary from John Van Sickle (multi-arch)
+RUN set -eux; \
+    # BuildKit's TARGETARCH variable handling
+    ARCH=$(case "${TARGETARCH:-$(uname -m)}" in \
+    amd64|x86_64) echo "x86_64" ;; \
+    arm64|aarch64) echo "arm64" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH:-$(uname -m)}" && exit 1 ;; \
+    esac); \
+    echo "Installing FFmpeg for architecture: $ARCH"; \
+    mkdir -p /tmp/ffmpeg && cd /tmp/ffmpeg && \
+    curl -sSL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-$ARCH-static.tar.xz" | tar -xJ && \
+    find . -type f -name "ffmpeg" -o -name "ffprobe" && \
+    cp ffmpeg-*/ffmpeg ffmpeg-*/ffprobe /usr/local/bin/ && \
+    chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
+    /usr/local/bin/ffmpeg -version && \
+    /usr/local/bin/ffprobe -version && \
+    rm -rf /tmp/ffmpeg /tmp/*.tar.* /tmp/*.xz
 
 # Set up Redis repository in a separate step
 RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
