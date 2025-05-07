@@ -97,9 +97,9 @@ RUN apt-get update && \
 RUN echo "Detecting architecture" && \
     TARGETPLATFORM=${TARGETPLATFORM:-linux/$(uname -m)} && \
     echo "Target platform: $TARGETPLATFORM" && \
-    if echo "$TARGETPLATFORM" | grep -q "amd64"; then \
+    if echo "$TARGETPLATFORM" | grep -q "amd64\|x86_64"; then \
     ARCH="x86_64"; \
-    elif echo "$TARGETPLATFORM" | grep -q "arm64"; then \
+    elif echo "$TARGETPLATFORM" | grep -q "arm64\|aarch64"; then \
     ARCH="arm64"; \
     else \
     echo "Unsupported architecture: $TARGETPLATFORM" && exit 1; \
