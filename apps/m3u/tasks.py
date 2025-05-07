@@ -730,14 +730,6 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
             last_message="M3U groups loaded. Please select groups or refresh M3U to complete setup."
         )
         send_m3u_update(account_id, "processing_groups", 100, status="pending_setup", message="M3U groups loaded. Please select groups or refresh M3U to complete setup.")
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            'updates',
-            {
-                'type': 'update',
-                "data": {"success": True, "type": "m3u_group_refresh", "account": account_id}
-            }
-        )
 
     return extinf_data, groups
 
