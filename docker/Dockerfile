@@ -94,7 +94,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install static FFmpeg 7 binary from John Van Sickle (multi-arch)
-RUN echo "Detecting architecture" && \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo "Detecting architecture" && \
     TARGETPLATFORM=${TARGETPLATFORM:-linux/$(uname -m)} && \
     echo "Target platform: $TARGETPLATFORM" && \
     if echo "$TARGETPLATFORM" | grep -q "amd64\|x86_64"; then \
@@ -111,11 +115,14 @@ RUN echo "Detecting architecture" && \
     echo "Downloading FFmpeg from: $FFMPEG_URL" && \
     curl -fsSL "$FFMPEG_URL" -o ffmpeg.tar.xz && \
     echo "Extracting archive..." && \
-    tar xf ffmpeg.tar.xz --strip-components=1 && \
+    tar xf ffmpeg.tar.xz && \
     echo "Extracted files:" && \
     ls -la && \
-    echo "Installing binaries..." && \
-    install -v ffmpeg ffprobe /usr/local/bin/ && \
+    echo "Finding FFmpeg directory..." && \
+    FFMPEG_DIR=$(find . -type d -name "ffmpeg-*" | head -1) && \
+    echo "Installing binaries from $FFMPEG_DIR..." && \
+    cp "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe" /usr/local/bin/ && \
+    chmod 755 /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
     echo "Verifying installation..." && \
     ffmpeg -version && \
     ffprobe -version && \
