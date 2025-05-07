@@ -64,7 +64,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required dependencies including Python
 RUN apt-get update && apt-get install -y \
-    python3 python3-venv python3-pip \
+    python3 python3-venv python3-pip python-is-python3 \
     libstdc++6 libglib2.0-0 libgomp1 libvdpau1 libva2 \
     libxcb-shape0 libv4l-0 ocl-icd-libopencl1 \
     alsa-base libasound2t64 \
@@ -89,7 +89,7 @@ COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 COPY --from=ffmpeg /usr/local/lib/ /usr/local/lib/
 
 # Run collectstatic after frontend assets are copied
-RUN cd /app && python manage.py collectstatic --noinput
+RUN cd /app && python3 manage.py collectstatic --noinput
 
 # Install base dependencies with memory optimization
 RUN apt-get update && \
