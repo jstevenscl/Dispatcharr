@@ -54,6 +54,9 @@ RUN corepack enable && corepack prepare yarn@stable --activate && \
     # Clean yarn cache to reduce layer size
     yarn cache clean
 
+# Use jrottenberg/ffmpeg as a separate source image for FFmpeg binaries
+FROM jrottenberg/ffmpeg:7-ubuntu AS ffmpeg-source
+
 FROM python:3.13-slim
 
 ENV PATH="/dispatcharrpy/bin:$PATH" \
@@ -65,6 +68,9 @@ ENV PATH="/dispatcharrpy/bin:$PATH" \
 COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+# Copy FFmpeg binaries from the ffmpeg stage
+COPY --from=ffmpeg-source /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg-source /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
 # Run collectstatic after frontend assets are copied
 RUN cd /app && python manage.py collectstatic --noinput
@@ -92,43 +98,6 @@ RUN apt-get update && \
     cp /app/docker/nginx.conf /etc/nginx/sites-enabled/default && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Install static FFmpeg 7 binary from John Van Sickle (multi-arch)
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    echo "Detecting architecture" && \
-    TARGETPLATFORM=${TARGETPLATFORM:-linux/$(uname -m)} && \
-    echo "Target platform: $TARGETPLATFORM" && \
-    if echo "$TARGETPLATFORM" | grep -q "amd64\|x86_64"; then \
-    ARCH="amd64"; \
-    elif echo "$TARGETPLATFORM" | grep -q "arm64\|aarch64"; then \
-    ARCH="arm64"; \
-    else \
-    echo "Unsupported architecture: $TARGETPLATFORM" && exit 1; \
-    fi && \
-    echo "Using architecture: $ARCH" && \
-    mkdir -p /tmp/ffmpeg && \
-    cd /tmp/ffmpeg && \
-    FFMPEG_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${ARCH}-static.tar.xz" && \
-    echo "Downloading FFmpeg from: $FFMPEG_URL" && \
-    curl -fsSL "$FFMPEG_URL" -o ffmpeg.tar.xz && \
-    echo "Extracting archive..." && \
-    tar xf ffmpeg.tar.xz && \
-    echo "Extracted files:" && \
-    ls -la && \
-    echo "Finding FFmpeg directory..." && \
-    FFMPEG_DIR=$(find . -type d -name "ffmpeg-*" | head -1) && \
-    echo "Installing binaries from $FFMPEG_DIR..." && \
-    cp "$FFMPEG_DIR/ffmpeg" "$FFMPEG_DIR/ffprobe" /usr/local/bin/ && \
-    chmod 755 /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
-    echo "Verifying installation..." && \
-    ffmpeg -version && \
-    ffprobe -version && \
-    echo "Cleanup..." && \
-    cd / && \
-    rm -rf /tmp/ffmpeg
 
 # Set up Redis repository in a separate step
 RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
