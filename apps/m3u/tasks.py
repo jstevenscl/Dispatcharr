@@ -45,6 +45,11 @@ def fetch_m3u_lines(account, use_cache=False):
                 headers = {"User-Agent": user_agent}
                 logger.info(f"Fetching from URL {account.server_url}")
 
+                # Set account status to FETCHING before starting download
+                account.status = M3UAccount.Status.FETCHING
+                account.last_message = "Starting download..."
+                account.save(update_fields=['status', 'last_message'])
+
                 response = requests.get(account.server_url, headers=headers, stream=True)
                 response.raise_for_status()
 
@@ -71,15 +76,28 @@ def fetch_m3u_lines(account, use_cache=False):
                                 progress = (downloaded / total_size) * 100
 
                             # Time remaining (in seconds)
-                            time_remaining = (total_size - downloaded) / (speed * 1024)
+                            time_remaining = (total_size - downloaded) / (speed * 1024) if speed > 0 else 0
 
                             current_time = time.time()
                             if current_time - last_update_time >= 0.5:
                                 last_update_time = current_time
                                 if progress > 0:
-                                    send_m3u_update(account.id, "downloading", progress, speed=speed, elapsed_time=elapsed_time, time_remaining=time_remaining)
+                                    # Update the account's last_message with detailed progress info
+                                    progress_msg = f"Downloading: {progress:.1f}% - {speed:.1f} KB/s - {time_remaining:.1f}s remaining"
+                                    account.last_message = progress_msg
+                                    account.save(update_fields=['last_message'])
 
-                send_m3u_update(account.id, "downloading", 100)
+                                    send_m3u_update(account.id, "downloading", progress,
+                                                   speed=speed,
+                                                   elapsed_time=elapsed_time,
+                                                   time_remaining=time_remaining,
+                                                   message=progress_msg)
+
+                # Final update with 100% progress
+                final_msg = f"Download complete. Size: {total_size/1024/1024:.2f} MB, Time: {time.time() - start_time:.1f}s"
+                account.last_message = final_msg
+                account.save(update_fields=['last_message'])
+                send_m3u_update(account.id, "downloading", 100, message=final_msg)
             except Exception as e:
                 logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
                 # Update account status and send error notification
@@ -227,7 +245,7 @@ def process_groups(account, groups):
     groups_to_create = []
     for group_name, custom_props in groups.items():
         logger.info(f"Handling group: {group_name}")
-        if group_name not in existing_groups:
+        if (group_name not in existing_groups) and (group_name not in SKIP_EXTS):
             groups_to_create.append(ChannelGroup(
                 name=group_name,
             ))
