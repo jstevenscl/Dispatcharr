@@ -781,7 +781,7 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
                             key={filteredTvgs[index].id}
                             variant="subtle"
                             color="gray"
-                            fullWidth
+                            width="100%"
                             justify="left"
                             size="xs"
                             onClick={() => {
