@@ -158,7 +158,12 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
           align="flex-end"
           style={{ marginBottom: 5 }}
         >
-          <Button type="submit" disabled={formik.isSubmitting} size="xs">
+          <Button
+            type="submit"
+            disabled={formik.isSubmitting}
+            size="xs"
+            style={{ width: formik.isSubmitting ? 'auto' : 'auto' }}
+          >
             Submit
           </Button>
         </Flex>
