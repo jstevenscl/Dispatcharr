@@ -203,7 +203,7 @@ const M3U = ({
         <Group justify="space-between" align="top">
           <Stack gap="5" style={{ flex: 1 }}>
             <TextInput
-              width="100%"
+              style={{ width: '100%' }}
               id="name"
               name="name"
               label="Name"
@@ -212,7 +212,7 @@ const M3U = ({
               key={form.key('name')}
             />
             <TextInput
-              width="100%"
+              style={{ width: '100%' }}
               id="server_url"
               name="server_url"
               label="URL"
@@ -290,7 +290,7 @@ const M3U = ({
 
           <Stack gap="5" style={{ flex: 1 }}>
             <TextInput
-              width="100%"
+              style={{ width: '100%' }}
               id="max_streams"
               name="max_streams"
               label="Max Streams"

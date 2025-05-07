@@ -74,7 +74,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
           // .filter((playlist) => playlist.is_default == false)
           .map((item) => (
             <Card
-            // key={item.id}
+              key={item.id} // Uncomment/add key prop to fix the list warning
             // sx={{
             //   display: 'flex',
             //   alignItems: 'center',
@@ -137,7 +137,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
             color="primary"
             size="small"
             onClick={editProfile}
-            width="100%"
+            style={{ width: '100%' }}
           >
             New
           </Button>

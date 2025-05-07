@@ -584,7 +584,7 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
                         height={200} // Set max height for visible items
                         itemCount={filteredLogos.length}
                         itemSize={20} // Adjust row height for each item
-                        width="100%"
+                        style={{ width: '100%' }}
                         ref={logoListRef}
                       >
                         {({ index, style }) => (
@@ -772,7 +772,7 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
                       height={200} // Set max height for visible items
                       itemCount={filteredTvgs.length}
                       itemSize={40} // Adjust row height for each item
-                      width="100%"
+                      style={{ width: '100%' }}
                       ref={listRef}
                     >
                       {({ index, style }) => (
@@ -781,7 +781,7 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
                             key={filteredTvgs[index].id}
                             variant="subtle"
                             color="gray"
-                            width="100%"
+                            style={{ width: '100%' }}
                             justify="left"
                             size="xs"
                             onClick={() => {
