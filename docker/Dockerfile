@@ -62,26 +62,36 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required dependencies including Python
-RUN apt-get update && apt-get install -y \
-    python3 python3-venv python3-pip python-is-python3 \
+# Install required dependencies including Python 3.13
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y \
+    python3.13 python3.13-venv python3.13-dev python3-pip \
     libstdc++6 libglib2.0-0 libgomp1 libvdpau1 libva2 \
     libxcb-shape0 libv4l-0 ocl-icd-libopencl1 \
     alsa-base libasound2t64 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Create a virtual environment
-RUN python3 -m venv /dispatcharrpy
+# Create a virtual environment with Python 3.13
+RUN python3.13 -m venv /dispatcharrpy
 
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
     DJANGO_SETTINGS_MODULE=dispatcharr.settings \
     PYTHONUNBUFFERED=1
 
-# Copy the virtual environment and application from the builder stage
-COPY --from=builder /dispatcharrpy /dispatcharrpy
+# Install pip in the virtual environment
+RUN /dispatcharrpy/bin/pip install --upgrade pip
+
+# Copy the application from the builder stage (not the venv)
 COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+
+# Install Python requirements in the Python 3.13 virtual environment
+RUN cd /app && \
+    /dispatcharrpy/bin/pip install --no-cache-dir -r requirements.txt
 
 # Add the necessary libraries and binaries from the FFmpeg image
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
@@ -89,7 +99,8 @@ COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 COPY --from=ffmpeg /usr/local/lib/ /usr/local/lib/
 
 # Run collectstatic after frontend assets are copied
-RUN cd /app && python3 manage.py collectstatic --noinput
+RUN cd /app && \
+    /dispatcharrpy/bin/python manage.py collectstatic --noinput
 
 # Install base dependencies with memory optimization
 RUN apt-get update && \
