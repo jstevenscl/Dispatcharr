@@ -66,7 +66,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     python3 python3-venv python3-pip \
     libstdc++6 libglib2.0-0 libgomp1 libvdpau1 libva2 \
-    libxcb-shape0 libasound2 libv4l-0 ocl-icd-libopencl1 \
+    libxcb-shape0 libv4l-0 ocl-icd-libopencl1 \
+    alsa-base libasound2t64 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create a virtual environment
