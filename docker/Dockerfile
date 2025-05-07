@@ -55,7 +55,7 @@ RUN corepack enable && corepack prepare yarn@stable --activate && \
     yarn cache clean
 
 # Use jrottenberg/ffmpeg as a separate source image for FFmpeg binaries
-FROM jrottenberg/ffmpeg:7-ubuntu AS ffmpeg-source
+FROM lscr.io/linuxserver/ffmpeg:latest as ffmpeg
 
 FROM python:3.13-slim
 
@@ -69,8 +69,10 @@ COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 # Copy FFmpeg binaries from the ffmpeg stage
-COPY --from=ffmpeg-source /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
-COPY --from=ffmpeg-source /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+# Add the necessary libraries and binaries from the FFmpeg image
+COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+COPY --from=ffmpeg /usr/local/lib/ /usr/local/lib/
 
 # Run collectstatic after frontend assets are copied
 RUN cd /app && python manage.py collectstatic --noinput
