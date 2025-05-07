@@ -137,6 +137,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
             color="primary"
             size="small"
             onClick={editProfile}
+            fullWidth
           >
             New
           </Button>
