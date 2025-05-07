@@ -128,6 +128,14 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           ]}
         />
 
+        <NumberInput
+          label="Refresh Interval (hours)"
+          description={<>How often to automatically refresh EPG data<br />
+            (0 to disable automatic refreshes)</>}
+          {...form.getInputProps('refresh_interval')}
+          key={form.key('refresh_interval')}
+        />
+
         <Checkbox
           id="is_active"
           name="is_active"
@@ -135,14 +143,6 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           description="Enable or disable this EPG source"
           {...form.getInputProps('is_active', { type: 'checkbox' })}
           key={form.key('is_active')}
-        />
-
-        <NumberInput
-          label="Refresh Interval (hours)"
-          description={<>How often to automatically refresh EPG data<br />
-            (0 to disable automatic refreshes)</>}
-          {...form.getInputProps('refresh_interval')}
-          key={form.key('refresh_interval')}
         />
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
