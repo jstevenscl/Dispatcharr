@@ -121,6 +121,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
             .sort((a, b) => a.name > b.name)
             .map((group) => (
               <Button
+                key={group.channel_group}
                 color={group.enabled ? 'green' : 'gray'}
                 variant="filled"
                 checked={group.enabled}
