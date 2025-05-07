@@ -100,57 +100,65 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
   return (
     <>
       <Modal opened={isOpen} onClose={onClose} title="Profiles">
-        {profilesArray.map((item) => (
-          <Card key={item.id}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Group justify="space-between">
-                <Text fw={600}>{item.name}</Text>
-                <Switch
-                  checked={item.is_active}
-                  onChange={() => toggleActive(item)}
-                  disabled={item.is_default}
-                  style={{ paddingTop: 6 }}
-                />
-              </Group>
+        {profilesArray
+          .sort((a, b) => {
+            // Always put default profile first
+            if (a.is_default) return -1;
+            if (b.is_default) return 1;
+            // Sort remaining profiles alphabetically by name
+            return a.name.localeCompare(b.name);
+          })
+          .map((item) => (
+            <Card key={item.id}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Group justify="space-between">
+                  <Text fw={600}>{item.name}</Text>
+                  <Switch
+                    checked={item.is_active}
+                    onChange={() => toggleActive(item)}
+                    disabled={item.is_default}
+                    style={{ paddingTop: 6 }}
+                  />
+                </Group>
 
-              <Flex gap="sm">
-                <NumberInput
-                  label="Max Streams"
-                  value={item.max_streams}
-                  disabled={item.is_default}
-                  onChange={(value) => modifyMaxStreams(value, item)}
-                  style={{ flex: 1 }}
-                />
+                <Flex gap="sm">
+                  <NumberInput
+                    label="Max Streams"
+                    value={item.max_streams}
+                    disabled={item.is_default}
+                    onChange={(value) => modifyMaxStreams(value, item)}
+                    style={{ flex: 1 }}
+                  />
 
-                {!item.is_default && (
-                  <Group
-                    align="flex-end"
-                    gap="xs"
-                    style={{ paddingBottom: 8 }}
-                  >
-                    <ActionIcon
-                      size="sm"
-                      variant="transparent"
-                      color={theme.tailwind.yellow[3]}
-                      onClick={() => editProfile(item)}
+                  {!item.is_default && (
+                    <Group
+                      align="flex-end"
+                      gap="xs"
+                      style={{ paddingBottom: 8 }}
                     >
-                      <SquarePen size="20" />
-                    </ActionIcon>
+                      <ActionIcon
+                        size="sm"
+                        variant="transparent"
+                        color={theme.tailwind.yellow[3]}
+                        onClick={() => editProfile(item)}
+                      >
+                        <SquarePen size="20" />
+                      </ActionIcon>
 
-                    <ActionIcon
-                      color={theme.tailwind.red[6]}
-                      onClick={() => deleteProfile(item.id)}
-                      size="small"
-                      variant="transparent"
-                    >
-                      <SquareMinus size="20" />
-                    </ActionIcon>
-                  </Group>
-                )}
-              </Flex>
-            </Box>
-          </Card>
-        ))}
+                      <ActionIcon
+                        color={theme.tailwind.red[6]}
+                        onClick={() => deleteProfile(item.id)}
+                        size="small"
+                        variant="transparent"
+                      >
+                        <SquareMinus size="20" />
+                      </ActionIcon>
+                    </Group>
+                  )}
+                </Flex>
+              </Box>
+            </Card>
+          ))}
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
           <Button
