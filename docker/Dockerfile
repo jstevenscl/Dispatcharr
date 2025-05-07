@@ -54,20 +54,23 @@ RUN corepack enable && corepack prepare yarn@stable --activate && \
     # Clean yarn cache to reduce layer size
     yarn cache clean
 
-# Use jrottenberg/ffmpeg as a separate source image for FFmpeg binaries
-FROM lscr.io/linuxserver/ffmpeg:latest as ffmpeg
+# Use linuxserver/ffmpeg as a separate source image for FFmpeg binaries
+FROM lscr.io/linuxserver/ffmpeg:latest AS ffmpeg
 
 # Stage 2: Ubuntu base with Python
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required dependencies
+# Install required dependencies including Python
 RUN apt-get update && apt-get install -y \
-    python3.13 python3.13-venv python3-pip \
+    python3 python3-venv python3-pip \
     libstdc++6 libglib2.0-0 libgomp1 libvdpau1 libva2 \
     libxcb-shape0 libasound2 libv4l-0 ocl-icd-libopencl1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Create a virtual environment
+RUN python3 -m venv /dispatcharrpy
 
 ENV PATH="/dispatcharrpy/bin:$PATH" \
     VIRTUAL_ENV=/dispatcharrpy \
