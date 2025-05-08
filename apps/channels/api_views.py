@@ -23,6 +23,7 @@ import mimetypes
 
 from rest_framework.pagination import PageNumberPagination
 
+
 class OrInFilter(django_filters.Filter):
     """
     Custom filter that handles the OR condition instead of AND.
@@ -254,7 +255,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
         if not stream_id:
             return Response({"error": "Missing stream_id"}, status=status.HTTP_400_BAD_REQUEST)
         stream = get_object_or_404(Stream, pk=stream_id)
-        logger.debug(f"Stream found: {stream.id}, Custom Properties: {stream.custom_properties}")
         channel_group = stream.channel_group
 
         name = request.data.get('name')
