@@ -7,9 +7,6 @@ from django.urls import reverse
 from rest_framework import serializers
 from django.utils import timezone
 
-import logging
-logger = logging.getLogger(__name__)
-
 class LogoSerializer(serializers.ModelSerializer):
     cache_url = serializers.SerializerMethodField()
 
@@ -118,7 +115,6 @@ class BulkChannelProfileMembershipSerializer(serializers.Serializer):
 class ChannelSerializer(serializers.ModelSerializer):
     # Show nested group data, or ID
     channel_number = serializers.FloatField(allow_null=True, required=False)
-    logger.debug(f"Serializer validating channel number: {channel_number}")
     channel_group_id = serializers.PrimaryKeyRelatedField(
         queryset=ChannelGroup.objects.all(),
         source="channel_group",

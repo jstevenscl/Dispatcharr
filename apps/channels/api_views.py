@@ -23,9 +23,6 @@ import mimetypes
 
 from rest_framework.pagination import PageNumberPagination
 
-import logging
-logger = logging.getLogger(__name__)
-
 class OrInFilter(django_filters.Filter):
     """
     Custom filter that handles the OR condition instead of AND.
@@ -270,20 +267,16 @@ class ChannelViewSet(viewsets.ModelViewSet):
         channel_number = None
         if 'tvg-chno' in stream_custom_props:
             channel_number = float(stream_custom_props['tvg-chno'])
-            logger.debug(f"Channel number from tvg-chno: {channel_number}")
         elif 'channel-number' in stream_custom_props:
             channel_number = float(stream_custom_props['channel-number'])
-            logger.debug(f"Channel number from channel-number: {channel_number}")
 
         if channel_number is None:
             provided_number = request.data.get('channel_number')
-            logger.debug(f"Provided channel number: {provided_number}")
             if provided_number is None:
                 channel_number = Channel.get_next_available_channel_number()
             else:
                 try:
                     channel_number = float(provided_number)
-                    logger.debug(f"Provided channel number2: {provided_number}")
                 except ValueError:
                     return Response({"error": "channel_number must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
                 # If the provided number is already used, return an error.
@@ -302,7 +295,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
             'channel_group_id': channel_group.id,
             'streams': [stream_id],
         }
-        logger.debug(f"Final channel data: {channel_data}")
 
         if stream.logo_url:
             logo, _ = Logo.objects.get_or_create(url=stream.logo_url, defaults={
