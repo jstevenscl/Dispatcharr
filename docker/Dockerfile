@@ -74,33 +74,28 @@ RUN apt-get update && \
     alsa-base libasound2t64 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Copy the application from the builder stage
+COPY --from=builder /app /app
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+
 # Create a virtual environment with Python 3.13
 RUN python3.13 -m venv /dispatcharrpy
-
-ENV PATH="/dispatcharrpy/bin:$PATH" \
-    VIRTUAL_ENV=/dispatcharrpy \
-    DJANGO_SETTINGS_MODULE=dispatcharr.settings \
-    PYTHONUNBUFFERED=1
 
 # Install pip in the virtual environment
 RUN /dispatcharrpy/bin/pip install --upgrade pip
 
-# Copy the application from the builder stage (not the venv)
-COPY --from=builder /app /app
-COPY --from=builder /dispatcharrpy /dispatcharrpy
-COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+# Install Python requirements in the Python 3.13 virtual environment
+RUN cd /app && \
+    /dispatcharrpy/bin/pip install --no-cache-dir -r requirements.txt
+
 # Add the necessary libraries and binaries from the FFmpeg image
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 COPY --from=ffmpeg /usr/local/lib/ /usr/local/lib/
 
-# Run collectstatic after frontend assets are copied
+# Run collectstatic after installing requirements
 RUN cd /app && \
     /dispatcharrpy/bin/python manage.py collectstatic --noinput
-
-# Install Python requirements in the Python 3.13 virtual environment
-RUN cd /app && \
-    /dispatcharrpy/bin/pip install --no-cache-dir -r requirements.txt
 
 # Install base dependencies with memory optimization
 RUN apt-get update && \
