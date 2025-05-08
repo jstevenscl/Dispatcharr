@@ -80,11 +80,12 @@ RUN apt-get update && \
     alsa-base libasound2t64 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy the application from the builder stage
-COPY --from=builder /dispatcharrpy /dispatcharrpy
+# Copy the application only (not the virtual environment)
 COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
+# Create a fresh virtual environment with Python 3.13
+RUN python3.13 -m venv /dispatcharrpy
 
 # Install pip in the virtual environment
 RUN /dispatcharrpy/bin/pip install --upgrade pip
