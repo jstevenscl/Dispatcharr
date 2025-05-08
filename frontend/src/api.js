@@ -378,6 +378,31 @@ export default class API {
     }
   }
 
+  static async updateChannels(ids, values) {
+    const body = [];
+    for (const id in ids) {
+      body.push({
+        id,
+        ...values,
+      });
+    }
+
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/edit/bulk/`,
+        {
+          method: 'PATCH',
+          body,
+        }
+      );
+
+      useChannelsStore.getState().updateChannels(response);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channels', e);
+    }
+  }
+
   static async setChannelEPG(channelId, epgDataId) {
     try {
       const response = await request(
@@ -408,15 +433,12 @@ export default class API {
     }
   }
 
-  static async assignChannelNumbers(channelIds) {
+  static async assignChannelNumbers(channelIds, startingNum = 1) {
     try {
       const response = await request(`${host}/api/channels/channels/assign/`, {
         method: 'POST',
-        body: { channel_order: channelIds },
+        body: { channel_ids: channelIds, starting_number: startingNum },
       });
-
-      // Optionally refesh the channel list in Zustand
-      // await useChannelsStore.getState().fetchChannels();
 
       return response;
     } catch (e) {
@@ -733,7 +755,11 @@ export default class API {
 
     try {
       // If this is just toggling the active state, make a simpler request
-      if (isToggle && 'is_active' in payload && Object.keys(payload).length === 1) {
+      if (
+        isToggle &&
+        'is_active' in payload &&
+        Object.keys(payload).length === 1
+      ) {
         const response = await request(`${host}/api/m3u/accounts/${id}/`, {
           method: 'PATCH',
           body: { is_active: payload.is_active },
@@ -830,7 +856,11 @@ export default class API {
 
     try {
       // If this is just toggling the active state, make a simpler request
-      if (isToggle && 'is_active' in payload && Object.keys(payload).length === 1) {
+      if (
+        isToggle &&
+        'is_active' in payload &&
+        Object.keys(payload).length === 1
+      ) {
         const response = await request(`${host}/api/epg/sources/${id}/`, {
           method: 'PATCH',
           body: { is_active: payload.is_active },
@@ -1344,7 +1374,9 @@ export default class API {
 
   static async getChannel(id) {
     try {
-      const response = await request(`${host}/api/channels/channels/${id}/?include_streams=true`);
+      const response = await request(
+        `${host}/api/channels/channels/${id}/?include_streams=true`
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to fetch channel details', e);

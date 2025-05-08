@@ -17,6 +17,7 @@ const useTable = ({
   expandedRowRenderer = () => <></>,
   onRowSelectionChange = null,
   getExpandedRowHeight = null,
+  state = [],
   ...options
 }) => {
   const [selectedTableIds, setSelectedTableIds] = useState([]);
@@ -155,7 +156,9 @@ const useTable = ({
     const rangeIds = allRowIds.slice(startIndex, endIndex + 1);
 
     // Preserve existing selections outside the range
-    const idsOutsideRange = selectedTableIds.filter(id => !rangeIds.includes(id));
+    const idsOutsideRange = selectedTableIds.filter(
+      (id) => !rangeIds.includes(id)
+    );
     const newSelection = [...new Set([...rangeIds, ...idsOutsideRange])];
     updateSelectedTableIds(newSelection);
 

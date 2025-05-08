@@ -151,6 +151,26 @@ const useChannelsStore = create((set, get) => ({
       },
     })),
 
+  updateChannels: (channels) => {
+    const channelsByUUID = {};
+    const updatedChannels = channels.reduce((acc, chan) => {
+      channelsByUUID[chan.uuid] = chan;
+      acc[chan.id] = chan;
+      return acc;
+    }, {});
+
+    return set((state) => ({
+      channels: {
+        ...state.channels,
+        ...updatedChannels,
+      },
+      channelsByUUID: {
+        ...state.channelsByUUID,
+        ...channelsByUUID,
+      },
+    }));
+  },
+
   removeChannels: (channelIds) => {
     set((state) => {
       const updatedChannels = { ...state.channels };

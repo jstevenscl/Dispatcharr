@@ -57,7 +57,7 @@ const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/
 const hdhrUrlBase = `${window.location.protocol}//${window.location.host}/hdhr`;
 
 const ChannelEnabledSwitch = React.memo(
-  ({ rowId, selectedProfileId, toggleChannelEnabled }) => {
+  ({ rowId, selectedProfileId, selectedTableIds }) => {
     // Directly extract the channels set once to avoid re-renders on every change.
     const isEnabled = useChannelsStore(
       useCallback(
@@ -68,9 +68,17 @@ const ChannelEnabledSwitch = React.memo(
       )
     );
 
-    const handleToggle = useCallback(() => {
-      toggleChannelEnabled([rowId], !isEnabled);
-    }, [rowId, isEnabled, toggleChannelEnabled]);
+    const handleToggle = () => {
+      if (selectedTableIds.length > 1) {
+        API.updateProfileChannels(
+          selectedTableIds,
+          selectedProfileId,
+          !isEnabled
+        );
+      } else {
+        API.updateProfileChannel(rowId, selectedProfileId, !isEnabled);
+      }
+    };
 
     return (
       <Center style={{ width: '100%' }}>
@@ -465,21 +473,6 @@ const ChannelsTable = ({}) => {
     });
   };
 
-  const toggleChannelEnabled = useCallback(
-    async (channelIds, enabled) => {
-      if (channelIds.length == 1) {
-        await API.updateProfileChannel(
-          channelIds[0],
-          selectedProfileId,
-          enabled
-        );
-      } else {
-        await API.updateProfileChannels(channelIds, selectedProfileId, enabled);
-      }
-    },
-    [selectedProfileId]
-  );
-
   const closeChannelForm = () => {
     setChannel(null);
     setChannelModalOpen(false);
@@ -547,22 +540,6 @@ const ChannelsTable = ({}) => {
     }
   };
 
-  const EnabledHeaderSwitch = useCallback(() => {
-    let enabled = false;
-    for (const id of selectedChannelIds) {
-      if (selectedProfileChannelIds.has(id)) {
-        enabled = true;
-        break;
-      }
-    }
-
-    const toggleSelected = () => {
-      toggleChannelEnabled(selectedChannelIds, !enabled);
-    };
-
-    return <Switch size="xs" checked={enabled} onChange={toggleSelected} />;
-  }, [selectedChannelIds, selectedProfileChannelIds, data]);
-
   /**
    * useEffect
    */
@@ -602,12 +579,12 @@ const ChannelsTable = ({}) => {
       {
         id: 'enabled',
         size: 45,
-        cell: ({ row }) => {
+        cell: ({ row, table }) => {
           return (
             <ChannelEnabledSwitch
               rowId={row.original.id}
               selectedProfileId={selectedProfileId}
-              toggleChannelEnabled={toggleChannelEnabled}
+              selectedTableIds={table.getState().selectedTableIds}
             />
           );
         },
@@ -716,9 +693,6 @@ const ChannelsTable = ({}) => {
 
     switch (header.id) {
       case 'enabled':
-        // if (selectedProfileId !== '0' && table.selectedTableIds.length > 0) {
-        // return EnabledHeaderSwitch();
-        // }
         return (
           <Center style={{ width: '100%' }}>
             <ScanEye size="16" />
