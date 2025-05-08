@@ -24,8 +24,6 @@ RUN apt-get update && \
     libpcre3-dev \
     python3-dev \
     wget && \
-    python -m pip install virtualenv && \
-    virtualenv /dispatcharrpy && \
     git clone -b ${BRANCH} ${REPO_URL} /app && \
     cd /app && \
     rm -rf .git && \
@@ -85,7 +83,9 @@ COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Create a fresh virtual environment with Python 3.13
-RUN python3.13 -m venv /dispatcharrpy
+RUN python -m pip install virtualenv && \
+    virtualenv /dispatcharrpy
+
 
 # Install pip in the virtual environment
 RUN /dispatcharrpy/bin/pip install --upgrade pip
