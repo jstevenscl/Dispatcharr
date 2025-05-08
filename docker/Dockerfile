@@ -83,9 +83,10 @@ COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Create a fresh virtual environment with Python 3.13
-RUN python -m pip install virtualenv && \
-    virtualenv /dispatcharrpy
-
+RUN apt-get update && \
+    apt-get install -y python3-venv && \
+    python3.13 -m venv /dispatcharrpy && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install pip in the virtual environment
 RUN /dispatcharrpy/bin/pip install --upgrade pip
