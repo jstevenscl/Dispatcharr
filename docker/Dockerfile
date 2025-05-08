@@ -1,3 +1,8 @@
+# Define base image build arguments (must be before any FROM)
+ARG REPO_OWNER=dispatcharr
+ARG REPO_NAME=dispatcharr
+ARG BASE_TAG=base
+
 # --- Build frontend ---
 FROM node:20 AS frontend-builder
 WORKDIR /app/frontend
@@ -5,11 +10,6 @@ COPY ./frontend /app/frontend
 RUN corepack enable && corepack prepare yarn@stable --activate && \
     yarn install && yarn build && \
     rm -rf node_modules .cache
-
-# --- Define base image build arguments ---
-ARG REPO_OWNER=dispatcharr
-ARG REPO_NAME=dispatcharr
-ARG BASE_TAG=base
 
 # --- Final image based on the dynamic base ---
 FROM ghcr.io/${REPO_OWNER}/${REPO_NAME}:${BASE_TAG} AS final
