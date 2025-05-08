@@ -68,7 +68,7 @@ RUN apt-get update && \
     add-apt-repository -y ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get install -y \
-    python3.13 python3.13-venv python3.13-dev python3-pip \
+    python3.13 python3.13-venv python3.13-dev python3-pip python-is-python3 \
     libstdc++6 libglib2.0-0 libgomp1 libvdpau1 libva2 \
     libxcb-shape0 libv4l-0 ocl-icd-libopencl1 \
     alsa-base libasound2t64 \
