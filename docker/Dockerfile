@@ -60,6 +60,12 @@ FROM lscr.io/linuxserver/ffmpeg:latest AS ffmpeg
 # Stage 2: Ubuntu base with Python
 FROM ubuntu:24.04
 
+ENV PATH="/dispatcharrpy/bin:$PATH" \
+    VIRTUAL_ENV=/dispatcharrpy \
+    DJANGO_SETTINGS_MODULE=dispatcharr.settings \
+    PYTHONUNBUFFERED=1 \
+    DISPATCHARR_BUILD=1
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required dependencies including Python 3.13
@@ -75,11 +81,10 @@ RUN apt-get update && \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy the application from the builder stage
+COPY --from=builder /dispatcharrpy /dispatcharrpy
 COPY --from=builder /app /app
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
-# Create a virtual environment with Python 3.13
-RUN python3.13 -m venv /dispatcharrpy
 
 # Install pip in the virtual environment
 RUN /dispatcharrpy/bin/pip install --upgrade pip
