@@ -1,4 +1,5 @@
-FROM ubuntu:24.04
+# --- Stage 1: Get FFmpeg from lscr.io ---
+FROM lscr.io/linuxserver/ffmpeg:latest AS ffmpeg
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV VIRTUAL_ENV=/dispatcharrpy
@@ -27,11 +28,6 @@ RUN python3.13 -m venv $VIRTUAL_ENV && $VIRTUAL_ENV/bin/pip install --upgrade pi
 # --- Install Python dependencies ---
 COPY requirements.txt /tmp/requirements.txt
 RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
-
-# --- Add FFmpeg binaries from lscr.io/linuxserver/ffmpeg ---
-COPY --from=lscr.io/linuxserver/ffmpeg:latest /usr/local/bin/ffmpeg /usr/local/bin/
-COPY --from=lscr.io/linuxserver/ffmpeg:latest /usr/local/bin/ffprobe /usr/local/bin/
-COPY --from=lscr.io/linuxserver/ffmpeg:latest /usr/local/lib/ /usr/local/lib/
 
 # --- Set up Redis 7.x ---
 RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
