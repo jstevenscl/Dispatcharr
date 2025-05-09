@@ -87,13 +87,13 @@ jobs:
             echo "is_fork=true" >> $GITHUB_OUTPUT
           else
             echo "is_fork=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
+          outputs: type=registry,name=ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}
           platforms: linux/amd64  # Fast build - amd64 only
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo_owner }}/${{ steps.meta.outputs.repo_name }}:${{ steps.meta.outputs.branch_tag }}
