@@ -8,6 +8,7 @@ const CustomTableBody = ({
   expandedRowRenderer,
   renderBodyCell,
   getExpandedRowHeight,
+  getRowStyles, // Add this prop to receive row styles
 }) => {
   const renderExpandedRow = (row) => {
     if (expandedRowRenderer) {
@@ -72,17 +73,25 @@ const CustomTableBody = ({
   };
 
   const renderTableBodyRow = (row, index, style = {}) => {
+    // Get custom styles for this row if the function exists
+    const customRowStyles = getRowStyles ? getRowStyles(row) : {};
+
+    // Extract any className from customRowStyles
+    const customClassName = customRowStyles.className || '';
+    delete customRowStyles.className; // Remove from object so it doesn't get applied as inline style
+
     return (
       <Box style={style} key={`row-${row.id}`}>
         <Box
           key={`tr-${row.id}`}
-          className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'}`}
+          className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'} ${customClassName}`}
           style={{
             display: 'flex',
             width: '100%',
             ...(row.getIsSelected() && {
               backgroundColor: '#163632',
             }),
+            ...customRowStyles, // Apply the remaining custom styles here
           }}
         >
           {row.getVisibleCells().map((cell) => {

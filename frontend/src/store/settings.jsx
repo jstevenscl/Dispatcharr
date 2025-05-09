@@ -3,7 +3,13 @@ import api from '../api';
 
 const useSettingsStore = create((set) => ({
   settings: {},
-  environment: {},
+  environment: {
+    // Add default values for environment settings
+    public_ip: '',
+    country_code: '',
+    country_name: '',
+    env_mode: 'prod',
+  },
   isLoading: false,
   error: null,
 
@@ -18,7 +24,12 @@ const useSettingsStore = create((set) => ({
           return acc;
         }, {}),
         isLoading: false,
-        environment: env,
+        environment: env || {
+          public_ip: '',
+          country_code: '',
+          country_name: '',
+          env_mode: 'prod',
+        },
       });
     } catch (error) {
       set({ error: 'Failed to load settings.', isLoading: false });

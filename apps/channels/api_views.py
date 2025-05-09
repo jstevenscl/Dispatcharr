@@ -185,6 +185,30 @@ class ChannelViewSet(viewsets.ModelViewSet):
         context['include_streams'] = include_streams
         return context
 
+    @action(detail=False, methods=['patch'], url_path='edit/bulk')
+    def edit_bulk(self, request):
+        data_list = request.data
+        if not isinstance(data_list, list):
+            return Response({"error": "Expected a list of channel objects objects"}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_channels = []
+        try:
+            with transaction.atomic():
+                for item in data_list:
+                    channel = Channel.objects.id(id=item.pop('id'))
+                    for key, value in item.items():
+                        setattr(channel, key, value)
+
+                    channel.save(update_fields=item.keys())
+                    updated_channels.append(channel)
+        except Exception as e:
+            logger.error("Error during bulk channel edit", e)
+            return Response({"error": e}, status=500)
+
+        response_data = ChannelSerializer(updated_channels, many=True).data
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'], url_path='ids')
     def get_ids(self, request, *args, **kwargs):
         # Get the filtered queryset
@@ -204,12 +228,13 @@ class ChannelViewSet(viewsets.ModelViewSet):
         operation_description="Auto-assign channel_number in bulk by an ordered list of channel IDs.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["channel_order"],
+            required=["channel_ids"],
             properties={
-                "channel_order": openapi.Schema(
+                "starting_number": openapi.Schema(type=openapi.TYPE_STRING, description="Starting channel number to assign"),
+                "channel_ids": openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Items(type=openapi.TYPE_INTEGER),
-                    description="List of channel IDs in the new order"
+                    description="Channel  IDs to assign"
                 )
             }
         ),
@@ -218,9 +243,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='assign')
     def assign(self, request):
         with transaction.atomic():
-            channel_order = request.data.get('channel_order', [])
-            for order, channel_id in enumerate(channel_order, start=1):
-                Channel.objects.filter(id=channel_id).update(channel_number=order)
+            channel_ids = request.data.get('channel_ids', [])
+            channel_num = request.data.get('starting_number', 1)
+            for channel_id in channel_ids:
+                Channel.objects.filter(id=channel_id).update(channel_number=channel_num)
+                channel_num = channel_num + 1
 
         return Response({"message": "Channels have been auto-assigned!"}, status=status.HTTP_200_OK)
 
@@ -285,6 +312,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         {"error": f"Channel number {channel_number} is already in use. Please choose a different number."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+        #Get the tvc_guide_stationid from custom properties if it exists
+        tvc_guide_stationid = None
+        if 'tvc-guide-stationid' in stream_custom_props:
+            tvc_guide_stationid = stream_custom_props['tvc-guide-stationid']
 
 
 
@@ -292,6 +323,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             'channel_number': channel_number,
             'name': name,
             'tvg_id': stream.tvg_id,
+            'tvc_guide_stationid': tvc_guide_stationid,
             'channel_group_id': channel_group.id,
             'streams': [stream_id],
         }

@@ -45,8 +45,22 @@ html {
 }
 
 .td {
-  height: 28px;
   border-bottom: solid 1px rgb(68, 68, 68);
+}
+
+.divTable.table-size-compact .td {
+  height: 28px;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.divTable.table-size-default .td {
+  height: 40px;
+  font-size: var(--mantine-font-size-md);
+}
+
+.divTable.table-size-large .td {
+  height: 48px;
+  font-size: var(--mantine-font-size-md);
 }
 
 .resizer {
@@ -91,6 +105,19 @@ html {
 /* .table-striped .tbody .tr:nth-child(even), */
 .table-striped .tbody .tr-even {
   background-color: #27272A;
+}
+
+/* Style for rows with no streams */
+.no-streams-row {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.3);
+  /* Add subtle border */
+}
+
+/* Special hover effect for rows with no streams */
+.table-striped .tbody .tr.no-streams-row:hover {
+  background-color: rgba(239, 68, 68, 0.3) !important;
+  /* Darker red on hover */
 }
 
 /* Prevent text selection when shift key is pressed */

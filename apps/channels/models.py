@@ -1,6 +1,5 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from core.models import StreamProfile
 from django.conf import settings
 from core.models import StreamProfile, CoreSettings
 from core.utils import RedisClient
@@ -237,6 +236,8 @@ class Channel(models.Model):
         help_text="Channel group this channel belongs to."
     )
     tvg_id = models.CharField(max_length=255, blank=True, null=True)
+    tvc_guide_stationid = models.CharField(max_length=255, blank=True, null=True)
+    
     epg_data = models.ForeignKey(
         EPGData,
         on_delete=models.SET_NULL,
@@ -488,6 +489,7 @@ class ChannelGroupM3UAccount(models.Model):
         on_delete=models.CASCADE,
         related_name='channel_group'
     )
+    custom_properties = models.TextField(null=True, blank=True)
     enabled = models.BooleanField(default=True)
 
     class Meta:

@@ -18,13 +18,16 @@ const ChannelGroup = ({ channelGroup = null, isOpen, onClose }) => {
 
   const onSubmit = async () => {
     const values = form.getValues();
+    let newGroup;
+
     if (channelGroup) {
-      await API.updateChannelGroup({ id: channelGroup.id, ...values });
+      newGroup = await API.updateChannelGroup({ id: channelGroup.id, ...values });
     } else {
-      await API.addChannelGroup(values);
+      newGroup = await API.addChannelGroup(values);
     }
 
-    return form.reset();
+    form.reset();
+    onClose(newGroup); // Pass the new/updated group back to parent
   };
 
   if (!isOpen) {

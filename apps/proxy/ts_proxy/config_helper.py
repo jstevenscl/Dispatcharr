@@ -34,12 +34,12 @@ class ConfigHelper:
     @staticmethod
     def channel_shutdown_delay():
         """Get channel shutdown delay in seconds"""
-        return ConfigHelper.get('CHANNEL_SHUTDOWN_DELAY', 5)
+        return ConfigHelper.get('CHANNEL_SHUTDOWN_DELAY', 0)
 
     @staticmethod
     def initial_behind_chunks():
         """Get number of chunks to start behind"""
-        return ConfigHelper.get('INITIAL_BEHIND_CHUNKS', 10)
+        return ConfigHelper.get('INITIAL_BEHIND_CHUNKS', 4)
 
     @staticmethod
     def keepalive_interval():
@@ -75,3 +75,13 @@ class ConfigHelper:
     def retry_wait_interval():
         """Get wait interval between connection retries in seconds"""
         return ConfigHelper.get('RETRY_WAIT_INTERVAL', 0.5)  # Default to 0.5 second
+
+    @staticmethod
+    def url_switch_timeout():
+        """Get URL switch timeout in seconds (max time allowed for a stream switch operation)"""
+        return ConfigHelper.get('URL_SWITCH_TIMEOUT', 20)  # Default to 20 seconds
+
+    @staticmethod
+    def failover_grace_period():
+        """Get extra time (in seconds) to allow for stream switching before disconnecting clients"""
+        return ConfigHelper.get('FAILOVER_GRACE_PERIOD', 20)  # Default to 20 seconds

@@ -42,7 +42,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
         name: channelGroups[group.channel_group].name,
       }))
     );
-  }, [channelGroups]);
+  }, [playlist, channelGroups]);
 
   const toggleGroupEnabled = (id) => {
     setGroupStates(
@@ -121,6 +121,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
             .sort((a, b) => a.name > b.name)
             .map((group) => (
               <Button
+                key={group.channel_group}
                 color={group.enabled ? 'green' : 'gray'}
                 variant="filled"
                 checked={group.enabled}

@@ -4,27 +4,29 @@ import useSettingsStore from '../store/settings';
 import useUserAgentsStore from '../store/userAgents';
 import useStreamProfilesStore from '../store/streamProfiles';
 import {
+  Accordion,
   Box,
   Button,
   Center,
   Flex,
   Group,
-  Paper,
+  MultiSelect,
   Select,
-  Stack,
   Switch,
   Text,
-  Title,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
 import UserAgentsTable from '../components/tables/UserAgentsTable';
 import StreamProfilesTable from '../components/tables/StreamProfilesTable';
-import { useLocalStorage } from '@mantine/hooks';
+import useLocalStorage from '../hooks/useLocalStorage';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
   const userAgents = useUserAgentsStore((s) => s.userAgents);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
+
+  // UI / local storage settings
+  const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
 
   const regionChoices = [
     { value: 'ad', label: 'AD' },
@@ -284,19 +286,21 @@ const SettingsPage = () => {
       'default-stream-profile': '',
       'preferred-region': '',
       'auto-import-mapped-files': true,
+      'm3u-hash-key': [],
     },
 
     validate: {
-      'default-user-agent': isNotEmpty('Select a channel'),
-      'default-stream-profile': isNotEmpty('Select a start time'),
-      'preferred-region': isNotEmpty('Select an end time'),
+      'default-user-agent': isNotEmpty('Select a user agent'),
+      'default-stream-profile': isNotEmpty('Select a stream profile'),
+      'preferred-region': isNotEmpty('Select a region'),
     },
   });
 
   useEffect(() => {
     if (settings) {
-      form.setValues(
-        Object.entries(settings).reduce((acc, [key, value]) => {
+      console.log(settings);
+      const formValues = Object.entries(settings).reduce(
+        (acc, [key, value]) => {
           // Modify each value based on its own properties
           switch (value.value) {
             case 'true':
@@ -307,10 +311,23 @@ const SettingsPage = () => {
               break;
           }
 
-          acc[key] = value.value;
+          let val = null;
+          switch (key) {
+            case 'm3u-hash-key':
+              val = value.value.split(',');
+              break;
+            default:
+              val = value.value;
+              break;
+          }
+
+          acc[key] = val;
           return acc;
-        }, {})
+        },
+        {}
       );
+      console.log(formValues);
+      form.setValues(formValues);
     }
   }, [settings]);
 
@@ -333,98 +350,156 @@ const SettingsPage = () => {
     }
   };
 
+  const onUISettingsChange = (name, value) => {
+    switch (name) {
+      case 'table-size':
+        setTableSize(value);
+        break;
+    }
+  };
+
   return (
-    <Stack>
-      <Center
-        style={{
-          height: '40vh',
-        }}
-      >
-        <Paper
-          elevation={3}
-          style={{ padding: 20, width: '100%', maxWidth: 400 }}
-        >
-          <Title order={4} align="center">
-            Settings
-          </Title>
-          <form onSubmit={form.onSubmit(onSubmit)}>
-            <Select
-              searchable
-              {...form.getInputProps('default-user-agent')}
-              key={form.key('default-user-agent')}
-              id={settings['default-user-agent']?.id}
-              name={settings['default-user-agent']?.key}
-              label={settings['default-user-agent']?.name}
-              data={userAgents.map((option) => ({
-                value: `${option.id}`,
-                label: option.name,
-              }))}
-            />
-
-            <Select
-              searchable
-              {...form.getInputProps('default-stream-profile')}
-              key={form.key('default-stream-profile')}
-              id={settings['default-stream-profile']?.id}
-              name={settings['default-stream-profile']?.key}
-              label={settings['default-stream-profile']?.name}
-              data={streamProfiles.map((option) => ({
-                value: `${option.id}`,
-                label: option.name,
-              }))}
-            />
-            <Select
-              searchable
-              {...form.getInputProps('preferred-region')}
-              key={form.key('preferred-region')}
-              id={settings['preferred-region']?.id || 'preferred-region'}
-              name={settings['preferred-region']?.key || 'preferred-region'}
-              label={settings['preferred-region']?.name || 'Preferred Region'}
-              data={regionChoices.map((r) => ({
-                label: r.label,
-                value: `${r.value}`,
-              }))}
-            />
-
-            <Group justify="space-between" style={{ paddingTop: 5 }}>
-              <Text size="sm" fw={500}>
-                Auto-Import Mapped Files
-              </Text>
-              <Switch
-                {...form.getInputProps('auto-import-mapped-files', {
-                  type: 'checkbox',
-                })}
-                key={form.key('auto-import-mapped-files')}
-                id={
-                  settings['auto-import-mapped-files']?.id ||
-                  'auto-import-mapped-files'
-                }
+    <Center
+      style={{
+        padding: 10,
+      }}
+    >
+      <Box style={{ width: '100%', maxWidth: 800 }}>
+        <Accordion variant="separated" defaultValue="ui-settings">
+          <Accordion.Item value="ui-settings">
+            <Accordion.Control>UI Settings</Accordion.Control>
+            <Accordion.Panel>
+              <Select
+                label="Table Size"
+                value={tableSize}
+                onChange={(val) => onUISettingsChange('table-size', val)}
+                data={[
+                  {
+                    value: 'default',
+                    label: 'Default',
+                  },
+                  {
+                    value: 'compact',
+                    label: 'Compact',
+                  },
+                  {
+                    value: 'large',
+                    label: 'Large',
+                  },
+                ]}
               />
-            </Group>
+            </Accordion.Panel>
+          </Accordion.Item>
 
-            <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-              <Button
-                type="submit"
-                disabled={form.submitting}
-                variant="default"
-              >
-                Submit
-              </Button>
-            </Flex>
-          </form>
-        </Paper>
-      </Center>
+          <Accordion.Item value="stream-settings">
+            <Accordion.Control>Stream Settings</Accordion.Control>
+            <Accordion.Panel>
+              <form onSubmit={form.onSubmit(onSubmit)}>
+                <Select
+                  searchable
+                  {...form.getInputProps('default-user-agent')}
+                  key={form.key('default-user-agent')}
+                  id={settings['default-user-agent']?.id || 'default-user-agent'}
+                  name={settings['default-user-agent']?.key || 'default-user-agent'}
+                  label={settings['default-user-agent']?.name || 'Default User Agent'}
+                  data={userAgents.map((option) => ({
+                    value: `${option.id}`,
+                    label: option.name,
+                  }))}
+                />
 
-      <Group
-        justify="space-around"
-        align="top"
-        style={{ width: '100%' }}
-        gap={0}
-      >
-        <StreamProfilesTable />
-        <UserAgentsTable />
-      </Group>
-    </Stack>
+                <Select
+                  searchable
+                  {...form.getInputProps('default-stream-profile')}
+                  key={form.key('default-stream-profile')}
+                  id={settings['default-stream-profile']?.id || 'default-stream-profile'}
+                  name={settings['default-stream-profile']?.key || 'default-stream-profile'}
+                  label={settings['default-stream-profile']?.name || 'Default Stream Profile'}
+                  data={streamProfiles.map((option) => ({
+                    value: `${option.id}`,
+                    label: option.name,
+                  }))}
+                />
+                <Select
+                  searchable
+                  {...form.getInputProps('preferred-region')}
+                  key={form.key('preferred-region')}
+                  id={settings['preferred-region']?.id || 'preferred-region'}
+                  name={settings['preferred-region']?.key || 'preferred-region'}
+                  label={settings['preferred-region']?.name || 'Preferred Region'}
+                  data={regionChoices.map((r) => ({
+                    label: r.label,
+                    value: `${r.value}`,
+                  }))}
+                />
+
+                <Group justify="space-between" style={{ paddingTop: 5 }}>
+                  <Text size="sm" fw={500}>
+                    Auto-Import Mapped Files
+                  </Text>
+                  <Switch
+                    {...form.getInputProps('auto-import-mapped-files', {
+                      type: 'checkbox',
+                    })}
+                    key={form.key('auto-import-mapped-files')}
+                    id={
+                      settings['auto-import-mapped-files']?.id ||
+                      'auto-import-mapped-files'
+                    }
+                  />
+                </Group>
+
+                <MultiSelect
+                  id="m3u-hash-key"
+                  name="m3u-hash-key"
+                  label="M3U Hash Key"
+                  data={[
+                    {
+                      value: 'name',
+                      label: 'Name',
+                    },
+                    {
+                      value: 'url',
+                      label: 'URL',
+                    },
+                    {
+                      value: 'tvg_id',
+                      label: 'TVG-ID',
+                    },
+                  ]}
+                  {...form.getInputProps('m3u-hash-key')}
+                  key={form.key('m3u-hash-key')}
+                />
+
+                <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+                  <Button
+                    type="submit"
+                    disabled={form.submitting}
+                    variant="default"
+                  >
+                    Save
+                  </Button>
+                </Flex>
+              </form>
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="user-agents">
+            <Accordion.Control>User-Agents</Accordion.Control>
+            <Accordion.Panel>
+              <UserAgentsTable />
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="stream-profiles">
+            <Accordion.Control>Stream Profiles</Accordion.Control>
+            <Accordion.Panel>
+              <StreamProfilesTable />
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      </Box>
+    </Center>
   );
 };
 

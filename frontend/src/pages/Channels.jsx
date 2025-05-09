@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import ChannelsTable from '../components/tables/ChannelsTable';
 import StreamsTable from '../components/tables/StreamsTable';
-import { Box, Grid } from '@mantine/core';
+import { Box } from '@mantine/core';
 import { Allotment } from 'allotment';
 
 const ChannelsPage = () => {
@@ -12,18 +12,10 @@ const ChannelsPage = () => {
         style={{ height: '100%', width: '100%' }}
         className="custom-allotment"
       >
-        <div
-          style={{
-            padding: 10,
-          }}
-        >
+        <div style={{ padding: 10 }}>
           <ChannelsTable />
         </div>
-        <div
-          style={{
-            padding: 10,
-          }}
-        >
+        <div style={{ padding: 10 }}>
           <StreamsTable />
         </div>
       </Allotment>

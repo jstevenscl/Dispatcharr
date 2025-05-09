@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from .models import EPGSource
 from .tasks import refresh_epg_data
@@ -54,3 +54,25 @@ def delete_refresh_task(sender, instance, **kwargs):
     """
     if instance.refresh_task:
         instance.refresh_task.delete()
+
+@receiver(pre_save, sender=EPGSource)
+def update_status_on_active_change(sender, instance, **kwargs):
+    """
+    When an EPGSource's is_active field changes, update the status accordingly.
+    """
+    if instance.pk:  # Only for existing records, not new ones
+        try:
+            # Get the current record from the database
+            old_instance = EPGSource.objects.get(pk=instance.pk)
+
+            # If is_active changed, update the status
+            if old_instance.is_active != instance.is_active:
+                if instance.is_active:
+                    # When activating, set status to idle
+                    instance.status = 'idle'
+                else:
+                    # When deactivating, set status to disabled
+                    instance.status = 'disabled'
+        except EPGSource.DoesNotExist:
+            # New record, will use default status
+            pass

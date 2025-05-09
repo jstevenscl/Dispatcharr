@@ -43,6 +43,7 @@ import useSettingsStore from '../../store/settings';
 import useVideoStore from '../../store/useVideoStore';
 import useChannelsTableStore from '../../store/channelsTable';
 import { CustomTable, useTable } from './CustomTable';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 const StreamRowActions = ({
   theme,
@@ -52,6 +53,7 @@ const StreamRowActions = ({
   handleWatchStream,
   selectedChannelIds,
 }) => {
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
   const channelSelectionStreams = useChannelsTableStore(
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
@@ -82,21 +84,32 @@ const StreamRowActions = ({
 
   const onEdit = useCallback(() => {
     editStream(row.original);
-  }, []);
+  }, [row.original.id, editStream]);
 
   const onDelete = useCallback(() => {
     deleteStream(row.original.id);
-  }, []);
+  }, [row.original.id, deleteStream]);
 
   const onPreview = useCallback(() => {
+    console.log(
+      'Previewing stream:',
+      row.original.name,
+      'ID:',
+      row.original.id,
+      'Hash:',
+      row.original.stream_hash
+    );
     handleWatchStream(row.original.stream_hash);
-  }, []);
+  }, [row.original.id]); // Add proper dependency to ensure correct stream
+
+  const iconSize =
+    tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
 
   return (
     <>
       <Tooltip label="Add to Channel">
         <ActionIcon
-          size="xs"
+          size={iconSize}
           color={theme.tailwind.blue[6]}
           variant="transparent"
           onClick={addStreamToChannel}
@@ -115,7 +128,7 @@ const StreamRowActions = ({
 
       <Tooltip label="Create New Channel">
         <ActionIcon
-          size="xs"
+          size={iconSize}
           color={theme.tailwind.green[5]}
           variant="transparent"
           onClick={createChannelFromStream}
@@ -126,7 +139,7 @@ const StreamRowActions = ({
 
       <Menu>
         <Menu.Target>
-          <ActionIcon variant="transparent" size="xs">
+          <ActionIcon variant="transparent" size={iconSize}>
             <EllipsisVertical size="18" />
           </ActionIcon>
         </Menu.Target>
@@ -186,6 +199,9 @@ const StreamsTable = ({ }) => {
   });
   const debouncedFilters = useDebounce(filters, 500);
 
+  // Add state to track if stream groups are loaded
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+
   const navigate = useNavigate();
 
   /**
@@ -193,7 +209,10 @@ const StreamsTable = ({ }) => {
    */
   const playlists = usePlaylistsStore((s) => s.playlists);
 
+  // Get direct access to channel groups without depending on other data
+  const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
+
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
   const channelSelectionStreams = useChannelsTableStore(
@@ -202,6 +221,7 @@ const StreamsTable = ({ }) => {
   );
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
   const showVideo = useVideoStore((s) => s.showVideo);
+  const [tableSize, _] = useLocalStorage('table-size', 'default');
 
   const handleSelectClick = (e) => {
     e.stopPropagation();
@@ -215,7 +235,7 @@ const StreamsTable = ({ }) => {
     () => [
       {
         id: 'actions',
-        size: 60,
+        size: tableSize == 'compact' ? 60 : 80,
       },
       {
         id: 'select',
@@ -232,7 +252,7 @@ const StreamsTable = ({ }) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -250,7 +270,7 @@ const StreamsTable = ({ }) => {
               textOverflow: 'ellipsis',
             }}
           >
-            <Text size="sm">{getValue()}</Text>
+            {getValue()}
           </Box>
         ),
       },
@@ -268,7 +288,7 @@ const StreamsTable = ({ }) => {
             }}
           >
             <Tooltip label={getValue()} openDelay={500}>
-              <Text size="sm">{getValue()}</Text>
+              <Box>{getValue()}</Box>
             </Tooltip>
           </Box>
         ),
@@ -286,12 +306,24 @@ const StreamsTable = ({ }) => {
       ...prev,
       [name]: value,
     }));
+
+    // Reset to first page whenever filters change to avoid "Invalid page" errors
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: 0,
+    }));
   };
 
   const handleGroupChange = (value) => {
     setFilters((prev) => ({
       ...prev,
       channel_group: value ? value : '',
+    }));
+
+    // Reset to first page whenever filters change to avoid "Invalid page" errors
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: 0,
     }));
   };
 
@@ -300,9 +332,27 @@ const StreamsTable = ({ }) => {
       ...prev,
       m3u_account: value ? value : '',
     }));
+
+    // Reset to first page whenever filters change to avoid "Invalid page" errors
+    setPagination((prev) => ({
+      ...prev,
+      pageIndex: 0,
+    }));
   };
 
   const fetchData = useCallback(async () => {
+    setIsLoading(true);
+
+    // Ensure we have channel groups first (if not already loaded)
+    if (!groupsLoaded && Object.keys(channelGroups).length === 0) {
+      try {
+        await fetchChannelGroups();
+        setGroupsLoaded(true);
+      } catch (error) {
+        console.error('Error fetching channel groups:', error);
+      }
+    }
+
     const params = new URLSearchParams();
     params.append('page', pagination.pageIndex + 1);
     params.append('page_size', pagination.pageSize);
@@ -349,7 +399,7 @@ const StreamsTable = ({ }) => {
     }
 
     setIsLoading(false);
-  }, [pagination, sorting, debouncedFilters]);
+  }, [pagination, sorting, debouncedFilters, groupsLoaded, channelGroups, fetchChannelGroups]);
 
   // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
@@ -542,7 +592,7 @@ const StreamsTable = ({ }) => {
           );
       }
     },
-    [selectedChannelIds, channelSelectionStreams]
+    [selectedChannelIds, channelSelectionStreams, theme, editStream, deleteStream, handleWatchStream]
   );
 
   const table = useTable({
@@ -571,6 +621,7 @@ const StreamsTable = ({ }) => {
    * useEffects
    */
   useEffect(() => {
+    // Load data independently, don't wait for logos or other data
     fetchData();
   }, [fetchData]);
 
@@ -608,17 +659,34 @@ const StreamsTable = ({ }) => {
           <Box>
             <Button
               leftSection={<IconSquarePlus size={18} />}
-              variant={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? "light" : "default"}
+              variant={
+                selectedStreamIds.length > 0 && selectedChannelIds.length === 1
+                  ? 'light'
+                  : 'default'
+              }
               size="xs"
               onClick={addStreamsToChannel}
               p={5}
-              color={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? theme.tailwind.green[5] : undefined}
-              style={selectedStreamIds.length > 0 && selectedChannelIds.length === 1 ? {
-                borderWidth: '1px',
-                borderColor: theme.tailwind.green[5],
-                color: 'white',
-              } : undefined}
-              disabled={!(selectedStreamIds.length > 0 && selectedChannelIds.length === 1)}
+              color={
+                selectedStreamIds.length > 0 && selectedChannelIds.length === 1
+                  ? theme.tailwind.green[5]
+                  : undefined
+              }
+              style={
+                selectedStreamIds.length > 0 && selectedChannelIds.length === 1
+                  ? {
+                    borderWidth: '1px',
+                    borderColor: theme.tailwind.green[5],
+                    color: 'white',
+                  }
+                  : undefined
+              }
+              disabled={
+                !(
+                  selectedStreamIds.length > 0 &&
+                  selectedChannelIds.length === 1
+                )
+              }
             >
               Add Streams to Channel
             </Button>

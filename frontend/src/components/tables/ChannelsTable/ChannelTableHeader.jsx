@@ -5,8 +5,10 @@ import {
   Button,
   Flex,
   Group,
+  NumberInput,
   Popover,
   Select,
+  Text,
   TextInput,
   Tooltip,
   useMantineTheme,
@@ -14,6 +16,7 @@ import {
 import {
   ArrowDown01,
   Binary,
+  Check,
   CircleCheck,
   SquareMinus,
   SquarePlus,
@@ -87,6 +90,8 @@ const ChannelTableHeader = ({
 }) => {
   const theme = useMantineTheme();
 
+  const [channelNumAssignmentStart, setChannelNumAssignmentStart] = useState(1);
+
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
   const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
@@ -110,11 +115,11 @@ const ChannelTableHeader = ({
 
   const assignChannels = async () => {
     try {
-      // Get row order from the table
-      const rowOrder = rows.map((row) => row.original.id);
-
       // Call our custom API endpoint
-      const result = await API.assignChannelNumbers(rowOrder);
+      const result = await API.assignChannelNumbers(
+        selectedTableIds,
+        channelNumAssignmentStart
+      );
 
       // We might get { message: "Channels have been auto-assigned!" }
       notifications.show({
@@ -194,15 +199,38 @@ const ChannelTableHeader = ({
           </Button>
 
           <Tooltip label="Assign Channel #s">
-            <Button
-              leftSection={<ArrowDown01 size={18} />}
-              variant="default"
-              size="xs"
-              onClick={assignChannels}
-              p={5}
-            >
-              Assign
-            </Button>
+            <Popover withArrow shadow="md">
+              <Popover.Target>
+                <Button
+                  leftSection={<ArrowDown01 size={18} />}
+                  variant="default"
+                  size="xs"
+                  p={5}
+                  disabled={selectedTableIds.length == 0}
+                >
+                  Assign
+                </Button>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Group>
+                  <Text>Start #</Text>
+                  <NumberInput
+                    value={channelNumAssignmentStart}
+                    onChange={setChannelNumAssignmentStart}
+                    size="small"
+                    style={{ width: 50 }}
+                  />
+                  <ActionIcon
+                    size="xs"
+                    color={theme.tailwind.green[5]}
+                    variant="transparent"
+                    onClick={assignChannels}
+                  >
+                    <Check />
+                  </ActionIcon>
+                </Group>
+              </Popover.Dropdown>
+            </Popover>
           </Tooltip>
 
           <Tooltip label="Auto-Match EPG">

@@ -65,14 +65,20 @@ const App = () => {
   // Authentication check
   useEffect(() => {
     const checkAuth = async () => {
-      const loggedIn = await initializeAuth();
-      if (loggedIn) {
-        await initData();
-        setIsAuthenticated(true);
-      } else {
+      try {
+        const loggedIn = await initializeAuth();
+        if (loggedIn) {
+          await initData();
+          setIsAuthenticated(true);
+        } else {
+          await logout();
+        }
+      } catch (error) {
+        console.error("Auth check failed:", error);
         await logout();
       }
     };
+
     checkAuth();
   }, [initializeAuth, initData, setIsAuthenticated, logout]);
 

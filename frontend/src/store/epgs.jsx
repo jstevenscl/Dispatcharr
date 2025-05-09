@@ -7,6 +7,7 @@ const useEPGsStore = create((set) => ({
   tvgsById: {},
   isLoading: false,
   error: null,
+  refreshProgress: {},
 
   fetchEPGs: async () => {
     set({ isLoading: true, error: null });
@@ -61,6 +62,50 @@ const useEPGsStore = create((set) => ({
       }
 
       return { epgs: updatedEPGs };
+    }),
+
+  updateEPGProgress: (data) =>
+    set((state) => {
+      // Early exit if source doesn't exist in our EPGs store
+      if (!state.epgs[data.source] && !data.status) {
+        return state;
+      }
+
+      // Create a new refreshProgress object that includes the current update
+      const newRefreshProgress = {
+        ...state.refreshProgress,
+        [data.source]: {
+          action: data.action,
+          progress: data.progress,
+          speed: data.speed,
+          elapsed_time: data.elapsed_time,
+          time_remaining: data.time_remaining,
+          status: data.status || 'in_progress'
+        }
+      };
+
+      // Set the EPG source status based on the update
+      // First prioritize explicit status values from the backend
+      const sourceStatus = data.status ? data.status // Use explicit status if provided
+        : data.action === "downloading" ? "fetching"
+          : data.action === "parsing_channels" || data.action === "parsing_programs" ? "parsing"
+            : data.progress === 100 ? "success" // Mark as success when progress is 100%
+              : state.epgs[data.source]?.status || 'idle';
+
+      // Create a new epgs object with the updated source status
+      const newEpgs = {
+        ...state.epgs,
+        [data.source]: {
+          ...state.epgs[data.source],
+          status: sourceStatus,
+          last_message: data.status === 'error' ? (data.error || 'Unknown error') : state.epgs[data.source]?.last_message
+        }
+      };
+
+      return {
+        refreshProgress: newRefreshProgress,
+        epgs: newEpgs
+      };
     }),
 }));
 
