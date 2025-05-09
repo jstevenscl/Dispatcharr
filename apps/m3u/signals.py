@@ -31,14 +31,17 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
         period=IntervalSchedule.HOURS
     )
 
+    # Task should be enabled only if refresh_interval != 0 AND account is active
+    should_be_enabled = (instance.refresh_interval != 0) and instance.is_active
+
     # First check if the task already exists to avoid validation errors
     try:
         task = PeriodicTask.objects.get(name=task_name)
         # Task exists, just update it
         updated_fields = []
 
-        if task.enabled != (instance.refresh_interval != 0):
-            task.enabled = instance.refresh_interval != 0
+        if task.enabled != should_be_enabled:
+            task.enabled = should_be_enabled
             updated_fields.append("enabled")
 
         if task.interval != interval:
@@ -59,7 +62,7 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
             interval=interval,
             task="apps.m3u.tasks.refresh_single_m3u_account",
             kwargs=json.dumps({"account_id": instance.id}),
-            enabled=instance.refresh_interval != 0,
+            enabled=should_be_enabled,
         )
         M3UAccount.objects.filter(id=instance.id).update(refresh_task=refresh_task)
 
