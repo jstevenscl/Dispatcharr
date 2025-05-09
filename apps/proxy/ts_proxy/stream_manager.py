@@ -102,6 +102,9 @@ class StreamManager:
         self.last_bytes_update = time.time()
         self.bytes_update_interval = 5  # Update Redis every 5 seconds
 
+        # Add stderr reader thread property
+        self.stderr_reader_thread = None
+
     def _create_session(self):
         """Create and configure requests session with optimal settings"""
         session = requests.Session()
@@ -333,12 +336,16 @@ class StreamManager:
             self.transcode_cmd = stream_profile.build_command(self.url, self.user_agent)
             logger.debug(f"Starting transcode process: {self.transcode_cmd}")
 
+            # Modified to capture stderr instead of discarding it
             self.transcode_process = subprocess.Popen(
                 self.transcode_cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,  # Suppress error logs
+                stderr=subprocess.PIPE,  # Capture stderr instead of discarding it
                 bufsize=188 * 64            # Buffer optimized for TS packets
             )
+
+            # Start a thread to read stderr
+            self._start_stderr_reader()
 
             # Set flag that transcoding process is active
             self.transcode_process_active = True
@@ -357,6 +364,40 @@ class StreamManager:
             logger.error(f"Error establishing transcode connection: {e}", exc_info=True)
             self._close_socket()
             return False
+
+    def _start_stderr_reader(self):
+        """Start a thread to read stderr from the transcode process"""
+        if self.transcode_process and self.transcode_process.stderr:
+            self.stderr_reader_thread = threading.Thread(
+                target=self._read_stderr,
+                daemon=True  # Use daemon thread so it doesn't block program exit
+            )
+            self.stderr_reader_thread.start()
+            logger.debug(f"Started stderr reader thread for channel {self.channel_id}")
+
+    def _read_stderr(self):
+        """Read and log stderr output from the transcode process"""
+        try:
+            if not self.transcode_process or not self.transcode_process.stderr:
+                logger.warning(f"No stderr to read for channel {self.channel_id}")
+                return
+
+            for line in iter(self.transcode_process.stderr.readline, b''):
+                if not line:
+                    break
+
+                # Decode the line and strip whitespace
+                error_line = line.decode('utf-8', errors='replace').strip()
+
+                # Skip empty lines
+                if not error_line:
+                    continue
+
+                # Log all stderr output as debug messages
+                logger.debug(f"Transcode stderr [{self.channel_id}]: {error_line}")
+
+        except Exception as e:
+            logger.error(f"Error reading transcode stderr: {e}")
 
     def _establish_http_connection(self):
         """Establish a direct HTTP connection to the stream"""
