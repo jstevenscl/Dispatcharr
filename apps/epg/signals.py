@@ -4,6 +4,9 @@ from .models import EPGSource
 from .tasks import refresh_epg_data
 from django_celery_beat.models import PeriodicTask, IntervalSchedule
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=EPGSource)
 def trigger_refresh_on_new_epg_source(sender, instance, created, **kwargs):
@@ -50,10 +53,60 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
 @receiver(post_delete, sender=EPGSource)
 def delete_refresh_task(sender, instance, **kwargs):
     """
-    Delete the associated Celery Beat periodic task when a Channel is deleted.
+    Delete the associated Celery Beat periodic task when an EPGSource is deleted.
     """
-    if instance.refresh_task:
-        instance.refresh_task.delete()
+    try:
+        task = None
+        task_name = f"epg_source-refresh-{instance.id}"
+
+        # First try the foreign key relationship
+        if instance.refresh_task:
+            logger.info(f"Found task via foreign key: {instance.refresh_task.id} for EPGSource {instance.id}")
+            task = instance.refresh_task
+        else:
+            # If relationship is broken, look for task by name
+            logger.warning(f"No refresh_task found via foreign key for EPGSource {instance.id}, looking up by name")
+            from django_celery_beat.models import PeriodicTask
+            try:
+                task = PeriodicTask.objects.get(name=task_name)
+                logger.info(f"Found task by name: {task.id} for EPGSource {instance.id}")
+            except PeriodicTask.DoesNotExist:
+                logger.warning(f"No PeriodicTask found with name {task_name}")
+                return
+
+        # Now delete the task and its interval
+        if task:
+            # Store interval info before deleting the task
+            interval_id = None
+            if hasattr(task, 'interval') and task.interval:
+                interval_id = task.interval.id
+
+                # Count how many TOTAL tasks use this interval (including this one)
+                from django_celery_beat.models import PeriodicTask
+                tasks_with_same_interval = PeriodicTask.objects.filter(interval_id=interval_id).count()
+                logger.info(f"Interval {interval_id} is used by {tasks_with_same_interval} tasks total")
+
+            # Delete the task first
+            task_id = task.id
+            task.delete()
+            logger.info(f"Successfully deleted periodic task {task_id}")
+
+            # Now check if we should delete the interval
+            # We only delete if it was the ONLY task using this interval
+            # (meaning remaining count would be zero after our deletion)
+            if interval_id and tasks_with_same_interval == 1:
+                from django_celery_beat.models import IntervalSchedule
+                try:
+                    interval = IntervalSchedule.objects.get(id=interval_id)
+                    logger.info(f"Deleting interval schedule {interval_id} (not shared with other tasks)")
+                    interval.delete()
+                    logger.info(f"Successfully deleted interval {interval_id}")
+                except IntervalSchedule.DoesNotExist:
+                    logger.warning(f"Interval {interval_id} no longer exists")
+            elif interval_id:
+                logger.info(f"Not deleting interval {interval_id} as it's shared with {tasks_with_same_interval-1} other tasks")
+    except Exception as e:
+        logger.error(f"Error deleting periodic task for EPGSource {instance.id}: {str(e)}", exc_info=True)
 
 @receiver(pre_save, sender=EPGSource)
 def update_status_on_active_change(sender, instance, **kwargs):
