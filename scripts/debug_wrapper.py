@@ -50,9 +50,14 @@ try:
     # Don't wait for connection, just set up the debugging session
     logger.info("Initializing debugpy on 0.0.0.0:5678...")
     try:
+        # Set socket timeout using the existing DEBUG_TIMEOUT variable
+        import socket
+        socket.setdefaulttimeout(DEBUG_TIMEOUT)
         # Use connect instead of listen to avoid the adapter process
         debugpy.listen(("0.0.0.0", 5678))
         logger.info("debugpy now listening on 0.0.0.0:5678")
+        # Reset socket timeout
+        socket.setdefaulttimeout(None)
 
         if WAIT_FOR_DEBUGGER:
             logger.info(f"Waiting for debugger to attach (timeout: {DEBUG_TIMEOUT}s)...")
@@ -65,9 +70,22 @@ try:
                 logger.info("Debugger attached!")
             else:
                 logger.info(f"Debugger not attached after {DEBUG_TIMEOUT}s, continuing anyway...")
+    except RuntimeError as re:
+        if "timed out waiting for adapter to connect" in str(re):
+            logger.warning(f"debugpy.listen timed out after {DEBUG_TIMEOUT}s. This is normal in some environments.")
+            logger.info("Continuing without debugging...")
+        else:
+            logger.error(f"RuntimeError with debugpy.listen: {re}", exc_info=True)
+            logger.info("Continuing without debugging...")
+    except socket.timeout:
+        logger.warning(f"Socket timeout after {DEBUG_TIMEOUT}s while initializing debugpy.")
+        logger.info("Continuing without debugging...")
     except Exception as e:
         logger.error(f"Error with debugpy.listen: {e}", exc_info=True)
         logger.info("Continuing without debugging...")
+    finally:
+        # Ensure socket timeout is always reset
+        socket.setdefaulttimeout(None)
 
 except ImportError:
     logger.error("debugpy not installed, continuing without debugging support")
