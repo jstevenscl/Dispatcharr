@@ -733,6 +733,60 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
 
     return extinf_data, groups
 
+def delete_m3u_refresh_task_by_id(account_id):
+    """
+    Delete the periodic task associated with an M3U account ID.
+    Can be called directly or from the post_delete signal.
+    Returns True if a task was found and deleted, False otherwise.
+    """
+    try:
+        task = None
+        task_name = f"m3u_account-refresh-{account_id}"
+
+        # Look for task by name
+        try:
+            from django_celery_beat.models import PeriodicTask, IntervalSchedule
+            task = PeriodicTask.objects.get(name=task_name)
+            logger.info(f"Found task by name: {task.id} for M3UAccount {account_id}")
+        except PeriodicTask.DoesNotExist:
+            logger.warning(f"No PeriodicTask found with name {task_name}")
+            return False
+
+        # Now delete the task and its interval
+        if task:
+            # Store interval info before deleting the task
+            interval_id = None
+            if hasattr(task, 'interval') and task.interval:
+                interval_id = task.interval.id
+
+                # Count how many TOTAL tasks use this interval (including this one)
+                tasks_with_same_interval = PeriodicTask.objects.filter(interval_id=interval_id).count()
+                logger.info(f"Interval {interval_id} is used by {tasks_with_same_interval} tasks total")
+
+            # Delete the task first
+            task_id = task.id
+            task.delete()
+            logger.info(f"Successfully deleted periodic task {task_id}")
+
+            # Now check if we should delete the interval
+            # We only delete if it was the ONLY task using this interval
+            if interval_id and tasks_with_same_interval == 1:
+                try:
+                    interval = IntervalSchedule.objects.get(id=interval_id)
+                    logger.info(f"Deleting interval schedule {interval_id} (not shared with other tasks)")
+                    interval.delete()
+                    logger.info(f"Successfully deleted interval {interval_id}")
+                except IntervalSchedule.DoesNotExist:
+                    logger.warning(f"Interval {interval_id} no longer exists")
+            elif interval_id:
+                logger.info(f"Not deleting interval {interval_id} as it's shared with {tasks_with_same_interval-1} other tasks")
+
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting periodic task for M3UAccount {account_id}: {str(e)}", exc_info=True)
+        return False
+
 @shared_task
 def refresh_single_m3u_account(account_id):
     """Splits M3U processing into chunks and dispatches them as parallel tasks."""
@@ -758,8 +812,17 @@ def refresh_single_m3u_account(account_id):
 
         filters = list(account.filters.all())
     except M3UAccount.DoesNotExist:
+        # The M3U account doesn't exist, so delete the periodic task if it exists
+        logger.warning(f"M3U account with ID {account_id} not found, but task was triggered. Cleaning up orphaned task.")
+
+        # Call the helper function to delete the task
+        if delete_m3u_refresh_task_by_id(account_id):
+            logger.info(f"Successfully cleaned up orphaned task for M3U account {account_id}")
+        else:
+            logger.info(f"No orphaned task found for M3U account {account_id}")
+
         release_task_lock('refresh_single_m3u_account', account_id)
-        return f"M3UAccount with ID={account_id} not found or inactive."
+        return f"M3UAccount with ID={account_id} not found or inactive, task cleaned up"
 
     # Fetch M3U lines and handle potential issues
     extinf_data = []

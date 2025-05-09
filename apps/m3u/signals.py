@@ -2,9 +2,12 @@
 from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from .models import M3UAccount
-from .tasks import refresh_single_m3u_account, refresh_m3u_groups
+from .tasks import refresh_single_m3u_account, refresh_m3u_groups, delete_m3u_refresh_task_by_id
 from django_celery_beat.models import PeriodicTask, IntervalSchedule
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=M3UAccount)
 def refresh_account_on_save(sender, instance, created, **kwargs):
@@ -65,9 +68,21 @@ def delete_refresh_task(sender, instance, **kwargs):
     """
     Delete the associated Celery Beat periodic task when a Channel is deleted.
     """
-    if instance.refresh_task:
-        instance.refresh_task.interval.delete()
-        instance.refresh_task.delete()
+    try:
+        # First try the foreign key relationship to find the task ID
+        task = None
+        if instance.refresh_task:
+            logger.info(f"Found task via foreign key: {instance.refresh_task.id} for M3UAccount {instance.id}")
+            task = instance.refresh_task
+
+            # Use the helper function to delete the task
+            if task:
+                delete_m3u_refresh_task_by_id(instance.id)
+        else:
+            # Otherwise use the helper function
+            delete_m3u_refresh_task_by_id(instance.id)
+    except Exception as e:
+        logger.error(f"Error in delete_refresh_task signal handler: {str(e)}", exc_info=True)
 
 @receiver(pre_save, sender=M3UAccount)
 def update_status_on_active_change(sender, instance, **kwargs):
