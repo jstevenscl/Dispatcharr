@@ -3,7 +3,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import UserAgent, StreamProfile, CoreSettings
+from .models import UserAgent, StreamProfile, CoreSettings, STREAM_HASH_KEY
 from .serializers import UserAgentSerializer, StreamProfileSerializer, CoreSettingsSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
@@ -11,6 +11,7 @@ from drf_yasg.utils import swagger_auto_schema
 import socket
 import requests
 import os
+from core.tasks import rehash_streams
 
 class UserAgentViewSet(viewsets.ModelViewSet):
     """
@@ -33,6 +34,15 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
     """
     queryset = CoreSettings.objects.all()
     serializer_class = CoreSettingsSerializer
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        response = super().update(request, *args, **kwargs)
+        if instance.key == STREAM_HASH_KEY:
+            if instance.value != request.data['value']:
+                rehash_streams.delay(request.data['value'].split(','))
+
+        return response
 
 @swagger_auto_schema(
     method='get',

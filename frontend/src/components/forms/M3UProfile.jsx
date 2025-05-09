@@ -10,6 +10,8 @@ import {
   Title,
   Text,
   Paper,
+  Badge,
+  Grid,
 } from '@mantine/core';
 import { useWebSocket } from '../../WebSocket';
 import usePlaylistsStore from '../../store/playlists';
@@ -25,29 +27,46 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
   const [searchPattern, setSearchPattern] = useState('');
   const [replacePattern, setReplacePattern] = useState('');
   const [debouncedPatterns, setDebouncedPatterns] = useState({});
+  const [sampleInput, setSampleInput] = useState('');
 
   useEffect(() => {
     async function fetchStreamUrl() {
-      const params = new URLSearchParams();
-      params.append('page', 1);
-      params.append('page_size', 1);
-      params.append('m3u_account', m3u.id);
-      const response = await API.queryStreams(params);
-      setStreamUrl(response.results[0].url);
+      try {
+        if (!m3u?.id) return;
+
+        const params = new URLSearchParams();
+        params.append('page', 1);
+        params.append('page_size', 1);
+        params.append('m3u_account', m3u.id);
+        const response = await API.queryStreams(params);
+
+        if (response?.results?.length > 0) {
+          setStreamUrl(response.results[0].url);
+          setSampleInput(response.results[0].url); // Initialize sample input with a real stream URL
+        }
+      } catch (error) {
+        console.error('Error fetching stream URL:', error);
+      }
     }
     fetchStreamUrl();
-  }, []);
+  }, [m3u]);
 
   useEffect(() => {
-    sendMessage(
-      JSON.stringify({
-        type: 'm3u_profile_test',
-        url: streamUrl,
-        search: debouncedPatterns['search'] || '',
-        replace: debouncedPatterns['replace'] || '',
-      })
-    );
-  }, [m3u, debouncedPatterns, streamUrl]);
+    if (!websocketReady || !streamUrl) return;
+
+    try {
+      sendMessage(
+        JSON.stringify({
+          type: 'm3u_profile_test',
+          url: sampleInput || streamUrl, // Use sampleInput if provided, otherwise use streamUrl
+          search: debouncedPatterns['search'] || '',
+          replace: debouncedPatterns['replace'] || '',
+        })
+      );
+    } catch (error) {
+      console.error('Error sending WebSocket message:', error);
+    }
+  }, [websocketReady, m3u, debouncedPatterns, streamUrl, sampleInput]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -111,8 +130,33 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
     }
   }, [profile]);
 
+  const handleSampleInputChange = (e) => {
+    setSampleInput(e.target.value);
+  };
+
+  // Local regex testing for immediate visual feedback
+  const getHighlightedSearchText = () => {
+    if (!searchPattern || !sampleInput) return sampleInput;
+    try {
+      const regex = new RegExp(searchPattern, 'g');
+      return sampleInput.replace(regex, match => `<mark style="background-color: #ffee58;">${match}</mark>`);
+    } catch (e) {
+      return sampleInput;
+    }
+  };
+
+  const getLocalReplaceResult = () => {
+    if (!searchPattern || !sampleInput) return sampleInput;
+    try {
+      const regex = new RegExp(searchPattern, 'g');
+      return sampleInput.replace(regex, replacePattern);
+    } catch (e) {
+      return sampleInput;
+    }
+  };
+
   return (
-    <Modal opened={isOpen} onClose={onClose} title="M3U Profile">
+    <Modal opened={isOpen} onClose={onClose} title="M3U Profile" size="lg">
       <form onSubmit={formik.handleSubmit}>
         <TextInput
           id="name"
@@ -158,26 +202,52 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
           align="flex-end"
           style={{ marginBottom: 5 }}
         >
-          <Button type="submit" disabled={formik.isSubmitting} size="xs">
+          <Button
+            type="submit"
+            disabled={formik.isSubmitting}
+            size="xs"
+            style={{ width: formik.isSubmitting ? 'auto' : 'auto' }}
+          >
             Submit
           </Button>
         </Flex>
       </form>
 
-      <Paper shadow="sm" p="md" radius="md" withBorder>
-        <Text>Search</Text>
-        <Text
-          dangerouslySetInnerHTML={{
-            __html: profileSearchPreview || streamUrl,
-          }}
-          sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+      <Title order={4} mt={15} mb={10}>Live Regex Demonstration</Title>
+
+      <Paper shadow="sm" p="xs" radius="md" withBorder mb={8}>
+        <Text size="sm" weight={500} mb={3}>Sample Text</Text>
+        <TextInput
+          value={sampleInput}
+          onChange={handleSampleInputChange}
+          placeholder="Enter a sample URL to test with"
+          size="sm"
         />
       </Paper>
 
-      <Paper p="md" radius="md" withBorder>
-        <Text>Replace</Text>
-        <Text>{profileResult || streamUrl}</Text>
-      </Paper>
+      <Grid gutter="xs">
+        <Grid.Col span={12}>
+          <Paper shadow="sm" p="xs" radius="md" withBorder>
+            <Text size="sm" weight={500} mb={3}>Matched Text <Badge size="xs" color="yellow">highlighted</Badge></Text>
+            <Text
+              size="sm"
+              dangerouslySetInnerHTML={{
+                __html: getHighlightedSearchText(),
+              }}
+              sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+            />
+          </Paper>
+        </Grid.Col>
+
+        <Grid.Col span={12}>
+          <Paper shadow="sm" p="xs" radius="md" withBorder>
+            <Text size="sm" weight={500} mb={3}>Result After Replace</Text>
+            <Text size="sm" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {getLocalReplaceResult()}
+            </Text>
+          </Paper>
+        </Grid.Col>
+      </Grid>
     </Modal>
   );
 };

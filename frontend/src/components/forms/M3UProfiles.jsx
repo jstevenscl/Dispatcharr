@@ -29,8 +29,19 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
   const [profiles, setProfiles] = useState([]);
 
   useEffect(() => {
-    setProfiles(allProfiles[playlist.id]);
-  }, [allProfiles]);
+    try {
+      // Make sure playlist exists, has an id, and profiles exist for this playlist
+      if (playlist && playlist.id && allProfiles && allProfiles[playlist.id]) {
+        setProfiles(allProfiles[playlist.id]);
+      } else {
+        // Reset profiles if none are available
+        setProfiles([]);
+      }
+    } catch (error) {
+      console.error('Error setting profiles:', error);
+      setProfiles([]);
+    }
+  }, [allProfiles, playlist]);
 
   const editProfile = (profile = null) => {
     if (profile) {
@@ -41,21 +52,36 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
   };
 
   const deleteProfile = async (id) => {
-    await API.deleteM3UProfile(playlist.id, id);
+    if (!playlist || !playlist.id) return;
+    try {
+      await API.deleteM3UProfile(playlist.id, id);
+    } catch (error) {
+      console.error('Error deleting profile:', error);
+    }
   };
 
   const toggleActive = async (values) => {
-    await API.updateM3UProfile(playlist.id, {
-      ...values,
-      is_active: !values.is_active,
-    });
+    if (!playlist || !playlist.id) return;
+    try {
+      await API.updateM3UProfile(playlist.id, {
+        ...values,
+        is_active: !values.is_active,
+      });
+    } catch (error) {
+      console.error('Error toggling profile active state:', error);
+    }
   };
 
   const modifyMaxStreams = async (value, item) => {
-    await API.updateM3UProfile(playlist.id, {
-      ...item,
-      max_streams: value,
-    });
+    if (!playlist || !playlist.id) return;
+    try {
+      await API.updateM3UProfile(playlist.id, {
+        ...item,
+        max_streams: value,
+      });
+    } catch (error) {
+      console.error('Error updating max streams:', error);
+    }
   };
 
   const closeEditor = () => {
@@ -63,24 +89,27 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
     setProfileEditorOpen(false);
   };
 
-  if (!isOpen || !profiles) {
+  // Don't render if modal is not open, or if playlist data is invalid
+  if (!isOpen || !playlist || !playlist.id) {
     return <></>;
   }
+
+  // Make sure profiles is always an array even if we have no data
+  const profilesArray = Array.isArray(profiles) ? profiles : [];
 
   return (
     <>
       <Modal opened={isOpen} onClose={onClose} title="Profiles">
-        {profiles
-          // .filter((playlist) => playlist.is_default == false)
+        {profilesArray
+          .sort((a, b) => {
+            // Always put default profile first
+            if (a.is_default) return -1;
+            if (b.is_default) return 1;
+            // Sort remaining profiles alphabetically by name
+            return a.name.localeCompare(b.name);
+          })
           .map((item) => (
-            <Card
-            // key={item.id}
-            // sx={{
-            //   display: 'flex',
-            //   alignItems: 'center',
-            //   marginBottom: 2,
-            // }}
-            >
+            <Card key={item.id}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Group justify="space-between">
                   <Text fw={600}>{item.name}</Text>
@@ -113,7 +142,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
                         color={theme.tailwind.yellow[3]}
                         onClick={() => editProfile(item)}
                       >
-                        <SquarePen size="=20" />
+                        <SquarePen size="20" />
                       </ActionIcon>
 
                       <ActionIcon
@@ -136,7 +165,8 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
             variant="contained"
             color="primary"
             size="small"
-            onClick={editProfile}
+            onClick={() => editProfile()}
+            style={{ width: '100%' }}
           >
             New
           </Button>

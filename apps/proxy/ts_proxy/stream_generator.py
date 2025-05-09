@@ -13,6 +13,7 @@ from .utils import create_ts_packet, get_logger
 from .redis_keys import RedisKeys
 from .utils import get_logger
 from .constants import ChannelMetadataField
+from .config_helper import ConfigHelper  # Add this import
 
 logger = get_logger()
 
@@ -95,7 +96,7 @@ class StreamGenerator:
     def _wait_for_initialization(self):
         """Wait for channel initialization to complete, sending keepalive packets."""
         initialization_start = time.time()
-        max_init_wait = getattr(Config, 'CLIENT_WAIT_TIMEOUT', 30)
+        max_init_wait = ConfigHelper.client_wait_timeout()
         keepalive_interval = 0.5
         last_keepalive = 0
         proxy_server = ProxyServer.get_instance()
@@ -156,7 +157,7 @@ class StreamGenerator:
             return False
 
         # Client state tracking - use config for initial position
-        initial_behind = getattr(Config, 'INITIAL_BEHIND_CHUNKS', 10)
+        initial_behind = ConfigHelper.initial_behind_chunks()
         current_buffer_index = buffer.index
         self.local_index = max(0, current_buffer_index - initial_behind)
 
@@ -337,8 +338,8 @@ class StreamGenerator:
     def _is_timeout(self):
         """Check if the stream has timed out."""
         # Get a more generous timeout for stream switching
-        stream_timeout = getattr(Config, 'STREAM_TIMEOUT', 10)
-        failover_grace_period = getattr(Config, 'FAILOVER_GRACE_PERIOD', 20)
+        stream_timeout = ConfigHelper.stream_timeout()
+        failover_grace_period = ConfigHelper.failover_grace_period()
         total_timeout = stream_timeout + failover_grace_period
 
         # Disconnect after long inactivity
@@ -415,7 +416,7 @@ class StreamGenerator:
 
             def delayed_shutdown():
                 # Use the config setting instead of hardcoded value
-                shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 5)
+                shutdown_delay = ConfigHelper.channel_shutdown_delay()  # Use ConfigHelper
                 logger.info(f"Waiting {shutdown_delay}s before checking if channel should be stopped")
                 gevent.sleep(shutdown_delay)  # Replace time.sleep
 

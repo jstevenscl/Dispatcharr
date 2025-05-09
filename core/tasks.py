@@ -15,6 +15,8 @@ from apps.epg.models import EPGSource
 from apps.m3u.tasks import refresh_single_m3u_account
 from apps.epg.tasks import refresh_epg_data
 from .models import CoreSettings
+from apps.channels.models import Stream, ChannelStream
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -249,3 +251,35 @@ def fetch_channel_stats():
             "data": {"success": True, "type": "channel_stats", "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})}
         },
     )
+
+@shared_task
+def rehash_streams(keys):
+    batch_size = 1000
+    queryset = Stream.objects.all()
+
+    hash_keys = {}
+    total_records = queryset.count()
+    for start in range(0, total_records, batch_size):
+        with transaction.atomic():
+            batch = queryset[start:start + batch_size]
+            for obj in batch:
+                stream_hash = Stream.generate_hash_key(obj.name, obj.url, obj.tvg_id, keys)
+                if stream_hash in hash_keys:
+                    # Handle duplicate keys and remove any without channels
+                    stream_channels = ChannelStream.objects.filter(stream_id=obj.id).count()
+                    if stream_channels == 0:
+                        obj.delete()
+                        continue
+
+
+                    existing_stream_channels = ChannelStream.objects.filter(stream_id=hash_keys[stream_hash]).count()
+                    if existing_stream_channels == 0:
+                        Stream.objects.filter(id=hash_keys[stream_hash]).delete()
+
+                obj.stream_hash = stream_hash
+                obj.save(update_fields=['stream_hash'])
+                hash_keys[stream_hash] = obj.id
+
+        logger.debug(f"Re-hashed {batch_size} streams")
+
+    logger.debug(f"Re-hashing complete")

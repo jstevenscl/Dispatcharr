@@ -37,7 +37,7 @@ import useEPGsStore from '../../store/epgs';
 import { Dropzone } from '@mantine/dropzone';
 import { FixedSizeList as List } from 'react-window';
 
-const Channel = ({ channel = null, isOpen, onClose }) => {
+const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const theme = useMantineTheme();
 
   const listRef = useRef(null);
@@ -59,7 +59,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
   const [epgPopoverOpened, setEpgPopoverOpened] = useState(false);
   const [logoPopoverOpened, setLogoPopoverOpened] = useState(false);
-  const [selectedEPG, setSelectedEPG] = useState({});
+  const [selectedEPG, setSelectedEPG] = useState('');
   const [tvgFilter, setTvgFilter] = useState('');
   const [logoFilter, setLogoFilter] = useState('');
   const [logoOptions, setLogoOptions] = useState([]);
@@ -94,10 +94,11 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   const formik = useFormik({
     initialValues: {
       name: '',
-      channel_number: 0,
-      channel_group_id: Object.keys(channelGroups)[0],
+      channel_number: '',  // Change from 0 to empty string for consistency
+      channel_group_id: Object.keys(channelGroups).length > 0 ? Object.keys(channelGroups)[0] : '',
       stream_profile_id: '0',
       tvg_id: '',
+      tvc_guide_stationid: '',
       epg_data_id: '',
       logo_id: '',
     },
@@ -121,6 +122,9 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
         // Ensure tvg_id is properly included (no empty strings)
         formattedValues.tvg_id = formattedValues.tvg_id || null;
+
+        // Ensure tvc_guide_stationid is properly included (no empty strings)
+        formattedValues.tvc_guide_stationid = formattedValues.tvc_guide_stationid || null;
 
         if (channel) {
           // If there's an EPG to set, use our enhanced endpoint
@@ -173,25 +177,26 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   useEffect(() => {
     if (channel) {
       if (channel.epg_data_id) {
-        const epgSource = epgs[tvgsById[channel.epg_data_id].epg_source];
-        setSelectedEPG(`${epgSource.id}`);
+        const epgSource = epgs[tvgsById[channel.epg_data_id]?.epg_source];
+        setSelectedEPG(epgSource ? `${epgSource.id}` : '');
       }
 
       formik.setValues({
-        name: channel.name,
-        channel_number: channel.channel_number,
+        name: channel.name || '',
+        channel_number: channel.channel_number !== null ? channel.channel_number : '',
         channel_group_id: channel.channel_group_id
           ? `${channel.channel_group_id}`
           : '',
         stream_profile_id: channel.stream_profile_id
           ? `${channel.stream_profile_id}`
           : '0',
-        tvg_id: channel.tvg_id,
+        tvg_id: channel.tvg_id || '',
+        tvc_guide_stationid: channel.tvc_guide_stationid || '',
         epg_data_id: channel.epg_data_id ?? '',
-        logo_id: `${channel.logo_id}`,
+        logo_id: channel.logo_id ? `${channel.logo_id}` : '',
       });
 
-      setChannelStreams(channel.streams);
+      setChannelStreams(channel.streams || []);
     } else {
       formik.resetForm();
       setTvgFilter('');
@@ -338,6 +343,20 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
   //     },
   //   },
   // });
+
+  // Update the handler for when channel group modal is closed
+  const handleChannelGroupModalClose = (newGroup) => {
+    setChannelGroupModalOpen(false);
+
+    // If a new group was created and returned, update the form with it
+    if (newGroup && newGroup.id) {
+      // Preserve all current form values while updating just the channel_group_id
+      formik.setValues({
+        ...formik.values,
+        channel_group_id: `${newGroup.id}`
+      });
+    }
+  };
 
   if (!isOpen) {
     return <></>;
@@ -565,7 +584,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                         height={200} // Set max height for visible items
                         itemCount={filteredLogos.length}
                         itemSize={20} // Adjust row height for each item
-                        width="100%"
+                        style={{ width: '100%' }}
                         ref={logoListRef}
                       >
                         {({ index, style }) => (
@@ -660,6 +679,16 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                 size="xs"
               />
 
+              <TextInput
+                id="tvc_guide_stationid"
+                name="tvc_guide_stationid"
+                label="Gracenote StationId"
+                value={formik.values.tvc_guide_stationid}
+                onChange={formik.handleChange}
+                error={formik.errors.tvc_guide_stationid ? formik.touched.tvc_guide_stationid : ''}
+                size="xs"
+              />
+
               <Popover
                 opened={epgPopoverOpened}
                 onChange={setEpgPopoverOpened}
@@ -743,7 +772,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                       height={200} // Set max height for visible items
                       itemCount={filteredTvgs.length}
                       itemSize={40} // Adjust row height for each item
-                      width="100%"
+                      style={{ width: '100%' }}
                       ref={listRef}
                     >
                       {({ index, style }) => (
@@ -752,7 +781,7 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
                             key={filteredTvgs[index].id}
                             variant="subtle"
                             color="gray"
-                            fullWidth
+                            style={{ width: '100%' }}
                             justify="left"
                             size="xs"
                             onClick={() => {
@@ -804,10 +833,10 @@ const Channel = ({ channel = null, isOpen, onClose }) => {
 
       <ChannelGroupForm
         isOpen={channelGroupModelOpen}
-        onClose={() => setChannelGroupModalOpen(false)}
+        onClose={handleChannelGroupModalClose}
       />
     </>
   );
 };
 
-export default Channel;
+export default ChannelForm;

@@ -11,6 +11,14 @@ const usePlaylistsStore = create((set) => ({
   profileSearchPreview: '',
   profileResult: '',
 
+  // Add a state variable to trigger M3U editing
+  editPlaylistId: null,
+
+  setEditPlaylistId: (id) =>
+    set((state) => ({
+      editPlaylistId: id,
+    })),
+
   fetchPlaylists: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -65,13 +73,37 @@ const usePlaylistsStore = create((set) => ({
       // @TODO: remove playlist profiles here
     })),
 
-  setRefreshProgress: (data) =>
-    set((state) => ({
-      refreshProgress: {
-        ...state.refreshProgress,
-        [data.account]: data,
-      },
-    })),
+  setRefreshProgress: (accountIdOrData, data) =>
+    set((state) => {
+      // If called with two parameters, it's the direct setter
+      if (data !== undefined) {
+        return {
+          refreshProgress: {
+            ...state.refreshProgress,
+            [accountIdOrData]: data,
+          },
+        };
+      }
+
+      // If called with WebSocket data, preserve 'initializing' status
+      // until we get a real progress update from the server
+      const accountId = accountIdOrData.account;
+      const existingProgress = state.refreshProgress[accountId];
+
+      // Don't replace 'initializing' status with empty/early server messages
+      if (existingProgress &&
+        existingProgress.action === 'initializing' &&
+        accountIdOrData.progress === 0) {
+        return state; // Keep showing 'initializing' until real progress comes
+      }
+
+      return {
+        refreshProgress: {
+          ...state.refreshProgress,
+          [accountId]: accountIdOrData,
+        },
+      };
+    }),
 
   removeRefreshProgress: (id) =>
     set((state) => {

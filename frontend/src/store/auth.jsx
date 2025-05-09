@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import API from '../api';
+import api from '../api';
+import useSettingsStore from './settings';
 import useChannelsStore from './channels';
-import useUserAgentsStore from './userAgents';
 import usePlaylistsStore from './playlists';
 import useEPGsStore from './epgs';
 import useStreamProfilesStore from './streamProfiles';
-import useSettingsStore from './settings';
+import useUserAgentsStore from './userAgents';
 
 const decodeToken = (token) => {
   if (!token) return null;
@@ -20,31 +20,45 @@ const isTokenExpired = (expirationTime) => {
 };
 
 const useAuthStore = create((set, get) => ({
+  isAuthenticated: false,
+  isInitialized: false,
+  needsSuperuser: false,
+  user: {
+    username: '',
+    email: '',
+  },
+  isLoading: false,
+  error: null,
+
+  initData: async () => {
+    // Ensure settings are loaded first
+    await useSettingsStore.getState().fetchSettings();
+
+    try {
+      // Only after settings are loaded, fetch the dependent data
+      await Promise.all([
+        useChannelsStore.getState().fetchChannels(),
+        useChannelsStore.getState().fetchChannelGroups(),
+        usePlaylistsStore.getState().fetchPlaylists(),
+        useEPGsStore.getState().fetchEPGs(),
+        useEPGsStore.getState().fetchEPGData(),
+        useChannelsStore.getState().fetchLogos(),
+        useStreamProfilesStore.getState().fetchProfiles(),
+        useUserAgentsStore.getState().fetchUserAgents(),
+      ]);
+    } catch (error) {
+      console.error("Error initializing data:", error);
+    }
+  },
+
   accessToken: localStorage.getItem('accessToken') || null,
   refreshToken: localStorage.getItem('refreshToken') || null,
   tokenExpiration: localStorage.getItem('tokenExpiration') || null,
   superuserExists: true,
-  isAuthenticated: false,
 
   setIsAuthenticated: (isAuthenticated) => set({ isAuthenticated }),
 
   setSuperuserExists: (superuserExists) => set({ superuserExists }),
-
-  initData: async () => {
-    await Promise.all([
-      useChannelsStore.getState().fetchChannels(),
-      useChannelsStore.getState().fetchChannelGroups(),
-      useChannelsStore.getState().fetchLogos(),
-      useChannelsStore.getState().fetchChannelProfiles(),
-      useChannelsStore.getState().fetchRecordings(),
-      useUserAgentsStore.getState().fetchUserAgents(),
-      usePlaylistsStore.getState().fetchPlaylists(),
-      useEPGsStore.getState().fetchEPGs(),
-      useEPGsStore.getState().fetchEPGData(),
-      useStreamProfilesStore.getState().fetchProfiles(),
-      useSettingsStore.getState().fetchSettings(),
-    ]);
-  },
 
   getToken: async () => {
     const tokenExpiration = localStorage.getItem('tokenExpiration');
@@ -61,7 +75,7 @@ const useAuthStore = create((set, get) => ({
   // Action to login
   login: async ({ username, password }) => {
     try {
-      const response = await API.login(username, password);
+      const response = await api.login(username, password);
       if (response.access) {
         const expiration = decodeToken(response.access);
         set({
@@ -83,11 +97,11 @@ const useAuthStore = create((set, get) => ({
   // Action to refresh the token
   getRefreshToken: async () => {
     const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) return;
+    if (!refreshToken) return false; // Add explicit return here
 
     try {
-      const data = await API.refreshToken(refreshToken);
-      if (data.access) {
+      const data = await api.refreshToken(refreshToken);
+      if (data && data.access) {
         set({
           accessToken: data.access,
           tokenExpiration: decodeToken(data.access),
@@ -98,12 +112,12 @@ const useAuthStore = create((set, get) => ({
 
         return data.access;
       }
+      return false; // Add explicit return for when data.access is not available
     } catch (error) {
       console.error('Token refresh failed:', error);
       get().logout();
+      return false; // Add explicit return after error
     }
-
-    return false;
   },
 
   // Action to logout

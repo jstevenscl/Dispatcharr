@@ -10,6 +10,7 @@ from django.core.cache import cache
 import os
 from rest_framework.decorators import action
 from django.conf import settings
+from .tasks import refresh_m3u_groups
 
 # Import all models, including UserAgent.
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
@@ -56,6 +57,10 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
         # Now call super().create() to create the instance
         response = super().create(request, *args, **kwargs)
 
+        print(response.data.get('account_type'))
+        if response.data.get('account_type') == M3UAccount.Types.XC:
+            refresh_m3u_groups(response.data.get('id'))
+
         # After the instance is created, return the response
         return response
 
@@ -88,6 +93,21 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
 
         # After the instance is created, return the response
         return response
+
+    def partial_update(self, request, *args, **kwargs):
+        """Handle partial updates with special logic for is_active field"""
+        instance = self.get_object()
+
+        # Check if we're toggling is_active
+        if 'is_active' in request.data and instance.is_active != request.data['is_active']:
+            # Set appropriate status based on new is_active value
+            if request.data['is_active']:
+                request.data['status'] = M3UAccount.Status.IDLE
+            else:
+                request.data['status'] = M3UAccount.Status.DISABLED
+
+        # Continue with regular partial update
+        return super().partial_update(request, *args, **kwargs)
 
 class M3UFilterViewSet(viewsets.ModelViewSet):
     """Handles CRUD operations for M3U filters"""

@@ -86,6 +86,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           id="name"
           name="name"
           label="Name"
+          description="Unique identifier for this EPG source"
           {...form.getInputProps('name')}
           key={form.key('name')}
         />
@@ -94,6 +95,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           id="url"
           name="url"
           label="URL"
+          description="Direct URL to the XMLTV file or API endpoint"
           {...form.getInputProps('url')}
           key={form.key('url')}
         />
@@ -102,6 +104,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           id="api_key"
           name="api_key"
           label="API Key"
+          description="API key for services that require authentication (like Schedules Direct)"
           {...form.getInputProps('api_key')}
           key={form.key('api_key')}
         />
@@ -110,6 +113,7 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
           id="source_type"
           name="source_type"
           label="Source Type"
+          description="Format of the EPG data source"
           {...form.getInputProps('source_type')}
           key={form.key('source_type')}
           data={[
@@ -126,15 +130,26 @@ const EPG = ({ epg = null, isOpen, onClose }) => {
 
         <NumberInput
           label="Refresh Interval (hours)"
+          description={<>How often to automatically refresh EPG data<br />
+            (0 to disable automatic refreshes)</>}
           {...form.getInputProps('refresh_interval')}
           key={form.key('refresh_interval')}
+        />
+
+        <Checkbox
+          id="is_active"
+          name="is_active"
+          label="Is Active"
+          description="Enable or disable this EPG source"
+          {...form.getInputProps('is_active', { type: 'checkbox' })}
+          key={form.key('is_active')}
         />
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
           <Button
             type="submit"
             variant="contained"
-            disabled={form.submiting}
+            disabled={form.submitting}
             size="small"
           >
             Submit

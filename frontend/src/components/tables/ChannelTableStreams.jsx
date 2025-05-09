@@ -101,7 +101,7 @@ const DraggableRow = ({ row, index }) => {
             }}
           >
             <Flex align="center" style={{ height: '100%' }}>
-              <Text size="xs">
+              <Text component="div" size="xs">
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </Text>
             </Flex>

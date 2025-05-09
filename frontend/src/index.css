@@ -1,6 +1,7 @@
 /* frontend/src/index.css */
 :root {
-  --separator-border: transparent !important; /* Override Allotment's default border */
+  --separator-border: transparent !important;
+  /* Override Allotment's default border */
   --sash-hover-size: 3px !important;
 }
 
@@ -11,7 +12,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #2E2F34; /* Ensure the global background is dark */
+  background-color: #2E2F34;
+  /* Ensure the global background is dark */
   color: #ffffff;
 }
 
@@ -24,12 +26,15 @@ code {
 ::-webkit-scrollbar {
   width: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: #3B3C41;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #555;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #777;
 }
@@ -45,7 +50,7 @@ table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Tab
 }
 
 .table-input-header input::placeholder {
-  color: rgb(207,207,207);
+  color: rgb(207, 207, 207);
   font-weight: normal;
   font-size: 14px;
 }
@@ -59,7 +64,8 @@ table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Tab
 /* Styling for the sash (splitter) */
 .sash.sash-vertical {
   position: relative;
-  width: 4px; /* Thin invisible divider */
+  width: 4px;
+  /* Thin invisible divider */
   background: transparent;
 }
 
@@ -70,9 +76,12 @@ table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Tab
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 6px; /* Width of the short bar */
-  height: 50px; /* Short bar length */
-  background: rgba(255, 255, 255, 0.2); /* Light color similar to your screenshot */
+  width: 6px;
+  /* Width of the short bar */
+  height: 50px;
+  /* Short bar length */
+  background: rgba(255, 255, 255, 0.2);
+  /* Light color similar to your screenshot */
   border-radius: 4px;
 }
 
@@ -88,6 +97,16 @@ table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Tab
   overflow: auto;
 }
 
+/* Fix for "will-change memory consumption is too high" error */
+* {
+  will-change: auto !important;
+}
+
+/* For elements that specifically need transforms (like draggable elements) */
+[data-draggable="true"] {
+  transform: translate3d(0, 0, 0) !important;
+}
+
 /* styles.css */
 .custom-multiselect-input {
   display: flex;
@@ -98,6 +117,8 @@ table.mrt-table tr.mantine-Table-tr.mantine-Table-tr-detail-panel td.mantine-Tab
 }
 
 .custom-multiselect .mantine-MultiSelect-input {
-  min-height: 30px;  /* Set a minimum height */
-  max-height: 30px;  /* Set max height */
+  min-height: 30px;
+  /* Set a minimum height */
+  max-height: 30px;
+  /* Set max height */
 }

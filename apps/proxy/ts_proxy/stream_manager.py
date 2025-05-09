@@ -37,6 +37,8 @@ class StreamManager:
         self.current_response = None
         self.current_session = None
         self.url_switching = False
+        self.url_switch_start_time = 0
+        self.url_switch_timeout = ConfigHelper.url_switch_timeout()
         # Store worker_id for ownership checks
         self.worker_id = worker_id
 
@@ -144,6 +146,13 @@ class StreamManager:
 
             # Main stream switching loop - we'll try different streams if needed
             while self.running and stream_switch_attempts <= max_stream_switches:
+                # Check for stuck switching state
+                if self.url_switching and time.time() - self.url_switch_start_time > self.url_switch_timeout:
+                    logger.warning(f"URL switching state appears stuck for channel {self.channel_id} "
+                                 f"({time.time() - self.url_switch_start_time:.1f}s > {self.url_switch_timeout}s timeout). "
+                                 f"Resetting switching state.")
+                    self._reset_url_switching_state()
+
                 # Check stream type before connecting
                 stream_type = detect_stream_type(self.url)
                 if self.transcode == False and stream_type == StreamType.HLS:
@@ -568,44 +577,49 @@ class StreamManager:
 
         # CRITICAL: Set a flag to prevent immediate reconnection with old URL
         self.url_switching = True
+        self.url_switch_start_time = time.time()
 
-        # Check which type of connection we're using and close it properly
-        if self.transcode or self.socket:
-            logger.debug("Closing transcode process before URL change")
-            self._close_socket()
-        else:
-            logger.debug("Closing HTTP connection before URL change")
-            self._close_connection()
+        try:
+            # Check which type of connection we're using and close it properly
+            if self.transcode or self.socket:
+                logger.debug("Closing transcode process before URL change")
+                self._close_socket()
+            else:
+                logger.debug("Closing HTTP connection before URL change")
+                self._close_connection()
 
-        # Update URL and reset connection state
-        old_url = self.url
-        self.url = new_url
-        self.connected = False
+            # Update URL and reset connection state
+            old_url = self.url
+            self.url = new_url
+            self.connected = False
 
-        # Update stream ID if provided
-        if stream_id:
-            old_stream_id = self.current_stream_id
-            self.current_stream_id = stream_id
-            # Add stream ID to tried streams for proper tracking
-            self.tried_stream_ids.add(stream_id)
-            logger.info(f"Updated stream ID from {old_stream_id} to {stream_id} for channel {self.buffer.channel_id}")
+            # Update stream ID if provided
+            if stream_id:
+                old_stream_id = self.current_stream_id
+                self.current_stream_id = stream_id
+                # Add stream ID to tried streams for proper tracking
+                self.tried_stream_ids.add(stream_id)
+                logger.info(f"Updated stream ID from {old_stream_id} to {stream_id} for channel {self.buffer.channel_id}")
 
-        # Reset retry counter to allow immediate reconnect
-        self.retry_count = 0
+            # Reset retry counter to allow immediate reconnect
+            self.retry_count = 0
 
-        # Also reset buffer position to prevent stale data after URL change
-        if hasattr(self.buffer, 'reset_buffer_position'):
-            try:
-                self.buffer.reset_buffer_position()
-                logger.debug("Reset buffer position for clean URL switch")
-            except Exception as e:
-                logger.warning(f"Failed to reset buffer position: {e}")
+            # Also reset buffer position to prevent stale data after URL change
+            if hasattr(self.buffer, 'reset_buffer_position'):
+                try:
+                    self.buffer.reset_buffer_position()
+                    logger.debug("Reset buffer position for clean URL switch")
+                except Exception as e:
+                    logger.warning(f"Failed to reset buffer position: {e}")
 
-        # Done with URL switch
-        self.url_switching = False
-        logger.info(f"Stream switch completed for channel {self.buffer.channel_id}")
-
-        return True
+            return True
+        except Exception as e:
+            logger.error(f"Error during URL update: {e}", exc_info=True)
+            return False
+        finally:
+            # CRITICAL FIX: Always reset the URL switching flag when done, whether successful or not
+            self.url_switching = False
+            logger.info(f"Stream switch completed for channel {self.buffer.channel_id}")
 
     def should_retry(self) -> bool:
         """Check if connection retry is allowed"""
@@ -684,8 +698,14 @@ class StreamManager:
 
             # Don't try to reconnect if we're already switching URLs
             if self.url_switching:
-                logger.info("URL switching already in progress, skipping reconnect")
-                return
+                # Add timeout check to prevent permanent deadlock
+                if time.time() - self.url_switch_start_time > self.url_switch_timeout:
+                    logger.warning(f"URL switching has been in progress too long ({time.time() - self.url_switch_start_time:.1f}s), "
+                                 f"resetting switching state and allowing reconnect")
+                    self._reset_url_switching_state()
+                else:
+                    logger.info("URL switching already in progress, skipping reconnect")
+                    return False
 
             # Close existing connection
             if self.transcode or self.socket:
@@ -1061,3 +1081,10 @@ class StreamManager:
         except Exception as e:
             logger.error(f"Error trying next stream for channel {self.channel_id}: {e}", exc_info=True)
             return False
+
+    # Add a new helper method to safely reset the URL switching state
+    def _reset_url_switching_state(self):
+        """Safely reset the URL switching state if it gets stuck"""
+        self.url_switching = False
+        self.url_switch_start_time = 0
+        logger.info(f"Reset URL switching state for channel {self.channel_id}")

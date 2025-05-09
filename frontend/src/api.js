@@ -347,6 +347,11 @@ export default class API {
         payload.tvg_id = null;
       }
 
+      // Ensure tvc_guide_stationid is included properly (not as empty string)
+      if (payload.tvc_guide_stationid === '') {
+        payload.tvc_guide_stationid = null;
+      }
+
       // Handle channel_number properly
       if (payload.channel_number === '') {
         payload.channel_number = null;
@@ -370,6 +375,31 @@ export default class API {
       return response;
     } catch (e) {
       errorNotification('Failed to update channel', e);
+    }
+  }
+
+  static async updateChannels(ids, values) {
+    const body = [];
+    for (const id in ids) {
+      body.push({
+        id,
+        ...values,
+      });
+    }
+
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/edit/bulk/`,
+        {
+          method: 'PATCH',
+          body,
+        }
+      );
+
+      useChannelsStore.getState().updateChannels(response);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update channels', e);
     }
   }
 
@@ -403,15 +433,12 @@ export default class API {
     }
   }
 
-  static async assignChannelNumbers(channelIds) {
+  static async assignChannelNumbers(channelIds, startingNum = 1) {
     try {
       const response = await request(`${host}/api/channels/channels/assign/`, {
         method: 'POST',
-        body: { channel_order: channelIds },
+        body: { channel_ids: channelIds, starting_number: startingNum },
       });
-
-      // Optionally refesh the channel list in Zustand
-      // await useChannelsStore.getState().fetchChannels();
 
       return response;
     } catch (e) {
@@ -655,6 +682,10 @@ export default class API {
   }
 
   static async addPlaylist(values) {
+    if (values.custom_properties) {
+      values.custom_properties = JSON.stringify(values.custom_properties);
+    }
+
     try {
       let body = null;
       if (values.file) {
@@ -719,10 +750,26 @@ export default class API {
     }
   }
 
-  static async updatePlaylist(values) {
+  static async updatePlaylist(values, isToggle = false) {
     const { id, ...payload } = values;
 
     try {
+      // If this is just toggling the active state, make a simpler request
+      if (
+        isToggle &&
+        'is_active' in payload &&
+        Object.keys(payload).length === 1
+      ) {
+        const response = await request(`${host}/api/m3u/accounts/${id}/`, {
+          method: 'PATCH',
+          body: { is_active: payload.is_active },
+        });
+
+        usePlaylistsStore.getState().updatePlaylist(response);
+        return response;
+      }
+
+      // Original implementation for full updates
       let body = null;
       if (payload.file) {
         delete payload.server_url;
@@ -740,6 +787,7 @@ export default class API {
         body = { ...payload };
         delete body.file;
       }
+      console.log(body);
 
       const response = await request(`${host}/api/m3u/accounts/${id}/`, {
         method: 'PATCH',
@@ -803,10 +851,26 @@ export default class API {
     }
   }
 
-  static async updateEPG(values) {
+  static async updateEPG(values, isToggle = false) {
     const { id, ...payload } = values;
 
     try {
+      // If this is just toggling the active state, make a simpler request
+      if (
+        isToggle &&
+        'is_active' in payload &&
+        Object.keys(payload).length === 1
+      ) {
+        const response = await request(`${host}/api/epg/sources/${id}/`, {
+          method: 'PATCH',
+          body: { is_active: payload.is_active },
+        });
+
+        useEPGsStore.getState().updateEPG(response);
+        return response;
+      }
+
+      // Original implementation for full updates
       let body = null;
       if (payload.files) {
         body = new FormData();
@@ -1246,10 +1310,13 @@ export default class API {
 
   static async switchStream(channelId, streamId) {
     try {
-      const response = await request(`${host}/proxy/ts/change_stream/${channelId}`, {
-        method: 'POST',
-        body: { stream_id: streamId },
-      });
+      const response = await request(
+        `${host}/proxy/ts/change_stream/${channelId}`,
+        {
+          method: 'POST',
+          body: { stream_id: streamId },
+        }
+      );
 
       return response;
     } catch (e) {
@@ -1260,10 +1327,13 @@ export default class API {
 
   static async nextStream(channelId, streamId) {
     try {
-      const response = await request(`${host}/proxy/ts/next_stream/${channelId}`, {
-        method: 'POST',
-        body: { stream_id: streamId },
-      });
+      const response = await request(
+        `${host}/proxy/ts/next_stream/${channelId}`,
+        {
+          method: 'POST',
+          body: { stream_id: streamId },
+        }
+      );
 
       return response;
     } catch (e) {
@@ -1299,6 +1369,18 @@ export default class API {
       return response;
     } catch (e) {
       errorNotification('Failed to update channel EPGs', e);
+    }
+  }
+
+  static async getChannel(id) {
+    try {
+      const response = await request(
+        `${host}/api/channels/channels/${id}/?include_streams=true`
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch channel details', e);
+      return null;
     }
   }
 }

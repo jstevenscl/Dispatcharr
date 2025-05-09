@@ -4,10 +4,21 @@
 export PUID=${PUID:-1000}
 export PGID=${PGID:-1000}
 
-# Create group if it doesn't exist
-if ! getent group "$PGID" >/dev/null 2>&1; then
+# Check if group with PGID exists
+if getent group "$PGID" >/dev/null 2>&1; then
+    # Group exists, check if it's named 'dispatch'
+    existing_group=$(getent group "$PGID" | cut -d: -f1)
+    if [ "$existing_group" != "dispatch" ]; then
+        # Rename the existing group to 'dispatch'
+        groupmod -n "dispatch" "$existing_group"
+        echo "Group $existing_group with GID $PGID renamed to dispatch"
+    fi
+else
+    # Group doesn't exist, create it
     groupadd -g "$PGID" dispatch
+    echo "Group dispatch with GID $PGID created"
 fi
+
 # Create user if it doesn't exist
 if ! getent passwd $PUID > /dev/null 2>&1; then
     useradd -u $PUID -g $PGID -m $POSTGRES_USER

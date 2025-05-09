@@ -48,6 +48,8 @@ class TSConfig(BaseConfig):
     CHANNEL_INIT_GRACE_PERIOD = 5  # How long to wait for first client after initialization (seconds)
     CLIENT_HEARTBEAT_INTERVAL = 1  # How often to send client heartbeats (seconds)
     GHOST_CLIENT_MULTIPLIER = 5.0  # How many heartbeat intervals before client considered ghost (5 would mean 5 secondsif heartbeat interval is 1)
+    CLIENT_WAIT_TIMEOUT = 30  # Seconds to wait for client to connect
+
 
     # TS packets are 188 bytes
     # Make chunk size a multiple of TS packet size for perfect alignment
@@ -58,7 +60,7 @@ class TSConfig(BaseConfig):
     MAX_RECONNECT_ATTEMPTS = 3           # Maximum reconnects to try before switching streams
     MIN_STABLE_TIME_BEFORE_RECONNECT = 30  # Minimum seconds a stream must be stable to try reconnect
     FAILOVER_GRACE_PERIOD = 20           # Extra time (seconds) to allow for stream switching before disconnecting clients
-
+    URL_SWITCH_TIMEOUT = 20   # Max time allowed for a stream switch operation
 
 
 

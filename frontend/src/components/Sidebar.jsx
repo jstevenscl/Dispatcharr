@@ -218,6 +218,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                 label="Public IP"
                 ref={publicIPRef}
                 value={environment.public_ip}
+                readOnly={true}
                 leftSection={
                   environment.country_code && (
                     <img
