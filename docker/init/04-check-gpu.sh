@@ -82,30 +82,46 @@ fi
 
 # Check NVIDIA Container Toolkit support
 echo "🔍 Checking NVIDIA container runtime support..."
-if [ "$NVIDIA_FOUND" = true ] && command -v nvidia-container-cli >/dev/null 2>&1; then
-    echo "✅ NVIDIA Container Toolkit detected (nvidia-container-cli found)."
+
+# More reliable detection of NVIDIA Container Runtime
+NVIDIA_RUNTIME_ACTIVE=false
+
+# Method 1: Check for nvidia-container-cli tool
+if command -v nvidia-container-cli >/dev/null 2>&1; then
+    NVIDIA_RUNTIME_ACTIVE=true
+    echo "✅ NVIDIA Container Runtime detected (nvidia-container-cli found)."
 
     if nvidia-container-cli info >/dev/null 2>&1; then
         echo "✅ NVIDIA container runtime is functional."
     else
         echo "⚠️ nvidia-container-cli found, but 'info' command failed. Runtime may be misconfigured."
     fi
-elif [ "$NVIDIA_FOUND" = true ] && [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ]; then
-    echo "✅ NVIDIA Container Toolkit detected through environment variables."
-    echo "   Your Docker Compose configuration with 'driver: nvidia' and 'capabilities: [gpu]' is working correctly."
+fi
+
+# Method 2: Check for NVIDIA Container Runtime specific files
+if [ -e "/dev/.nv" ] || [ -e "/.nv" ] || [ -e "/.nvidia-container-runtime" ]; then
+    NVIDIA_RUNTIME_ACTIVE=true
+    echo "✅ NVIDIA Container Runtime files detected."
+fi
+
+# Method 3: Check cgroup information for NVIDIA
+if grep -q "nvidia" /proc/self/cgroup 2>/dev/null; then
+    NVIDIA_RUNTIME_ACTIVE=true
+    echo "✅ NVIDIA Container Runtime cgroups detected."
+fi
+
+# Final verdict based on hardware AND runtime
+if [ "$NVIDIA_FOUND" = true ] && [ "$NVIDIA_RUNTIME_ACTIVE" = true ]; then
+    echo "✅ NVIDIA Container Runtime is properly configured with hardware access."
+elif [ "$NVIDIA_FOUND" = true ] && [ "$NVIDIA_RUNTIME_ACTIVE" = false ]; then
+    echo "ℹ️ NVIDIA GPU detected, but using direct device passthrough instead of Container Runtime."
+    echo "   This works but consider using the 'deploy: resources: reservations: devices:' method in docker-compose."
+elif [ "$NVIDIA_FOUND" = false ] && [ "$NVIDIA_RUNTIME_ACTIVE" = true ]; then
+    echo "⚠️ NVIDIA Container Runtime appears to be configured, but no NVIDIA devices found."
+    echo "   Check that your host has NVIDIA drivers installed and GPUs are properly passed to the container."
 else
-    if [ "$NVIDIA_ENV_MISMATCH" = true ]; then
-        echo "⚠️ NVIDIA environment variables detected but no NVIDIA hardware found."
-        echo "   Your Docker Compose has NVIDIA configuration (driver: nvidia, capabilities: [gpu]),"
-        echo "   but actual NVIDIA devices are not available. Instead found Intel/AMD devices."
-        echo "   Update your Docker Compose to match your actual hardware."
-    elif [ "$NVIDIA_FOUND" = true ]; then
-        echo "ℹ️ NVIDIA devices found but Container Toolkit not detected."
-        echo "   You appear to be using direct device passthrough for NVIDIA GPU access."
-        echo "   This method works, but consider using Docker Compose's 'deploy' configuration."
-    else
-        echo "ℹ️ No NVIDIA GPU hardware or toolkit detected."
-    fi
+    # No need to show NVIDIA environment variable warnings if they're default in the container
+    echo "ℹ️ Using Intel/AMD GPU hardware for acceleration."
 fi
 
 # Run nvidia-smi if available
