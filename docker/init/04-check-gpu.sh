@@ -37,15 +37,19 @@ echo "🔍 Checking user group memberships..."
 VIDEO_GID=$(getent group video | cut -d: -f3)
 RENDER_GID=$(getent group render | cut -d: -f3)
 NVIDIA_CONTAINER_TOOLKIT_FOUND=false
+NVIDIA_ENV_MISMATCH=false
 
 # Check if NVIDIA Container Toolkit is present through environment or CLI tool
-if command -v nvidia-container-cli >/dev/null 2>&1; then
+# IMPORTANT: Only mark as found if both env vars AND actual NVIDIA devices exist
+if [ "$NVIDIA_FOUND" = true ] && command -v nvidia-container-cli >/dev/null 2>&1; then
     NVIDIA_CONTAINER_TOOLKIT_FOUND=true
-# Check for environment variables set by NVIDIA Container Runtime
-elif [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ]; then
+# Check for environment variables set by NVIDIA Container Runtime, but only if NVIDIA hardware exists
+elif [ "$NVIDIA_FOUND" = true ] && [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ]; then
     NVIDIA_CONTAINER_TOOLKIT_FOUND=true
     echo "✅ NVIDIA Container Toolkit detected (via environment variables)."
     echo "   The container is properly configured with Docker Compose's 'driver: nvidia' syntax."
+elif [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ] && [ "$NVIDIA_FOUND" = false ]; then
+    NVIDIA_ENV_MISMATCH=true
 fi
 
 # For NVIDIA GPUs with Container Toolkit, video group is optional
@@ -78,7 +82,7 @@ fi
 
 # Check NVIDIA Container Toolkit support
 echo "🔍 Checking NVIDIA container runtime support..."
-if command -v nvidia-container-cli >/dev/null 2>&1; then
+if [ "$NVIDIA_FOUND" = true ] && command -v nvidia-container-cli >/dev/null 2>&1; then
     echo "✅ NVIDIA Container Toolkit detected (nvidia-container-cli found)."
 
     if nvidia-container-cli info >/dev/null 2>&1; then
@@ -86,24 +90,21 @@ if command -v nvidia-container-cli >/dev/null 2>&1; then
     else
         echo "⚠️ nvidia-container-cli found, but 'info' command failed. Runtime may be misconfigured."
     fi
-elif [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ]; then
+elif [ "$NVIDIA_FOUND" = true ] && [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ]; then
     echo "✅ NVIDIA Container Toolkit detected through environment variables."
     echo "   Your Docker Compose configuration with 'driver: nvidia' and 'capabilities: [gpu]' is working correctly."
-    echo "   This is the modern, recommended way to use NVIDIA GPUs with containers."
 else
-    echo "ℹ️ NVIDIA Container Toolkit not detected."
-
-    # Only show this message if NVIDIA devices are found but toolkit is missing
-    if [ "$NVIDIA_FOUND" = true ]; then
-        echo "ℹ️ You appear to be using direct device passthrough for NVIDIA GPU access."
-        echo "   This method works, but consider using Docker Compose's 'deploy' configuration:"
-        echo "   deploy:"
-        echo "     resources:"
-        echo "       reservations:"
-        echo "         devices:"
-        echo "           - driver: nvidia"
-        echo "             count: all"
-        echo "             capabilities: [gpu]"
+    if [ "$NVIDIA_ENV_MISMATCH" = true ]; then
+        echo "⚠️ NVIDIA environment variables detected but no NVIDIA hardware found."
+        echo "   Your Docker Compose has NVIDIA configuration (driver: nvidia, capabilities: [gpu]),"
+        echo "   but actual NVIDIA devices are not available. Instead found Intel/AMD devices."
+        echo "   Update your Docker Compose to match your actual hardware."
+    elif [ "$NVIDIA_FOUND" = true ]; then
+        echo "ℹ️ NVIDIA devices found but Container Toolkit not detected."
+        echo "   You appear to be using direct device passthrough for NVIDIA GPU access."
+        echo "   This method works, but consider using Docker Compose's 'deploy' configuration."
+    else
+        echo "ℹ️ No NVIDIA GPU hardware or toolkit detected."
     fi
 fi
 
@@ -137,7 +138,28 @@ if [ "$DRI_DEVICES_FOUND" = true ]; then
     if [ -n "$LIBVA_DRIVER_NAME" ]; then
         echo "ℹ️ LIBVA_DRIVER_NAME is set to '$LIBVA_DRIVER_NAME'"
     else
-        echo "💡 Consider setting LIBVA_DRIVER_NAME to 'i965' (Intel) or 'radeonsi' (AMD) for VAAPI acceleration"
+        # Check if we can detect the GPU type
+        if command -v lspci >/dev/null 2>&1; then
+            if lspci | grep -q "Intel Corporation.*VGA" | grep -i "HD Graphics"; then
+                # Newer Intel GPUs (Gen12+/Tiger Lake and newer)
+                if lspci | grep -q "Intel Corporation.*VGA" | grep -E "Xe|Alchemist|Tiger Lake|Gen1[2-9]"; then
+                    echo "💡 Consider setting LIBVA_DRIVER_NAME=iHD for this modern Intel GPU"
+                else
+                    # Older Intel GPUs
+                    echo "💡 Consider setting LIBVA_DRIVER_NAME=i965 for this Intel GPU"
+                fi
+            elif lspci | grep -q "Advanced Micro Devices.*VGA"; then
+                echo "💡 Consider setting LIBVA_DRIVER_NAME=radeonsi for this AMD GPU"
+            else
+                echo "ℹ️ Auto-detection of VAAPI driver is usually reliable, but if you have issues:"
+                echo "   - For newer Intel GPUs: LIBVA_DRIVER_NAME=iHD"
+                echo "   - For older Intel GPUs: LIBVA_DRIVER_NAME=i965"
+                echo "   - For AMD GPUs: LIBVA_DRIVER_NAME=radeonsi"
+            fi
+        else
+            echo "ℹ️ Intel/AMD GPU detected. If VAAPI doesn't work automatically, you may need to set LIBVA_DRIVER_NAME"
+            echo "   based on your specific hardware (iHD for newer Intel, i965 for older Intel, radeonsi for AMD)"
+        fi
     fi
 fi
 
