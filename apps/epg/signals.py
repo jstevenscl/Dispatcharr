@@ -29,7 +29,7 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
         "interval": interval,
         "task": "apps.epg.tasks.refresh_epg_data",
         "kwargs": json.dumps({"source_id": instance.id}),
-        "enabled": instance.refresh_interval != 0,
+        "enabled": instance.refresh_interval != 0 and instance.is_active,
     })
 
     update_fields = []
@@ -39,8 +39,11 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
     if task.interval != interval:
         task.interval = interval
         update_fields.append("interval")
-    if task.enabled != (instance.refresh_interval != 0):
-        task.enabled = instance.refresh_interval != 0
+
+    # Check both refresh_interval and is_active to determine if task should be enabled
+    should_be_enabled = instance.refresh_interval != 0 and instance.is_active
+    if task.enabled != should_be_enabled:
+        task.enabled = should_be_enabled
         update_fields.append("enabled")
 
     if update_fields:
@@ -48,7 +51,7 @@ def create_or_update_refresh_task(sender, instance, **kwargs):
 
     if instance.refresh_task != task:
         instance.refresh_task = task
-        instance.save(update_fields=update_fields)
+        instance.save(update_fields=["refresh_task"])  # Fixed field name
 
 @receiver(post_delete, sender=EPGSource)
 def delete_refresh_task(sender, instance, **kwargs):
