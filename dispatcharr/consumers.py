@@ -6,9 +6,15 @@ logger = logging.getLogger(__name__)
 
 class MyWebSocketConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        self.room_name = "updates"
+
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.close()
+            return
+
         try:
             await self.accept()
-            self.room_name = "updates"
             await self.channel_layer.group_add(self.room_name, self.channel_name)
             # Send a connection confirmation to the client with consistent format
             await self.send(text_data=json.dumps({
