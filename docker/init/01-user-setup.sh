@@ -29,5 +29,16 @@ else
     fi
 fi
 
+# Add user to video and render groups if they exist
+if getent group video >/dev/null 2>&1; then
+    usermod -a -G video $POSTGRES_USER
+    echo "Added user $POSTGRES_USER to video group for hardware acceleration access"
+fi
+
+if getent group render >/dev/null 2>&1; then
+    usermod -a -G render $POSTGRES_USER
+    echo "Added user $POSTGRES_USER to render group for GPU access"
+fi
+
 # Run nginx as specified user
 sed -i 's/user www-data;/user dispatch;/g' /etc/nginx/nginx.conf
