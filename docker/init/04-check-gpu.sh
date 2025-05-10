@@ -276,7 +276,9 @@ if [ "$NVIDIA_FOUND" = true ] && (nvidia-smi >/dev/null 2>&1 || [ -n "$NVIDIA_VI
     if [ -n "$NVIDIA_MODEL" ]; then
         echo "🔰 NVIDIA GPU: $NVIDIA_MODEL"
     else
-        echo "🔰 NVIDIA GPU: ACTIVE"
+        echo "🔰 NVIDIA GPU: ACTIVE (model detection unavailable)"
+        echo "ℹ️ Note: GPU model information couldn't be retrieved, but devices are present."
+        echo "   This may be due to missing nvidia-smi tool or container limitations."
     fi
 
     if [ "$NVIDIA_CONTAINER_TOOLKIT_FOUND" = true ]; then
@@ -299,7 +301,9 @@ elif [ "$DRI_DEVICES_FOUND" = true ]; then
     elif [ -n "$LIBVA_DRIVER_NAME" ]; then
         echo "🔰 ${LIBVA_DRIVER_NAME^^} GPU: ACTIVE"
     else
-        echo "🔰 INTEL/AMD GPU: ACTIVE"
+        echo "🔰 INTEL/AMD GPU: ACTIVE (model detection unavailable)"
+        echo "ℹ️ Note: Basic GPU drivers appear to be loaded (device nodes exist), but"
+        echo "   couldn't identify specific model. This doesn't necessarily indicate a problem."
     fi
 
     # Check group membership based on detected GPU type
