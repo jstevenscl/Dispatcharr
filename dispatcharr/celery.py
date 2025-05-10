@@ -2,35 +2,74 @@
 import os
 from celery import Celery
 import logging
-from django.conf import settings  # Import Django settings
+
+# Initialize with defaults before Django settings are loaded
+DEFAULT_LOG_LEVEL = 'DEBUG'
+
+# Try multiple sources for log level in order of preference
+def get_effective_log_level():
+    # 1. Direct environment variable
+    env_level = os.environ.get('DISPATCHARR_LOG_LEVEL', '').upper()
+    if env_level and not env_level.startswith('$(') and not env_level.startswith('%('):
+        return env_level
+
+    # 2. Check temp file that may have been created by settings.py
+    try:
+        if os.path.exists('/tmp/dispatcharr_log_level'):
+            with open('/tmp/dispatcharr_log_level', 'r') as f:
+                file_level = f.read().strip().upper()
+                if file_level:
+                    return file_level
+    except:
+        pass
+
+    # 3. Fallback to default
+    return DEFAULT_LOG_LEVEL
+
+# Get effective log level before Django loads
+effective_log_level = get_effective_log_level()
+print(f"Celery using effective log level: {effective_log_level}")
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'dispatcharr.settings')
 app = Celery("dispatcharr")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
+# Use environment variable for log level with fallback to INFO
+CELERY_LOG_LEVEL = os.environ.get('DISPATCHARR_LOG_LEVEL', 'INFO').upper()
+print(f"Celery using log level from environment: {CELERY_LOG_LEVEL}")
+
 # Configure Celery logging
 app.conf.update(
-    worker_log_level=settings.LOG_LEVEL_NAME,  # Use same log level from environment
+    worker_log_level=effective_log_level,
     worker_log_format='%(asctime)s %(levelname)s %(name)s: %(message)s',
-    beat_log_level=settings.LOG_LEVEL_NAME,  # Use same log level from environment
+    beat_log_level=effective_log_level,
     worker_hijack_root_logger=False,
     worker_task_log_format='%(asctime)s %(levelname)s %(task_name)s: %(message)s',
 )
 
 @app.on_after_configure.connect
 def setup_celery_logging(**kwargs):
-    # Check if user has set logging to INFO level
-    if settings.LOG_LEVEL_NAME.upper() == 'INFO':
-        # Get the specific loggers that output the noisy INFO messages
-        for logger_name in ['celery.app.trace', 'celery.beat', 'celery.worker.strategy', 'celery.beat.Scheduler']:
-            # Create a custom filter to suppress specific messages
-            logger = logging.getLogger(logger_name)
+    # Use our directly determined log level
+    log_level = effective_log_level
+    print(f"Celery configuring loggers with level: {log_level}")
 
+    # Get the specific loggers that output potentially noisy messages
+    for logger_name in ['celery.app.trace', 'celery.beat', 'celery.worker.strategy', 'celery.beat.Scheduler']:
+        logger = logging.getLogger(logger_name)
+
+        # Remove any existing filters first (in case this runs multiple times)
+        for filter in logger.filters[:]:
+            if hasattr(filter, '__class__') and filter.__class__.__name__ == 'SuppressFilter':
+                logger.removeFilter(filter)
+
+        # For INFO level - add a filter to hide repetitive messages
+        # For DEBUG/TRACE level - don't filter (show everything)
+        if log_level == 'INFO':
             # Add a custom filter to completely filter out the repetitive messages
             class SuppressFilter(logging.Filter):
                 def filter(self, record):
-                    # Return False to completely suppress these specific patterns when at INFO level
+                    # Return False to completely suppress these specific patterns
                     if (
                         "succeeded in" in getattr(record, 'msg', '') or
                         "Scheduler: Sending due task" in getattr(record, 'msg', '') or
@@ -41,3 +80,12 @@ def setup_celery_logging(**kwargs):
 
             # Add the filter to each logger
             logger.addFilter(SuppressFilter())
+
+        # Set all Celery loggers to the configured level
+        # This ensures they respect TRACE/DEBUG when set
+        try:
+            numeric_level = getattr(logging, log_level)
+            logger.setLevel(numeric_level)
+        except (AttributeError, TypeError):
+            # If the log level string is invalid, default to DEBUG
+            logger.setLevel(logging.DEBUG)

@@ -49,6 +49,14 @@ else
     echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}"
 fi
 
+# Set log level with default if not provided
+export DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL:-info}
+echo "Environment DISPATCHARR_LOG_LEVEL detected as: '${DISPATCHARR_LOG_LEVEL}'"
+echo "Setting log level to: ${DISPATCHARR_LOG_LEVEL}"
+
+# Also make the log level available in /etc/environment for all login shells
+#grep -q "DISPATCHARR_LOG_LEVEL" /etc/environment || echo "DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL}" >> /etc/environment
+
 # READ-ONLY - don't let users change these
 export POSTGRES_DIR=/data/db
 
@@ -65,12 +73,24 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_DEBUG=$DISPATCHARR_DEBUG" >> /etc/profile.d/dispatcharr.sh
+    echo "export DISPATCHARR_LOG_LEVEL=$DISPATCHARR_LOG_LEVEL" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
     echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
     echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
+
+    # Make sure we also set these variables in /etc/environment
+    # which is sourced even before /etc/profile.d scripts
+    for var in PATH VIRTUAL_ENV DJANGO_SETTINGS_MODULE PYTHONUNBUFFERED POSTGRES_DB POSTGRES_USER \
+               POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT DISPATCHARR_ENV DISPATCHARR_DEBUG \
+               DISPATCHARR_LOG_LEVEL REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT \
+               DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP; do
+        if [[ -n "${!var}" ]]; then
+            grep -q "^${var}=" /etc/environment || echo "${var}=${!var}" >> /etc/environment
+        fi
+    done
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
@@ -127,7 +147,9 @@ else
     uwsgi_file="/app/docker/uwsgi.ini"
 fi
 
-su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
+# Pass all environment variables to the uwsgi process
+# The -p/--preserve-environment flag ensures all environment variables are passed through
+su -p - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
 uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")

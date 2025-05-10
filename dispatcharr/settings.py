@@ -244,7 +244,17 @@ LOG_LEVEL_MAP = {
 }
 
 # Get log level from environment variable, default to INFO if not set
-LOG_LEVEL_NAME = os.environ.get('DISPATCHARR_LOG_LEVEL', 'INFO').upper()
+# Add debugging output to see exactly what's being detected
+env_log_level = os.environ.get('DISPATCHARR_LOG_LEVEL', '')
+print(f"Environment DISPATCHARR_LOG_LEVEL detected as: '{env_log_level}'")
+
+if not env_log_level:
+    print("No DISPATCHARR_LOG_LEVEL found in environment, using default INFO")
+    LOG_LEVEL_NAME = 'INFO'
+else:
+    LOG_LEVEL_NAME = env_log_level.upper()
+    print(f"Setting log level to: {LOG_LEVEL_NAME}")
+
 LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL_NAME, 20)  # Default to INFO (20) if invalid
 
 # Add this to your existing LOGGING configuration or create one if it doesn't exist
