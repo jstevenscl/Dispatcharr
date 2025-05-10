@@ -55,7 +55,7 @@ def setup_celery_logging(**kwargs):
     print(f"Celery configuring loggers with level: {log_level}")
 
     # Get the specific loggers that output potentially noisy messages
-    for logger_name in ['celery.app.trace', 'celery.beat', 'celery.worker.strategy', 'celery.beat.Scheduler']:
+    for logger_name in ['celery.app.trace', 'celery.beat', 'celery.worker.strategy', 'celery.beat.Scheduler', 'celery.pool']:
         logger = logging.getLogger(logger_name)
 
         # Remove any existing filters first (in case this runs multiple times)
@@ -63,9 +63,8 @@ def setup_celery_logging(**kwargs):
             if hasattr(filter, '__class__') and filter.__class__.__name__ == 'SuppressFilter':
                 logger.removeFilter(filter)
 
-        # For INFO level - add a filter to hide repetitive messages
-        # For DEBUG/TRACE level - don't filter (show everything)
-        if log_level == 'INFO':
+        # Add filtering for both INFO and DEBUG levels - only TRACE will show full logging
+        if log_level not in ['TRACE']:
             # Add a custom filter to completely filter out the repetitive messages
             class SuppressFilter(logging.Filter):
                 def filter(self, record):
@@ -73,7 +72,8 @@ def setup_celery_logging(**kwargs):
                     if (
                         "succeeded in" in getattr(record, 'msg', '') or
                         "Scheduler: Sending due task" in getattr(record, 'msg', '') or
-                        "received" in getattr(record, 'msg', '')
+                        "received" in getattr(record, 'msg', '') or
+                        (logger_name == 'celery.pool' and "Apply" in getattr(record, 'msg', ''))
                     ):
                         return False  # Don't log these messages at all
                     return True  # Log all other messages

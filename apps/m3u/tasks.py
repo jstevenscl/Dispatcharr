@@ -840,7 +840,7 @@ def refresh_single_m3u_account(account_id):
         try:
             logger.info(f"Calling refresh_m3u_groups for account {account_id}")
             result = refresh_m3u_groups(account_id, full_refresh=True)
-            logger.debug(f"refresh_m3u_groups result: {result}")
+            logger.trace(f"refresh_m3u_groups result: {result}")
 
             # Check for completely empty result or missing groups
             if not result or result[1] is None:
@@ -1009,7 +1009,7 @@ def refresh_single_m3u_account(account_id):
                     # Optionally remove completed task from the group to prevent processing it again
                     result.remove(async_result)
                 else:
-                    logger.debug(f"Task is still running.")
+                    logger.trace(f"Task is still running.")
 
         # Ensure all database transactions are committed before cleanup
         logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")
