@@ -84,7 +84,7 @@ const StreamRowActions = ({
 
   const onEdit = useCallback(() => {
     editStream(row.original);
-  }, [row.original.id, editStream]);
+  }, [row.original, editStream]);
 
   const onDelete = useCallback(() => {
     deleteStream(row.original.id);
@@ -169,7 +169,7 @@ const StreamRowActions = ({
   );
 };
 
-const StreamsTable = ({ }) => {
+const StreamsTable = ({}) => {
   const theme = useMantineTheme();
 
   /**
@@ -399,7 +399,14 @@ const StreamsTable = ({ }) => {
     }
 
     setIsLoading(false);
-  }, [pagination, sorting, debouncedFilters, groupsLoaded, channelGroups, fetchChannelGroups]);
+  }, [
+    pagination,
+    sorting,
+    debouncedFilters,
+    groupsLoaded,
+    channelGroups,
+    fetchChannelGroups,
+  ]);
 
   // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
@@ -592,7 +599,14 @@ const StreamsTable = ({ }) => {
           );
       }
     },
-    [selectedChannelIds, channelSelectionStreams, theme, editStream, deleteStream, handleWatchStream]
+    [
+      selectedChannelIds,
+      channelSelectionStreams,
+      theme,
+      editStream,
+      deleteStream,
+      handleWatchStream,
+    ]
   );
 
   const table = useTable({
@@ -675,10 +689,10 @@ const StreamsTable = ({ }) => {
               style={
                 selectedStreamIds.length > 0 && selectedChannelIds.length === 1
                   ? {
-                    borderWidth: '1px',
-                    borderColor: theme.tailwind.green[5],
-                    color: 'white',
-                  }
+                      borderWidth: '1px',
+                      borderColor: theme.tailwind.green[5],
+                      color: 'white',
+                    }
                   : undefined
               }
               disabled={
