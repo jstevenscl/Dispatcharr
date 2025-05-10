@@ -17,3 +17,4 @@ services:
       - DISPATCHARR_DEBUG=true
       - REDIS_HOST=localhost
       - CELERY_BROKER_URL=redis://localhost:6379/0
+      - DISPATCHARR_LOG_LEVEL=trace
