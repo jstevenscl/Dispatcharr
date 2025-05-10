@@ -80,13 +80,14 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
+    echo "export LIBVA_DRIVERS_PATH=/usr/local/lib/x86_64-linux-gnu/dri" >> /etc/profile.d/dispatcharr.sh
 
     # Make sure we also set these variables in /etc/environment
     # which is sourced even before /etc/profile.d scripts
     for var in PATH VIRTUAL_ENV DJANGO_SETTINGS_MODULE PYTHONUNBUFFERED POSTGRES_DB POSTGRES_USER \
                POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT DISPATCHARR_ENV DISPATCHARR_DEBUG \
                DISPATCHARR_LOG_LEVEL REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT \
-               DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP; do
+               DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH; do
         if [[ -n "${!var}" ]]; then
             grep -q "^${var}=" /etc/environment || echo "${var}=${!var}" >> /etc/environment
         fi
