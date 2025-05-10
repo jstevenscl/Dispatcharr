@@ -273,7 +273,12 @@ echo "📋 ===================== SUMMARY ====================="
 
 # Identify which GPU type is active and working
 if [ "$NVIDIA_FOUND" = true ] && (nvidia-smi >/dev/null 2>&1 || [ -n "$NVIDIA_VISIBLE_DEVICES" ]); then
-    echo "🔰 NVIDIA GPU: ACTIVE"
+    if [ -n "$NVIDIA_MODEL" ]; then
+        echo "🔰 NVIDIA GPU: $NVIDIA_MODEL"
+    else
+        echo "🔰 NVIDIA GPU: ACTIVE"
+    fi
+
     if [ "$NVIDIA_CONTAINER_TOOLKIT_FOUND" = true ]; then
         echo "✅ NVIDIA Container Toolkit: CONFIGURED CORRECTLY"
     elif [ -n "$NVIDIA_VISIBLE_DEVICES" ] && [ -n "$NVIDIA_DRIVER_CAPABILITIES" ]; then
