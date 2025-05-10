@@ -39,6 +39,48 @@ RENDER_GID=$(getent group render | cut -d: -f3)
 NVIDIA_CONTAINER_TOOLKIT_FOUND=false
 NVIDIA_ENV_MISMATCH=false
 
+# Detect GPU type for smarter group membership requirements
+INTEL_GPU_DETECTED=false
+AMD_GPU_DETECTED=false
+if command -v lspci >/dev/null 2>&1; then
+    if lspci | grep -q "Intel Corporation.*VGA"; then
+        INTEL_GPU_DETECTED=true
+        echo "ℹ️ Intel GPU detected - video group membership is recommended."
+    elif lspci | grep -q "Advanced Micro Devices.*VGA"; then
+        AMD_GPU_DETECTED=true
+        echo "ℹ️ AMD GPU detected - render group membership is recommended."
+    fi
+fi
+
+# Explicitly check if $POSTGRES_USER is in the video/render groups based on detected hardware
+echo "🔍 Verifying if $POSTGRES_USER user is in required groups..."
+USER_IN_VIDEO_GROUP=false
+USER_IN_RENDER_GROUP=false
+
+# For Intel GPUs or when GPU type can't be determined, check video group
+if [ -n "$VIDEO_GID" ]; then
+    if id -nG "$POSTGRES_USER" 2>/dev/null | grep -qw "video"; then
+        USER_IN_VIDEO_GROUP=true
+        echo "✅ User $POSTGRES_USER is in the 'video' group."
+    elif [ "$INTEL_GPU_DETECTED" = true ] || ([ "$NVIDIA_FOUND" = false ] && [ "$DRI_DEVICES_FOUND" = true ]); then
+        echo "⚠️ User $POSTGRES_USER is NOT in the 'video' group - hardware acceleration for Intel GPUs may not work!"
+    else
+        echo "ℹ️ User $POSTGRES_USER is not in the 'video' group - this is fine for NVIDIA GPUs with container toolkit."
+    fi
+fi
+
+# For AMD GPUs, check render group
+if [ -n "$RENDER_GID" ]; then
+    if id -nG "$POSTGRES_USER" 2>/dev/null | grep -qw "render"; then
+        USER_IN_RENDER_GROUP=true
+        echo "✅ User $POSTGRES_USER is in the 'render' group."
+    elif [ "$AMD_GPU_DETECTED" = true ]; then
+        echo "⚠️ User $POSTGRES_USER is NOT in the 'render' group - hardware acceleration for AMD GPUs may not work!"
+    else
+        echo "ℹ️ User $POSTGRES_USER is not in the 'render' group - not needed for Intel/NVIDIA GPUs."
+    fi
+fi
+
 # Check if NVIDIA Container Toolkit is present through environment or CLI tool
 # IMPORTANT: Only mark as found if both env vars AND actual NVIDIA devices exist
 if [ "$NVIDIA_FOUND" = true ] && command -v nvidia-container-cli >/dev/null 2>&1; then
@@ -255,13 +297,33 @@ elif [ "$DRI_DEVICES_FOUND" = true ]; then
         echo "🔰 INTEL/AMD GPU: ACTIVE"
     fi
 
-    # Check group membership
-    if [ -n "$VIDEO_GID" ] && id -G | grep -qw "$VIDEO_GID"; then
-        echo "✅ Video group membership: CORRECT"
-    elif [ -n "$RENDER_GID" ] && id -G | grep -qw "$RENDER_GID"; then
-        echo "✅ Render group membership: CORRECT"
+    # Check group membership based on detected GPU type
+    if [ "$INTEL_GPU_DETECTED" = true ]; then
+        if [ "$USER_IN_VIDEO_GROUP" = true ]; then
+            echo "✅ Video group membership for $POSTGRES_USER: CORRECT (required for Intel GPU)"
+        else
+            echo "⚠️ Video group membership for $POSTGRES_USER: MISSING (required for Intel GPU)"
+        fi
+    elif [ "$AMD_GPU_DETECTED" = true ]; then
+        if [ "$USER_IN_RENDER_GROUP" = true ]; then
+            echo "✅ Render group membership for $POSTGRES_USER: CORRECT (required for AMD GPU)"
+        else
+            echo "⚠️ Render group membership for $POSTGRES_USER: MISSING (required for AMD GPU)"
+        fi
+    elif [ "$NVIDIA_FOUND" = true ] && [ "$NVIDIA_CONTAINER_TOOLKIT_FOUND" = false ]; then
+        # For NVIDIA without container toolkit, check video group
+        if [ "$USER_IN_VIDEO_GROUP" = true ]; then
+            echo "✅ Video group membership for $POSTGRES_USER: CORRECT (helps with direct NVIDIA device access)"
+        else
+            echo "⚠️ Video group membership for $POSTGRES_USER: MISSING (may affect direct NVIDIA device access)"
+        fi
     else
-        echo "⚠️ Group membership: MISSING (may cause permission issues)"
+        # Generic case or NVIDIA with container toolkit (where group membership is less important)
+        if [ "$USER_IN_VIDEO_GROUP" = true ] || [ "$USER_IN_RENDER_GROUP" = true ]; then
+            echo "✅ GPU group membership for $POSTGRES_USER: CORRECT"
+        else
+            echo "ℹ️ GPU group membership for $POSTGRES_USER: NOT REQUIRED (using NVIDIA Container Toolkit)"
+        fi
     fi
 
     # Display FFmpeg VAAPI acceleration method
