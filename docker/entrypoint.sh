@@ -37,7 +37,7 @@ export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
 export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
-
+export LIBVA_DRIVERS_PATH='/usr/local/lib/x86_64-linux-gnu/dri'
 # Extract version information from version.py
 export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
 export DISPATCHARR_TIMESTAMP=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__timestamp__ or '')")
@@ -88,8 +88,12 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
                POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT DISPATCHARR_ENV DISPATCHARR_DEBUG \
                DISPATCHARR_LOG_LEVEL REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT \
                DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH; do
-        if [[ -n "${!var}" ]]; then
+        # Check if the variable is set (exists) in the environment
+        if [ -n "${!var+x}" ]; then
+            # Add to /etc/environment if not already there
             grep -q "^${var}=" /etc/environment || echo "${var}=${!var}" >> /etc/environment
+        else
+            echo "Warning: Environment variable $var is not set"
         fi
     done
 fi
