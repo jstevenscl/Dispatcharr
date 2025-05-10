@@ -96,26 +96,26 @@ fi
 
 # For NVIDIA GPUs with Container Toolkit, video group is optional
 if [ "$NVIDIA_FOUND" = true ] && [ "$NVIDIA_CONTAINER_TOOLKIT_FOUND" = true ]; then
-    if [ -n "$VIDEO_GID" ] && id -G | grep -qw "$VIDEO_GID"; then
-        echo "✅ User is in the 'video' group (GID $VIDEO_GID)."
+    if [ -n "$VIDEO_GID" ] && id -nG "$POSTGRES_USER" 2>/dev/null | grep -qw "video"; then
+        echo "✅ User $POSTGRES_USER is in the 'video' group (GID $VIDEO_GID)."
         echo "   Note: With NVIDIA Container Toolkit properly configured, this is usually not required."
     elif [ -n "$VIDEO_GID" ]; then
-        echo "ℹ️ User is not in the 'video' group, but NVIDIA Container Toolkit is present."
+        echo "ℹ️ User $POSTGRES_USER is not in the 'video' group, but NVIDIA Container Toolkit is present."
         echo "   This is typically fine as the Container Toolkit handles device permissions."
     fi
 # For other GPU types (or NVIDIA without Toolkit), video/render group is important
 else
     if [ -n "$VIDEO_GID" ]; then
-        if id -G | grep -qw "$VIDEO_GID"; then
-            echo "✅ User is in the 'video' group (GID $VIDEO_GID)."
+        if id -nG "$POSTGRES_USER" 2>/dev/null | grep -qw "video"; then
+            echo "✅ User $POSTGRES_USER is in the 'video' group (GID $VIDEO_GID)."
         else
-            echo "⚠️ User is NOT in the 'video' group (GID $VIDEO_GID). Hardware acceleration may not work."
+            echo "⚠️ User $POSTGRES_USER is NOT in the 'video' group (GID $VIDEO_GID). Hardware acceleration may not work."
         fi
     elif [ -n "$RENDER_GID" ]; then
-        if id -G | grep -qw "$RENDER_GID"; then
-            echo "✅ User is in the 'render' group (GID $RENDER_GID)."
+        if id -nG "$POSTGRES_USER" 2>/dev/null | grep -qw "render"; then
+            echo "✅ User $POSTGRES_USER is in the 'render' group (GID $RENDER_GID)."
         else
-            echo "⚠️ User is NOT in the 'render' group (GID $RENDER_GID). Hardware acceleration may not work."
+            echo "⚠️ User $POSTGRES_USER is NOT in the 'render' group (GID $RENDER_GID). Hardware acceleration may not work."
         fi
     else
         echo "⚠️ Neither 'video' nor 'render' groups found on this system."
