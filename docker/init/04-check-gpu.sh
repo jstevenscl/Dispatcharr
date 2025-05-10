@@ -151,6 +151,16 @@ done
 
 # Give contextual suggestions based on detected hardware
 if [ "$DRI_DEVICES_FOUND" = true ]; then
+    # Detect Intel/AMD GPU model
+    if command -v lspci >/dev/null 2>&1; then
+        GPU_INFO=$(lspci -nn | grep -i "VGA\|Display" | head -1)
+        if [ -n "$GPU_INFO" ]; then
+            echo "🔍 Detected GPU: $GPU_INFO"
+            # Extract model for cleaner display in summary
+            GPU_MODEL=$(echo "$GPU_INFO" | sed -E 's/.*: (.*) \[.*/\1/' | sed 's/Corporation //' | sed 's/Technologies //')
+        fi
+    fi
+
     if [ -n "$LIBVA_DRIVER_NAME" ]; then
         echo "ℹ️ LIBVA_DRIVER_NAME is set to '$LIBVA_DRIVER_NAME'"
     else
@@ -180,6 +190,15 @@ if [ "$DRI_DEVICES_FOUND" = true ]; then
 fi
 
 if [ "$NVIDIA_FOUND" = true ]; then
+    # Try to get NVIDIA GPU model info
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        NVIDIA_MODEL=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+        if [ -n "$NVIDIA_MODEL" ]; then
+            echo "🔍 Detected NVIDIA GPU: $NVIDIA_MODEL"
+            GPU_MODEL=$NVIDIA_MODEL
+        fi
+    fi
+
     if [ -n "$NVIDIA_VISIBLE_DEVICES" ]; then
         echo "ℹ️ NVIDIA_VISIBLE_DEVICES is set to '$NVIDIA_VISIBLE_DEVICES'"
     else
@@ -227,8 +246,10 @@ if [ "$NVIDIA_FOUND" = true ] && (nvidia-smi >/dev/null 2>&1 || [ -n "$NVIDIA_VI
         echo "⚠️ FFmpeg NVIDIA acceleration: NOT DETECTED"
     fi
 elif [ "$DRI_DEVICES_FOUND" = true ]; then
-    # Intel/AMD detection
-    if [ -n "$LIBVA_DRIVER_NAME" ]; then
+    # Intel/AMD detection with model if available
+    if [ -n "$GPU_MODEL" ]; then
+        echo "🔰 GPU: $GPU_MODEL"
+    elif [ -n "$LIBVA_DRIVER_NAME" ]; then
         echo "🔰 ${LIBVA_DRIVER_NAME^^} GPU: ACTIVE"
     else
         echo "🔰 INTEL/AMD GPU: ACTIVE"
