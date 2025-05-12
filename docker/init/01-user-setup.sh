@@ -29,35 +29,50 @@ else
     fi
 fi
 
-# Check if render group exists, if not create it with GID 109
-#if getent group render >/dev/null 2>&1; then
-#    current_gid=$(getent group render | cut -d: -f3)
-#    if [ "$current_gid" != "109" ]; then
-#        groupmod -g 109 render
-#        echo "Changed render group GID from $current_gid to 109"
-#    fi
-#else
-#    groupadd -g 109 render
-#    echo "Created render group with GID 109"
-#fi
+# Get the GID of /dev/dri/renderD128 on the host (must be mounted into container)
+if [ -e "/dev/dri/renderD128" ]; then
+    HOST_RENDER_GID=$(stat -c '%g' /dev/dri/renderD128)
 
-# Check if render group exists before trying to add user to it
-if getent group render >/dev/null 2>&1; then
-    # Render group exists, check if user is already in it
-    if id -nG "$POSTGRES_USER" | grep -qw "render"; then
-        echo "User $POSTGRES_USER is already in render group"
+    # Check if this GID belongs to the video group
+    VIDEO_GID=$(getent group video 2>/dev/null | cut -d: -f3)
+
+    if [ "$HOST_RENDER_GID" = "$VIDEO_GID" ]; then
+        echo "RenderD128 GID ($HOST_RENDER_GID) matches video group GID. Using video group for GPU access."
+        # Make sure POSTGRES_USER is in video group
+        if ! id -nG "$POSTGRES_USER" | grep -qw "video"; then
+            usermod -a -G video "$POSTGRES_USER"
+            echo "Added user $POSTGRES_USER to video group for GPU access"
+        fi
     else
-        usermod -a -G render $POSTGRES_USER
-        echo "Added user $POSTGRES_USER to render group for GPU access"
+        # We need to ensure render group exists with correct GID
+        if getent group render >/dev/null; then
+            CURRENT_RENDER_GID=$(getent group render | cut -d: -f3)
+            if [ "$CURRENT_RENDER_GID" != "$HOST_RENDER_GID" ]; then
+                echo "Changing render group GID from $CURRENT_RENDER_GID to $HOST_RENDER_GID"
+                groupmod -g "$HOST_RENDER_GID" render
+            fi
+        else
+            echo "Creating render group with GID $HOST_RENDER_GID"
+            groupadd -g "$HOST_RENDER_GID" render
+        fi
+
+        # Make sure POSTGRES_USER is in render group
+        if ! id -nG "$POSTGRES_USER" | grep -qw "render"; then
+            usermod -a -G render "$POSTGRES_USER"
+            echo "Added user $POSTGRES_USER to render group for GPU access"
+        fi
     fi
 else
-    echo "Render group does not exist, skipping adding user to render group"
+    echo "Warning: /dev/dri/renderD128 not found. GPU acceleration may not be available."
 fi
 
-# Add user to video group if it exists
+# Always add user to video group for hardware acceleration if it exists
+# (some systems use video group for general GPU access)
 if getent group video >/dev/null 2>&1; then
-    usermod -a -G video $POSTGRES_USER
-    echo "Added user $POSTGRES_USER to video group for hardware acceleration access"
+    if ! id -nG "$POSTGRES_USER" | grep -qw "video"; then
+        usermod -a -G video "$POSTGRES_USER"
+        echo "Added user $POSTGRES_USER to video group for hardware acceleration access"
+    fi
 fi
 
 # Run nginx as specified user
