@@ -67,41 +67,21 @@ export POSTGRES_DIR=/data/db
 
 # Global variables, stored so other users inherit them
 if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
-    echo "export PATH=$PATH" >> /etc/profile.d/dispatcharr.sh
-    echo "export VIRTUAL_ENV=$VIRTUAL_ENV" >> /etc/profile.d/dispatcharr.sh
-    echo "export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE" >> /etc/profile.d/dispatcharr.sh
-    echo "export PYTHONUNBUFFERED=$PYTHONUNBUFFERED" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_DB=$POSTGRES_DB" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_USER=$POSTGRES_USER" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_HOST=$POSTGRES_HOST" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_DEBUG=$DISPATCHARR_DEBUG" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_LOG_LEVEL=$DISPATCHARR_LOG_LEVEL" >> /etc/profile.d/dispatcharr.sh
-    echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
-    echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
-    echo "export LIBVA_DRIVERS_PATH=$LIBVA_DRIVERS_PATH" >> /etc/profile.d/dispatcharr.sh
+    # Define all variables to process
+    variables=(
+        PATH VIRTUAL_ENV DJANGO_SETTINGS_MODULE PYTHONUNBUFFERED
+        POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT
+        DISPATCHARR_ENV DISPATCHARR_DEBUG DISPATCHARR_LOG_LEVEL
+        REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT
+        DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH LIBVA_DRIVER_NAME LD_LIBRARY_PATH
+    )
 
-    # Only add LIBVA_DRIVER_NAME to profile if it's set
-    if [ -v LIBVA_DRIVER_NAME ]; then
-        echo "export LIBVA_DRIVER_NAME=$LIBVA_DRIVER_NAME" >> /etc/profile.d/dispatcharr.sh
-    fi
-
-    echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> /etc/profile.d/dispatcharr.sh
-
-    # Make sure we also set these variables in /etc/environment
-    # which is sourced even before /etc/profile.d scripts
-    for var in PATH VIRTUAL_ENV DJANGO_SETTINGS_MODULE PYTHONUNBUFFERED POSTGRES_DB POSTGRES_USER \
-               POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT DISPATCHARR_ENV DISPATCHARR_DEBUG \
-               DISPATCHARR_LOG_LEVEL REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT \
-               DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH LIBVA_DRIVER_NAME LD_LIBRARY_PATH; do
-        # Check if the variable is set (exists) in the environment
+    # Process each variable for both profile.d and environment
+    for var in "${variables[@]}"; do
+        # Check if the variable is set in the environment
         if [ -n "${!var+x}" ]; then
+            # Add to profile.d
+            echo "export ${var}=${!var}" >> /etc/profile.d/dispatcharr.sh
             # Add to /etc/environment if not already there
             grep -q "^${var}=" /etc/environment || echo "${var}=${!var}" >> /etc/environment
         else
