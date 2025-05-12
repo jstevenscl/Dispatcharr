@@ -39,7 +39,7 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmo
     apt-get update && apt-get install -y postgresql-14 postgresql-contrib-14 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Create render group for hardware acceleration support
-RUN groupadd -r render || true
+# Create render group for hardware acceleration support with GID 109
+RUN groupadd -r -g 109 render || true
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
