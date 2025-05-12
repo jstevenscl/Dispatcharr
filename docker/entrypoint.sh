@@ -39,7 +39,10 @@ export REDIS_DB=${REDIS_DB:-0}
 export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
 export LIBVA_DRIVERS_PATH='/usr/local/lib/x86_64-linux-gnu/dri'
 export LD_LIBRARY_PATH='/usr/local/lib'
-export LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-}
+# Set LIBVA_DRIVER_NAME if user has specified it
+if [ -v LIBVA_DRIVER_NAME ]; then
+    export LIBVA_DRIVER_NAME
+fi
 # Extract version information from version.py
 export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
 export DISPATCHARR_TIMESTAMP=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__timestamp__ or '')")
