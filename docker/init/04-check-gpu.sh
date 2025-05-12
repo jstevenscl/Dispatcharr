@@ -268,6 +268,20 @@ else
     echo "⚠️ FFmpeg not found in PATH."
 fi
 
+# Add hardware detection through lspci if available
+NVIDIA_GPU_IN_LSPCI=false
+if command -v lspci >/dev/null 2>&1; then
+    if lspci | grep -i "NVIDIA" | grep -i "VGA\|3D\|Display" >/dev/null; then
+        NVIDIA_GPU_IN_LSPCI=true
+        echo "🔍 NVIDIA GPU detected in hardware listing (lspci)."
+        if [ "$NVIDIA_FOUND" = false ]; then
+            echo "⚠️ NVIDIA GPU exists in system but no /dev/nvidia* devices are mapped to the container."
+            echo "   You have DRI devices mapped, but this provides limited functionality for NVIDIA GPUs."
+            echo "   Consider using the NVIDIA Container Runtime for optimal performance."
+        fi
+    fi
+fi
+
 # Provide a final summary of the hardware acceleration setup
 echo "📋 ===================== SUMMARY ====================="
 
@@ -293,6 +307,30 @@ if [ "$NVIDIA_FOUND" = true ] && (nvidia-smi >/dev/null 2>&1 || [ -n "$NVIDIA_VI
         echo "✅ FFmpeg NVIDIA acceleration: AVAILABLE"
     else
         echo "⚠️ FFmpeg NVIDIA acceleration: NOT DETECTED"
+    fi
+elif [ "$NVIDIA_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
+    # NVIDIA through DRI only (suboptimal but possible)
+    echo "🔰 NVIDIA GPU: DETECTED BUT SUBOPTIMALLY CONFIGURED"
+    echo "⚠️ Your NVIDIA GPU is only accessible through DRI devices, not NVIDIA container runtime"
+    echo "💡 RECOMMENDATION: Use the proper NVIDIA container configuration:"
+    echo "    deploy:"
+    echo "      resources:"
+    echo "        reservations:"
+    echo "          devices:"
+    echo "            - driver: nvidia"
+    echo "              count: all"
+    echo "              capabilities: [gpu]"
+
+    if [ "$USER_IN_VIDEO_GROUP" = true ] || [ "$USER_IN_RENDER_GROUP" = true ]; then
+        echo "✅ GPU group membership for $POSTGRES_USER: CORRECT"
+    else
+        echo "⚠️ GPU group membership for $POSTGRES_USER: MISSING (may affect DRI access)"
+    fi
+
+    if echo "$HWACCEL" | grep -q "vaapi"; then
+        echo "✅ FFmpeg VAAPI acceleration: AVAILABLE"
+    else
+        echo "⚠️ FFmpeg VAAPI acceleration: NOT DETECTED"
     fi
 elif [ "$DRI_DEVICES_FOUND" = true ]; then
     # Intel/AMD detection with model if available

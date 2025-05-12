@@ -86,7 +86,12 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
     echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
     echo "export LIBVA_DRIVERS_PATH=$LIBVA_DRIVERS_PATH" >> /etc/profile.d/dispatcharr.sh
-    echo "export LIBVA_DRIVER_NAME=$LIBVA_DRIVER_NAME" >> /etc/profile.d/dispatcharr.sh
+
+    # Only add LIBVA_DRIVER_NAME to profile if it's set
+    if [ -v LIBVA_DRIVER_NAME ]; then
+        echo "export LIBVA_DRIVER_NAME=$LIBVA_DRIVER_NAME" >> /etc/profile.d/dispatcharr.sh
+    fi
+
     echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> /etc/profile.d/dispatcharr.sh
 
     # Make sure we also set these variables in /etc/environment
