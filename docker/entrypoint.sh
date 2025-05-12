@@ -38,6 +38,7 @@ export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
 export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
 export LIBVA_DRIVERS_PATH='/usr/local/lib/x86_64-linux-gnu/dri'
+export LD_LIBRARY_PATH='/usr/local/lib'
 export LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-}
 # Extract version information from version.py
 export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
@@ -83,13 +84,14 @@ if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
     echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
     echo "export LIBVA_DRIVERS_PATH=/usr/local/lib/x86_64-linux-gnu/dri" >> /etc/profile.d/dispatcharr.sh
     echo "export LIBVA_DRIVER_NAME=$LIBVA_DRIVER_NAME" >> /etc/profile.d/dispatcharr.sh
+    echo "export LD_LIBRARY_PATH=/usr/local/lib" >> /etc/profile.d/dispatcharr.sh
 
     # Make sure we also set these variables in /etc/environment
     # which is sourced even before /etc/profile.d scripts
     for var in PATH VIRTUAL_ENV DJANGO_SETTINGS_MODULE PYTHONUNBUFFERED POSTGRES_DB POSTGRES_USER \
                POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT DISPATCHARR_ENV DISPATCHARR_DEBUG \
                DISPATCHARR_LOG_LEVEL REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT \
-               DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH LIBVA_DRIVER_NAME; do
+               DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH LIBVA_DRIVER_NAME LD_LIBRARY_PATH; do
         # Check if the variable is set (exists) in the environment
         if [ -n "${!var+x}" ]; then
             # Add to /etc/environment if not already there
