@@ -23,6 +23,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
 
 # Create render group for hardware acceleration support
+# Remove this later as it will be included in the base image
 RUN groupadd -r render || true
 
 # Copy application code

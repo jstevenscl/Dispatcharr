@@ -30,23 +30,28 @@ else
 fi
 
 # Check if render group exists, if not create it with GID 109
+#if getent group render >/dev/null 2>&1; then
+#    current_gid=$(getent group render | cut -d: -f3)
+#    if [ "$current_gid" != "109" ]; then
+#        groupmod -g 109 render
+#        echo "Changed render group GID from $current_gid to 109"
+#    fi
+#else
+#    groupadd -g 109 render
+#    echo "Created render group with GID 109"
+#fi
+
+# Check if render group exists before trying to add user to it
 if getent group render >/dev/null 2>&1; then
-    current_gid=$(getent group render | cut -d: -f3)
-    if [ "$current_gid" != "109" ]; then
-        groupmod -g 109 render
-        echo "Changed render group GID from $current_gid to 109"
+    # Render group exists, check if user is already in it
+    if id -nG "$POSTGRES_USER" | grep -qw "render"; then
+        echo "User $POSTGRES_USER is already in render group"
+    else
+        usermod -a -G render $POSTGRES_USER
+        echo "Added user $POSTGRES_USER to render group for GPU access"
     fi
 else
-    groupadd -g 109 render
-    echo "Created render group with GID 109"
-fi
-
-# Check if Postgres user is already in render group before adding
-if id -nG "$POSTGRES_USER" | grep -qw "render"; then
-    echo "User $POSTGRES_USER is already in render group"
-else
-    usermod -a -G render $POSTGRES_USER
-    echo "Added user $POSTGRES_USER to render group for GPU access"
+    echo "Render group does not exist, skipping adding user to render group"
 fi
 
 # Add user to video group if it exists
