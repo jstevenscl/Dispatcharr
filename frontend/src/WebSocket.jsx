@@ -16,7 +16,7 @@ import API from './api';
 import useSettingsStore from './store/settings';
 import useAuthStore from './store/auth';
 
-export const WebsocketContext = createContext([false, () => {}, null]);
+export const WebsocketContext = createContext([false, () => { }, null]);
 
 export const WebsocketProvider = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
@@ -29,6 +29,7 @@ export const WebsocketProvider = ({ children }) => {
   const initialBackoffDelay = 1000; // 1 second initial delay
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const epgs = useEPGsStore((s) => s.epgs);
   const updateEPG = useEPGsStore((s) => s.updateEPG);
@@ -400,7 +401,18 @@ export const WebsocketProvider = ({ children }) => {
 
   // Initial connection and cleanup
   useEffect(() => {
-    connectWebSocket();
+    // Only attempt to connect if the user is authenticated
+    if (isAuthenticated && accessToken) {
+      connectWebSocket();
+    } else if (ws.current) {
+      // Close the connection if the user logs out
+      clearReconnectTimer();
+      console.log('Closing WebSocket connection due to logout');
+      ws.current.onclose = null;
+      ws.current.close();
+      ws.current = null;
+      setIsReady(false);
+    }
 
     return () => {
       clearReconnectTimer(); // Clear any pending reconnect timers
@@ -412,7 +424,7 @@ export const WebsocketProvider = ({ children }) => {
         ws.current = null;
       }
     };
-  }, [connectWebSocket, clearReconnectTimer]);
+  }, [connectWebSocket, clearReconnectTimer, isAuthenticated, accessToken]);
 
   const setChannelStats = useChannelsStore((s) => s.setChannelStats);
   const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
