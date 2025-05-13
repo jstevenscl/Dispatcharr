@@ -139,7 +139,7 @@ NVIDIA_ENV_MISMATCH=false
 check_user_device_access() {
     local device=$1
     local user=$2
-    if [ -e "$device" ]; then
+    if [ -e "$device" ];then
         if su -c "test -r $device && test -w $device" - $user 2>/dev/null; then
             echo "✅ User $user has full access to $device"
             return 0
@@ -310,7 +310,7 @@ echo "🔍 Checking GPU-related environment variables..."
 # Set flags based on device detection
 DRI_DEVICES_FOUND=false
 for dev in /dev/dri/renderD* /dev/dri/card*; do
-    if [ -e "$dev" ]; then
+    if [ -e "$dev" ];then
         DRI_DEVICES_FOUND=true
         break
     fi
@@ -337,6 +337,10 @@ if [ "$DRI_DEVICES_FOUND" = true ]; then
         fi
     fi
 
+    if [ -n "$GPU_MODEL" ]; then
+        echo "🔍 GPU model: $GPU_MODEL"
+    fi
+    # Check for LIBVA_DRIVER_NAME environment variable
     if [ -n "$LIBVA_DRIVER_NAME" ]; then
         echo "ℹ️ LIBVA_DRIVER_NAME is set to '$LIBVA_DRIVER_NAME'"
         echo "   Note: If you experience issues with hardware acceleration, try removing this"
@@ -346,25 +350,51 @@ if [ "$DRI_DEVICES_FOUND" = true ]; then
         if command -v lspci >/dev/null 2>&1; then
             echo "ℹ️ VAAPI driver auto-detection is usually reliable. Settings below only needed if you experience issues."
 
-            # Intel GPU detection with more future-proof approach
-            if lspci | grep -q "VGA compatible controller.*Intel"; then
+            # Create variables to store recommended driver and supported methods
+            INTEL_RECOMMENDED_DRIVER=""
+            INTEL_SUPPORTS_QSV=false
+
+            # Use the Intel model information we already captured
+            if [ "$INTEL_GPU_IN_LSPCI" = true ] && [ -n "$INTEL_MODEL" ]; then
                 # Check for newer Intel generations that use iHD
-                if lspci | grep -q "VGA compatible controller.*Intel" | grep -q -E "Arc|Xe|Alchemist|Tiger Lake|Alder|Raptor Lake|Meteor Lake|Gen1[2-9]"; then
-                    echo "💡 If needed: LIBVA_DRIVER_NAME=iHD for modern Intel GPUs (Gen12+/Arc/Xe)"
-                # Check for very old Intel that definitely needs i965
-                elif lspci | grep -q "VGA compatible controller.*Intel" | grep -q -E "Haswell|Broadwell|Skylake|Kaby Lake|Coffee Lake|Whiskey Lake|Comet Lake"; then
-                    echo "💡 If needed: LIBVA_DRIVER_NAME=i965 for older Intel GPUs (Gen11 and below)"
+                if echo "$INTEL_MODEL" | grep -q -E "Arc|Xe|Alchemist|Tiger|Alder|Raptor|Meteor|Gen1[2-9]"; then
+                    echo "💡 Detected Intel GPU that supports iHD (e.g. Gen12+/Arc/Xe)"
+                    echo "   Recommended: LIBVA_DRIVER_NAME=iHD"
+                    echo "   Note: Only set this environment variable if hardware acceleration doesn't work by default"
+                    INTEL_RECOMMENDED_DRIVER="iHD"
+                    INTEL_SUPPORTS_QSV=true
+                elif echo "$INTEL_MODEL" | grep -q -E "Coffee|Whiskey|Comet|Gen11"; then
+                    echo "💡 Detected Intel GPU that supports both i965 and iHD (e.g. Gen9.5/Gen11)"
+                    echo "   Preferred: LIBVA_DRIVER_NAME=iHD"
+                    echo "   Recommended: Try i965 only if iHD has compatibility issues"
+                    echo "   Note: Only set this environment variable if hardware acceleration doesn't work by default"
+                    INTEL_RECOMMENDED_DRIVER="iHD"
+                    INTEL_SUPPORTS_QSV=true
+                elif echo "$INTEL_MODEL" | grep -q -E "Haswell|Broadwell|Skylake|Kaby"; then
+                    echo "💡 Detected Intel GPU that supports i965 (e.g. Gen9 and below)"
+                    echo "   Recommended: Set LIBVA_DRIVER_NAME=i965"
+                    echo "   Note: Only set this environment variable if hardware acceleration doesn't work by default"
+                    INTEL_RECOMMENDED_DRIVER="i965"
+                    # Older Intel GPUs support QSV through i965 driver but with more limitations
+                    INTEL_SUPPORTS_QSV=false
                 else
-                    # Generic Intel case - could be either, but iHD is more likely for newer hardware
-                    echo "💡 If needed: Try LIBVA_DRIVER_NAME=iHD first, or LIBVA_DRIVER_NAME=i965 if that fails"
+                    # Generic Intel case - we're not fully confident in our recommendation
+                    echo "💡 Unable to definitively identify Intel GPU generation"
+                    echo "   Try auto-detection first (no environment variable)"
+                    echo "   If issues occur: Try LIBVA_DRIVER_NAME=iHD first (newer GPUs)"
+                    echo "   If that fails: Try LIBVA_DRIVER_NAME=i965 (older GPUs)"
+                    INTEL_RECOMMENDED_DRIVER="unknown" # Mark as unknown rather than assuming
+                    INTEL_SUPPORTS_QSV="maybe" # Mark as maybe instead of assuming true
                 fi
-            elif lspci | grep -q "VGA compatible controller.*Advanced Micro Devices"; then
-                echo "💡 If needed: LIBVA_DRIVER_NAME=radeonsi for AMD GPUs"
+            elif [ "$AMD_GPU_IN_LSPCI" = true ]; then
+                echo "💡 If auto-detection fails: Set LIBVA_DRIVER_NAME=radeonsi for AMD GPUs"
+                echo "   Note: Only set this environment variable if hardware acceleration doesn't work by default"
             else
                 echo "ℹ️ Common VAAPI driver options if auto-detection fails:"
                 echo "   - For modern Intel GPUs (Gen12+/Arc/Xe): LIBVA_DRIVER_NAME=iHD"
                 echo "   - For older Intel GPUs: LIBVA_DRIVER_NAME=i965"
                 echo "   - For AMD GPUs: LIBVA_DRIVER_NAME=radeonsi"
+                echo "   Note: Only set these environment variables if hardware acceleration doesn't work by default"
             fi
         else
             echo "ℹ️ Intel/AMD GPU detected. Auto-detection should work in most cases."
@@ -378,50 +408,140 @@ echo "🔍 Checking FFmpeg hardware acceleration capabilities..."
 if command -v ffmpeg >/dev/null 2>&1; then
     HWACCEL=$(ffmpeg -hide_banner -hwaccels 2>/dev/null | grep -v "Hardware acceleration methods:" || echo "None found")
 
-    # Define expected acceleration methods based on detected hardware
-    EXPECTED_METHODS=""
+    # Initialize variables to store compatible and missing methods
+    COMPATIBLE_METHODS=""
     MISSING_METHODS=""
 
-    if [ "$NVIDIA_FOUND" = true ]; then
-        EXPECTED_NVIDIA="cuda" #cuvid nvenc nvdec" keeping these in case future support is added
-        for method in $EXPECTED_NVIDIA; do
-            if echo "$HWACCEL" | grep -q "$method"; then
-                EXPECTED_METHODS="$EXPECTED_METHODS $method"
-            else
-                MISSING_METHODS="$MISSING_METHODS $method"
+    # Format the list of hardware acceleration methods in a more readable way
+    echo "🔍 Available FFmpeg hardware acceleration methods:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Process the list into a more readable format with relevance indicators
+    if [ -n "$HWACCEL" ] && [ "$HWACCEL" != "None found" ]; then
+        # First, show methods compatible with detected hardware
+        echo "  📌 Compatible with your hardware:"
+        COMPATIBLE_FOUND=false
+
+        for method in $HWACCEL; do
+            # Skip if it's just the header line or empty
+            if [ "$method" = "Hardware" ] || [ -z "$method" ]; then
+                continue
+            fi
+
+            # Check if this method is relevant to detected hardware
+            IS_COMPATIBLE=false
+            DESCRIPTION=""
+
+            if [ "$NVIDIA_FOUND" = true ] && [[ "$method" =~ ^(cuda|cuvid|nvenc|nvdec)$ ]]; then
+                IS_COMPATIBLE=true
+                DESCRIPTION="NVIDIA GPU acceleration"
+            elif [ "$INTEL_GPU_IN_LSPCI" = true ] && [ "$method" = "qsv" ] && [ "$INTEL_SUPPORTS_QSV" = true ]; then
+                IS_COMPATIBLE=true
+                DESCRIPTION="Intel QuickSync acceleration"
+            elif [ "$method" = "vaapi" ] && (([ "$INTEL_GPU_IN_LSPCI" = true ] || [ "$AMD_GPU_IN_LSPCI" = true ]) && [ "$DRI_DEVICES_FOUND" = true ]); then
+                IS_COMPATIBLE=true
+                if [ "$INTEL_GPU_IN_LSPCI" = true ]; then
+                    DESCRIPTION="Intel VAAPI acceleration"
+                else
+                    DESCRIPTION="AMD VAAPI acceleration"
+                fi
+            fi
+
+            # Display compatible methods and store for summary
+            if [ "$IS_COMPATIBLE" = true ]; then
+                COMPATIBLE_FOUND=true
+                COMPATIBLE_METHODS="$COMPATIBLE_METHODS $method"
+                echo "    ✅ $method - $DESCRIPTION"
             fi
         done
-    fi
 
-    if [ "$INTEL_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
-        EXPECTED_INTEL="vaapi qsv"
-        for method in $EXPECTED_INTEL; do
-            if echo "$HWACCEL" | grep -q "$method"; then
-                EXPECTED_METHODS="$EXPECTED_METHODS $method"
-            else
-                MISSING_METHODS="$MISSING_METHODS $method"
+        if [ "$COMPATIBLE_FOUND" = false ]; then
+            echo "    ❌ No compatible acceleration methods found for your hardware"
+        fi
+
+        # Then show all other available methods
+        echo "  📌 Other available methods (not compatible with detected hardware):"
+        OTHER_FOUND=false
+
+        for method in $HWACCEL; do
+            # Skip if it's just the header line or empty
+            if [ "$method" = "Hardware" ] || [ -z "$method" ]; then
+                continue
+            fi
+
+            # Check if this method is relevant to detected hardware
+            IS_COMPATIBLE=false
+
+            if [ "$NVIDIA_FOUND" = true ] && [[ "$method" =~ ^(cuda|cuvid|nvenc|nvdec)$ ]]; then
+                IS_COMPATIBLE=true
+            elif [ "$INTEL_GPU_IN_LSPCI" = true ] && [ "$method" = "qsv" ] && [ "$INTEL_SUPPORTS_QSV" = true ]; then
+                IS_COMPATIBLE=true
+            elif [ "$method" = "vaapi" ] && (([ "$INTEL_GPU_IN_LSPCI" = true ] || [ "$AMD_GPU_IN_LSPCI" = true ]) && [ "$DRI_DEVICES_FOUND" = true ]); then
+                IS_COMPATIBLE=true
+            fi
+
+            # Display other methods that aren't compatible
+            if [ "$IS_COMPATIBLE" = false ]; then
+                OTHER_FOUND=true
+                echo "    ℹ️ $method"
             fi
         done
-    fi
 
-    if [ "$AMD_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
-        EXPECTED_AMD="vaapi"
-        for method in $EXPECTED_AMD; do
-            if echo "$HWACCEL" | grep -q "$method"; then
-                EXPECTED_METHODS="$EXPECTED_METHODS $method"
-            else
-                MISSING_METHODS="$MISSING_METHODS $method"
+        if [ "$OTHER_FOUND" = false ]; then
+            echo "    None"
+        fi
+
+        # Show expected methods that are missing
+        echo "  📌 Missing methods that should be available for your hardware:"
+        MISSING_FOUND=false
+
+        # Check for NVIDIA methods if NVIDIA GPU is detected
+        if [ "$NVIDIA_FOUND" = true ]; then
+            EXPECTED_NVIDIA="cuda" # cuvid nvenc nvdec" keeping these in case future support is added
+            for method in $EXPECTED_NVIDIA; do
+                if ! echo "$HWACCEL" | grep -q "$method"; then
+                    MISSING_FOUND=true
+                    MISSING_METHODS="$MISSING_METHODS $method"
+                    echo "    ⚠️ $method - NVIDIA acceleration (missing but should be available)"
+                fi
+            done
+        fi
+
+        # Check for Intel methods if Intel GPU is detected
+        if [ "$INTEL_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
+            if [ "$INTEL_SUPPORTS_QSV" = true ] && ! echo "$HWACCEL" | grep -q "qsv"; then
+                MISSING_FOUND=true
+                MISSING_METHODS="$MISSING_METHODS qsv"
+                echo "    ⚠️ qsv - Intel QuickSync acceleration (missing but should be available)"
             fi
-        done
+
+            if ! echo "$HWACCEL" | grep -q "vaapi"; then
+                MISSING_FOUND=true
+                MISSING_METHODS="$MISSING_METHODS vaapi"
+                echo "    ⚠️ vaapi - Intel VAAPI acceleration (missing but should be available)"
+            fi
+        fi
+
+        # Check for AMD methods if AMD GPU is detected
+        if [ "$AMD_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
+            if ! echo "$HWACCEL" | grep -q "vaapi"; then
+                MISSING_FOUND=true
+                MISSING_METHODS="$MISSING_METHODS vaapi"
+                echo "    ⚠️ vaapi - AMD VAAPI acceleration (missing but should be available)"
+            fi
+        fi
+
+        if [ "$MISSING_FOUND" = false ]; then
+            echo "    None - All expected methods are available"
+        fi
+    else
+        echo "  ❌ No hardware acceleration methods found"
     fi
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    # Show all available methods
-    echo "🔍 All available FFmpeg hardware acceleration methods:"
-    echo "$HWACCEL"
-
-    # Show expected methods based on hardware
-    if [ -n "$EXPECTED_METHODS" ]; then
-        echo "✅ Hardware-appropriate acceleration methods available:$EXPECTED_METHODS"
+    # Show hardware-appropriate method summary using the already gathered information
+    if [ -n "$COMPATIBLE_METHODS" ]; then
+        echo "✅ Hardware-appropriate acceleration methods available:$COMPATIBLE_METHODS"
     fi
 
     # Show missing expected methods
@@ -430,13 +550,14 @@ if command -v ffmpeg >/dev/null 2>&1; then
         echo "   This might indicate missing libraries or improper driver configuration."
     fi
 
-    # Check specific cases of interest
-    if [ "$NVIDIA_FOUND" = true ] && ! echo "$HWACCEL" | grep -q "cuda\|nvenc\|cuvid"; then
+    # Display specific cases of interest (simplify using previously captured information)
+    if [ "$NVIDIA_FOUND" = true ] && ! echo "$COMPATIBLE_METHODS" | grep -q "cuda\|nvenc\|cuvid"; then
         echo "⚠️ NVIDIA GPU detected but no NVIDIA acceleration methods available."
         echo "   Ensure ffmpeg is built with NVIDIA support and required libraries are installed."
     fi
 
-    if ([ "$INTEL_GPU_IN_LSPCI" = true ] || [ "$AMD_GPU_IN_LSPCI" = true ]) && [ "$DRI_DEVICES_FOUND" = true ] && ! echo "$HWACCEL" | grep -q "vaapi"; then
+    if (([ "$INTEL_GPU_IN_LSPCI" = true ] || [ "$AMD_GPU_IN_LSPCI" = true ]) &&
+        [ "$DRI_DEVICES_FOUND" = true ] && ! echo "$COMPATIBLE_METHODS" | grep -q "vaapi"); then
         echo "⚠️ Intel/AMD GPU detected but VAAPI acceleration not available."
         echo "   Ensure ffmpeg is built with VAAPI support and proper drivers are installed."
     fi
@@ -475,11 +596,19 @@ if [ "$NVIDIA_FOUND" = true ] && (nvidia-smi >/dev/null 2>&1 || [ -n "$NVIDIA_VI
         fi
     fi
 
-    # Display FFmpeg NVIDIA acceleration methods
-    if echo "$HWACCEL" | grep -q "cuda\|nvenc\|cuvid"; then
+    # Display FFmpeg NVIDIA acceleration methods in more detail
+    if echo "$COMPATIBLE_METHODS" | grep -q "cuda\|nvenc\|cuvid"; then
         echo "✅ FFmpeg NVIDIA acceleration: AVAILABLE"
+
+        # Show detailed breakdown of available NVIDIA methods
+        NVIDIA_METHODS=$(echo "$COMPATIBLE_METHODS" | grep -o '\(cuda\|cuvid\|nvenc\|nvdec\)')
+        echo "   Available NVIDIA methods: $NVIDIA_METHODS"
+        echo "   Recommended for: Video transcoding with NVIDIA GPUs"
     else
         echo "⚠️ FFmpeg NVIDIA acceleration: NOT DETECTED"
+        if [ -n "$MISSING_METHODS" ]; then
+            echo "   Missing methods that should be available: $MISSING_METHODS"
+        fi
     fi
 elif [ "$NVIDIA_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
     # NVIDIA through DRI only (suboptimal but possible)
@@ -512,8 +641,9 @@ elif [ "$NVIDIA_GPU_IN_LSPCI" = true ] && [ "$DRI_DEVICES_FOUND" = true ]; then
     echo "              count: all"
     echo "              capabilities: [gpu]"
 
-    if echo "$HWACCEL" | grep -q "vaapi"; then
-        echo "✅ FFmpeg VAAPI acceleration: AVAILABLE"
+    if echo "$COMPATIBLE_METHODS" | grep -q "vaapi"; then
+        echo "✅ FFmpeg VAAPI acceleration: AVAILABLE (limited without NVENC)"
+        echo "   VAAPI can be used for transcoding, but NVENC/CUDA would be more efficient"
     else
         echo "⚠️ FFmpeg VAAPI acceleration: NOT DETECTED"
     fi
@@ -540,11 +670,41 @@ elif [ "$DRI_DEVICES_FOUND" = true ]; then
         fi
     fi
 
-    # Display FFmpeg VAAPI acceleration method
-    if echo "$HWACCEL" | grep -q "vaapi"; then
+    # Display FFmpeg VAAPI acceleration method with more details
+    if echo "$COMPATIBLE_METHODS" | grep -q "vaapi"; then
         echo "✅ FFmpeg VAAPI acceleration: AVAILABLE"
+
+        # Add recommended usage information
+        echo "   Recommended for: General video transcoding with Intel/AMD GPUs"
+
+        # Add recommended driver information for Intel GPUs
+        if [ "$INTEL_GPU_IN_LSPCI" = true ] && [ -n "$INTEL_RECOMMENDED_DRIVER" ]; then
+            if [ "$INTEL_RECOMMENDED_DRIVER" = "unknown" ]; then
+                echo "ℹ️ Uncertain about recommended VAAPI driver for this Intel GPU"
+                echo "   Auto-detection should work, but if issues occur try iHD or i965"
+            else
+                echo "ℹ️ Recommended VAAPI driver for this Intel GPU: $INTEL_RECOMMENDED_DRIVER"
+            fi
+
+            if [ "$INTEL_SUPPORTS_QSV" = true ] && echo "$COMPATIBLE_METHODS" | grep -q "qsv"; then
+                echo "✅ QSV acceleration: AVAILABLE"
+                echo "   Recommended for: Intel-specific optimized transcoding"
+                echo "   Works best with: $INTEL_RECOMMENDED_DRIVER driver"
+            elif [ "$INTEL_SUPPORTS_QSV" = true ]; then
+                echo "ℹ️ QSV acceleration: NOT DETECTED (may be available with proper configuration)"
+                echo "   Your Intel GPU supports QSV but it's not available in FFmpeg"
+                echo "   Check if FFmpeg is built with QSV support"
+            elif [ "$INTEL_SUPPORTS_QSV" = "maybe" ]; then
+                echo "ℹ️ QSV acceleration: MAY BE AVAILABLE (depends on exact GPU model)"
+            fi
+        elif [ "$AMD_GPU_IN_LSPCI" = true ]; then
+            echo "ℹ️ Recommended VAAPI driver for AMD GPUs: radeonsi"
+        fi
     else
         echo "⚠️ FFmpeg VAAPI acceleration: NOT DETECTED"
+        if [ -n "$MISSING_METHODS" ]; then
+            echo "   Missing methods that should be available: $MISSING_METHODS"
+        fi
     fi
 else
     echo "❌ NO GPU ACCELERATION DETECTED"
