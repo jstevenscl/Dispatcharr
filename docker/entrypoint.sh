@@ -99,7 +99,7 @@ echo "Starting init process..."
 . /app/docker/init/01-user-setup.sh
 . /app/docker/init/02-postgres.sh
 . /app/docker/init/03-init-dispatcharr.sh
-. /app/docker/init/04-check-gpu.sh
+. /app/docker/init/04-check-hwaccel.sh
 
 # Start PostgreSQL
 echo "Starting Postgres..."
