@@ -99,7 +99,6 @@ echo "Starting init process..."
 . /app/docker/init/01-user-setup.sh
 . /app/docker/init/02-postgres.sh
 . /app/docker/init/03-init-dispatcharr.sh
-. /app/docker/init/04-check-hwaccel.sh
 
 # Start PostgreSQL
 echo "Starting Postgres..."
@@ -181,6 +180,15 @@ pids+=("$uwsgi_pid")
 # beat_pid=$(pgrep beat | sort | head -n1)
 # echo "✅ celery beat started with PID $beat_pid"
 # pids+=("$beat_pid")
+
+
+# Wait for services to fully initialize before checking hardware
+echo "⏳ Waiting for services to fully initialize before hardware check..."
+sleep 5
+
+# Run hardware check
+echo "🔍 Running hardware acceleration check..."
+. /app/docker/init/04-check-hwaccel.sh
 
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then
