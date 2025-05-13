@@ -346,10 +346,10 @@ if [ "$DRI_DEVICES_FOUND" = true ]; then
             # Intel GPU detection with more future-proof approach
             if lspci | grep -q "Intel Corporation.*VGA"; then
                 # Check for newer Intel generations that use iHD
-                if lspci | grep -q "Intel Corporation.*VGA" | grep -E "Arc|Xe|Alchemist|Tiger Lake|Alder Lake|Raptor Lake|Meteor Lake|Gen1[2-9]"; then
+                if lspci | grep -E "Intel Corporation.*VGA" | grep -E "Arc|Xe|Alchemist|Tiger Lake|Alder Lake|Raptor Lake|Meteor Lake|Gen1[2-9]"; then
                     echo "💡 If needed: LIBVA_DRIVER_NAME=iHD for modern Intel GPUs (Gen12+/Arc/Xe)"
                 # Check for very old Intel that definitely needs i965
-                elif lspci | grep -q "Intel Corporation.*VGA" | grep -E "Haswell|Broadwell|Skylake|Kaby Lake|Coffee Lake|Whiskey Lake|Comet Lake"; then
+                elif lspci | grep -E "Intel Corporation.*VGA" | grep -E "Haswell|Broadwell|Skylake|Kaby Lake|Coffee Lake|Whiskey Lake|Comet Lake"; then
                     echo "💡 If needed: LIBVA_DRIVER_NAME=i965 for older Intel GPUs (Gen11 and below)"
                 else
                     # Generic Intel case - could be either, but iHD is more likely for newer hardware
