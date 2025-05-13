@@ -338,24 +338,26 @@ if [ "$DRI_DEVICES_FOUND" = true ]; then
 
     if [ -n "$LIBVA_DRIVER_NAME" ]; then
         echo "ℹ️ LIBVA_DRIVER_NAME is set to '$LIBVA_DRIVER_NAME'"
+        echo "   Note: If you experience issues with hardware acceleration, try removing this"
+        echo "   environment variable to let the system auto-detect the appropriate driver."
     else
         # Check if we can detect the GPU type
         if command -v lspci >/dev/null 2>&1; then
             echo "ℹ️ VAAPI driver auto-detection is usually reliable. Settings below only needed if you experience issues."
 
             # Intel GPU detection with more future-proof approach
-            if lspci | grep -q "Intel Corporation.*VGA"; then
+            if lspci | grep -q "VGA compatible controller.*Intel"; then
                 # Check for newer Intel generations that use iHD
-                if lspci | grep -E "Intel Corporation.*VGA" | grep -E "Arc|Xe|Alchemist|Tiger Lake|Alder Lake|Raptor Lake|Meteor Lake|Gen1[2-9]"; then
+                if lspci | grep "VGA compatible controller.*Intel" | grep -E "Arc|Xe|Alchemist|Tiger Lake|Alder Lake|Raptor Lake|Meteor Lake|Gen1[2-9]"; then
                     echo "💡 If needed: LIBVA_DRIVER_NAME=iHD for modern Intel GPUs (Gen12+/Arc/Xe)"
                 # Check for very old Intel that definitely needs i965
-                elif lspci | grep -E "Intel Corporation.*VGA" | grep -E "Haswell|Broadwell|Skylake|Kaby Lake|Coffee Lake|Whiskey Lake|Comet Lake"; then
+                elif lspci | grep "VGA compatible controller.*Intel" | grep -E "Haswell|Broadwell|Skylake|Kaby Lake|Coffee Lake|Whiskey Lake|Comet Lake"; then
                     echo "💡 If needed: LIBVA_DRIVER_NAME=i965 for older Intel GPUs (Gen11 and below)"
                 else
                     # Generic Intel case - could be either, but iHD is more likely for newer hardware
                     echo "💡 If needed: Try LIBVA_DRIVER_NAME=iHD first, or LIBVA_DRIVER_NAME=i965 if that fails"
                 fi
-            elif lspci | grep -q "Advanced Micro Devices.*VGA"; then
+            elif lspci | grep -q "VGA compatible controller.*Advanced Micro Devices"; then
                 echo "💡 If needed: LIBVA_DRIVER_NAME=radeonsi for AMD GPUs"
             else
                 echo "ℹ️ Common VAAPI driver options if auto-detection fails:"
