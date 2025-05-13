@@ -203,7 +203,7 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = ({}) => {
+const ChannelsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -238,6 +238,7 @@ const ChannelsTable = ({}) => {
   const selectedProfileChannels = useChannelsStore(
     (s) => s.profiles[selectedProfileId]?.channels
   );
+  const fetchChannelProfiles = useChannelsStore((state) => state.fetchChannelProfiles);
 
   // store/settings
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
@@ -566,6 +567,11 @@ const ChannelsTable = ({}) => {
     setPaginationString(`${startItem} to ${endItem} of ${totalCount}`);
   }, [data]);
 
+  useEffect(() => {
+    // Fetch channel profiles when the component mounts
+    fetchChannelProfiles();
+  }, []);
+
   const columns = useMemo(
     () => [
       {
@@ -790,8 +796,8 @@ const ChannelsTable = ({}) => {
       return hasStreams
         ? {} // Default style for channels with streams
         : {
-            className: 'no-streams-row', // Add a class instead of background color
-          };
+          className: 'no-streams-row', // Add a class instead of background color
+        };
     },
   });
 
