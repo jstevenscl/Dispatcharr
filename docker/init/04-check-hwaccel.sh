@@ -124,7 +124,8 @@ else
 
     echo "📋 =================================================="
     echo "✅ GPU detection script complete. No GPUs available for hardware acceleration."
-    exit 0
+    # Don't exit the container - just return from this script
+    return 0 2>/dev/null || true
 fi
 
 # Check group membership for GPU access - context-aware based on hardware
