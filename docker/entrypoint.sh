@@ -53,11 +53,14 @@ if [ -n "$DISPATCHARR_TIMESTAMP" ]; then
 else
     echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}"
 fi
-
+export DISPATCHARR_LOG_LEVEL
 # Set log level with default if not provided
-export DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL:-info}
-echo "Environment DISPATCHARR_LOG_LEVEL detected as: '${DISPATCHARR_LOG_LEVEL}'"
-echo "Setting log level to: ${DISPATCHARR_LOG_LEVEL}"
+DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL:-INFO}
+# Convert to uppercase
+DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL^^}
+
+
+echo "Environment DISPATCHARR_LOG_LEVEL set to: '${DISPATCHARR_LOG_LEVEL}'"
 
 # Also make the log level available in /etc/environment for all login shells
 #grep -q "DISPATCHARR_LOG_LEVEL" /etc/environment || echo "DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL}" >> /etc/environment
@@ -143,10 +146,17 @@ else
     uwsgi_file="/app/docker/uwsgi.ini"
 fi
 
-# Pass all environment variables to the uwsgi process
-# The -p/--preserve-environment flag ensures all environment variables are passed through
-su -p - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
-uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
+# Set base uwsgi args
+uwsgi_args="--ini $uwsgi_file"
+
+# Conditionally disable logging if not in debug mode
+if [ "$DISPATCHARR_DEBUG" != "true" ]; then
+    uwsgi_args+=" --disable-logging"
+fi
+
+# Launch uwsgi -p passes environment variables to the process
+su -p - $POSTGRES_USER -c "cd /app && uwsgi $uwsgi_args &"
+uwsgi_pid=$(pgrep uwsgi | sort | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")
 
