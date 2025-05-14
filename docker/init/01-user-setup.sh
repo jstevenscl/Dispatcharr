@@ -87,4 +87,4 @@ if getent group video >/dev/null 2>&1; then
 fi
 
 # Run nginx as specified user
-sed -i 's/user www-data;/user dispatch;/g' /etc/nginx/nginx.conf
+sed -i "s/user www-data;/user $POSTGRES_USER;/g" /etc/nginx/nginx.conf
