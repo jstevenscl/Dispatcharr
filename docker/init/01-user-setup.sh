@@ -48,8 +48,19 @@ if [ -e "/dev/dri/renderD128" ]; then
         if getent group render >/dev/null; then
             CURRENT_RENDER_GID=$(getent group render | cut -d: -f3)
             if [ "$CURRENT_RENDER_GID" != "$HOST_RENDER_GID" ]; then
-                echo "Changing render group GID from $CURRENT_RENDER_GID to $HOST_RENDER_GID"
-                groupmod -g "$HOST_RENDER_GID" render
+                # Check if another group already has the target GID
+                if getent group "$HOST_RENDER_GID" >/dev/null 2>&1; then
+                    EXISTING_GROUP=$(getent group "$HOST_RENDER_GID" | cut -d: -f1)
+                    echo "Warning: Cannot change render group GID to $HOST_RENDER_GID as it's already used by group '$EXISTING_GROUP'"
+                    # Add user to the existing group with the target GID to ensure device access
+                    if ! id -nG "$POSTGRES_USER" | grep -qw "$EXISTING_GROUP"; then
+                        usermod -a -G "$EXISTING_GROUP" "$POSTGRES_USER" || echo "Warning: Failed to add user to $EXISTING_GROUP group"
+                        echo "Added user $POSTGRES_USER to $EXISTING_GROUP group for GPU access"
+                    fi
+                else
+                    echo "Changing render group GID from $CURRENT_RENDER_GID to $HOST_RENDER_GID"
+                    groupmod -g "$HOST_RENDER_GID" render || echo "Warning: Failed to change render group GID. Continuing anyway..."
+                fi
             fi
         else
             echo "Creating render group with GID $HOST_RENDER_GID"
