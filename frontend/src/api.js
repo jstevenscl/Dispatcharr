@@ -103,14 +103,13 @@ export default class API {
 
   static async fetchSuperUser() {
     try {
-      const response = await request(
-        `${host}/api/accounts/initialize-superuser/`,
-        { auth: false }
-      );
-
-      return response;
-    } catch (e) {
-      errorNotification('Failed to fetch  superuser', e);
+      return await request(`${host}/api/accounts/initialize-superuser/`, {
+        auth: false,
+        method: 'GET',
+      });
+    } catch (error) {
+      console.error('Error checking superuser status:', error);
+      throw error;
     }
   }
 
@@ -150,11 +149,21 @@ export default class API {
   }
 
   static async refreshToken(refresh) {
-    return await request(`${host}/api/accounts/token/refresh/`, {
-      auth: false,
-      method: 'POST',
-      body: { refresh },
-    });
+    try {
+      return await request(`${host}/api/accounts/token/refresh/`, {
+        auth: false,
+        method: 'POST',
+        body: { refresh },
+      });
+    } catch (error) {
+      // If user does not exist or token is invalid, clear tokens
+      if (error.status === 401 || error.message?.includes('does not exist')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        window.location.href = '/login'; // Redirect to login
+      }
+      throw error;
+    }
   }
 
   static async logout() {
