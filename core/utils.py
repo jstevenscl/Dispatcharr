@@ -52,6 +52,24 @@ class RedisClient:
                     # Validate connection with ping
                     client.ping()
                     client.flushdb()
+
+                    # Disable persistence on first connection - improves performance
+                    # Only try to disable if not in a read-only environment
+                    try:
+                        client.config_set('save', '')  # Disable RDB snapshots
+                        client.config_set('appendonly', 'no')  # Disable AOF logging
+
+                        # Disable protected mode when in debug mode
+                        if os.environ.get('DISPATCHARR_DEBUG', '').lower() == 'true':
+                            client.config_set('protected-mode', 'no')  # Disable protected mode in debug
+                            logger.warning("Redis protected mode disabled for debug environment")
+
+                        logger.trace("Redis persistence disabled for better performance")
+                    except redis.exceptions.ResponseError:
+                        # This might fail if Redis is configured to prohibit CONFIG command
+                        # or if running in protected mode - that's okay
+                        logger.error("Could not modify Redis persistence settings (may be restricted)")
+
                     logger.info(f"Connected to Redis at {redis_host}:{redis_port}/{redis_db}")
 
                     cls._client = client
