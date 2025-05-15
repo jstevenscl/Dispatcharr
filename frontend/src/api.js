@@ -368,8 +368,8 @@ export default class API {
         payload.channel_number !== null &&
         payload.channel_number !== undefined
       ) {
-        const parsedNumber = parseInt(payload.channel_number, 10);
-        payload.channel_number = isNaN(parsedNumber) ? null : parsedNumber;
+        // Ensure channel_number is explicitly treated as a float
+        payload.channel_number = parseFloat(payload.channel_number);
       }
 
       const response = await request(

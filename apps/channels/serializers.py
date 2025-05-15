@@ -115,7 +115,14 @@ class BulkChannelProfileMembershipSerializer(serializers.Serializer):
 #
 class ChannelSerializer(serializers.ModelSerializer):
     # Show nested group data, or ID
-    channel_number = serializers.FloatField(allow_null=True, required=False)
+    # Ensure channel_number is explicitly typed as FloatField and properly validated
+    channel_number = serializers.FloatField(
+        allow_null=True,
+        required=False,
+        error_messages={
+            'invalid': 'Channel number must be a valid decimal number.'
+        }
+    )
     channel_group_id = serializers.PrimaryKeyRelatedField(
         queryset=ChannelGroup.objects.all(),
         source="channel_group",
@@ -234,6 +241,16 @@ class ChannelSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def validate_channel_number(self, value):
+        """Ensure channel_number is properly processed as a float"""
+        if value is None:
+            return value
+
+        try:
+            # Ensure it's processed as a float
+            return float(value)
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Channel number must be a valid decimal number.")
 
     def validate_stream_profile(self, value):
         """Handle special case where empty/0 values mean 'use default' (null)"""

@@ -230,11 +230,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
             type=openapi.TYPE_OBJECT,
             required=["channel_ids"],
             properties={
-                "starting_number": openapi.Schema(type=openapi.TYPE_STRING, description="Starting channel number to assign"),
+                "starting_number": openapi.Schema(type=openapi.TYPE_NUMBER, description="Starting channel number to assign (can be decimal)"),
                 "channel_ids": openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Items(type=openapi.TYPE_INTEGER),
-                    description="Channel  IDs to assign"
+                    description="Channel IDs to assign"
                 )
             }
         ),
@@ -244,7 +244,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
     def assign(self, request):
         with transaction.atomic():
             channel_ids = request.data.get('channel_ids', [])
-            channel_num = request.data.get('starting_number', 1)
+            # Ensure starting_number is processed as a float
+            try:
+                channel_num = float(request.data.get('starting_number', 1))
+            except (ValueError, TypeError):
+                channel_num = 1.0
+
             for channel_id in channel_ids:
                 Channel.objects.filter(id=channel_id).update(channel_number=channel_num)
                 channel_num = channel_num + 1
