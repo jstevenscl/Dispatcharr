@@ -830,11 +830,31 @@ def refresh_single_m3u_account(account_id):
 
     cache_path = os.path.join(m3u_dir, f"{account_id}.json")
     if os.path.exists(cache_path):
-        with open(cache_path, 'r') as file:
-            data = json.load(file)
+        try:
+            with open(cache_path, 'r') as file:
+                data = json.load(file)
 
-        extinf_data = data['extinf_data']
-        groups = data['groups']
+            extinf_data = data['extinf_data']
+            groups = data['groups']
+        except json.JSONDecodeError as e:
+            # Handle corrupted JSON file
+            logger.error(f"Error parsing cached M3U data for account {account_id}: {str(e)}")
+
+            # Backup the corrupted file for potential analysis
+            backup_path = f"{cache_path}.corrupted"
+            try:
+                os.rename(cache_path, backup_path)
+                logger.info(f"Renamed corrupted cache file to {backup_path}")
+            except OSError as rename_err:
+                logger.warning(f"Failed to rename corrupted cache file: {str(rename_err)}")
+
+            # Reset the data to empty structures
+            extinf_data = []
+            groups = None
+        except Exception as e:
+            logger.error(f"Unexpected error reading cached M3U data: {str(e)}")
+            extinf_data = []
+            groups = None
 
     if not extinf_data:
         try:
