@@ -203,7 +203,7 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = ({}) => {
+const ChannelsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -790,8 +790,8 @@ const ChannelsTable = ({}) => {
       return hasStreams
         ? {} // Default style for channels with streams
         : {
-            className: 'no-streams-row', // Add a class instead of background color
-          };
+          className: 'no-streams-row', // Add a class instead of background color
+        };
     },
   });
 

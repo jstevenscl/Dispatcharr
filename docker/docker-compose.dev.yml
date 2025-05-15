@@ -3,7 +3,7 @@ services:
     # build:
     #   context: ..
     #   dockerfile: docker/Dockerfile.dev
-    image: ghcr.io/dispatcharr/dispatcharr:dev
+    image: ghcr.io/dispatcharr/dispatcharr:base
     container_name: dispatcharr_dev
     ports:
       - 5656:5656
@@ -16,6 +16,7 @@ services:
       - DISPATCHARR_ENV=dev
       - REDIS_HOST=localhost
       - CELERY_BROKER_URL=redis://localhost:6379/0
+      - DISPATCHARR_LOG_LEVEL=debug
 
   pgadmin:
     image: dpage/pgadmin4

@@ -37,7 +37,12 @@ export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
 export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
-
+export LIBVA_DRIVERS_PATH='/usr/local/lib/x86_64-linux-gnu/dri'
+export LD_LIBRARY_PATH='/usr/local/lib'
+# Set LIBVA_DRIVER_NAME if user has specified it
+if [ -v LIBVA_DRIVER_NAME ]; then
+    export LIBVA_DRIVER_NAME
+fi
 # Extract version information from version.py
 export DISPATCHARR_VERSION=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__version__)")
 export DISPATCHARR_TIMESTAMP=$(python -c "import sys; sys.path.append('/app'); import version; print(version.__timestamp__ or '')")
@@ -48,29 +53,44 @@ if [ -n "$DISPATCHARR_TIMESTAMP" ]; then
 else
     echo "📦 Dispatcharr version: ${DISPATCHARR_VERSION}"
 fi
+export DISPATCHARR_LOG_LEVEL
+# Set log level with default if not provided
+DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL:-INFO}
+# Convert to uppercase
+DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL^^}
+
+
+echo "Environment DISPATCHARR_LOG_LEVEL set to: '${DISPATCHARR_LOG_LEVEL}'"
+
+# Also make the log level available in /etc/environment for all login shells
+#grep -q "DISPATCHARR_LOG_LEVEL" /etc/environment || echo "DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL}" >> /etc/environment
 
 # READ-ONLY - don't let users change these
 export POSTGRES_DIR=/data/db
 
 # Global variables, stored so other users inherit them
 if [[ ! -f /etc/profile.d/dispatcharr.sh ]]; then
-    echo "export PATH=$PATH" >> /etc/profile.d/dispatcharr.sh
-    echo "export VIRTUAL_ENV=$VIRTUAL_ENV" >> /etc/profile.d/dispatcharr.sh
-    echo "export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE" >> /etc/profile.d/dispatcharr.sh
-    echo "export PYTHONUNBUFFERED=$PYTHONUNBUFFERED" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_DB=$POSTGRES_DB" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_USER=$POSTGRES_USER" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_HOST=$POSTGRES_HOST" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_PORT=$POSTGRES_PORT" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_ENV=$DISPATCHARR_ENV" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_DEBUG=$DISPATCHARR_DEBUG" >> /etc/profile.d/dispatcharr.sh
-    echo "export REDIS_HOST=$REDIS_HOST" >> /etc/profile.d/dispatcharr.sh
-    echo "export REDIS_DB=$REDIS_DB" >> /etc/profile.d/dispatcharr.sh
-    echo "export POSTGRES_DIR=$POSTGRES_DIR" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_PORT=$DISPATCHARR_PORT" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_VERSION=$DISPATCHARR_VERSION" >> /etc/profile.d/dispatcharr.sh
-    echo "export DISPATCHARR_TIMESTAMP=$DISPATCHARR_TIMESTAMP" >> /etc/profile.d/dispatcharr.sh
+    # Define all variables to process
+    variables=(
+        PATH VIRTUAL_ENV DJANGO_SETTINGS_MODULE PYTHONUNBUFFERED
+        POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT
+        DISPATCHARR_ENV DISPATCHARR_DEBUG DISPATCHARR_LOG_LEVEL
+        REDIS_HOST REDIS_DB POSTGRES_DIR DISPATCHARR_PORT
+        DISPATCHARR_VERSION DISPATCHARR_TIMESTAMP LIBVA_DRIVERS_PATH LIBVA_DRIVER_NAME LD_LIBRARY_PATH
+    )
+
+    # Process each variable for both profile.d and environment
+    for var in "${variables[@]}"; do
+        # Check if the variable is set in the environment
+        if [ -n "${!var+x}" ]; then
+            # Add to profile.d
+            echo "export ${var}=${!var}" >> /etc/profile.d/dispatcharr.sh
+            # Add to /etc/environment if not already there
+            grep -q "^${var}=" /etc/environment || echo "${var}=${!var}" >> /etc/environment
+        else
+            echo "Warning: Environment variable $var is not set"
+        fi
+    done
 fi
 
 chmod +x /etc/profile.d/dispatcharr.sh
@@ -126,8 +146,17 @@ else
     uwsgi_file="/app/docker/uwsgi.ini"
 fi
 
-su - $POSTGRES_USER -c "cd /app && uwsgi --ini $uwsgi_file &"
-uwsgi_pid=$(pgrep uwsgi | sort  | head -n1)
+# Set base uwsgi args
+uwsgi_args="--ini $uwsgi_file"
+
+# Conditionally disable logging if not in debug mode
+if [ "$DISPATCHARR_DEBUG" != "true" ]; then
+    uwsgi_args+=" --disable-logging"
+fi
+
+# Launch uwsgi -p passes environment variables to the process
+su -p - $POSTGRES_USER -c "cd /app && uwsgi $uwsgi_args &"
+uwsgi_pid=$(pgrep uwsgi | sort | head -n1)
 echo "✅ uwsgi started with PID $uwsgi_pid"
 pids+=("$uwsgi_pid")
 
@@ -161,6 +190,15 @@ pids+=("$uwsgi_pid")
 # beat_pid=$(pgrep beat | sort | head -n1)
 # echo "✅ celery beat started with PID $beat_pid"
 # pids+=("$beat_pid")
+
+
+# Wait for services to fully initialize before checking hardware
+echo "⏳ Waiting for services to fully initialize before hardware check..."
+sleep 5
+
+# Run hardware check
+echo "🔍 Running hardware acceleration check..."
+. /app/docker/init/04-check-hwaccel.sh
 
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then

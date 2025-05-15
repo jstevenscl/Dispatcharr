@@ -244,7 +244,7 @@ def process_groups(account, groups):
     group_objs = []
     groups_to_create = []
     for group_name, custom_props in groups.items():
-        logger.info(f"Handling group: {group_name}")
+        logger.debug(f"Handling group: {group_name}")
         if (group_name not in existing_groups) and (group_name not in SKIP_EXTS):
             groups_to_create.append(ChannelGroup(
                 name=group_name,
@@ -253,9 +253,9 @@ def process_groups(account, groups):
             group_objs.append(existing_groups[group_name])
 
     if groups_to_create:
-        logger.info(f"Creating {len(groups_to_create)} groups")
+        logger.debug(f"Creating {len(groups_to_create)} groups")
         created = ChannelGroup.bulk_create_and_fetch(groups_to_create)
-        logger.info(f"Created {len(created)} groups")
+        logger.debug(f"Created {len(created)} groups")
         group_objs.extend(created)
 
     relations = []
@@ -301,14 +301,14 @@ def process_xc_category(account_id, batch, groups, hash_keys):
                 continue
 
             try:
-                logger.info(f"Fetching streams for XC category: {group_name} (ID: {props['xc_id']})")
+                logger.debug(f"Fetching streams for XC category: {group_name} (ID: {props['xc_id']})")
                 streams = xc_client.get_live_category_streams(props['xc_id'])
 
                 if not streams:
                     logger.warning(f"No streams found for XC category {group_name} (ID: {props['xc_id']})")
                     continue
 
-                logger.info(f"Found {len(streams)} streams for category {group_name}")
+                logger.debug(f"Found {len(streams)} streams for category {group_name}")
 
                 for stream in streams:
                     name = stream["name"]
@@ -550,7 +550,7 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
     if account.account_type == M3UAccount.Types.XC:
         # Log detailed information about the account
         logger.info(f"Processing XC account {account_id} with URL: {account.server_url}")
-        logger.info(f"Username: {account.username}, Has password: {'Yes' if account.password else 'No'}")
+        logger.debug(f"Username: {account.username}, Has password: {'Yes' if account.password else 'No'}")
 
         # Validate required fields
         if not account.server_url:
@@ -582,7 +582,7 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
             # User agent handling - completely rewritten
             try:
                 # Debug the user agent issue
-                logger.info(f"Getting user agent for account {account.id}")
+                logger.debug(f"Getting user agent for account {account.id}")
 
                 # Use a hardcoded user agent string to avoid any issues with object structure
                 user_agent_string = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -593,20 +593,20 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
                         ua_obj = UserAgent.objects.get(id=account.user_agent_id)
                         if ua_obj and hasattr(ua_obj, 'user_agent') and ua_obj.user_agent:
                             user_agent_string = ua_obj.user_agent
-                            logger.info(f"Using user agent from account: {user_agent_string}")
+                            logger.debug(f"Using user agent from account: {user_agent_string}")
                     else:
                         # Get default user agent from CoreSettings
                         default_ua_id = CoreSettings.get_default_user_agent_id()
-                        logger.info(f"Default user agent ID from settings: {default_ua_id}")
+                        logger.debug(f"Default user agent ID from settings: {default_ua_id}")
                         if default_ua_id:
                             ua_obj = UserAgent.objects.get(id=default_ua_id)
                             if ua_obj and hasattr(ua_obj, 'user_agent') and ua_obj.user_agent:
                                 user_agent_string = ua_obj.user_agent
-                                logger.info(f"Using default user agent: {user_agent_string}")
+                                logger.debug(f"Using default user agent: {user_agent_string}")
                 except Exception as e:
                     logger.warning(f"Error getting user agent, using fallback: {str(e)}")
 
-                logger.info(f"Final user agent string: {user_agent_string}")
+                logger.debug(f"Final user agent string: {user_agent_string}")
             except Exception as e:
                 user_agent_string = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 logger.warning(f"Exception in user agent handling, using fallback: {str(e)}")
@@ -629,9 +629,9 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
 
             # Authenticate with detailed error handling
             try:
-                logger.info(f"Authenticating with XC server {server_url}")
+                logger.debug(f"Authenticating with XC server {server_url}")
                 auth_result = xc_client.authenticate()
-                logger.info(f"Authentication response: {auth_result}")
+                logger.debug(f"Authentication response: {auth_result}")
             except Exception as e:
                 error_msg = f"Failed to authenticate with XC server: {str(e)}"
                 logger.error(error_msg)
@@ -733,6 +733,60 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
 
     return extinf_data, groups
 
+def delete_m3u_refresh_task_by_id(account_id):
+    """
+    Delete the periodic task associated with an M3U account ID.
+    Can be called directly or from the post_delete signal.
+    Returns True if a task was found and deleted, False otherwise.
+    """
+    try:
+        task = None
+        task_name = f"m3u_account-refresh-{account_id}"
+
+        # Look for task by name
+        try:
+            from django_celery_beat.models import PeriodicTask, IntervalSchedule
+            task = PeriodicTask.objects.get(name=task_name)
+            logger.debug(f"Found task by name: {task.id} for M3UAccount {account_id}")
+        except PeriodicTask.DoesNotExist:
+            logger.warning(f"No PeriodicTask found with name {task_name}")
+            return False
+
+        # Now delete the task and its interval
+        if task:
+            # Store interval info before deleting the task
+            interval_id = None
+            if hasattr(task, 'interval') and task.interval:
+                interval_id = task.interval.id
+
+                # Count how many TOTAL tasks use this interval (including this one)
+                tasks_with_same_interval = PeriodicTask.objects.filter(interval_id=interval_id).count()
+                logger.debug(f"Interval {interval_id} is used by {tasks_with_same_interval} tasks total")
+
+            # Delete the task first
+            task_id = task.id
+            task.delete()
+            logger.debug(f"Successfully deleted periodic task {task_id}")
+
+            # Now check if we should delete the interval
+            # We only delete if it was the ONLY task using this interval
+            if interval_id and tasks_with_same_interval == 1:
+                try:
+                    interval = IntervalSchedule.objects.get(id=interval_id)
+                    logger.debug(f"Deleting interval schedule {interval_id} (not shared with other tasks)")
+                    interval.delete()
+                    logger.debug(f"Successfully deleted interval {interval_id}")
+                except IntervalSchedule.DoesNotExist:
+                    logger.warning(f"Interval {interval_id} no longer exists")
+            elif interval_id:
+                logger.debug(f"Not deleting interval {interval_id} as it's shared with {tasks_with_same_interval-1} other tasks")
+
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting periodic task for M3UAccount {account_id}: {str(e)}", exc_info=True)
+        return False
+
 @shared_task
 def refresh_single_m3u_account(account_id):
     """Splits M3U processing into chunks and dispatches them as parallel tasks."""
@@ -748,7 +802,7 @@ def refresh_single_m3u_account(account_id):
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
         if not account.is_active:
-            logger.info(f"Account {account_id} is not active, skipping.")
+            logger.debug(f"Account {account_id} is not active, skipping.")
             release_task_lock('refresh_single_m3u_account', account_id)
             return
 
@@ -758,8 +812,17 @@ def refresh_single_m3u_account(account_id):
 
         filters = list(account.filters.all())
     except M3UAccount.DoesNotExist:
+        # The M3U account doesn't exist, so delete the periodic task if it exists
+        logger.warning(f"M3U account with ID {account_id} not found, but task was triggered. Cleaning up orphaned task.")
+
+        # Call the helper function to delete the task
+        if delete_m3u_refresh_task_by_id(account_id):
+            logger.info(f"Successfully cleaned up orphaned task for M3U account {account_id}")
+        else:
+            logger.debug(f"No orphaned task found for M3U account {account_id}")
+
         release_task_lock('refresh_single_m3u_account', account_id)
-        return f"M3UAccount with ID={account_id} not found or inactive."
+        return f"M3UAccount with ID={account_id} not found or inactive, task cleaned up"
 
     # Fetch M3U lines and handle potential issues
     extinf_data = []
@@ -777,7 +840,7 @@ def refresh_single_m3u_account(account_id):
         try:
             logger.info(f"Calling refresh_m3u_groups for account {account_id}")
             result = refresh_m3u_groups(account_id, full_refresh=True)
-            logger.info(f"refresh_m3u_groups result: {result}")
+            logger.trace(f"refresh_m3u_groups result: {result}")
 
             # Check for completely empty result or missing groups
             if not result or result[1] is None:
@@ -845,7 +908,7 @@ def refresh_single_m3u_account(account_id):
             task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
         else:
             # For XC accounts, get the groups with their custom properties containing xc_id
-            logger.info(f"Processing XC account with groups: {existing_groups}")
+            logger.debug(f"Processing XC account with groups: {existing_groups}")
 
             # Get the ChannelGroupM3UAccount entries with their custom_properties
             channel_group_relationships = ChannelGroupM3UAccount.objects.filter(
@@ -866,7 +929,7 @@ def refresh_single_m3u_account(account_id):
                             'xc_id': custom_props['xc_id'],
                             'channel_group_id': group_id
                         }
-                        logger.info(f"Added group {group_name} with xc_id {custom_props['xc_id']}")
+                        logger.debug(f"Added group {group_name} with xc_id {custom_props['xc_id']}")
                     else:
                         logger.warning(f"No xc_id found in custom properties for group {group_name}")
                 except (json.JSONDecodeError, KeyError) as e:
@@ -946,7 +1009,7 @@ def refresh_single_m3u_account(account_id):
                     # Optionally remove completed task from the group to prevent processing it again
                     result.remove(async_result)
                 else:
-                    logger.debug(f"Task is still running.")
+                    logger.trace(f"Task is still running.")
 
         # Ensure all database transactions are committed before cleanup
         logger.info(f"All {total_batches} tasks completed, ensuring DB transactions are committed before cleanup")

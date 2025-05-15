@@ -33,6 +33,8 @@ last_known_data = {}
 _last_log_times = {}
 # Don't repeat similar log messages more often than this (in seconds)
 LOG_THROTTLE_SECONDS = 300  # 5 minutes
+# Track if this is the first scan since startup
+_first_scan_completed = False
 
 @shared_task
 def beat_periodic_task():
@@ -52,13 +54,9 @@ def throttled_log(logger_method, message, key=None, *args, **kwargs):
 
 @shared_task
 def scan_and_process_files():
+    global _first_scan_completed
     redis_client = RedisClient.get_client()
     now = time.time()
-
-    # Add debug logging for the auto-import setting
-    auto_import_value = CoreSettings.get_auto_import_mapped_files()
-    logger.debug(f"Auto-import mapped files setting value: '{auto_import_value}' (type: {type(auto_import_value).__name__})")
-
     # Check if directories exist
     dirs_exist = all(os.path.exists(d) for d in [M3U_WATCH_DIR, EPG_WATCH_DIR])
     if not dirs_exist:
@@ -84,7 +82,11 @@ def scan_and_process_files():
             # Check if this file is already in the database
             existing_m3u = M3UAccount.objects.filter(file_path=filepath).exists()
             if existing_m3u:
-                logger.debug(f"Skipping {filename}: Already exists in database")
+                # Use trace level if not first scan
+                if _first_scan_completed:
+                    logger.trace(f"Skipping {filename}: Already exists in database")
+                else:
+                    logger.debug(f"Skipping {filename}: Already exists in database")
                 redis_client.set(redis_key, mtime, ex=REDIS_TTL)
                 m3u_skipped += 1
                 continue
@@ -100,7 +102,11 @@ def scan_and_process_files():
 
         # Skip if we've already processed this mtime
         if stored_mtime and float(stored_mtime) >= mtime:
-            logger.debug(f"Skipping {filename}: Already processed this version")
+            # Use trace level if not first scan
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Already processed this version")
+            else:
+                logger.debug(f"Skipping {filename}: Already processed this version")
             m3u_skipped += 1
             continue
 
@@ -111,10 +117,25 @@ def scan_and_process_files():
 
         redis_client.set(redis_key, mtime, ex=REDIS_TTL)
 
+        # More descriptive creation logging that includes active status
+        if created:
+            if m3u_account.is_active:
+                logger.info(f"Created new M3U account '{filename}' (active)")
+            else:
+                logger.info(f"Created new M3U account '{filename}' (inactive due to auto-import setting)")
+
         if not m3u_account.is_active:
-            logger.debug(f"Skipping {filename}: M3U account is inactive")
+            # Use trace level if not first scan
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: M3U account is inactive")
+            else:
+                logger.debug(f"Skipping {filename}: M3U account is inactive")
             m3u_skipped += 1
             continue
+
+        # Log update for existing files (we've already logged creation above)
+        if not created:
+            logger.info(f"Detected update to existing M3U file: {filename}")
 
         logger.info(f"Queueing refresh for M3U file: {filename}")
         refresh_single_m3u_account.delay(m3u_account.id)
@@ -129,12 +150,12 @@ def scan_and_process_files():
             },
         )
 
-    logger.debug(f"M3U processing complete: {m3u_processed} processed, {m3u_skipped} skipped, {len(m3u_files)} total")
+    logger.trace(f"M3U processing complete: {m3u_processed} processed, {m3u_skipped} skipped, {len(m3u_files)} total")
 
     # Process EPG files
     try:
         epg_files = os.listdir(EPG_WATCH_DIR)
-        logger.debug(f"Found {len(epg_files)} files in EPG directory")
+        logger.trace(f"Found {len(epg_files)} files in EPG directory")
     except Exception as e:
         logger.error(f"Error listing EPG directory: {e}")
         epg_files = []
@@ -147,12 +168,20 @@ def scan_and_process_files():
         filepath = os.path.join(EPG_WATCH_DIR, filename)
 
         if not os.path.isfile(filepath):
-            logger.debug(f"Skipping {filename}: Not a file")
+            # Use trace level if not first scan
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Not a file")
+            else:
+                logger.debug(f"Skipping {filename}: Not a file")
             epg_skipped += 1
             continue
 
         if not filename.endswith('.xml') and not filename.endswith('.gz'):
-            logger.debug(f"Skipping {filename}: Not an XML or GZ file")
+            # Use trace level if not first scan
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Not an XML or GZ file")
+            else:
+                logger.debug(f"Skipping {filename}: Not an XML or GZ file")
             epg_skipped += 1
             continue
 
@@ -166,7 +195,11 @@ def scan_and_process_files():
             # Check if this file is already in the database
             existing_epg = EPGSource.objects.filter(file_path=filepath).exists()
             if existing_epg:
-                logger.debug(f"Skipping {filename}: Already exists in database")
+                # Use trace level if not first scan
+                if _first_scan_completed:
+                    logger.trace(f"Skipping {filename}: Already exists in database")
+                else:
+                    logger.debug(f"Skipping {filename}: Already exists in database")
                 redis_client.set(redis_key, mtime, ex=REDIS_TTL)
                 epg_skipped += 1
                 continue
@@ -176,13 +209,21 @@ def scan_and_process_files():
 
         # File too new — probably still being written
         if age < MIN_AGE_SECONDS:
-            logger.debug(f"Skipping {filename}: Too new, possibly still being written (age={age}s)")
+            # Use trace level if not first scan
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Too new, possibly still being written (age={age}s)")
+            else:
+                logger.debug(f"Skipping {filename}: Too new, possibly still being written (age={age}s)")
             epg_skipped += 1
             continue
 
         # Skip if we've already processed this mtime
         if stored_mtime and float(stored_mtime) >= mtime:
-            logger.debug(f"Skipping {filename}: Already processed this version")
+            # Use trace level if not first scan
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Already processed this version")
+            else:
+                logger.debug(f"Skipping {filename}: Already processed this version")
             epg_skipped += 1
             continue
 
@@ -193,16 +234,27 @@ def scan_and_process_files():
                 "is_active": CoreSettings.get_auto_import_mapped_files() in [True, "true", "True"],
             })
 
-            # Add debug logging for created sources
-            if created:
-                logger.info(f"Created new EPG source '{filename}'")
-
             redis_client.set(redis_key, mtime, ex=REDIS_TTL)
 
+            # More descriptive creation logging that includes active status
+            if created:
+                if epg_source.is_active:
+                    logger.info(f"Created new EPG source '{filename}' (active)")
+                else:
+                    logger.info(f"Created new EPG source '{filename}' (inactive due to auto-import setting)")
+
             if not epg_source.is_active:
-                logger.debug(f"Skipping {filename}: EPG source is marked as inactive")
+                # Use trace level if not first scan
+                if _first_scan_completed:
+                    logger.trace(f"Skipping {filename}: EPG source is marked as inactive")
+                else:
+                    logger.debug(f"Skipping {filename}: EPG source is marked as inactive")
                 epg_skipped += 1
                 continue
+
+            # Log update for existing files (we've already logged creation above)
+            if not created:
+                logger.info(f"Detected update to existing EPG file: {filename}")
 
             logger.info(f"Queueing refresh for EPG file: {filename}")
             refresh_epg_data.delay(epg_source.id)  # Trigger Celery task
@@ -213,7 +265,10 @@ def scan_and_process_files():
             epg_errors += 1
             continue
 
-    logger.debug(f"EPG processing complete: {epg_processed} processed, {epg_skipped} skipped, {epg_errors} errors")
+    logger.trace(f"EPG processing complete: {epg_processed} processed, {epg_skipped} skipped, {epg_errors} errors")
+
+    # Mark that the first scan is complete
+    _first_scan_completed = True
 
 def fetch_channel_stats():
     redis_client = RedisClient.get_client()

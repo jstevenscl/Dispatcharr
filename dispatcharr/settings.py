@@ -232,3 +232,90 @@ PROXY_SETTINGS = {
         'REDIS_CHUNK_TTL': 60,  # How long to keep chunks in Redis (seconds)
     }
 }
+
+# Map log level names to their numeric values
+LOG_LEVEL_MAP = {
+    'TRACE': 5,
+    'DEBUG': 10,
+    'INFO': 20,
+    'WARNING': 30,
+    'ERROR': 40,
+    'CRITICAL': 50
+}
+
+# Get log level from environment variable, default to INFO if not set
+# Add debugging output to see exactly what's being detected
+env_log_level = os.environ.get('DISPATCHARR_LOG_LEVEL', '')
+print(f"Environment DISPATCHARR_LOG_LEVEL detected as: '{env_log_level}'")
+
+if not env_log_level:
+    print("No DISPATCHARR_LOG_LEVEL found in environment, using default INFO")
+    LOG_LEVEL_NAME = 'INFO'
+else:
+    LOG_LEVEL_NAME = env_log_level.upper()
+    print(f"Setting log level to: {LOG_LEVEL_NAME}")
+
+LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL_NAME, 20)  # Default to INFO (20) if invalid
+
+# Add this to your existing LOGGING configuration or create one if it doesn't exist
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+            'level': 5,  # Always allow TRACE level messages through the handler
+        },
+    },
+    'loggers': {
+        'core.tasks': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,  # Use environment-configured level
+            'propagate': False,  # Don't propagate to root logger to avoid duplicate logs
+        },
+        'apps.proxy': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,  # Use environment-configured level
+            'propagate': False,  # Don't propagate to root logger
+        },
+        # Add parent logger for all app modules
+        'apps': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        # Celery loggers to capture task execution messages
+        'celery': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,  # Use configured log level for Celery logs
+            'propagate': False,
+        },
+        'celery.task': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,  # Use configured log level for task-specific logs
+            'propagate': False,
+        },
+        'celery.worker': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,  # Use configured log level for worker logs
+            'propagate': False,
+        },
+        'celery.beat': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,  # Use configured log level for scheduler logs
+            'propagate': False,
+        },
+        # Add any other loggers you need to capture TRACE logs from
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,  # Use user-configured level instead of hardcoded 'INFO'
+    },
+}

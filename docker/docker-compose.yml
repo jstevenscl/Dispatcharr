@@ -14,6 +14,22 @@ services:
       - POSTGRES_PASSWORD=secret
       - REDIS_HOST=redis
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - DISPATCHARR_LOG_LEVEL=info
+    # Optional for hardware acceleration
+    #group_add:
+    #  - video
+    #  #- render # Uncomment if your GPU requires it
+    #devices:
+    #  - /dev/dri:/dev/dri  # For Intel/AMD GPU acceleration (VA-API)
+    # Uncomment the following lines for NVIDIA GPU support
+    # NVidia GPU support (requires NVIDIA Container Toolkit)
+    #deploy:
+    #  resources:
+    #      reservations:
+    #          devices:
+    #              - driver: nvidia
+    #                count: all
+    #                capabilities: [gpu]
 
   celery:
     image: dispatcharr/dispatcharr:alpha-v1
