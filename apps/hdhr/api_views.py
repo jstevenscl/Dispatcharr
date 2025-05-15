@@ -129,16 +129,24 @@ class LineupAPIView(APIView):
         else:
             channels = Channel.objects.all().order_by('channel_number')
 
-        lineup = [
-            {
-                "GuideNumber": str(ch.channel_number),
+        lineup = []
+        for ch in channels:
+            # Format channel number as integer if it has no decimal component
+            if ch.channel_number is not None:
+                if ch.channel_number == int(ch.channel_number):
+                    formatted_channel_number = str(int(ch.channel_number))
+                else:
+                    formatted_channel_number = str(ch.channel_number)
+            else:
+                formatted_channel_number = ""
+
+            lineup.append({
+                "GuideNumber": formatted_channel_number,
                 "GuideName": ch.name,
                 "URL": request.build_absolute_uri(f"/proxy/ts/stream/{ch.uuid}"),
-                "Guide_ID": str(ch.channel_number),
-                "Station": str(ch.channel_number),
-            }
-            for ch in channels
-        ]
+                "Guide_ID": formatted_channel_number,
+                "Station": formatted_channel_number,
+            })
         return JsonResponse(lineup, safe=False)
 
 
