@@ -14,6 +14,13 @@ class ChannelGroupForm(forms.ModelForm):
 # Channel Form
 #
 class ChannelForm(forms.ModelForm):
+    # Explicitly define channel_number as FloatField to ensure decimal values work
+    channel_number = forms.FloatField(
+        required=False,
+        widget=forms.NumberInput(attrs={'step': '0.1'}),  # Allow decimal steps
+        help_text="Channel number can include decimals (e.g., 1.1, 2.5)"
+    )
+
     channel_group = forms.ModelChoiceField(
         queryset=ChannelGroup.objects.all(),
         required=False,

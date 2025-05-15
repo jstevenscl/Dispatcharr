@@ -24,7 +24,18 @@ def generate_m3u(request, profile_name=None):
     m3u_content = "#EXTM3U\n"
     for channel in channels:
         group_title = channel.channel_group.name if channel.channel_group else "Default"
-        tvg_id = channel.channel_number or channel.id
+
+        # Format channel number as integer if it has no decimal component
+        if channel.channel_number is not None:
+            if channel.channel_number == int(channel.channel_number):
+                formatted_channel_number = int(channel.channel_number)
+            else:
+                formatted_channel_number = channel.channel_number
+        else:
+            formatted_channel_number = ""
+
+        # Use formatted channel number for tvg_id to ensure proper matching with EPG
+        tvg_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
         tvg_name = channel.name
 
         tvg_logo = ""
@@ -36,11 +47,9 @@ def generate_m3u(request, profile_name=None):
         if channel.tvc_guide_stationid:
             tvc_guide_stationid = f'tvc-guide-stationid="{channel.tvc_guide_stationid}" '
 
-        channel_number = channel.channel_number
-
         extinf_line = (
             f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{tvg_name}" tvg-logo="{tvg_logo}" '
-            f'tvg-chno="{channel_number}" {tvc_guide_stationid}group-title="{group_title}",{channel.name}\n'
+            f'tvg-chno="{formatted_channel_number}" {tvc_guide_stationid}group-title="{group_title}",{channel.name}\n'
         )
 
         base_url = request.build_absolute_uri('/')[:-1]
@@ -98,9 +107,17 @@ def generate_epg(request, profile_name=None):
 
     # Retrieve all active channels
     for channel in channels:
-        channel_id = channel.channel_number or channel.id
+        # Format channel number as integer if it has no decimal component - same as M3U generation
+        if channel.channel_number is not None:
+            if channel.channel_number == int(channel.channel_number):
+                formatted_channel_number = str(int(channel.channel_number))
+            else:
+                formatted_channel_number = str(channel.channel_number)
+        else:
+            formatted_channel_number = str(channel.id)
+
         display_name = channel.epg_data.name if channel.epg_data else channel.name
-        xml_lines.append(f'  <channel id="{channel_id}">')
+        xml_lines.append(f'  <channel id="{formatted_channel_number}">')
         xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
 
         # Add channel logo if available
@@ -111,16 +128,24 @@ def generate_epg(request, profile_name=None):
         xml_lines.append('  </channel>')
 
     for channel in channels:
-        channel_id = channel.channel_number or channel.id
+        # Use the same formatting for channel ID in program entries
+        if channel.channel_number is not None:
+            if channel.channel_number == int(channel.channel_number):
+                formatted_channel_number = str(int(channel.channel_number))
+            else:
+                formatted_channel_number = str(channel.channel_number)
+        else:
+            formatted_channel_number = str(channel.id)
+
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         if not channel.epg_data:
-            xml_lines = xml_lines + generate_dummy_epg(display_name, channel_id)
+            xml_lines = xml_lines + generate_dummy_epg(display_name, formatted_channel_number)
         else:
             programs = channel.epg_data.programs.all()
             for prog in programs:
                 start_str = prog.start_time.strftime("%Y%m%d%H%M%S %z")
                 stop_str = prog.end_time.strftime("%Y%m%d%H%M%S %z")
-                xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
+                xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{formatted_channel_number}">')
                 xml_lines.append(f'    <title>{html.escape(prog.title)}</title>')
 
                 # Add subtitle if available
