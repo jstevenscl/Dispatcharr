@@ -174,8 +174,12 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     'fetch-channel-statuses': {
-        'task': 'core.tasks.beat_periodic_task',
-        'schedule': 2.0,
+        'task': 'apps.proxy.tasks.fetch_channel_stats',  # Direct task call
+        'schedule': 2.0,  # Every 2 seconds
+    },
+    'scan-files': {
+        'task': 'core.tasks.scan_and_process_files',  # Direct task call
+        'schedule': 20.0,  # Every 20 seconds
     },
 }
 
