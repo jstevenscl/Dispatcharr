@@ -4,10 +4,14 @@ import sys
 import json
 import re
 import os
-import sys
+import logging
+
 from rapidfuzz import fuzz
 from sentence_transformers import util
 from sentence_transformers import SentenceTransformer as st
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Load the sentence-transformers model once at the module level
 SENTENCE_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -18,18 +22,15 @@ BEST_FUZZY_THRESHOLD = 85
 LOWER_FUZZY_THRESHOLD = 40
 EMBED_SIM_THRESHOLD = 0.65
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
-
 def process_data(input_data):
     os.makedirs(MODEL_PATH, exist_ok=True)
 
     # If not present locally, download:
     if not os.path.exists(os.path.join(MODEL_PATH, "config.json")):
-        eprint(f"Local model not found in {MODEL_PATH}; downloading from {SENTENCE_MODEL_NAME}...")
+        logger.info(f"Local model not found in {MODEL_PATH}; downloading from {SENTENCE_MODEL_NAME}...")
         st_model = st(SENTENCE_MODEL_NAME, cache_folder=MODEL_PATH)
     else:
-        eprint(f"Loading local model from {MODEL_PATH}")
+        logger.info(f"Loading local model from {MODEL_PATH}")
         st_model = st(MODEL_PATH)
 
     channels = input_data["channels"]
@@ -59,7 +60,7 @@ def process_data(input_data):
             # Add to matched_channels list so it's counted in the total
             matched_channels.append((chan['id'], fallback_name, epg_by_tvg_id["tvg_id"]))
 
-            eprint(f"Channel {chan['id']} '{fallback_name}' => EPG found by tvg_id={epg_by_tvg_id['tvg_id']}")
+            logger.info(f"Channel {chan['id']} '{fallback_name}' => EPG found by tvg_id={epg_by_tvg_id['tvg_id']}")
             continue
 
         # If channel has a tvg_id that doesn't exist in EPGData, do direct check.
@@ -67,15 +68,14 @@ def process_data(input_data):
         if chan["tvg_id"]:
             epg_match = [epg["id"] for epg in epg_data if epg["tvg_id"] == chan["tvg_id"]]
             if epg_match:
-                # Fix: Access the first element directly since epg_match contains the IDs themselves
-                chan["epg_data_id"] = epg_match[0]  # Directly use the integer ID
-                eprint(f"Channel {chan['id']} '{chan['name']}' => EPG found by tvg_id={chan['tvg_id']}")
+                chan["epg_data_id"] = epg_match[0]
+                logger.info(f"Channel {chan['id']} '{chan['name']}' => EPG found by tvg_id={chan['tvg_id']}")
                 channels_to_update.append(chan)
                 continue
 
         # C) Perform name-based fuzzy matching
         if not chan["norm_chan"]:
-            eprint(f"Channel {chan['id']} '{chan['name']}' => empty after normalization, skipping")
+            logger.debug(f"Channel {chan['id']} '{chan['name']}' => empty after normalization, skipping")
             continue
 
         best_score = 0
@@ -99,7 +99,7 @@ def process_data(input_data):
                     bonus = 15
             score = base_score + bonus
 
-            eprint(
+            logger.debug(
                 f"Channel {chan['id']} '{fallback_name}' => EPG row {row['id']}: "
                 f"name='{row['name']}', norm_name='{row['norm_name']}', "
                 f"combined_text='{combined_text}', dot_regions={dot_regions}, "
@@ -112,7 +112,7 @@ def process_data(input_data):
 
         # If no best match was found, skip
         if not best_epg:
-            eprint(f"Channel {chan['id']} '{fallback_name}' => no EPG match at all.")
+            logger.debug(f"Channel {chan['id']} '{fallback_name}' => no EPG match at all.")
             continue
 
         # If best_score is above BEST_FUZZY_THRESHOLD => direct accept
@@ -121,7 +121,7 @@ def process_data(input_data):
             channels_to_update.append(chan)
 
             matched_channels.append((chan['id'], fallback_name, best_epg["tvg_id"]))
-            eprint(
+            logger.info(
                 f"Channel {chan['id']} '{fallback_name}' => matched tvg_id={best_epg['tvg_id']} "
                 f"(score={best_score})"
             )
@@ -138,27 +138,35 @@ def process_data(input_data):
                 channels_to_update.append(chan)
 
                 matched_channels.append((chan['id'], fallback_name, matched_epg["tvg_id"]))
-                eprint(
+                logger.info(
                     f"Channel {chan['id']} '{fallback_name}' => matched EPG tvg_id={matched_epg['tvg_id']} "
                     f"(fuzzy={best_score}, cos-sim={top_value:.2f})"
                 )
             else:
-                eprint(
+                logger.info(
                     f"Channel {chan['id']} '{fallback_name}' => fuzzy={best_score}, "
                     f"cos-sim={top_value:.2f} < {EMBED_SIM_THRESHOLD}, skipping"
                 )
         else:
-            eprint(
-                f"Channel {chan['id']} '{fallback_name}' => fuzzy={best_score} < "
-                f"{LOWER_FUZZY_THRESHOLD}, skipping"
+            # No good match found - fuzzy score is too low
+            logger.info(
+                f"Channel {chan['id']} '{fallback_name}' => best fuzzy match score={best_score} < {LOWER_FUZZY_THRESHOLD}, skipping"
             )
 
     return {
         "channels_to_update": channels_to_update,
-        "matched_channels": matched_channels,
+        "matched_channels": matched_channels
     }
 
 def main():
+    # Configure logging
+    logging_level = os.environ.get('DISPATCHARR_LOG_LEVEL', 'INFO')
+    logging.basicConfig(
+        level=getattr(logging, logging_level),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        stream=sys.stderr
+    )
+
     # Read input data from a file
     input_file_path = sys.argv[1]
     with open(input_file_path, 'r') as f:
