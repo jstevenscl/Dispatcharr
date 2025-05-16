@@ -125,6 +125,40 @@ class EPGGridAPIView(APIView):
         # Serialize the regular programs
         serialized_programs = ProgramDataSerializer(programs, many=True).data
 
+        # Humorous program descriptions based on time of day - same as in output/views.py
+        time_descriptions = {
+            (0, 4): [
+                "Late Night with {channel} - Where insomniacs unite!",
+                "The 'Why Am I Still Awake?' Show on {channel}",
+                "Counting Sheep - A {channel} production for the sleepless"
+            ],
+            (4, 8): [
+                "Dawn Patrol - Rise and shine with {channel}!",
+                "Early Bird Special - Coffee not included",
+                "Morning Zombies - Before coffee viewing on {channel}"
+            ],
+            (8, 12): [
+                "Mid-Morning Meetings - Pretend you're paying attention while watching {channel}",
+                "The 'I Should Be Working' Hour on {channel}",
+                "Productivity Killer - {channel}'s daytime programming"
+            ],
+            (12, 16): [
+                "Lunchtime Laziness with {channel}",
+                "The Afternoon Slump - Brought to you by {channel}",
+                "Post-Lunch Food Coma Theater on {channel}"
+            ],
+            (16, 20): [
+                "Rush Hour - {channel}'s alternative to traffic",
+                "The 'What's For Dinner?' Debate on {channel}",
+                "Evening Escapism - {channel}'s remedy for reality"
+            ],
+            (20, 24): [
+                "Prime Time Placeholder - {channel}'s finest not-programming",
+                "The 'Netflix Was Too Complicated' Show on {channel}",
+                "Family Argument Avoider - Courtesy of {channel}"
+            ]
+        }
+
         # Generate and append dummy programs
         dummy_programs = []
         for channel in channels_without_epg:
@@ -140,6 +174,22 @@ class EPGGridAPIView(APIView):
                     start_time = start_time.replace(minute=0, second=0, microsecond=0)
                     end_time = start_time + timedelta(hours=4)
 
+                    # Get the hour for selecting a description
+                    hour = start_time.hour
+                    day = 0  # Use 0 as we're only doing 1 day
+
+                    # Find the appropriate time slot for description
+                    for time_range, descriptions in time_descriptions.items():
+                        start_range, end_range = time_range
+                        if start_range <= hour < end_range:
+                            # Pick a description using the sum of the hour and day as seed
+                            # This makes it somewhat random but consistent for the same timeslot
+                            description = descriptions[(hour + day) % len(descriptions)].format(channel=channel.name)
+                            break
+                    else:
+                        # Fallback description if somehow no range matches
+                        description = f"Placeholder program for {channel.name} - EPG data went on vacation"
+
                     # Create a dummy program in the same format as regular programs
                     dummy_program = {
                         'id': f"dummy-{channel.id}-{hour_offset}",  # Create a unique ID
@@ -150,7 +200,7 @@ class EPGGridAPIView(APIView):
                         'start_time': start_time.isoformat(),
                         'end_time': end_time.isoformat(),
                         'title': f"{channel.name}",
-                        'description': f"Placeholder program for {channel.name}",
+                        'description': description,
                         'tvg_id': dummy_tvg_id,
                         'sub_title': None,
                         'custom_properties': None
