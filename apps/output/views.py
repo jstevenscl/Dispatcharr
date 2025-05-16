@@ -62,26 +62,96 @@ def generate_m3u(request, profile_name=None):
     response['Content-Disposition'] = 'attachment; filename="channels.m3u"'
     return response
 
-def generate_dummy_epg(name, channel_id, num_days=7, interval_hours=4):
-    xml_lines = []
+def generate_dummy_epg(channel_id, channel_name, xml_lines=None, num_days=1, program_length_hours=4):
+    """
+    Generate dummy EPG programs for channels without EPG data.
+    Creates program blocks for a specified number of days.
 
-    # Loop through the number of days
-    for day_offset in range(num_days):
-        current_day = datetime.now() + timedelta(days=day_offset)
+    Args:
+        channel_id: The channel ID to use in the program entries
+        channel_name: The name of the channel to use in program titles
+        xml_lines: Optional list to append lines to, otherwise returns new list
+        num_days: Number of days to generate EPG data for (default: 1)
+        program_length_hours: Length of each program block in hours (default: 4)
 
-        # Loop through each 4-hour interval in the day
-        for hour in range(0, 24, interval_hours):
-            start_time = current_day.replace(hour=hour, minute=0, second=0, microsecond=0)
-            stop_time = start_time + timedelta(hours=interval_hours)
+    Returns:
+        List of XML lines for the dummy EPG entries
+    """
+    if xml_lines is None:
+        xml_lines = []
 
-            # Format the times as per the requested format
-            start_str = start_time.strftime("%Y%m%d%H%M%S") + " 0000"
-            stop_str = stop_time.strftime("%Y%m%d%H%M%S") + " 0000"
+    # Get current time rounded to hour
+    now = timezone.now()
+    now = now.replace(minute=0, second=0, microsecond=0)
 
-            # Create the XML-like programme entry with escaped name
-            xml_lines.append(f'<programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
-            xml_lines.append(f'    <title lang="en">{html.escape(name)}</title>')
-            xml_lines.append(f'</programme>')
+    # Humorous program descriptions based on time of day
+    time_descriptions = {
+        (0, 4): [
+            f"Late Night with {channel_name} - Where insomniacs unite!",
+            f"The 'Why Am I Still Awake?' Show on {channel_name}",
+            f"Counting Sheep - A {channel_name} production for the sleepless"
+        ],
+        (4, 8): [
+            f"Dawn Patrol - Rise and shine with {channel_name}!",
+            f"Early Bird Special - Coffee not included",
+            f"Morning Zombies - Before coffee viewing on {channel_name}"
+        ],
+        (8, 12): [
+            f"Mid-Morning Meetings - Pretend you're paying attention while watching {channel_name}",
+            f"The 'I Should Be Working' Hour on {channel_name}",
+            f"Productivity Killer - {channel_name}'s daytime programming"
+        ],
+        (12, 16): [
+            f"Lunchtime Laziness with {channel_name}",
+            f"The Afternoon Slump - Brought to you by {channel_name}",
+            f"Post-Lunch Food Coma Theater on {channel_name}"
+        ],
+        (16, 20): [
+            f"Rush Hour - {channel_name}'s alternative to traffic",
+            f"The 'What's For Dinner?' Debate on {channel_name}",
+            f"Evening Escapism - {channel_name}'s remedy for reality"
+        ],
+        (20, 24): [
+            f"Prime Time Placeholder - {channel_name}'s finest not-programming",
+            f"The 'Netflix Was Too Complicated' Show on {channel_name}",
+            f"Family Argument Avoider - Courtesy of {channel_name}"
+        ]
+    }
+
+    # Create programs for each day
+    for day in range(num_days):
+        day_start = now + timedelta(days=day)
+
+        # Create programs with specified length throughout the day
+        for hour_offset in range(0, 24, program_length_hours):
+            # Calculate program start and end times
+            start_time = day_start + timedelta(hours=hour_offset)
+            end_time = start_time + timedelta(hours=program_length_hours)
+
+            # Get the hour for selecting a description
+            hour = start_time.hour
+
+            # Find the appropriate time slot for description
+            for time_range, descriptions in time_descriptions.items():
+                start_range, end_range = time_range
+                if start_range <= hour < end_range:
+                    # Pick a description using the sum of the hour and day as seed
+                    # This makes it somewhat random but consistent for the same timeslot
+                    description = descriptions[(hour + day) % len(descriptions)]
+                    break
+            else:
+                # Fallback description if somehow no range matches
+                description = f"Placeholder program for {channel_name} - EPG data went on vacation"
+
+            # Format times in XMLTV format
+            start_str = start_time.strftime("%Y%m%d%H%M%S %z")
+            stop_str = end_time.strftime("%Y%m%d%H%M%S %z")
+
+            # Create program entry with escaped channel name
+            xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
+            xml_lines.append(f'    <title>{html.escape(channel_name)}</title>')
+            xml_lines.append(f'    <desc>{html.escape(description)}</desc>')
+            xml_lines.append(f'  </programme>')
 
     return xml_lines
 
@@ -139,7 +209,17 @@ def generate_epg(request, profile_name=None):
 
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         if not channel.epg_data:
-            xml_lines = xml_lines + generate_dummy_epg(display_name, formatted_channel_number)
+            # Use the enhanced dummy EPG generation function with defaults
+            # These values could be made configurable via settings or request parameters
+            num_days = 1  # Default to 1 days of dummy EPG data
+            program_length_hours = 4  # Default to 4-hour program blocks
+            generate_dummy_epg(
+                formatted_channel_number,
+                display_name,
+                xml_lines,
+                num_days=num_days,
+                program_length_hours=program_length_hours
+            )
         else:
             programs = channel.epg_data.programs.all()
             for prog in programs:
