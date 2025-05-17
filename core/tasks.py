@@ -36,11 +36,6 @@ LOG_THROTTLE_SECONDS = 300  # 5 minutes
 # Track if this is the first scan since startup
 _first_scan_completed = False
 
-@shared_task
-def beat_periodic_task():
-    fetch_channel_stats()
-    scan_and_process_files()
-
 def throttled_log(logger_method, message, key=None, *args, **kwargs):
     """Only log messages with the same key once per throttle period"""
     if key is None:
@@ -51,6 +46,32 @@ def throttled_log(logger_method, message, key=None, *args, **kwargs):
     if key not in _last_log_times or (now - _last_log_times[key]) >= LOG_THROTTLE_SECONDS:
         logger_method(message, *args, **kwargs)
         _last_log_times[key] = now
+
+def clear_memory():
+    """Force aggressive garbage collection to free memory"""
+    import gc
+    # Run full garbage collection
+    gc.collect(generation=2)
+    # Find and break any reference cycles
+    gc.collect(generation=0)
+    # Clear any cached objects in memory
+    gc.collect(generation=1)
+    # Check if psutil is available for more advanced monitoring
+    try:
+        import psutil
+        process = psutil.Process()
+        if hasattr(process, 'memory_info'):
+            mem = process.memory_info().rss / (1024 * 1024)
+            logger.debug(f"Memory usage after cleanup: {mem:.2f} MB")
+    except (ImportError, Exception):
+        pass
+
+@shared_task
+def beat_periodic_task():
+    fetch_channel_stats()
+    scan_and_process_files()
+    # Call memory cleanup after completing tasks
+    clear_memory()
 
 @shared_task
 def scan_and_process_files():
@@ -269,6 +290,9 @@ def scan_and_process_files():
 
     # Mark that the first scan is complete
     _first_scan_completed = True
+
+    # Force memory cleanup
+    clear_memory()
 
 def fetch_channel_stats():
     redis_client = RedisClient.get_client()

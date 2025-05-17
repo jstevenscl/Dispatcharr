@@ -63,146 +63,162 @@ def match_epg_channels():
       4) If a match is found, we set channel.tvg_id
       5) Summarize and log results.
     """
-    logger.info("Starting EPG matching logic...")
-
-    # Attempt to retrieve a "preferred-region" if configured
     try:
-        region_obj = CoreSettings.objects.get(key="preferred-region")
-        region_code = region_obj.value.strip().lower()
-    except CoreSettings.DoesNotExist:
-        region_code = None
+        logger.info("Starting EPG matching logic...")
 
-    matched_channels = []
-    channels_to_update = []
+        # Attempt to retrieve a "preferred-region" if configured
+        try:
+            region_obj = CoreSettings.objects.get(key="preferred-region")
+            region_code = region_obj.value.strip().lower()
+        except CoreSettings.DoesNotExist:
+            region_code = None
 
-    # Get channels that don't have EPG data assigned
-    channels_without_epg = Channel.objects.filter(epg_data__isnull=True)
-    logger.info(f"Found {channels_without_epg.count()} channels without EPG data")
+        matched_channels = []
+        channels_to_update = []
 
-    channels_json = []
-    for channel in channels_without_epg:
-        # Normalize TVG ID - strip whitespace and convert to lowercase
-        normalized_tvg_id = channel.tvg_id.strip().lower() if channel.tvg_id else ""
-        if normalized_tvg_id:
-            logger.info(f"Processing channel {channel.id} '{channel.name}' with TVG ID='{normalized_tvg_id}'")
+        # Get channels that don't have EPG data assigned
+        channels_without_epg = Channel.objects.filter(epg_data__isnull=True)
+        logger.info(f"Found {channels_without_epg.count()} channels without EPG data")
 
-        channels_json.append({
-            "id": channel.id,
-            "name": channel.name,
-            "tvg_id": normalized_tvg_id,  # Use normalized TVG ID
-            "original_tvg_id": channel.tvg_id,  # Keep original for reference
-            "fallback_name": normalized_tvg_id if normalized_tvg_id else channel.name,
-            "norm_chan": normalize_name(normalized_tvg_id if normalized_tvg_id else channel.name)
-        })
+        channels_json = []
+        for channel in channels_without_epg:
+            # Normalize TVG ID - strip whitespace and convert to lowercase
+            normalized_tvg_id = channel.tvg_id.strip().lower() if channel.tvg_id else ""
+            if normalized_tvg_id:
+                logger.info(f"Processing channel {channel.id} '{channel.name}' with TVG ID='{normalized_tvg_id}'")
 
-    # Similarly normalize EPG data TVG IDs
-    epg_json = []
-    for epg in EPGData.objects.all():
-        normalized_tvg_id = epg.tvg_id.strip().lower() if epg.tvg_id else ""
-        epg_json.append({
-            'id': epg.id,
-            'tvg_id': normalized_tvg_id,  # Use normalized TVG ID
-            'original_tvg_id': epg.tvg_id,  # Keep original for reference
-            'name': epg.name,
-            'norm_name': normalize_name(epg.name),
-            'epg_source_id': epg.epg_source.id if epg.epg_source else None,
-        })
+            channels_json.append({
+                "id": channel.id,
+                "name": channel.name,
+                "tvg_id": normalized_tvg_id,  # Use normalized TVG ID
+                "original_tvg_id": channel.tvg_id,  # Keep original for reference
+                "fallback_name": normalized_tvg_id if normalized_tvg_id else channel.name,
+                "norm_chan": normalize_name(normalized_tvg_id if normalized_tvg_id else channel.name)
+            })
 
-    # Log available EPG data TVG IDs for debugging
-    unique_epg_tvg_ids = set(e['tvg_id'] for e in epg_json if e['tvg_id'])
-    logger.info(f"Available EPG TVG IDs: {', '.join(sorted(unique_epg_tvg_ids))}")
+        # Similarly normalize EPG data TVG IDs
+        epg_json = []
+        for epg in EPGData.objects.all():
+            normalized_tvg_id = epg.tvg_id.strip().lower() if epg.tvg_id else ""
+            epg_json.append({
+                'id': epg.id,
+                'tvg_id': normalized_tvg_id,  # Use normalized TVG ID
+                'original_tvg_id': epg.tvg_id,  # Keep original for reference
+                'name': epg.name,
+                'norm_name': normalize_name(epg.name),
+                'epg_source_id': epg.epg_source.id if epg.epg_source else None,
+            })
 
-    payload = {
-        "channels": channels_json,
-        "epg_data": epg_json,
-        "region_code": region_code,
-    }
+        # Log available EPG data TVG IDs for debugging
+        unique_epg_tvg_ids = set(e['tvg_id'] for e in epg_json if e['tvg_id'])
+        logger.info(f"Available EPG TVG IDs: {', '.join(sorted(unique_epg_tvg_ids))}")
 
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        temp_file.write(json.dumps(payload).encode('utf-8'))
-        temp_file_path = temp_file.name
-
-    process = subprocess.Popen(
-        ['python', '/app/scripts/epg_match.py', temp_file_path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-
-    # Log stderr in real-time
-    for line in iter(process.stderr.readline, ''):
-        if line:
-            logger.info(line.strip())
-
-    process.stderr.close()
-    stdout, stderr = process.communicate()
-
-    os.remove(temp_file_path)
-
-    if process.returncode != 0:
-        return f"Failed to process EPG matching: {stderr}"
-
-    result = json.loads(stdout)
-    # This returns lists of dicts, not model objects
-    channels_to_update_dicts = result["channels_to_update"]
-    matched_channels = result["matched_channels"]
-
-    # Convert your dict-based 'channels_to_update' into real Channel objects
-    if channels_to_update_dicts:
-        # Extract IDs of the channels that need updates
-        channel_ids = [d["id"] for d in channels_to_update_dicts]
-
-        # Fetch them from DB
-        channels_qs = Channel.objects.filter(id__in=channel_ids)
-        channels_list = list(channels_qs)
-
-        # Build a map from channel_id -> epg_data_id (or whatever fields you need)
-        epg_mapping = {
-            d["id"]: d["epg_data_id"] for d in channels_to_update_dicts
+        payload = {
+            "channels": channels_json,
+            "epg_data": epg_json,
+            "region_code": region_code,
         }
 
-        # Populate each Channel object with the updated epg_data_id
-        for channel_obj in channels_list:
-            # The script sets 'epg_data_id' in the returned dict
-            # We either assign directly, or fetch the EPGData instance if needed.
-            channel_obj.epg_data_id = epg_mapping.get(channel_obj.id)
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(json.dumps(payload).encode('utf-8'))
+            temp_file_path = temp_file.name
 
-        # Now we have real model objects, so bulk_update will work
-        Channel.objects.bulk_update(channels_list, ["epg_data"])
+        # After writing to the file but before subprocess
+        # Explicitly delete the large data structures
+        del payload
+        gc.collect()
 
-    total_matched = len(matched_channels)
-    if total_matched:
-        logger.info(f"Match Summary: {total_matched} channel(s) matched.")
-        for (cid, cname, tvg) in matched_channels:
-            logger.info(f"  - Channel ID={cid}, Name='{cname}' => tvg_id='{tvg}'")
-    else:
-        logger.info("No new channels were matched.")
+        process = subprocess.Popen(
+            ['python', '/app/scripts/epg_match.py', temp_file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
 
-    logger.info("Finished EPG matching logic.")
+        # Log stderr in real-time
+        for line in iter(process.stderr.readline, ''):
+            if line:
+                logger.info(line.strip())
 
-    # Send update with additional information for refreshing UI
-    channel_layer = get_channel_layer()
-    associations = [
-        {"channel_id": chan["id"], "epg_data_id": chan["epg_data_id"]}
-        for chan in channels_to_update_dicts
-    ]
+        process.stderr.close()
+        stdout, stderr = process.communicate()
 
-    async_to_sync(channel_layer.group_send)(
-        'updates',
-        {
-            'type': 'update',
-            "data": {
-                "success": True,
-                "type": "epg_match",
-                "refresh_channels": True,  # Flag to tell frontend to refresh channels
-                "matches_count": total_matched,
-                "message": f"EPG matching complete: {total_matched} channel(s) matched",
-                "associations": associations  # Add the associations data
+        os.remove(temp_file_path)
+
+        if process.returncode != 0:
+            return f"Failed to process EPG matching: {stderr}"
+
+        result = json.loads(stdout)
+        # This returns lists of dicts, not model objects
+        channels_to_update_dicts = result["channels_to_update"]
+        matched_channels = result["matched_channels"]
+
+        # Explicitly clean up large objects
+        del stdout, result
+        gc.collect()
+
+        # Convert your dict-based 'channels_to_update' into real Channel objects
+        if channels_to_update_dicts:
+            # Extract IDs of the channels that need updates
+            channel_ids = [d["id"] for d in channels_to_update_dicts]
+
+            # Fetch them from DB
+            channels_qs = Channel.objects.filter(id__in=channel_ids)
+            channels_list = list(channels_qs)
+
+            # Build a map from channel_id -> epg_data_id (or whatever fields you need)
+            epg_mapping = {
+                d["id"]: d["epg_data_id"] for d in channels_to_update_dicts
             }
-        }
-    )
 
-    return f"Done. Matched {total_matched} channel(s)."
+            # Populate each Channel object with the updated epg_data_id
+            for channel_obj in channels_list:
+                # The script sets 'epg_data_id' in the returned dict
+                # We either assign directly, or fetch the EPGData instance if needed.
+                channel_obj.epg_data_id = epg_mapping.get(channel_obj.id)
+
+            # Now we have real model objects, so bulk_update will work
+            Channel.objects.bulk_update(channels_list, ["epg_data"])
+
+        total_matched = len(matched_channels)
+        if total_matched:
+            logger.info(f"Match Summary: {total_matched} channel(s) matched.")
+            for (cid, cname, tvg) in matched_channels:
+                logger.info(f"  - Channel ID={cid}, Name='{cname}' => tvg_id='{tvg}'")
+        else:
+            logger.info("No new channels were matched.")
+
+        logger.info("Finished EPG matching logic.")
+
+        # Send update with additional information for refreshing UI
+        channel_layer = get_channel_layer()
+        associations = [
+            {"channel_id": chan["id"], "epg_data_id": chan["epg_data_id"]}
+            for chan in channels_to_update_dicts
+        ]
+
+        async_to_sync(channel_layer.group_send)(
+            'updates',
+            {
+                'type': 'update',
+                "data": {
+                    "success": True,
+                    "type": "epg_match",
+                    "refresh_channels": True,  # Flag to tell frontend to refresh channels
+                    "matches_count": total_matched,
+                    "message": f"EPG matching complete: {total_matched} channel(s) matched",
+                    "associations": associations  # Add the associations data
+                }
+            }
+        )
+
+        return f"Done. Matched {total_matched} channel(s)."
+    finally:
+        # Final cleanup
+        gc.collect()
+        # Force an even more aggressive cleanup
+        import gc
+        gc.collect(generation=2)
 
 
 @shared_task
