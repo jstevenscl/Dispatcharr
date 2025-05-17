@@ -1019,8 +1019,6 @@ def parse_programs_for_tvg_id(epg_id):
             if program_parser:
                 program_parser = None
 
-            # Free parser memory
-            parser = None
             gc.collect()
 
         except etree.XMLSyntaxError as xml_error:
