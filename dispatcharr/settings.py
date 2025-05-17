@@ -43,6 +43,34 @@ INSTALLED_APPS = [
     'django_celery_beat',
 ]
 
+# EPG Processing optimization settings
+EPG_BATCH_SIZE = 1000  # Number of records to process in a batch
+EPG_MEMORY_LIMIT = 512  # Memory limit in MB before forcing garbage collection
+EPG_ENABLE_MEMORY_MONITORING = True  # Whether to monitor memory usage during processing
+
+# Database optimization settings
+DATABASE_STATEMENT_TIMEOUT = 300  # Seconds before timing out long-running queries
+DATABASE_CONN_MAX_AGE = 60  # Connection max age in seconds, helps with frequent reconnects
+
+# Disable atomic requests for performance-sensitive views
+ATOMIC_REQUESTS = False
+
+# Cache settings - add caching for EPG operations
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'dispatcharr-epg-cache',
+        'TIMEOUT': 3600,  # 1 hour cache timeout
+        'OPTIONS': {
+            'MAX_ENTRIES': 10000,
+            'CULL_FREQUENCY': 3,  # Purge 1/3 of entries when max is reached
+        }
+    }
+}
+
+# Timeouts for external connections
+REQUESTS_TIMEOUT = 30  # Seconds for external API requests
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

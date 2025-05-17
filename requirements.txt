@@ -28,3 +28,5 @@ channels
 channels-redis
 django-filter
 django-celery-beat
+memory-profiler==0.61.0
+lxml==5.4.0

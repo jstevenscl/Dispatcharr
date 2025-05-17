@@ -59,6 +59,10 @@ class RedisClient:
                         client.config_set('save', '')  # Disable RDB snapshots
                         client.config_set('appendonly', 'no')  # Disable AOF logging
 
+                        # Set optimal memory settings
+                        client.config_set('maxmemory-policy', 'allkeys-lru')  # Use LRU eviction
+                        client.config_set('maxmemory', '256mb')  # Set reasonable memory limit
+
                         # Disable protected mode when in debug mode
                         if os.environ.get('DISPATCHARR_DEBUG', '').lower() == 'true':
                             client.config_set('protected-mode', 'no')  # Disable protected mode in debug
@@ -178,3 +182,34 @@ def send_websocket_event(event, success, data):
             "data": {"success": True, "type": "epg_channels"}
         }
     )
+
+# Add memory monitoring utilities
+def get_memory_usage():
+    """Returns current memory usage in MB"""
+    import psutil
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
+
+def monitor_memory_usage(func):
+    """Decorator to monitor memory usage before and after function execution"""
+    def wrapper(*args, **kwargs):
+        import gc
+        # Force garbage collection before measuring
+        gc.collect()
+
+        # Get initial memory usage
+        start_mem = get_memory_usage()
+        logger.debug(f"Memory usage before {func.__name__}: {start_mem:.2f} MB")
+
+        # Call the original function
+        result = func(*args, **kwargs)
+
+        # Force garbage collection before measuring again
+        gc.collect()
+
+        # Get final memory usage
+        end_mem = get_memory_usage()
+        logger.debug(f"Memory usage after {func.__name__}: {end_mem:.2f} MB (Change: {end_mem - start_mem:.2f} MB)")
+
+        return result
+    return wrapper
