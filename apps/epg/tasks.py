@@ -519,7 +519,24 @@ def parse_channels_only(source):
             file_path = new_path
 
         logger.info(f"Parsing channels from EPG file: {file_path}")
-        existing_epgs = {e.tvg_id: e for e in EPGData.objects.filter(epg_source=source)}
+
+        # Replace full dictionary load with more efficient lookup set
+        existing_tvg_ids = set()
+        existing_epgs = {}  # Initialize the dictionary that will lazily load objects
+        last_id = 0
+        chunk_size = 5000
+
+        while True:
+            tvg_id_chunk = set(EPGData.objects.filter(
+                epg_source=source,
+                id__gt=last_id
+            ).order_by('id').values_list('tvg_id', flat=True)[:chunk_size])
+
+            if not tvg_id_chunk:
+                break
+
+            existing_tvg_ids.update(tvg_id_chunk)
+            last_id = EPGData.objects.filter(tvg_id__in=tvg_id_chunk).order_by('-id')[0].id
 
         # Update progress to show file read starting
         send_epg_update(source.id, "parsing_channels", 10)
@@ -545,7 +562,10 @@ def parse_channels_only(source):
             channel_finder = etree.iterparse(source_file, events=('end',), tag='channel')
 
             # Count channels
-            total_channels = sum(1 for _ in channel_finder)
+            try:
+                total_channels = EPGData.objects.filter(epg_source=source).count()
+            except:
+                total_channels = 500  # Default estimate
 
             # Close the file to reset position
             source_file.close()
@@ -569,7 +589,22 @@ def parse_channels_only(source):
                     if not display_name:
                         display_name = tvg_id
 
-                    if tvg_id in existing_epgs:
+                    # Use lazy loading approach to reduce memory usage
+                    if tvg_id in existing_tvg_ids:
+                        # Only fetch the object if we need to update it and it hasn't been loaded yet
+                        if tvg_id not in existing_epgs:
+                            try:
+                                existing_epgs[tvg_id] = EPGData.objects.get(tvg_id=tvg_id, epg_source=source)
+                            except EPGData.DoesNotExist:
+                                # Handle race condition where record was deleted
+                                existing_tvg_ids.remove(tvg_id)
+                                epgs_to_create.append(EPGData(
+                                    tvg_id=tvg_id,
+                                    name=display_name,
+                                    epg_source=source,
+                                ))
+                                continue
+
                         epg_obj = existing_epgs[tvg_id]
                         if epg_obj.name != display_name:
                             epg_obj.name = display_name
@@ -594,6 +629,11 @@ def parse_channels_only(source):
                     EPGData.objects.bulk_update(epgs_to_update, ["name"])
                     epgs_to_update = []
                     # Force garbage collection
+                    gc.collect()
+
+                # Periodically clear the existing_epgs cache to prevent memory buildup
+                if processed_channels % 1000 == 0:
+                    existing_epgs.clear()
                     gc.collect()
 
                 # Send progress updates
@@ -677,6 +717,10 @@ def parse_channels_only(source):
         source.save(update_fields=['status', 'last_message'])
         send_epg_update(source.id, "parsing_channels", 100, status="error", error=str(e))
         return False
+    finally:
+        existing_tvg_ids = None
+        existing_epgs = None
+        gc.collect()
 
 
 @shared_task
@@ -704,14 +748,20 @@ def parse_programs_for_tvg_id(epg_id):
         if total_programs > 0:
             logger.info(f"Deleting {total_programs} existing programs for {epg.tvg_id}")
 
-            # Get only the IDs to conserve memory
-            program_ids = list(programs_to_delete.values_list('id', flat=True))
+            # More memory-efficient approach using cursor-based pagination
+            last_id = 0
+            while True:
+                # Get batch of IDs greater than the last ID processed
+                id_batch = list(programs_to_delete.filter(id__gt=last_id).order_by('id').values_list('id', flat=True)[:chunk_size])
+                if not id_batch:
+                    break
 
-            # Delete in chunks using ID-based filtering
-            for i in range(0, len(program_ids), chunk_size):
-                chunk_ids = program_ids[i:i + chunk_size]
-                ProgramData.objects.filter(id__in=chunk_ids).delete()
-                gc.collect()  # Force garbage collection after batch delete
+                # Delete this batch
+                ProgramData.objects.filter(id__in=id_batch).delete()
+                gc.collect()
+
+                # Update last_id for next iteration
+                last_id = id_batch[-1] if id_batch else 0
 
         file_path = epg_source.file_path
         if not file_path:
@@ -869,11 +919,11 @@ def parse_programs_for_source(epg_source, tvg_id=None):
     send_epg_update(epg_source.id, "parsing_programs", 0)
 
     try:
-        epg_entries = EPGData.objects.filter(epg_source=epg_source)
-        total_entries = epg_entries.count()
-        processed = 0
+        # Process EPG entries in batches rather than all at once
+        batch_size = 20  # Process fewer channels at once to reduce memory usage
+        epg_count = EPGData.objects.filter(epg_source=epg_source).count()
 
-        if total_entries == 0:
+        if epg_count == 0:
             logger.info(f"No EPG entries found for source: {epg_source.name}")
             # Update status - this is not an error, just no entries
             epg_source.status = 'success'
@@ -881,31 +931,52 @@ def parse_programs_for_source(epg_source, tvg_id=None):
             send_epg_update(epg_source.id, "parsing_programs", 100, status="success")
             return True
 
-        logger.info(f"Parsing programs for {total_entries} EPG entries from source: {epg_source.name}")
+        logger.info(f"Parsing programs for {epg_count} EPG entries from source: {epg_source.name}")
 
         failed_entries = []
         program_count = 0
         channel_count = 0
         updated_count = 0
+        processed = 0
 
-        for epg in epg_entries:
-            if epg.tvg_id:
-                try:
-                    result = parse_programs_for_tvg_id(epg.id)
-                    if result == "Task already running":
-                        logger.info(f"Program parse for {epg.id} already in progress, skipping")
+        # Process in batches using cursor-based approach to limit memory usage
+        last_id = 0
+        while True:
+            # Get a batch of EPG entries
+            batch_entries = list(EPGData.objects.filter(
+                epg_source=epg_source,
+                id__gt=last_id
+            ).order_by('id')[:batch_size])
 
-                    processed += 1
-                    progress = min(95, int((processed / total_entries) * 100)) if total_entries > 0 else 50
-                    send_epg_update(epg_source.id, "parsing_programs", progress)
-                except Exception as e:
-                    logger.error(f"Error parsing programs for tvg_id={epg.tvg_id}: {e}", exc_info=True)
-                    failed_entries.append(f"{epg.tvg_id}: {str(e)}")
+            if not batch_entries:
+                break  # No more entries to process
+
+            # Update last_id for next iteration
+            last_id = batch_entries[-1].id
+
+            # Process this batch
+            for epg in batch_entries:
+                if epg.tvg_id:
+                    try:
+                        result = parse_programs_for_tvg_id(epg.id)
+                        if result == "Task already running":
+                            logger.info(f"Program parse for {epg.id} already in progress, skipping")
+
+                        processed += 1
+                        progress = min(95, int((processed / epg_count) * 100)) if epg_count > 0 else 50
+                        send_epg_update(epg_source.id, "parsing_programs", progress)
+                    except Exception as e:
+                        logger.error(f"Error parsing programs for tvg_id={epg.tvg_id}: {e}", exc_info=True)
+                        failed_entries.append(f"{epg.tvg_id}: {str(e)}")
+
+            # Force garbage collection after each batch
+            batch_entries = None  # Remove reference to help garbage collection
+            gc.collect()
 
         # If there were failures, include them in the message but continue
         if failed_entries:
             epg_source.status = EPGSource.STATUS_SUCCESS  # Still mark as success if some processed
-            error_summary = f"Failed to parse {len(failed_entries)} of {total_entries} entries"
+            error_summary = f"Failed to parse {len(failed_entries)} of {epg_count} entries"
             stats_summary = f"Processed {program_count} programs across {channel_count} channels. Updated: {updated_count}."
             epg_source.last_message = f"{stats_summary} Warning: {error_summary}"
             epg_source.updated_at = timezone.now()
@@ -1027,7 +1098,7 @@ def parse_xmltv_time(time_str):
         elif tz_sign == '-':
             dt_obj = dt_obj + timedelta(hours=tz_hours, minutes=tz_minutes)
         aware_dt = timezone.make_aware(dt_obj, timezone=dt_timezone.utc)
-        logger.debug(f"Parsed XMLTV time '{time_str}' to {aware_dt}")
+        logger.trace(f"Parsed XMLTV time '{time_str}' to {aware_dt}")
         return aware_dt
     except Exception as e:
         logger.error(f"Error parsing XMLTV time '{time_str}': {e}", exc_info=True)
