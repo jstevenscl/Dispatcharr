@@ -975,6 +975,7 @@ def parse_programs_for_tvg_id(epg_id):
 
                         # Extract custom properties
                         custom_props = extract_custom_properties(elem)
+                        custom_properties_json = None
 
                         if custom_props:
                             logger.trace(f"Number of custom properties: {len(custom_props)}")
@@ -1022,6 +1023,19 @@ def parse_programs_for_tvg_id(epg_id):
 
                     except Exception as e:
                         logger.error(f"Error processing program for {epg.tvg_id}: {e}", exc_info=True)
+                else:
+                    # Immediately clean up non-matching elements to reduce memory pressure
+                    elem.clear()
+                    parent = elem.getparent()
+                    if parent is not None:
+                        while elem.getprevious() is not None:
+                            del parent[0]
+                        try:
+                            parent.remove(elem)
+                        except (ValueError, KeyError, TypeError):
+                            pass
+                    del elem
+                    continue
 
                 # Important: Clear the element to avoid memory leaks using a more robust approach
                 try:
