@@ -841,12 +841,14 @@ def parse_programs_for_tvg_id(epg_id):
     epg = None
     epg_source = None
     programs_processed = 0
+    mem_before = 0  # Initialize with default value to avoid UnboundLocalError
 
     try:
         # Add memory tracking
         try:
             process = psutil.Process()
             initial_memory = process.memory_info().rss / 1024 / 1024
+            mem_before = initial_memory  # Set mem_before here
             logger.info(f"[parse_programs_for_tvg_id] Initial memory usage: {initial_memory:.2f} MB")
         except ImportError:
             process = None
@@ -1042,7 +1044,7 @@ def parse_programs_for_tvg_id(epg_id):
 
                 except Exception as e:
                     # Just log the error and continue - don't let cleanup errors stop processing
-                    logger.debug(f"Non-critical error during XML element cleanup: {e}")
+                    logger.trace(f"Non-critical error during XML element cleanup: {e}")
 
             # Make sure to close the file and release parser resources
             if source_file:
