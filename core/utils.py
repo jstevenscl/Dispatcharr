@@ -173,15 +173,47 @@ def release_task_lock(task_name, id):
     # Remove the lock
     redis_client.delete(lock_id)
 
-def send_websocket_event(event, success, data):
+def send_websocket_update(group_name, event_type, data, collect_garbage=False):
+    """
+    Standardized function to send WebSocket updates with proper memory management.
+
+    Args:
+        group_name: The WebSocket group to send to (e.g. 'updates')
+        event_type: The type of message (e.g. 'update')
+        data: The data to send
+        collect_garbage: Whether to force garbage collection after sending
+    """
     channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        'updates',
-        {
-            'type': 'update',
-            "data": {"success": True, "type": "epg_channels"}
-        }
-    )
+    try:
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': event_type,
+                'data': data
+            }
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send WebSocket update: {e}")
+    finally:
+        # Explicitly release references to help garbage collection
+        channel_layer = None
+
+        # Force garbage collection if requested
+        if collect_garbage:
+            gc.collect()
+
+def send_websocket_event(event, success, data):
+    """Acquire a lock to prevent concurrent task execution."""
+    data_payload = {"success": success, "type": event}
+    if data:
+        # Make a copy to avoid modifying the original
+        data_payload.update(data)
+
+    # Use the standardized function
+    send_websocket_update('updates', 'update', data_payload)
+
+    # Help garbage collection by clearing references
+    data_payload = None
 
 # Add memory monitoring utilities
 def get_memory_usage():

@@ -1088,6 +1088,8 @@ def refresh_single_m3u_account(account_id):
 
     return f"Dispatched jobs complete."
 
+from core.utils import send_websocket_update
+
 def send_m3u_update(account_id, action, progress, **kwargs):
     # Start with the base data dictionary
     data = {
@@ -1111,12 +1113,10 @@ def send_m3u_update(account_id, action, progress, **kwargs):
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)
 
-    # Now, send the updated data dictionary
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        'updates',
-        {
-            'type': 'update',
-            'data': data
-        }
-    )
+    # Use the standardized function with memory management
+    # Enable garbage collection for certain operations
+    collect_garbage = action == "parsing" and progress % 25 == 0
+    send_websocket_update('updates', 'update', data, collect_garbage=collect_garbage)
+
+    # Explicitly clear data reference to help garbage collection
+    data = None

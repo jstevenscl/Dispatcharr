@@ -8,7 +8,7 @@ import logging
 import re
 import time
 import os
-from core.utils import RedisClient
+from core.utils import RedisClient, send_websocket_update
 from apps.proxy.ts_proxy.channel_status import ChannelStatus
 from apps.m3u.models import M3UAccount
 from apps.epg.models import EPGSource
@@ -317,19 +317,24 @@ def fetch_channel_stats():
             if cursor == 0:
                 break
 
+        send_websocket_update(
+            "updates",
+            "update",
+            {
+                "success": True,
+                "type": "channel_stats",
+                "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})
+            },
+            collect_garbage=True
+        )
+
+        # Explicitly clean up large data structures
+        all_channels = None
+        gc.collect()
+
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
         return
-        # return JsonResponse({'error': str(e)}, status=500)
-
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        "updates",
-        {
-            "type": "update",
-            "data": {"success": True, "type": "channel_stats", "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})}
-        },
-    )
 
 @shared_task
 def rehash_streams(keys):
