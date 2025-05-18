@@ -9,6 +9,10 @@ import useAuthStore from '../store/auth';
 const ChannelsPage = () => {
   const authUser = useAuthStore((s) => s.user);
 
+  if (!authUser.id) {
+    return <></>;
+  }
+
   if (authUser.user_level <= USER_LEVELS.READ_ONLY) {
     return (
       <Box style={{ padding: 10 }}>

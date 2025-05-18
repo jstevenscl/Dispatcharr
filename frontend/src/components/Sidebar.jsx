@@ -12,6 +12,7 @@ import {
   Video,
   Ellipsis,
   LogOut,
+  User,
 } from 'lucide-react';
 import {
   Avatar,
@@ -101,7 +102,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           { label: 'Stats', icon: <ChartLine size={20} />, path: '/stats' },
           {
             label: 'Users',
-            icon: <LucideSettings size={20} />,
+            icon: <User size={20} />,
             path: '/users',
           },
           {
@@ -298,25 +299,9 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                   {authUser.username}
                 </Text>
 
-                <Menu>
-                  <Menu.Target>
-                    <ActionIcon variant="transparent" size={18} color="white">
-                      <Ellipsis size="18" />
-                    </ActionIcon>
-                  </Menu.Target>
-
-                  <Menu.Dropdown>
-                    <Menu.Item leftSection={<LogOut size="14" />}>
-                      <UnstyledButton
-                        variant="unstyled"
-                        size="xs"
-                        onClick={onLogout}
-                      >
-                        <Text size="xs">Log Out</Text>
-                      </UnstyledButton>
-                    </Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
+                <ActionIcon variant="transparent" color="white" size="sm">
+                  <LogOut onClick={logout} />
+                </ActionIcon>
               </Group>
             )}
           </Group>
