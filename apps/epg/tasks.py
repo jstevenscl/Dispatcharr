@@ -23,7 +23,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 from .models import EPGSource, EPGData, ProgramData
-from core.utils import acquire_task_lock, release_task_lock, send_websocket_update
+from core.utils import acquire_task_lock, release_task_lock, send_websocket_update, cleanup_memory
 
 logger = logging.getLogger(__name__)
 
@@ -826,8 +826,8 @@ def parse_channels_only(source):
 
         # Check final memory usage after clearing process
         gc.collect()
-
-
+        # Add comprehensive cleanup at end of channel parsing
+        cleanup_memory(log_usage=True, force_collection=True)
 
 
 @shared_task
@@ -1133,6 +1133,8 @@ def parse_programs_for_tvg_id(epg_id):
         # Force garbage collection before releasing lock
         gc.collect()
 
+        # Add comprehensive cleanup before releasing lock
+        cleanup_memory(log_usage=True, force_collection=True)
         release_task_lock('parse_epg_programs', epg_id)
 
 
@@ -1280,6 +1282,9 @@ def parse_programs_for_source(epg_source, tvg_id=None):
         # Explicitly clear the process object to prevent potential memory leaks
         if 'process' in locals() and process is not None:
             process = None
+
+        # Add comprehensive memory cleanup at the end
+        cleanup_memory(log_usage=True, force_collection=True)
 
 
 def fetch_schedules_direct(source):

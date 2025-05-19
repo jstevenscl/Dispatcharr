@@ -245,3 +245,40 @@ def monitor_memory_usage(func):
 
         return result
     return wrapper
+
+def cleanup_memory(log_usage=True, force_collection=True):
+    """
+    Comprehensive memory cleanup function to reduce memory footprint
+
+    Args:
+        log_usage: Whether to log memory usage before and after cleanup
+        force_collection: Whether to force garbage collection
+    """
+    if log_usage:
+        try:
+            import psutil
+            process = psutil.Process()
+            before_mem = process.memory_info().rss / (1024 * 1024)
+            logger.debug(f"Memory before cleanup: {before_mem:.2f} MB")
+        except (ImportError, Exception) as e:
+            logger.debug(f"Error getting memory usage: {e}")
+
+    # Clear any object caches from Django ORM
+    from django.db import connection, reset_queries
+    reset_queries()
+
+    # Force garbage collection
+    if force_collection:
+        # Run full collection
+        gc.collect(generation=2)
+        # Clear cyclic references
+        gc.collect(generation=0)
+
+    if log_usage:
+        try:
+            import psutil
+            process = psutil.Process()
+            after_mem = process.memory_info().rss / (1024 * 1024)
+            logger.debug(f"Memory after cleanup: {after_mem:.2f} MB (change: {after_mem-before_mem:.2f} MB)")
+        except (ImportError, Exception):
+            pass
