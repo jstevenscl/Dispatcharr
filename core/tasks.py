@@ -49,29 +49,13 @@ def throttled_log(logger_method, message, key=None, *args, **kwargs):
 
 def clear_memory():
     """Force aggressive garbage collection to free memory"""
-    import gc
-    # Run full garbage collection
-    gc.collect(generation=2)
-    # Find and break any reference cycles
-    gc.collect(generation=0)
-    # Clear any cached objects in memory
-    gc.collect(generation=1)
-    # Check if psutil is available for more advanced monitoring
-    try:
-        import psutil
-        process = psutil.Process()
-        if hasattr(process, 'memory_info'):
-            mem = process.memory_info().rss / (1024 * 1024)
-            logger.debug(f"Memory usage after cleanup: {mem:.2f} MB")
-    except (ImportError, Exception):
-        pass
+    from core.utils import cleanup_memory
+    cleanup_memory(log_usage=True, force_collection=True)
 
 @shared_task
 def beat_periodic_task():
     fetch_channel_stats()
     scan_and_process_files()
-    # Call memory cleanup after completing tasks
-    clear_memory()
 
 @shared_task
 def scan_and_process_files():

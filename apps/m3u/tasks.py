@@ -496,7 +496,8 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
 
     # Aggressive garbage collection
     del streams_to_create, streams_to_update, stream_hashes, existing_streams
-    gc.collect()
+    from core.utils import cleanup_memory
+    cleanup_memory(log_usage=True, force_collection=True)
 
     return retval
 
@@ -1080,7 +1081,8 @@ def refresh_single_m3u_account(account_id):
 
     # Aggressive garbage collection
     del existing_groups, extinf_data, groups, batches
-    gc.collect()
+    from core.utils import cleanup_memory
+    cleanup_memory(log_usage=True, force_collection=True)
 
     # Clean up cache file since we've fully processed it
     if os.path.exists(cache_path):

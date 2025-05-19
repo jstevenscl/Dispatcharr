@@ -216,9 +216,9 @@ def match_epg_channels():
     finally:
         # Final cleanup
         gc.collect()
-        # Force an even more aggressive cleanup
-        import gc
-        gc.collect(generation=2)
+        # Use our standardized cleanup function for more thorough memory management
+        from core.utils import cleanup_memory
+        cleanup_memory(log_usage=True, force_collection=True)
 
 
 @shared_task
