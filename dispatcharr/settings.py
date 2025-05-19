@@ -321,6 +321,11 @@ LOGGING = {
             'level': LOG_LEVEL,  # Use environment-configured level
             'propagate': False,  # Don't propagate to root logger to avoid duplicate logs
         },
+        'core.utils': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
         'apps.proxy': {
             'handlers': ['console'],
             'level': LOG_LEVEL,  # Use environment-configured level
