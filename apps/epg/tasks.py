@@ -569,7 +569,7 @@ def parse_channels_only(source):
         epgs_to_update = []
         total_channels = 0
         processed_channels = 0
-        batch_size = 10  # Process in batches to limit memory usage
+        batch_size = 500  # Process in batches to limit memory usage
         progress = 0  # Initialize progress variable here
 
         # Track memory at key points
@@ -636,6 +636,7 @@ def parse_channels_only(source):
                         # Only fetch the object if we need to update it and it hasn't been loaded yet
                         if tvg_id not in existing_epgs:
                             try:
+                                # This loads the full EPG object from the database and caches it
                                 existing_epgs[tvg_id] = EPGData.objects.get(tvg_id=tvg_id, epg_source=source)
                             except EPGData.DoesNotExist:
                                 # Handle race condition where record was deleted
@@ -648,12 +649,15 @@ def parse_channels_only(source):
                                 logger.debug(f"[parse_channels_only] Added new channel to epgs_to_create 1: {tvg_id} - {display_name}")
                                 continue
 
+                        # We use the cached object to check if the name has changed
                         epg_obj = existing_epgs[tvg_id]
                         if epg_obj.name != display_name:
+                            # Only update if the name actually changed
                             epg_obj.name = display_name
                             epgs_to_update.append(epg_obj)
                             logger.debug(f"[parse_channels_only] Added channel to update to epgs_to_update: {tvg_id} - {display_name}")
                     else:
+                        # This is a new channel that doesn't exist in our database
                         epgs_to_create.append(EPGData(
                             tvg_id=tvg_id,
                             name=display_name,
@@ -687,7 +691,7 @@ def parse_channels_only(source):
                     gc.collect()
 
                 # Periodically clear the existing_epgs cache to prevent memory buildup
-                if processed_channels % 1000 == 0:
+                if processed_channels % 100 == 0:
                     logger.info(f"[parse_channels_only] Clearing existing_epgs cache at {processed_channels} channels")
                     existing_epgs.clear()
                     gc.collect()
