@@ -691,7 +691,7 @@ def parse_channels_only(source):
                     gc.collect()
 
                 # Periodically clear the existing_epgs cache to prevent memory buildup
-                if processed_channels % 100 == 0:
+                if processed_channels % 1000 == 0:
                     logger.info(f"[parse_channels_only] Clearing existing_epgs cache at {processed_channels} channels")
                     existing_epgs.clear()
                     gc.collect()
@@ -733,6 +733,7 @@ def parse_channels_only(source):
                             pass
                     cleanup_memory(log_usage=True, force_collection=True)
                     time.sleep(.1)
+
                 except Exception as e:
                     # Just log the error and continue - don't let cleanup errors stop processing
                     logger.debug(f"[parse_channels_only] Non-critical error during XML element cleanup: {e}")
@@ -788,6 +789,11 @@ def parse_channels_only(source):
                         # Create a new parser context
                         channel_parser = etree.iterparse(source_file, events=('end',), tag='channel')
                         logger.info(f"[parse_channels_only] Recreated parser context after memory cleanup")
+
+                if processed_channels == total_channels:
+                        logger.info(f"[parse_channels_only] Processed all channels current memory: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+
+
             if process:
                 logger.info(f"[parse_channels_only] Memory after leaving for loop: {process.memory_info().rss / 1024 / 1024:.2f} MB")
             time.sleep(20)
