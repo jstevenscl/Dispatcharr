@@ -28,3 +28,4 @@ channels
 channels-redis
 django-filter
 django-celery-beat
+lxml==5.4.0
