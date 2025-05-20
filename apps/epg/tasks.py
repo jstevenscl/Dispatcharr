@@ -569,7 +569,7 @@ def parse_channels_only(source):
         epgs_to_update = []
         total_channels = 0
         processed_channels = 0
-        batch_size = 500  # Process in batches to limit memory usage
+        batch_size = 10  # Process in batches to limit memory usage
         progress = 0  # Initialize progress variable here
 
         # Track memory at key points
@@ -645,18 +645,21 @@ def parse_channels_only(source):
                                     name=display_name,
                                     epg_source=source,
                                 ))
+                                logger.debug(f"[parse_channels_only] Added new channel to epgs_to_create 1: {tvg_id} - {display_name}")
                                 continue
 
                         epg_obj = existing_epgs[tvg_id]
                         if epg_obj.name != display_name:
                             epg_obj.name = display_name
                             epgs_to_update.append(epg_obj)
+                            logger.debug(f"[parse_channels_only] Added channel to update to epgs_to_update: {tvg_id} - {display_name}")
                     else:
                         epgs_to_create.append(EPGData(
                             tvg_id=tvg_id,
                             name=display_name,
                             epg_source=source,
                         ))
+                        logger.debug(f"[parse_channels_only] Added new channel to epgs_to_create 2: {tvg_id} - {display_name}")
 
                 processed_channels += 1
 
