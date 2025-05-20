@@ -673,7 +673,12 @@ def parse_channels_only(source):
                         logger.info(f"[parse_channels_only] Memory after gc.collect(): {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
                 if len(epgs_to_update) >= batch_size:
+                    logger.info(f"[parse_channels_only] Bulk updating {len(epgs_to_update)} EPG entries")
+                    if process:
+                        logger.info(f"[parse_channels_only] Memory before bulk_update: {process.memory_info().rss / 1024 / 1024:.2f} MB")
                     EPGData.objects.bulk_update(epgs_to_update, ["name"])
+                    if process:
+                        logger.info(f"[parse_channels_only] Memory after bulk_update: {process.memory_info().rss / 1024 / 1024:.2f} MB")
                     epgs_to_update = []
                     # Force garbage collection
                     gc.collect()
@@ -697,6 +702,8 @@ def parse_channels_only(source):
                         total=total_channels
                     )
                 logger.debug(f"[parse_channels_only] Processed channel: {tvg_id} - {display_name}")
+                if process:
+                    logger.info(f"[parse_channels_only] Memory before elem cleanup: {process.memory_info().rss / 1024 / 1024:.2f} MB")
                 # Clear memory
                 try:
                     # First clear the element's content
@@ -718,16 +725,17 @@ def parse_channels_only(source):
                             # Element might already be removed or detached
                             pass
                     cleanup_memory(log_usage=True, force_collection=True)
-
+                    time.sleep(.1)
                 except Exception as e:
                     # Just log the error and continue - don't let cleanup errors stop processing
                     logger.debug(f"[parse_channels_only] Non-critical error during XML element cleanup: {e}")
-
+                if process:
+                    logger.info(f"[parse_channels_only] Memory after elem cleanup: {process.memory_info().rss / 1024 / 1024:.2f} MB")
                 # Check if we should break early to avoid excessive sleep
                 if processed_channels >= total_channels and total_channels > 0:
                     logger.info(f"[parse_channels_only] Expected channel numbers hit, continuing - processed {processed_channels}/{total_channels}")
                     logger.debug(f"[parse_channels_only] Memory usage after {processed_channels}: {process.memory_info().rss / 1024 / 1024:.2f} MB")
-                    break
+                    #break
                 logger.debug(f"[parse_channels_only] Total elements processed: {total_elements_processed}")
                 # Add periodic forced cleanup based on TOTAL ELEMENTS, not just channels
                 # This ensures we clean up even if processing many non-channel elements
@@ -773,14 +781,18 @@ def parse_channels_only(source):
                         # Create a new parser context
                         channel_parser = etree.iterparse(source_file, events=('end',), tag='channel')
                         logger.info(f"[parse_channels_only] Recreated parser context after memory cleanup")
-
+            if process:
+                logger.info(f"[parse_channels_only] Memory after leaving for loop: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+            time.sleep(20)
             # Explicit cleanup before sleeping
             logger.info(f"[parse_channels_only] Completed channel parsing loop, processed {processed_channels} channels")
             if process:
                 logger.info(f"[parse_channels_only] Memory before cleanup: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
             # Explicit cleanup of the parser
-            del channel_parser
+
+            #del channel_parser
+
             logger.info(f"[parse_channels_only] Deleted channel_parser object")
 
             # Close the file
@@ -804,6 +816,8 @@ def parse_channels_only(source):
             source.save(update_fields=['status', 'last_message'])
             send_epg_update(source.id, "parsing_channels", 100, status="error", error=str(xml_error))
             return False
+        if process:
+            logger.info(f"[parse_channels_only] Memory before final batch creation: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
         # Process any remaining items
         if epgs_to_create:
@@ -813,6 +827,8 @@ def parse_channels_only(source):
         if epgs_to_update:
             EPGData.objects.bulk_update(epgs_to_update, ["name"])
             logger.info(f"[parse_channels_only] Updated final batch of {len(epgs_to_update)} EPG entries")
+        if process:
+            logger.info(f"[parse_channels_only] Memory after final batch creation: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
         # Final garbage collection and memory tracking
         if process:
