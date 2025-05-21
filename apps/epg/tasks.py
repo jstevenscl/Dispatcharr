@@ -918,14 +918,10 @@ def parse_programs_for_tvg_id(epg_id):
     if not acquire_task_lock('parse_epg_programs', epg_id):
         logger.info(f"Program parse for {epg_id} already in progress, skipping duplicate task")
         return "Task already running"
+
     source_file = None
     program_parser = None
-    programs_to_create = None
-    epg = None
-    epg_source = None
-    programs_processed = 0
-    mem_before = 0  # Initialize with default value to avoid UnboundLocalError
-
+    programs_to_create = []
     try:
         # Add memory tracking only in trace mode or higher
         try:
@@ -957,18 +953,9 @@ def parse_programs_for_tvg_id(epg_id):
 
         logger.info(f"Refreshing program data for tvg_id: {epg.tvg_id}")
 
-        # First, remove all existing programs - use chunked delete to avoid memory issues
-                # Delete old programs
-        chunk_size = 5000
-        last_id = 0
-        while True:
-            ids = list(ProgramData.objects.filter(epg=epg, id__gt=last_id).order_by('id').values_list('id', flat=True)[:chunk_size])
-            if not ids:
-                break
-            ProgramData.objects.filter(id__in=ids).delete()
-            last_id = ids[-1]
-            del ids
-            gc.collect()
+        # Optimize deletion with a single delete query instead of chunking
+        # This is faster for most database engines
+        ProgramData.objects.filter(epg=epg).delete()
 
         file_path = epg_source.file_path
         if not file_path:
@@ -1106,11 +1093,10 @@ def parse_programs_for_tvg_id(epg_id):
                         if len(programs_to_create) >= batch_size:
                             ProgramData.objects.bulk_create(programs_to_create)
                             logger.debug(f"Saved batch of {len(programs_to_create)} programs for {epg.tvg_id}")
-                            del programs_to_create
-                            del custom_props
-                            del custom_properties_json
-                            gc.collect()
-                            #continue
+                            programs_to_create = []
+                            # Only call gc.collect() every few batches
+                            if programs_processed % (batch_size * 5) == 0:
+                                gc.collect()
 
                     except Exception as e:
                         logger.error(f"Error processing program for {epg.tvg_id}: {e}", exc_info=True)
