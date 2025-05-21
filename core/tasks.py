@@ -2,7 +2,6 @@
 from celery import shared_task
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-import redis
 import json
 import logging
 import re
@@ -46,11 +45,6 @@ def throttled_log(logger_method, message, key=None, *args, **kwargs):
     if key not in _last_log_times or (now - _last_log_times[key]) >= LOG_THROTTLE_SECONDS:
         logger_method(message, *args, **kwargs)
         _last_log_times[key] = now
-
-def clear_memory():
-    """Force aggressive garbage collection to free memory"""
-    from core.utils import cleanup_memory
-    cleanup_memory(log_usage=True, force_collection=True)
 
 @shared_task
 def beat_periodic_task():
@@ -275,9 +269,6 @@ def scan_and_process_files():
     # Mark that the first scan is complete
     _first_scan_completed = True
 
-    # Force memory cleanup
-    clear_memory()
-
 def fetch_channel_stats():
     redis_client = RedisClient.get_client()
 
@@ -314,7 +305,6 @@ def fetch_channel_stats():
 
         # Explicitly clean up large data structures
         all_channels = None
-        gc.collect()
 
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
