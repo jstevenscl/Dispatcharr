@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import api from '../api';
 
 const useUsersStore = create((set) => ({
-  users: {},
+  users: [],
   isLoading: false,
   error: null,
 

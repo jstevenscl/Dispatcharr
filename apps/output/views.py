@@ -14,20 +14,34 @@ import json
 from urllib.parse import urlparse
 
 
-def generate_m3u(request, user):
-    if user.user_level == 0:
-        channel_profiles = user.channel_profiles.all()
-        filters = {
-            "channelprofilemembership__channel_profile__in": channel_profiles,
-            "channelprofilemembership__enabled": True,
-            "user_level__lte": user.user_level,
-        }
+def generate_m3u(request, profile_name=None, user=None):
+    """
+    Dynamically generate an M3U file from channels.
+    The stream URL now points to the new stream_view that uses StreamProfile.
+    """
+    if user is not None:
+        if user.user_level == 0:
+            channel_profiles = user.channel_profiles.all()
+            filters = {
+                "channelprofilemembership__channel_profile__in": channel_profiles,
+                "channelprofilemembership__enabled": True,
+                "user_level__lte": user.user_level,
+            }
 
-        channels = Channel.objects.filter(**filters).order_by("channel_number")
+            channels = Channel.objects.filter(**filters).order_by("channel_number")
+        else:
+            channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
+                "channel_number"
+            )
     else:
-        channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
-            "channel_number"
-        )
+        if profile_name is not None:
+            channel_profile = ChannelProfile.objects.get(name=profile_name)
+            channels = Channel.objects.filter(
+                channelprofilemembership__channel_profile=channel_profile,
+                channelprofilemembership__enabled=True,
+            ).order_by("channel_number")
+        else:
+            channels = Channel.objects.order_by("channel_number")
 
     m3u_content = "#EXTM3U\n"
     for channel in channels:
@@ -177,7 +191,7 @@ def generate_dummy_epg(
     return xml_lines
 
 
-def generate_epg(request, user):
+def generate_epg(request, profile_name=None, user=None):
     """
     Dynamically generate an XMLTV (EPG) file using the new EPGData/ProgramData models.
     Since the EPG data is stored independently of Channels, we group programmes
@@ -190,19 +204,29 @@ def generate_epg(request, user):
         '<tv generator-info-name="Dispatcharr" generator-info-url="https://github.com/Dispatcharr/Dispatcharr">'
     )
 
-    if user.user_level == 0:
-        channel_profiles = user.channel_profiles.all()
-        filters = {
-            "channelprofilemembership__channel_profile__in": channel_profiles,
-            "channelprofilemembership__enabled": True,
-            "user_level__lte": user.user_level,
-        }
+    if user is not None:
+        if user.user_level == 0:
+            channel_profiles = user.channel_profiles.all()
+            filters = {
+                "channelprofilemembership__channel_profile__in": channel_profiles,
+                "channelprofilemembership__enabled": True,
+                "user_level__lte": user.user_level,
+            }
 
-        channels = Channel.objects.filter(**filters).order_by("channel_number")
+            channels = Channel.objects.filter(**filters).order_by("channel_number")
+        else:
+            channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
+                "channel_number"
+            )
     else:
-        channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
-            "channel_number"
-        )
+        if profile_name is not None:
+            channel_profile = ChannelProfile.objects.get(name=profile_name)
+            channels = Channel.objects.filter(
+                channelprofilemembership__channel_profile=channel_profile,
+                channelprofilemembership__enabled=True,
+            )
+        else:
+            channels = Channel.objects.all()
 
     # Retrieve all active channels
     for channel in channels:

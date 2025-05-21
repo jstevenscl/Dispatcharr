@@ -20,12 +20,13 @@ import {
   MultiSelect,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
-import useUsersStore from '../../store/users';
 import useChannelsStore from '../../store/channels';
 import { USER_LEVELS, USER_LEVEL_LABELS } from '../../constants';
+import useAuthStore from '../../store/auth';
 
 const User = ({ user = null, isOpen, onClose }) => {
   const profiles = useChannelsStore((s) => s.profiles);
+  const authUser = useAuthStore((s) => s.user);
 
   console.log(user);
 
@@ -77,7 +78,7 @@ const User = ({ user = null, isOpen, onClose }) => {
   };
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       form.setValues({
         username: user.username,
         email: user.email,
@@ -93,10 +94,16 @@ const User = ({ user = null, isOpen, onClose }) => {
     return <></>;
   }
 
-  console.log(user);
+  const showPermissions =
+    authUser.user_level == USER_LEVELS.ADMIN && authUser.id !== user?.id;
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="User" size="xl">
+    <Modal
+      opened={isOpen}
+      onClose={onClose}
+      title="User"
+      size={showPermissions ? 'xl' : 'md'}
+    >
       <form onSubmit={form.onSubmit(onSubmit)}>
         <Group justify="space-between" align="top">
           <Stack gap="xs" style={{ flex: 1 }}>
@@ -123,31 +130,33 @@ const User = ({ user = null, isOpen, onClose }) => {
             />
           </Stack>
 
-          <Stack gap="xs" style={{ flex: 1 }}>
-            <Select
-              label="User Level"
-              data={Object.entries(USER_LEVELS).map(([label, value]) => {
-                return {
-                  label: USER_LEVEL_LABELS[value],
-                  value: `${value}`,
-                };
-              })}
-              {...form.getInputProps('user_level')}
-              key={form.key('user_level')}
-            />
+          {showPermissions && (
+            <Stack gap="xs" style={{ flex: 1 }}>
+              <Select
+                label="User Level"
+                data={Object.entries(USER_LEVELS).map(([label, value]) => {
+                  return {
+                    label: USER_LEVEL_LABELS[value],
+                    value: `${value}`,
+                  };
+                })}
+                {...form.getInputProps('user_level')}
+                key={form.key('user_level')}
+              />
 
-            <MultiSelect
-              label="Channel Profiles"
-              {...form.getInputProps('channel_profiles')}
-              key={form.key('channel_profiles')}
-              data={Object.values(profiles)
-                .filter((profile) => profile.id != 0)
-                .map((profile) => ({
-                  label: profile.name,
-                  value: `${profile.id}`,
-                }))}
-            />
-          </Stack>
+              <MultiSelect
+                label="Channel Profiles"
+                {...form.getInputProps('channel_profiles')}
+                key={form.key('channel_profiles')}
+                data={Object.values(profiles)
+                  .filter((profile) => profile.id != 0)
+                  .map((profile) => ({
+                    label: profile.name,
+                    value: `${profile.id}`,
+                  }))}
+              />
+            </Stack>
+          )}
         </Group>
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">

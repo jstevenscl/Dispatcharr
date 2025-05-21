@@ -3,6 +3,7 @@ import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
+import ChannelBatchForm from '../forms/ChannelBatch';
 import RecordingForm from '../forms/Recording';
 import { useDebounce, copyToClipboard } from '../../utils';
 import logo from '../../images/logo.png';
@@ -268,6 +269,7 @@ const ChannelsTable = ({}) => {
    */
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [channelBatchModalOpen, setChannelBatchModalOpen] = useState(false);
   const [recordingModalOpen, setRecordingModalOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState(
     profiles[selectedProfileId]
@@ -365,8 +367,12 @@ const ChannelsTable = ({}) => {
   };
 
   const editChannel = async (ch = null) => {
-    setChannel(ch);
-    setChannelModalOpen(true);
+    if (selectedChannelIds.length > 0) {
+      setChannelBatchModalOpen(true);
+    } else {
+      setChannel(ch);
+      setChannelModalOpen(true);
+    }
   };
 
   const deleteChannel = async (id) => {
@@ -478,6 +484,10 @@ const ChannelsTable = ({}) => {
       ...pagination,
       pageIndex: pageIndex - 1,
     });
+  };
+
+  const closeChannelBatchForm = () => {
+    setChannelBatchModalOpen(false);
   };
 
   const closeChannelForm = () => {
@@ -1039,6 +1049,12 @@ const ChannelsTable = ({}) => {
           channel={channel}
           isOpen={channelModalOpen}
           onClose={closeChannelForm}
+        />
+
+        <ChannelBatchForm
+          channelIds={selectedChannelIds}
+          isOpen={channelBatchModalOpen}
+          onClose={closeChannelBatchForm}
         />
 
         <RecordingForm

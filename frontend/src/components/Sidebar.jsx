@@ -33,6 +33,7 @@ import useSettingsStore from '../store/settings';
 import useAuthStore from '../store/auth'; // Add this import
 import API from '../api';
 import { USER_LEVELS } from '../constants';
+import UserForm from './forms/User';
 
 const NavLink = ({ item, isActive, collapsed }) => {
   return (
@@ -81,6 +82,9 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
     version: '',
     timestamp: null,
   });
+  const [userFormOpen, setUserFormOpen] = useState(false);
+
+  const closeUserForm = () => setUserFormOpen(false);
 
   // Navigation Items
   const navItems =
@@ -295,9 +299,9 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                   whiteSpace: 'nowrap',
                 }}
               >
-                <Text size="sm" color="white">
+                <UnstyledButton onClick={() => setUserFormOpen(true)}>
                   {authUser.username}
-                </Text>
+                </UnstyledButton>
 
                 <ActionIcon variant="transparent" color="white" size="sm">
                   <LogOut onClick={logout} />
@@ -315,6 +319,8 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           {appVersion?.timestamp ? `-${appVersion.timestamp}` : ''}
         </Text>
       )}
+
+      <UserForm user={authUser} isOpen={userFormOpen} onClose={closeUserForm} />
     </AppShell.Navbar>
   );
 };

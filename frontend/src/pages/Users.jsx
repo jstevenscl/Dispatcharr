@@ -5,9 +5,12 @@ import {
   Box,
   Button,
   Center,
+  Divider,
   Group,
   Paper,
   Select,
+  Stack,
+  Text,
   useMantineTheme,
 } from '@mantine/core';
 import { SquareMinus, SquarePen, SquarePlus } from 'lucide-react';
@@ -46,63 +49,74 @@ const UsersPage = () => {
       <Center>
         <Paper
           style={{
-            minWidth: 400,
+            minWidth: 600,
             padding: 10,
+            margin: 20,
           }}
         >
-          <Button
-            leftSection={<SquarePlus size={18} />}
-            variant="light"
-            size="xs"
-            onClick={() => editUser()}
-            p={5}
-            color="green"
-            style={{
-              borderWidth: '1px',
-              borderColor: 'green',
-              color: 'white',
-            }}
-          >
-            Add User
-          </Button>
-          {Object.values(users)
-            .sort((a, b) => a.id > b.id)
-            .map((user) => {
-              return (
-                <Group justify="space-between">
-                  <Box flex={1} style={{ alignContent: 'flex-start' }}>
-                    {user.username}
-                  </Box>
+          <Stack>
+            <Box>
+              <Button
+                leftSection={<SquarePlus size={18} />}
+                variant="light"
+                size="xs"
+                onClick={() => editUser()}
+                p={5}
+                color="green"
+                style={{
+                  borderWidth: '1px',
+                  borderColor: 'green',
+                  color: 'white',
+                }}
+              >
+                Add User
+              </Button>
+            </Box>
 
-                  <Box flex={1} style={{ alignContent: 'flex-start' }}>
-                    {user.email}
-                  </Box>
+            {users
+              .sort((a, b) => a.id > b.id)
+              .map((user) => {
+                if (!user) {
+                  return <></>;
+                }
 
-                  {authUser.user_level == USER_LEVELS.ADMIN && (
-                    <Group>
-                      <ActionIcon
-                        size={18}
-                        variant="transparent"
-                        color={theme.tailwind.yellow[3]}
-                        onClick={() => editUser(user)}
-                      >
-                        <SquarePen size="18" />
-                      </ActionIcon>
+                return (
+                  <Group justify="space-between">
+                    <Box flex={1} style={{ alignContent: 'flex-start' }}>
+                      {user.username}
+                    </Box>
 
-                      <ActionIcon
-                        size={18}
-                        variant="transparent"
-                        color={theme.tailwind.red[6]}
-                        onClick={() => deleteUser(user.id)}
-                        disabled={authUser.id === user.id}
-                      >
-                        <SquareMinus size="18" />
-                      </ActionIcon>
-                    </Group>
-                  )}
-                </Group>
-              );
-            })}
+                    <Box flex={1} style={{ alignContent: 'flex-start' }}>
+                      {user.email}
+                    </Box>
+
+                    {authUser.user_level == USER_LEVELS.ADMIN && (
+                      <Group>
+                        <Text>{USER_LEVEL_LABELS[user.user_level]}</Text>
+                        <ActionIcon
+                          size={18}
+                          variant="transparent"
+                          color={theme.tailwind.yellow[3]}
+                          onClick={() => editUser(user)}
+                        >
+                          <SquarePen size="18" />
+                        </ActionIcon>
+
+                        <ActionIcon
+                          size={18}
+                          variant="transparent"
+                          color={theme.tailwind.red[6]}
+                          onClick={() => deleteUser(user.id)}
+                          disabled={authUser.id === user.id}
+                        >
+                          <SquareMinus size="18" />
+                        </ActionIcon>
+                      </Group>
+                    )}
+                  </Group>
+                );
+              })}
+          </Stack>
         </Paper>
       </Center>
 
