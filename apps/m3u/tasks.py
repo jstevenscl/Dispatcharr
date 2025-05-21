@@ -1112,13 +1112,51 @@ def send_m3u_update(account_id, action, progress, **kwargs):
     except:
         pass  # If account can't be retrieved, continue without these fields
 
-    # Add the additional key-value pairs from kwargs
-    data.update(kwargs)
+    # Add the additional key-value pairs from kwargs with size limiting
+    for key, value in kwargs.items():
+        # Handle large arrays - limit to summary data
+        if isinstance(value, (list, tuple)) and len(value) > 100:
+            data[key] = f"{len(value)} items (truncated for performance)"
+        # Handle very large integers - use abbreviations for streams
+        elif key in ['streams_processed', 'streams_created', 'streams_updated', 'streams_deleted'] and isinstance(value, int) and value > 10000:
+            # Format as "226K" instead of 226154
+            data[key] = f"{value//1000}K" if value >= 1000 else value
+        # Handle other large values that might be serialized to JSON
+        elif isinstance(value, (dict, object)) and key not in ['status', 'action', 'progress']:
+            try:
+                # Use a safer approach for complex objects
+                if hasattr(value, '__dict__'):
+                    # Just store the class name and id if available
+                    data[key] = f"{value.__class__.__name__}"
+                    if hasattr(value, 'id'):
+                        data[key] += f"(id={value.id})"
+                else:
+                    # For dictionaries, limit based on size
+                    data[key] = value
+            except:
+                # If we can't serialize, skip this value
+                data[key] = f"[Object of type {type(value).__name__}]"
+        else:
+            # Default case - add the value as is
+            data[key] = value
 
-    # Use the standardized function with memory management
-    # Enable garbage collection for certain operations
-    collect_garbage = action == "parsing" and progress % 25 == 0
-    send_websocket_update('updates', 'update', data, collect_garbage=collect_garbage)
+    # Protect against message size limits in WebSocket protocol
+    # Most implementations limit to ~1MB, we'll be conservative
+    try:
+        # Use the standardized function with memory management
+        # Enable garbage collection for certain operations
+        collect_garbage = action == "parsing" and progress % 25 == 0
+
+        # Add extra garbage collection for large stream operations
+        if any(key in kwargs for key in ['streams_processed', 'streams_created', 'streams_updated']) and \
+           any(isinstance(kwargs.get(key), int) and kwargs.get(key, 0) > 10000
+               for key in ['streams_processed', 'streams_created', 'streams_updated']):
+            collect_garbage = True
+
+        send_websocket_update('updates', 'update', data, collect_garbage=collect_garbage)
+    except Exception as e:
+        # Log the error but don't crash the process
+        logger.warning(f"Error sending WebSocket update: {e}")
 
     # Explicitly clear data reference to help garbage collection
     data = None
