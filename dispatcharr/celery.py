@@ -2,6 +2,7 @@
 import os
 from celery import Celery
 import logging
+from celery.signals import task_postrun  # Add import for signals
 
 # Initialize with defaults before Django settings are loaded
 DEFAULT_LOG_LEVEL = 'DEBUG'
@@ -47,6 +48,56 @@ app.conf.update(
     worker_hijack_root_logger=False,
     worker_task_log_format='%(asctime)s %(levelname)s %(task_name)s: %(message)s',
 )
+
+# Add memory cleanup after task completion
+@task_postrun.connect  # Use the imported signal
+def cleanup_task_memory(**kwargs):
+    """Clean up memory after each task completes"""
+    # Get task name from kwargs
+    task_name = kwargs.get('task').name if kwargs.get('task') else ''
+
+    # Only run cleanup for memory-intensive tasks
+    memory_intensive_tasks = [
+        'apps.m3u.tasks.refresh_single_m3u_account',
+        'apps.m3u.tasks.refresh_m3u_accounts',
+        'apps.m3u.tasks.process_m3u_batch',
+        'apps.m3u.tasks.process_xc_category',
+        'apps.epg.tasks.refresh_epg_data',
+        'apps.epg.tasks.refresh_all_epg_data',
+        'apps.epg.tasks.parse_programs_for_source',
+        'apps.epg.tasks.parse_programs_for_tvg_id',
+        'apps.channels.tasks.match_epg_channels',
+        'core.tasks.rehash_streams'
+    ]
+
+    # Check if this is a memory-intensive task
+    if task_name in memory_intensive_tasks:
+        # Import cleanup_memory function
+        from core.utils import cleanup_memory
+
+        # Use the comprehensive cleanup function
+        cleanup_memory(log_usage=True, force_collection=True)
+
+        # Log memory usage if psutil is installed
+        try:
+            import psutil
+            process = psutil.Process()
+            if hasattr(process, 'memory_info'):
+                mem = process.memory_info().rss / (1024 * 1024)
+                print(f"Memory usage after {task_name}: {mem:.2f} MB")
+        except (ImportError, Exception):
+            pass
+    else:
+        # For non-intensive tasks, just log but don't force cleanup
+        try:
+            import psutil
+            process = psutil.Process()
+            if hasattr(process, 'memory_info'):
+                mem = process.memory_info().rss / (1024 * 1024)
+                if mem > 500:  # Only log if using more than 500MB
+                    print(f"High memory usage detected in {task_name}: {mem:.2f} MB")
+        except (ImportError, Exception):
+            pass
 
 @app.on_after_configure.connect
 def setup_celery_logging(**kwargs):
