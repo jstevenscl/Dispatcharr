@@ -65,7 +65,15 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
             request.data["file_path"] = (
                 file_path  # Include the file path if a file was uploaded
             )
-            request.data.pop("server_url")
+
+            # Handle the user_agent field - convert "null" string to None
+            if "user_agent" in request.data and request.data["user_agent"] == "null":
+                request.data["user_agent"] = None
+
+            # Handle server_url appropriately
+            if "server_url" in request.data and not request.data["server_url"]:
+                request.data.pop("server_url")
+
             request.data._mutable = False  # Make the request data immutable again
 
         # Now call super().create() to create the instance
@@ -98,16 +106,24 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
             request.data["file_path"] = (
                 file_path  # Include the file path if a file was uploaded
             )
-            request.data.pop("server_url")
+
+            # Handle the user_agent field - convert "null" string to None
+            if "user_agent" in request.data and request.data["user_agent"] == "null":
+                request.data["user_agent"] = None
+
+            # Handle server_url appropriately
+            if "server_url" in request.data and not request.data["server_url"]:
+                request.data.pop("server_url")
+
             request.data._mutable = False  # Make the request data immutable again
 
             if instance.file_path and os.path.exists(instance.file_path):
                 os.remove(instance.file_path)
 
-        # Now call super().create() to create the instance
+        # Now call super().update() to update the instance
         response = super().update(request, *args, **kwargs)
 
-        # After the instance is created, return the response
+        # After the instance is updated, return the response
         return response
 
     def partial_update(self, request, *args, **kwargs):

@@ -307,7 +307,7 @@ const M3U = ({
               description="User-Agent header to use when accessing this M3U source"
               {...form.getInputProps('user_agent')}
               key={form.key('user_agent')}
-              data={[{ value: '0', label: '(use default)' }].concat(
+              data={[{ value: '0', label: '(Use Default)' }].concat(
                 userAgents.map((ua) => ({
                   label: ua.name,
                   value: `${ua.id}`,

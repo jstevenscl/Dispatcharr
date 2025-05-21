@@ -767,8 +767,9 @@ def parse_channels_only(source):
                     # Check if we should break early to avoid excessive sleep
                     if processed_channels >= total_channels and total_channels > 0:
                         logger.info(f"[parse_channels_only] Expected channel numbers hit, continuing - processed {processed_channels}/{total_channels}")
-                        logger.debug(f"[parse_channels_only] Memory usage after {processed_channels}: {process.memory_info().rss / 1024 / 1024:.2f} MB")
-                        #break
+                        if process:
+                            logger.debug(f"[parse_channels_only] Memory usage after {processed_channels}: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+
                     logger.debug(f"[parse_channels_only] Total elements processed: {total_elements_processed}")
                     # Add periodic forced cleanup based on TOTAL ELEMENTS, not just channels
                     # This ensures we clean up even if processing many non-channel elements
@@ -776,10 +777,15 @@ def parse_channels_only(source):
                         logger.info(f"[parse_channels_only] Performing preventative memory cleanup after {total_elements_processed} elements (found {processed_channels} channels)")
                         # Close and reopen the parser to release memory
                         if source_file and channel_parser:
-                            # First clear element references
-                            elem.clear()
-                            if elem.getparent() is not None:
-                                elem.getparent().remove(elem)
+                            # First clear element references - safely with checks
+                            if 'elem' in locals() and elem is not None:
+                                try:
+                                    elem.clear()
+                                    parent = elem.getparent()
+                                    if parent is not None:
+                                        parent.remove(elem)
+                                except Exception as e:
+                                    logger.debug(f"Non-critical error during cleanup: {e}")
 
                             # Reset parser state
                             del channel_parser
@@ -799,10 +805,15 @@ def parse_channels_only(source):
                         logger.info(f"[parse_channels_only] Performing preventative memory cleanup at {processed_channels} channels")
                         # Close and reopen the parser to release memory
                         if source_file and channel_parser:
-                            # First clear element references
-                            elem.clear()
-                            if elem.getparent() is not None:
-                                elem.getparent().remove(elem)
+                            # First clear element references - safely with checks
+                            if 'elem' in locals() and elem is not None:
+                                try:
+                                    elem.clear()
+                                    parent = elem.getparent()
+                                    if parent is not None:
+                                        parent.remove(elem)
+                                except Exception as e:
+                                    logger.debug(f"Non-critical error during cleanup: {e}")
 
                             # Reset parser state
                             del channel_parser
@@ -818,7 +829,10 @@ def parse_channels_only(source):
                             logger.info(f"[parse_channels_only] Recreated parser context after memory cleanup")
 
                     if processed_channels == total_channels:
-                            logger.info(f"[parse_channels_only] Processed all channels current memory: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+                            if process:
+                               logger.info(f"[parse_channels_only] Processed all channels current memory: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+                            else:
+                                logger.info(f"[parse_channels_only] Processed all channels")
 
         except (etree.XMLSyntaxError, Exception) as xml_error:
             logger.error(f"[parse_channels_only] XML parsing failed: {xml_error}")
@@ -1016,8 +1030,12 @@ def parse_programs_for_tvg_id(epg_id):
 
         # Memory usage tracking
         if process:
-            mem_before = process.memory_info().rss / 1024 / 1024
-            logger.info(f"[parse_programs_for_tvg_id] Memory before parsing {epg.tvg_id} -  {mem_before:.2f} MB")
+            try:
+                mem_before = process.memory_info().rss / 1024 / 1024
+                logger.info(f"[parse_programs_for_tvg_id] Memory before parsing {epg.tvg_id} -  {mem_before:.2f} MB")
+            except Exception as e:
+                logger.warning(f"Error tracking memory: {e}")
+                mem_before = 0
 
         programs_to_create = []
         batch_size = 1000  # Process in batches to limit memory usage
@@ -1160,8 +1178,11 @@ def parse_programs_for_tvg_id(epg_id):
                 source_file = None
              # Memory tracking after processing
             if process:
-                mem_after = process.memory_info().rss / 1024 / 1024
-                logger.info(f"[parse_programs_for_tvg_id] Memory after parsing 1 {epg.tvg_id} - {programs_processed} programs: {mem_after:.2f} MB (change: {mem_after-mem_before:.2f} MB)")
+                try:
+                    mem_after = process.memory_info().rss / 1024 / 1024
+                    logger.info(f"[parse_programs_for_tvg_id] Memory after parsing 1 {epg.tvg_id} - {programs_processed} programs: {mem_after:.2f} MB (change: {mem_after-mem_before:.2f} MB)")
+                except Exception as e:
+                    logger.warning(f"Error tracking memory: {e}")
 
         # Process any remaining items
         if programs_to_create:
@@ -1194,8 +1215,11 @@ def parse_programs_for_tvg_id(epg_id):
         cleanup_memory(log_usage=should_log_memory, force_collection=True)
          # Memory tracking after processing
         if process:
-            mem_after = process.memory_info().rss / 1024 / 1024
-            logger.info(f"[parse_programs_for_tvg_id] Final memory usage {epg.tvg_id} - {programs_processed} programs: {mem_after:.2f} MB (change: {mem_after-mem_before:.2f} MB)")
+            try:
+                mem_after = process.memory_info().rss / 1024 / 1024
+                logger.info(f"[parse_programs_for_tvg_id] Final memory usage {epg.tvg_id} - {programs_processed} programs: {mem_after:.2f} MB (change: {mem_after-mem_before:.2f} MB)")
+            except Exception as e:
+                logger.warning(f"Error tracking memory: {e}")
             process = None
         epg = None
         programs_processed = None
