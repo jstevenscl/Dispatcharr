@@ -376,28 +376,33 @@ class StreamManager:
             logger.debug(f"Started stderr reader thread for channel {self.channel_id}")
 
     def _read_stderr(self):
-        """Read and log stderr output from the transcode process"""
+        """Read and log ffmpeg stderr output"""
         try:
-            if not self.transcode_process or not self.transcode_process.stderr:
-                logger.warning(f"No stderr to read for channel {self.channel_id}")
-                return
-
-            for line in iter(self.transcode_process.stderr.readline, b''):
-                if not line:
-                    break
-
-                # Decode the line and strip whitespace
-                error_line = line.decode('utf-8', errors='replace').strip()
-
-                # Skip empty lines
-                if not error_line:
-                    continue
-
-                # Log all stderr output as debug messages
-                logger.debug(f"Transcode stderr [{self.channel_id}]: {error_line}")
-
+            for error_line in iter(self.transcode_process.stderr.readline, b''):
+                if error_line:
+                    error_line = error_line.decode('utf-8', errors='replace').strip()
+                    try:
+                        # Wrap the logging call in a try-except to prevent crashes due to logging errors
+                        logger.debug(f"Transcode stderr [{self.channel_id}]: {error_line}")
+                    except OSError as e:
+                        # If logging fails, try a simplified log message
+                        if e.errno == 105:  # No buffer space available
+                            try:
+                                # Try a much shorter message without the error content
+                                logger.warning(f"Logging error (buffer full) in channel {self.channel_id}")
+                            except:
+                                # If even that fails, we have to silently continue
+                                pass
+                    except Exception:
+                        # Ignore other logging errors to prevent thread crashes
+                        pass
         except Exception as e:
-            logger.error(f"Error reading transcode stderr: {e}")
+            # Catch any other exceptions in the thread to prevent crashes
+            try:
+                logger.error(f"Error in stderr reader thread: {e}")
+            except:
+                # Again, if logging fails, continue silently
+                pass
 
     def _establish_http_connection(self):
         """Establish a direct HTTP connection to the stream"""
