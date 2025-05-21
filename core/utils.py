@@ -246,7 +246,7 @@ def monitor_memory_usage(func):
         return result
     return wrapper
 
-def cleanup_memory(log_usage=True, force_collection=True):
+def cleanup_memory(log_usage=False, force_collection=True):
     """
     Comprehensive memory cleanup function to reduce memory footprint
 
@@ -255,8 +255,9 @@ def cleanup_memory(log_usage=True, force_collection=True):
         force_collection: Whether to force garbage collection
     """
     logger.trace("Starting memory cleanup django memory cleanup")
-    # Skip logging if log level is not set to debug (no reason to run memory usage if we don't log it)
-    if not logger.isEnabledFor(logging.DEBUG):
+    # Skip logging if log level is not set to debug or more verbose (like trace)
+    current_log_level = logger.getEffectiveLevel()
+    if not current_log_level <= logging.DEBUG:
         log_usage = False
     if log_usage:
         try:

@@ -540,7 +540,9 @@ def parse_channels_only(source):
 
             # Only track memory usage when log level is DEBUG (10) or more verbose
             # This is more future-proof than string comparisons
-            if current_log_level <= logging.DEBUG or settings.DEBUG:
+            should_log_memory = current_log_level <= logging.DEBUG or settings.DEBUG
+
+            if should_log_memory:
                 process = psutil.Process()
                 initial_memory = process.memory_info().rss / 1024 / 1024
                 logger.debug(f"[parse_channels_only] Initial memory usage: {initial_memory:.2f} MB")
@@ -548,6 +550,7 @@ def parse_channels_only(source):
                 logger.debug("Memory tracking disabled in production mode")
         except (ImportError, NameError):
             process = None
+            should_log_memory = False
             logger.warning("psutil not available for memory tracking")
 
         # Replace full dictionary load with more efficient lookup set
@@ -755,7 +758,7 @@ def parse_channels_only(source):
                             except (ValueError, KeyError, TypeError):
                                 # Element might already be removed or detached
                                 pass
-                        cleanup_memory(log_usage=True, force_collection=True)
+                        cleanup_memory(log_usage=should_log_memory, force_collection=True)
                         #time.sleep(.1)
 
                     except Exception as e:
@@ -786,7 +789,7 @@ def parse_channels_only(source):
                             gc.collect()
 
                             # Perform thorough cleanup
-                            cleanup_memory(log_usage=True, force_collection=True)
+                            cleanup_memory(log_usage=should_log_memory, force_collection=True)
 
                             # Create a new parser context - continue looking for both tags
                             # This doesn't restart from the beginning but continues from current position
@@ -809,7 +812,7 @@ def parse_channels_only(source):
                             gc.collect()
 
                             # Perform thorough cleanup
-                            cleanup_memory(log_usage=True, force_collection=True)
+                            cleanup_memory(log_usage=should_log_memory, force_collection=True)
 
                             # Create a new parser context
                             # This doesn't restart from the beginning but continues from current position
@@ -899,7 +902,7 @@ def parse_channels_only(source):
             existing_epgs = None
             epgs_to_create = None
             epgs_to_update = None
-            cleanup_memory(log_usage=True, force_collection=True)
+            cleanup_memory(log_usage=should_log_memory, force_collection=True)
         except Exception as e:
             logger.warning(f"Cleanup error: {e}")
 
@@ -927,14 +930,25 @@ def parse_programs_for_tvg_id(epg_id):
     mem_before = 0  # Initialize with default value to avoid UnboundLocalError
 
     try:
-        # Add memory tracking
+        # Add memory tracking only in trace mode or higher
         try:
-            process = psutil.Process()
-            initial_memory = process.memory_info().rss / 1024 / 1024
-            mem_before = initial_memory  # Set mem_before here
-            logger.info(f"[parse_programs_for_tvg_id] Initial memory usage: {initial_memory:.2f} MB")
+            process = None
+            # Get current log level as a number
+            current_log_level = logger.getEffectiveLevel()
+
+            # Only track memory usage when log level is TRACE or more verbose
+            should_log_memory = current_log_level <= 5
+
+            if should_log_memory:
+                process = psutil.Process()
+                initial_memory = process.memory_info().rss / 1024 / 1024
+                logger.info(f"[parse_programs_for_tvg_id] Initial memory usage: {initial_memory:.2f} MB")
+                mem_before = initial_memory
+            else:
+                logger.debug("Memory tracking disabled in production mode")
         except ImportError:
             process = None
+            should_log_memory = False
 
         epg = EPGData.objects.get(id=epg_id)
         epg_source = epg.epg_source
@@ -1193,11 +1207,8 @@ def parse_programs_for_tvg_id(epg_id):
         programs_to_create = None
 
         epg_source = None
-        # Force garbage collection before releasing lock
-        gc.collect()
-
         # Add comprehensive cleanup before releasing lock
-        cleanup_memory(log_usage=True, force_collection=True)
+        cleanup_memory(log_usage=should_log_memory, force_collection=True)
          # Memory tracking after processing
         if process:
             mem_after = process.memory_info().rss / 1024 / 1024
@@ -1213,11 +1224,20 @@ def parse_programs_for_source(epg_source, tvg_id=None):
     # Send initial programs parsing notification
     send_epg_update(epg_source.id, "parsing_programs", 0)
     #time.sleep(100)
-    # Add memory tracking
+
+    # Add memory tracking only in trace mode or higher
     try:
-        process = psutil.Process()
-        initial_memory = process.memory_info().rss / 1024 / 1024
-        logger.info(f"[parse_programs_for_source] Initial memory usage: {initial_memory:.2f} MB")
+        process = None
+        # Get current log level as a number
+        current_log_level = logger.getEffectiveLevel()
+
+        # Only track memory usage when log level is TRACE or more verbose
+        if current_log_level <= 5 or settings.DEBUG:  # Assuming TRACE is level 5 or lower
+            process = psutil.Process()
+            initial_memory = process.memory_info().rss / 1024 / 1024
+            logger.info(f"[parse_programs_for_source] Initial memory usage: {initial_memory:.2f} MB")
+        else:
+            logger.debug("Memory tracking disabled in production mode")
     except ImportError:
         logger.warning("psutil not available for memory tracking")
         process = None
@@ -1333,7 +1353,7 @@ def parse_programs_for_source(epg_source, tvg_id=None):
         gc.collect()
 
         # Add comprehensive memory cleanup at the end
-        cleanup_memory(log_usage=True, force_collection=True)
+        cleanup_memory(log_usage=should_log_memory, force_collection=True)
         if process:
             final_memory = process.memory_info().rss / 1024 / 1024
             logger.info(f"[parse_programs_for_source] Final memory usage: {final_memory:.2f} MB difference: {final_memory - initial_memory:.2f} MB")
