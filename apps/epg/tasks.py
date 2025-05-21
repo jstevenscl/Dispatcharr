@@ -570,7 +570,6 @@ def parse_channels_only(source):
 
             existing_tvg_ids.update(tvg_id_chunk)
             last_id = EPGData.objects.filter(tvg_id__in=tvg_id_chunk).order_by('-id')[0].id
-        #time.sleep(20)
         # Update progress to show file read starting
         send_epg_update(source.id, "parsing_channels", 10)
 
@@ -759,7 +758,6 @@ def parse_channels_only(source):
                                 # Element might already be removed or detached
                                 pass
                         cleanup_memory(log_usage=should_log_memory, force_collection=True)
-                        #time.sleep(.1)
 
                     except Exception as e:
                         # Just log the error and continue - don't let cleanup errors stop processing
@@ -861,8 +859,7 @@ def parse_channels_only(source):
         send_websocket_update('updates', 'update', {"success": True, "type": "epg_channels"})
 
         logger.info(f"Finished parsing channel info. Found {processed_channels} channels.")
-        # Remove excessive sleep
-        # time.sleep(20)
+
         return True
 
     except FileNotFoundError:
@@ -1223,16 +1220,19 @@ def parse_programs_for_tvg_id(epg_id):
 def parse_programs_for_source(epg_source, tvg_id=None):
     # Send initial programs parsing notification
     send_epg_update(epg_source.id, "parsing_programs", 0)
-    #time.sleep(100)
+    should_log_memory = False
+    process = None
+    initial_memory = 0
 
     # Add memory tracking only in trace mode or higher
     try:
-        process = None
         # Get current log level as a number
         current_log_level = logger.getEffectiveLevel()
 
         # Only track memory usage when log level is TRACE or more verbose
-        if current_log_level <= 5 or settings.DEBUG:  # Assuming TRACE is level 5 or lower
+        should_log_memory = current_log_level <= 5 or settings.DEBUG  # Assuming TRACE is level 5 or lower
+
+        if should_log_memory:
             process = psutil.Process()
             initial_memory = process.memory_info().rss / 1024 / 1024
             logger.info(f"[parse_programs_for_source] Initial memory usage: {initial_memory:.2f} MB")
@@ -1241,6 +1241,7 @@ def parse_programs_for_source(epg_source, tvg_id=None):
     except ImportError:
         logger.warning("psutil not available for memory tracking")
         process = None
+        should_log_memory = False
 
     try:
         # Process EPG entries in batches rather than all at once
