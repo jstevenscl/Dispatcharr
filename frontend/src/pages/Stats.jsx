@@ -692,25 +692,40 @@ const ChannelsPage = () => {
   }, [channelStats, channels, channelsByUUID, streamProfiles]);
 
   return (
-    <SimpleGrid cols={3} spacing="md" style={{ padding: 10 }}>
-      {Object.keys(activeChannels).length === 0 ? (
-        <Box style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>
-          <Text size="xl" color="dimmed">No active channels currently streaming</Text>
-        </Box>
-      ) : (
-        Object.values(activeChannels).map((channel) => (
-          <ChannelCard
-            key={channel.channel_id}
-            channel={channel}
-            clients={clients}
-            stopClient={stopClient}
-            stopChannel={stopChannel}
-            logos={logos} // Pass logos to the component
-            channelsByUUID={channelsByUUID} // Pass channelsByUUID to fix the error
-          />
-        ))
-      )}
-    </SimpleGrid>
+    <Box style={{ overflowX: 'auto' }}>
+      <SimpleGrid
+        cols={{ base: 1, sm: 1, md: 2, lg: 3, xl: 3 }}
+        spacing="md"
+        style={{ padding: 10 }}
+        breakpoints={[
+          { maxWidth: '72rem', cols: 2, spacing: 'md' },
+          { maxWidth: '48rem', cols: 1, spacing: 'md' },
+        ]}
+        verticalSpacing="lg"
+      >
+        {Object.keys(activeChannels).length === 0 ? (
+          <Box style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>
+            <Text size="xl" color="dimmed">No active channels currently streaming</Text>
+          </Box>
+        ) : (
+          Object.values(activeChannels).map((channel) => (
+            <Box
+              key={channel.channel_id}
+              style={{ minWidth: '420px', width: '100%' }}
+            >
+              <ChannelCard
+                channel={channel}
+                clients={clients}
+                stopClient={stopClient}
+                stopChannel={stopChannel}
+                logos={logos}
+                channelsByUUID={channelsByUUID}
+              />
+            </Box>
+          ))
+        )}
+      </SimpleGrid>
+    </Box>
   );
 };
 
