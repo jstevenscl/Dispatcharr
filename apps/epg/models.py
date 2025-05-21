@@ -32,7 +32,7 @@ class EPGSource(models.Model):
     api_key = models.CharField(max_length=255, blank=True, null=True)  # For Schedules Direct
     is_active = models.BooleanField(default=True)
     file_path = models.CharField(max_length=1024, blank=True, null=True)
-    refresh_interval = models.IntegerField(default=24)
+    refresh_interval = models.IntegerField(default=0)
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
     )
