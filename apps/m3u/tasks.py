@@ -226,11 +226,6 @@ def parse_extinf_line(line: str) -> dict:
     logger.debug(f"EXTINF parsed result: {result}")
     return result
 
-import re
-import logging
-
-logger = logging.getLogger(__name__)
-
 def _matches_filters(stream_name: str, group_name: str, filters):
     """Check if a stream or group name matches a precompiled regex filter."""
     compiled_filters = [(re.compile(f.regex_pattern, re.IGNORECASE), f.exclude) for f in filters]
@@ -437,6 +432,9 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     streams_to_update = []
     stream_hashes = {}
     invalid_streams = []
+    # Initialize these variables to prevent UnboundLocalError during cleanup
+    changed_streams = []
+    unchanged_streams = []
 
     # Log hash key configuration
     logger.debug(f"Using hash keys: {hash_keys}")
