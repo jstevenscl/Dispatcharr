@@ -184,21 +184,47 @@ def parse_extinf_line(line: str) -> dict:
       - 'name': the value from tvg-name (if present) or the display name otherwise.
     """
     if not line.startswith("#EXTINF:"):
+        logger.debug(f"Not an EXTINF line: {line[:50]}...")
         return None
+
     content = line[len("#EXTINF:"):].strip()
+    logger.debug(f"Parsing EXTINF content: {content[:100]}...")
+
     # Split on the first comma that is not inside quotes.
     parts = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', content, maxsplit=1)
     if len(parts) != 2:
+        logger.warning(f"Invalid EXTINF format - couldn't split at comma: {content[:100]}...")
         return None
+
     attributes_part, display_name = parts[0], parts[1].strip()
-    attrs = dict(re.findall(r'([^\s]+)=["\']([^"\']+)["\']', attributes_part))
+
+    # Debug raw attribute parsing
+    logger.debug(f"Attribute part: {attributes_part[:100]}...")
+    logger.debug(f"Display name: {display_name[:100]}...")
+
+    # Extract attributes with more detailed logging
+    try:
+        attr_matches = re.findall(r'([^\s]+)=["\']([^"\']+)["\']', attributes_part)
+        if not attr_matches:
+            logger.warning(f"No attributes found in: {attributes_part[:100]}...")
+
+        attrs = dict(attr_matches)
+        logger.debug(f"Extracted attributes: {attrs}")
+    except Exception as e:
+        logger.error(f"Error parsing attributes: {str(e)}", exc_info=True)
+        attrs = {}
+
     # Use tvg-name attribute if available; otherwise, use the display name.
     name = attrs.get('tvg-name', display_name)
-    return {
+
+    result = {
         'attributes': attrs,
         'display_name': display_name,
         'name': name
     }
+
+    logger.debug(f"EXTINF parsed result: {result}")
+    return result
 
 import re
 import logging
@@ -405,24 +431,48 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     """Processes a batch of M3U streams using bulk operations."""
     account = M3UAccount.objects.get(id=account_id)
 
+    logger.debug(f"Processing batch of {len(batch)} streams for account {account_id}")
+
     streams_to_create = []
     streams_to_update = []
     stream_hashes = {}
+    invalid_streams = []
+
+    # Log hash key configuration
+    logger.debug(f"Using hash keys: {hash_keys}")
 
     # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
     logger.debug(f"Processing batch of {len(batch)}")
-    for stream_info in batch:
+    for stream_index, stream_info in enumerate(batch):
         try:
-            name, url = stream_info["name"], stream_info["url"]
-            tvg_id, tvg_logo = stream_info["attributes"].get("tvg-id", ""), stream_info["attributes"].get("tvg-logo", "")
-            group_title = stream_info["attributes"].get("group-title", "Default Group")
+            # Extract basic stream info with better error handling
+            try:
+                name = stream_info["name"]
+                url = stream_info["url"]
+                attrs = stream_info["attributes"]
+                tvg_id = attrs.get("tvg-id", "")
+                tvg_logo = attrs.get("tvg-logo", "")
+                group_title = attrs.get("group-title", "Default Group")
+            except KeyError as e:
+                logger.warning(f"Missing required field in stream {stream_index}: {e}")
+                logger.debug(f"Stream data: {stream_info}")
+                invalid_streams.append((stream_index, f"Missing field: {e}"))
+                continue
 
             # Filter out disabled groups for this account
             if group_title not in groups:
-                logger.debug(f"Skipping stream in disabled group: {group_title}")
+                logger.debug(f"Skipping stream in disabled group: '{group_title}', name: '{name}'")
                 continue
 
-            stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
+            # Generate hash key with error handling
+            try:
+                stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
+                logger.debug(f"Generated hash {stream_hash} for stream '{name}'")
+            except Exception as e:
+                logger.error(f"Error generating hash for stream '{name}': {str(e)}")
+                invalid_streams.append((stream_index, f"Hash generation error: {str(e)}"))
+                continue
+
             stream_props = {
                 "name": name,
                 "url": url,
@@ -431,14 +481,25 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 "m3u_account": account,
                 "channel_group_id": int(groups.get(group_title)),
                 "stream_hash": stream_hash,
-                "custom_properties": json.dumps(stream_info["attributes"]),
+                "custom_properties": json.dumps(attrs),
             }
 
             if stream_hash not in stream_hashes:
                 stream_hashes[stream_hash] = stream_props
         except Exception as e:
-            logger.error(f"Failed to process stream {name}: {e}")
-            logger.error(json.dumps(stream_info))
+            logger.error(f"Failed to process stream at index {stream_index}: {e}", exc_info=True)
+            if "name" in stream_info:
+                logger.error(f"Stream name: {stream_info['name']}")
+            logger.error(f"Stream data: {json.dumps(stream_info)[:500]}")
+            invalid_streams.append((stream_index, f"Processing error: {str(e)}"))
+
+    # Log invalid stream summary
+    if invalid_streams:
+        logger.warning(f"Found {len(invalid_streams)} invalid streams in batch")
+        for i, (idx, error) in enumerate(invalid_streams[:5]):  # Log first 5
+            logger.warning(f"Invalid stream #{i+1} at index {idx}: {error}")
+        if len(invalid_streams) > 5:
+            logger.warning(f"... and {len(invalid_streams) - 5} more invalid streams")
 
     existing_streams = {s.stream_hash: s for s in Stream.objects.filter(stream_hash__in=stream_hashes.keys())}
 
@@ -696,25 +757,68 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
             release_task_lock('refresh_m3u_account_groups', account_id)
             return f"Failed to fetch M3U data for account_id={account_id}.", None
 
-        for line in lines:
+        # Log basic file structure for debugging
+        logger.debug(f"Processing {len(lines)} lines from M3U file")
+
+        line_count = 0
+        extinf_count = 0
+        url_count = 0
+        valid_stream_count = 0
+        problematic_lines = []
+
+        for line_index, line in enumerate(lines):
+            line_count += 1
             line = line.strip()
+
             if line.startswith("#EXTINF"):
+                extinf_count += 1
                 parsed = parse_extinf_line(line)
                 if parsed:
                     if "group-title" in parsed["attributes"]:
-                        groups[parsed["attributes"]["group-title"]] = {}
+                        group_name = parsed["attributes"]["group-title"]
+                        # Log new groups as they're discovered
+                        if group_name not in groups:
+                            logger.debug(f"Found new group: '{group_name}'")
+                        groups[group_name] = {}
 
                     extinf_data.append(parsed)
+                else:
+                    # Log problematic EXTINF lines
+                    logger.warning(f"Failed to parse EXTINF at line {line_index+1}: {line[:200]}")
+                    problematic_lines.append((line_index+1, line[:200]))
+
             elif extinf_data and line.startswith("http"):
+                url_count += 1
                 # Associate URL with the last EXTINF line
                 extinf_data[-1]["url"] = line
+                valid_stream_count += 1
 
+                # Periodically log progress for large files
+                if valid_stream_count % 1000 == 0:
+                    logger.debug(f"Processed {valid_stream_count} valid streams so far...")
+
+        # Log summary statistics
+        logger.info(f"M3U parsing complete - Lines: {line_count}, EXTINF: {extinf_count}, URLs: {url_count}, Valid streams: {valid_stream_count}")
+
+        if problematic_lines:
+            logger.warning(f"Found {len(problematic_lines)} problematic lines during parsing")
+            for i, (line_num, content) in enumerate(problematic_lines[:10]):  # Log max 10 examples
+                logger.warning(f"Problematic line #{i+1} at line {line_num}: {content}")
+            if len(problematic_lines) > 10:
+                logger.warning(f"... and {len(problematic_lines) - 10} more problematic lines")
+
+        # Log group statistics
+        logger.info(f"Found {len(groups)} groups in M3U file: {', '.join(list(groups.keys())[:20])}" +
+                   ("..." if len(groups) > 20 else ""))
+
+        # Cache processed data
         cache_path = os.path.join(m3u_dir, f"{account_id}.json")
         with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump({
                 "extinf_data": extinf_data,
                 "groups": groups,
             }, f)
+            logger.debug(f"Cached parsed M3U data to {cache_path}")
 
     send_m3u_update(account_id, "processing_groups", 0)
 
