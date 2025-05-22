@@ -424,7 +424,7 @@ const M3UTable = () => {
           if (data.status === 'success') {
             return (
               <Tooltip label={value} multiline width={300}>
-                <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6], lineHeight: 1.3 }}>
+                <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6], lineHeight: 1.1 }}>
                   {value}
                 </Text>
               </Tooltip>
@@ -434,7 +434,7 @@ const M3UTable = () => {
           // For all other status values, just use dimmed text
           return (
             <Tooltip label={value} multiline width={300}>
-              <Text c="dimmed" size="xs" lineClamp={2} style={{ lineHeight: 1.3 }}>
+              <Text c="dimmed" size="xs" lineClamp={2} style={{ lineHeight: 1.1 }}>
                 {value}
               </Text>
             </Tooltip>
