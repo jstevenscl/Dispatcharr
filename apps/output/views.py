@@ -3,11 +3,12 @@ from rest_framework.response import Response
 from django.urls import reverse
 from apps.channels.models import Channel, ChannelProfile, ChannelGroup
 from apps.epg.models import ProgramData
+from apps.accounts.models import User
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
 import re
 import html  # Add this import for XML escaping
-from django.contrib.auth import authenticate
 from tzlocal import get_localzone
 import time
 import json
@@ -413,17 +414,30 @@ def generate_epg(request, profile_name=None, user=None):
     return response
 
 
-def xc_player_api(request):
-    action = request.GET.get("action")
+def xc_get_user(request):
     username = request.GET.get("username")
     password = request.GET.get("password")
 
     if not username or not password:
         raise Http404()
 
-    user = authenticate(
-        username=request.GET.get("username"), password=request.GET.get("password")
+    user = get_object_or_404(User, username=username)
+    custom_properties = (
+        json.loads(user.custom_properties) if user.custom_properties else {}
     )
+
+    if "xc_password" not in custom_properties:
+        raise Http404()
+
+    if custom_properties["xc_password"] != password:
+        raise Http404()
+
+    return user
+
+
+def xc_player_api(request):
+    action = request.GET.get("action")
+    user = xc_get_user(request)
 
     if user is None:
         raise Http404()
@@ -439,8 +453,8 @@ def xc_player_api(request):
         return JsonResponse(
             {
                 "user_info": {
-                    "username": username,
-                    "password": password,
+                    "username": request.GET.get("username"),
+                    "password": request.GET.get("password"),
                     "message": "",
                     "auth": 1,
                     "status": "Active",
@@ -470,15 +484,7 @@ def xc_player_api(request):
 
 def xc_get(request):
     action = request.GET.get("action")
-    username = request.GET.get("username")
-    password = request.GET.get("password")
-
-    if not username or not password:
-        raise Http404()
-
-    user = authenticate(
-        username=request.GET.get("username"), password=request.GET.get("password")
-    )
+    user = xc_get_user(request)
 
     if user is None:
         raise Http404()
@@ -488,15 +494,7 @@ def xc_get(request):
 
 
 def xc_xmltv(request):
-    username = request.GET.get("username")
-    password = request.GET.get("password")
-
-    if not username or not password:
-        raise Http404()
-
-    user = authenticate(
-        username=request.GET.get("username"), password=request.GET.get("password")
-    )
+    user = xc_get_user(request)
 
     if user is None:
         raise Http404()

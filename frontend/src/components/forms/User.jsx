@@ -18,7 +18,12 @@ import {
   Group,
   Stack,
   MultiSelect,
+  Switch,
+  Text,
+  Center,
+  ActionIcon,
 } from '@mantine/core';
+import { RotateCcw, X } from 'lucide-react';
 import { isNotEmpty, useForm } from '@mantine/form';
 import useChannelsStore from '../../store/channels';
 import { USER_LEVELS, USER_LEVEL_LABELS } from '../../constants';
@@ -28,7 +33,7 @@ const User = ({ user = null, isOpen, onClose }) => {
   const profiles = useChannelsStore((s) => s.profiles);
   const authUser = useAuthStore((s) => s.user);
 
-  console.log(user);
+  const [enableXC, setEnableXC] = useState(false);
 
   const form = useForm({
     mode: 'uncontrolled',
@@ -36,9 +41,8 @@ const User = ({ user = null, isOpen, onClose }) => {
       username: '',
       email: '',
       user_level: '0',
-      current_password: '',
       password: '',
-      password_repeat: '',
+      xc_password: '',
       channel_profiles: [],
     },
 
@@ -57,11 +61,27 @@ const User = ({ user = null, isOpen, onClose }) => {
               !values.password.match(/^[a-z0-9]+$/i)
             ? 'Streamer password must be alphanumeric'
             : null,
+      xc_password:
+        values.xc_password && !values.xc_password.match(/^[a-z0-9]+$/i)
+          ? 'XC password must be alphanumeric'
+          : null,
     }),
   });
 
   const onSubmit = async () => {
     const values = form.getValues();
+
+    const { xc_password, ...customProps } = JSON.parse(
+      user.custom_properties || '{}'
+    );
+
+    if (values.xc_password) {
+      customProps.xc_password = values.xc_password;
+    }
+
+    delete values.xc_password;
+
+    values.custom_properties = JSON.stringify(customProps);
 
     if (!user) {
       await API.createUser(values);
@@ -79,16 +99,29 @@ const User = ({ user = null, isOpen, onClose }) => {
 
   useEffect(() => {
     if (user?.id) {
+      const customProps = JSON.parse(user.custom_properties || '{}');
+
       form.setValues({
         username: user.username,
         email: user.email,
         user_level: `${user.user_level}`,
         channel_profiles: user.channel_profiles.map((id) => `${id}`),
+        xc_password: customProps.xc_password || '',
       });
+
+      if (customProps.xc_password) {
+        setEnableXC(true);
+      }
     } else {
       form.reset();
     }
   }, [user]);
+
+  const generateXCPassword = () => {
+    form.setValues({
+      xc_password: Math.random().toString(36).slice(2),
+    });
+  };
 
   if (!isOpen) {
     return <></>;
@@ -98,12 +131,7 @@ const User = ({ user = null, isOpen, onClose }) => {
     authUser.user_level == USER_LEVELS.ADMIN && authUser.id !== user?.id;
 
   return (
-    <Modal
-      opened={isOpen}
-      onClose={onClose}
-      title="User"
-      size={showPermissions ? 'xl' : 'md'}
-    >
+    <Modal opened={isOpen} onClose={onClose} title="User" size="xl">
       <form onSubmit={form.onSubmit(onSubmit)}>
         <Group justify="space-between" align="top">
           <Stack gap="xs" style={{ flex: 1 }}>
@@ -115,23 +143,14 @@ const User = ({ user = null, isOpen, onClose }) => {
               key={form.key('username')}
             />
 
-            <TextInput
-              id="email"
-              name="email"
-              label="E-Mail"
-              {...form.getInputProps('email')}
-              key={form.key('email')}
-            />
-
             <PasswordInput
               label="Password"
+              description="Used for UI authentication"
               {...form.getInputProps('password')}
               key={form.key('password')}
             />
-          </Stack>
 
-          {showPermissions && (
-            <Stack gap="xs" style={{ flex: 1 }}>
+            {showPermissions && (
               <Select
                 label="User Level"
                 data={Object.entries(USER_LEVELS).map(([label, value]) => {
@@ -143,7 +162,40 @@ const User = ({ user = null, isOpen, onClose }) => {
                 {...form.getInputProps('user_level')}
                 key={form.key('user_level')}
               />
+            )}
+          </Stack>
 
+          <Stack gap="xs" style={{ flex: 1 }}>
+            <TextInput
+              id="email"
+              name="email"
+              label="E-Mail"
+              {...form.getInputProps('email')}
+              key={form.key('email')}
+            />
+
+            <Group align="flex-end">
+              <TextInput
+                label="XC Password"
+                description="Auto-generated - clear to disable XC API"
+                {...form.getInputProps('xc_password')}
+                key={form.key('xc_password')}
+                style={{ flex: 1 }}
+                rightSectionWidth={30}
+                rightSection={
+                  <ActionIcon
+                    variant="transparent"
+                    size="sm"
+                    color="white"
+                    onClick={generateXCPassword}
+                  >
+                    <RotateCcw />
+                  </ActionIcon>
+                }
+              />
+            </Group>
+
+            {showPermissions && (
               <MultiSelect
                 label="Channel Profiles"
                 {...form.getInputProps('channel_profiles')}
@@ -155,8 +207,8 @@ const User = ({ user = null, isOpen, onClose }) => {
                     value: `${profile.id}`,
                   }))}
               />
-            </Stack>
-          )}
+            )}
+          </Stack>
         </Group>
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">

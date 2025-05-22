@@ -38,6 +38,7 @@ class UserSerializer(serializers.ModelSerializer):
             "user_level",
             "password",
             "channel_profiles",
+            "custom_properties",
         ]
 
     def create(self, validated_data):

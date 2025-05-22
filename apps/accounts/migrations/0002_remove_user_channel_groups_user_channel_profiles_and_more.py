@@ -34,5 +34,10 @@ class Migration(migrations.Migration):
             name="user_level",
             field=models.IntegerField(default=0),
         ),
+        migrations.AddField(
+            model_name="user",
+            name="custom_properties",
+            field=models.TextField(blank=True, null=True),
+        ),
         migrations.RunPython(set_user_level_to_10),
     ]

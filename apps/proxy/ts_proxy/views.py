@@ -6,7 +6,6 @@ import re
 from django.http import StreamingHttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
-from django.contrib.auth import authenticate
 from apps.proxy.config import TSConfig as Config
 from .server import ProxyServer
 from .channel_status import ChannelStatus
@@ -16,6 +15,7 @@ from .redis_keys import RedisKeys
 import logging
 from apps.channels.models import Channel, Stream
 from apps.m3u.models import M3UAccount, M3UAccountProfile
+from apps.accounts.models import User
 from core.models import UserAgent, CoreSettings, PROXY_PROFILE_NAME
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -448,13 +448,31 @@ def stream_ts(request, channel_id):
 
 @api_view(["GET"])
 def stream_xc(request, username, password, channel_id):
-    user = authenticate(username=username, password=password)
-    if user is None:
+    user = get_object_or_404(User, username=username)
+
+    custom_properties = (
+        json.loads(user.custom_properties) if user.custom_properties else {}
+    )
+
+    if "xc_password" not in custom_properties:
         return Response({"error": "Invalid credentials"}, status=401)
 
-    channel = get_object_or_404(Channel, id=channel_id)
+    if custom_properties["xc_password"] != password:
+        return Response({"error": "Invalid credentials"}, status=401)
 
-    print(channel.uuid)
+    if user.user_level < 10:
+        channel_profiles = user.channel_profiles.all()
+        filters = {
+            "id": channel_id,
+            "channelprofilemembership__channel_profile__in": channel_profiles,
+            "channelprofilemembership__enabled": True,
+            "user_level__lte": user.user_level,
+        }
+
+        channel = get_object_or_404(Channel, **filters)
+    else:
+        channel = get_object_or_404(Channel, id=channel_id)
+
     return stream_ts(request._request, channel.uuid)
 
 

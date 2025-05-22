@@ -21,6 +21,7 @@ class User(AbstractUser):
         related_name="users",
     )
     user_level = models.IntegerField(default=UserLevel.STREAMER)
+    custom_properties = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return self.username
