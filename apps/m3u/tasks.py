@@ -556,7 +556,7 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     retval = f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
 
     # Aggressive garbage collection
-    del streams_to_create, streams_to_update, stream_hashes, existing_streams
+    del streams_to_create, streams_to_update, stream_hashes, existing_streams, stream_props, invalid_streams, changed_streams, unchanged_streams
     from core.utils import cleanup_memory
     cleanup_memory(log_usage=True, force_collection=True)
 
@@ -1028,6 +1028,7 @@ def refresh_single_m3u_account(account_id):
         account.save(update_fields=['status'])
 
         if account.account_type == M3UAccount.Types.STADNARD:
+            logger.debug(f"Processing Standard account with groups: {existing_groups}")
             # Break into batches and process in parallel
             batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
             task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
