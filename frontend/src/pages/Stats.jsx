@@ -15,7 +15,6 @@ import {
   useMantineTheme,
   Select,
 } from '@mantine/core';
-import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import { TableHelper } from '../helpers';
 import API from '../api';
 import useChannelsStore from '../store/channels';
@@ -37,6 +36,7 @@ import useStreamProfilesStore from '../store/streamProfiles';
 import usePlaylistsStore from '../store/playlists'; // Add this import
 import { useLocation } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
+import { CustomTable, useTable } from '../components/tables/CustomTable';
 
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
@@ -78,12 +78,19 @@ const getStartDate = (uptime) => {
 };
 
 // Create a separate component for each channel card to properly handle the hook
-const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channelsByUUID }) => {
+const ChannelCard = ({
+  channel,
+  clients,
+  stopClient,
+  stopChannel,
+  logos,
+  channelsByUUID,
+}) => {
   const location = useLocation();
   const [availableStreams, setAvailableStreams] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
-  const [currentM3UProfile, setCurrentM3UProfile] = useState(null);  // Add state for current M3U profile
+  const [currentM3UProfile, setCurrentM3UProfile] = useState(null); // Add state for current M3U profile
 
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
@@ -92,7 +99,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const m3uAccountsMap = useMemo(() => {
     const map = {};
     if (m3uAccounts && Array.isArray(m3uAccounts)) {
-      m3uAccounts.forEach(account => {
+      m3uAccounts.forEach((account) => {
         if (account.id) {
           map[account.id] = account.name;
         }
@@ -111,7 +118,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     // If the channel data includes M3U profile information, update our state
     if (channel.m3u_profile || channel.m3u_profile_name) {
       setCurrentM3UProfile({
-        name: channel.m3u_profile?.name || channel.m3u_profile_name || 'Default M3U'
+        name:
+          channel.m3u_profile?.name ||
+          channel.m3u_profile_name ||
+          'Default M3U',
       });
     }
   }, [channel.m3u_profile, channel.m3u_profile_name, channel.stream_id]);
@@ -132,8 +142,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           // If we have a channel URL, try to find the matching stream
           if (channel.url && streamData.length > 0) {
             // Try to find matching stream based on URL
-            const matchingStream = streamData.find(stream =>
-              channel.url.includes(stream.url) || stream.url.includes(channel.url)
+            const matchingStream = streamData.find(
+              (stream) =>
+                channel.url.includes(stream.url) ||
+                stream.url.includes(channel.url)
             );
 
             if (matchingStream) {
@@ -147,7 +159,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           }
         }
       } catch (error) {
-        console.error("Error fetching streams:", error);
+        console.error('Error fetching streams:', error);
       } finally {
         setIsLoadingStreams(false);
       }
@@ -159,14 +171,16 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   // Handle stream switching
   const handleStreamChange = async (streamId) => {
     try {
-      console.log("Switching to stream ID:", streamId);
+      console.log('Switching to stream ID:', streamId);
       // Find the selected stream in availableStreams for debugging
-      const selectedStream = availableStreams.find(s => s.id.toString() === streamId);
-      console.log("Selected stream details:", selectedStream);
+      const selectedStream = availableStreams.find(
+        (s) => s.id.toString() === streamId
+      );
+      console.log('Selected stream details:', selectedStream);
 
       // Make sure we're passing the correct ID to the API
       const response = await API.switchStream(channel.channel_id, streamId);
-      console.log("Stream switch API response:", response);
+      console.log('Stream switch API response:', response);
 
       // Update the local active stream ID immediately
       setActiveStreamId(streamId);
@@ -192,21 +206,22 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           const channelId = channelsByUUID[channel.channel_id];
           if (channelId) {
             const updatedStreamData = await API.getChannelStreams(channelId);
-            console.log("Channel streams after switch:", updatedStreamData);
+            console.log('Channel streams after switch:', updatedStreamData);
 
             // Update current stream information with fresh data
-            const updatedStream = updatedStreamData.find(s => s.id.toString() === streamId);
+            const updatedStream = updatedStreamData.find(
+              (s) => s.id.toString() === streamId
+            );
             if (updatedStream && updatedStream.m3u_profile) {
               setCurrentM3UProfile(updatedStream.m3u_profile);
             }
           }
         } catch (error) {
-          console.error("Error checking streams after switch:", error);
+          console.error('Error checking streams after switch:', error);
         }
       }, 2000);
-
     } catch (error) {
-      console.error("Stream switch error:", error);
+      console.error('Stream switch error:', error);
       notifications.show({
         title: 'Error switching stream',
         message: error.toString(),
@@ -230,7 +245,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           if (row.connected_since) {
             // Calculate the actual connection time by subtracting the seconds from current time
             const currentTime = dayjs();
-            const connectedTime = currentTime.subtract(row.connected_since, 'second');
+            const connectedTime = currentTime.subtract(
+              row.connected_since,
+              'second'
+            );
             return connectedTime.format('MM/DD HH:mm:ss');
           }
 
@@ -243,7 +261,13 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           return 'Unknown';
         },
         Cell: ({ cell }) => (
-          <Tooltip label={cell.getValue() !== 'Unknown' ? `Connected at ${cell.getValue()}` : 'Unknown connection time'}>
+          <Tooltip
+            label={
+              cell.getValue() !== 'Unknown'
+                ? `Connected at ${cell.getValue()}`
+                : 'Unknown connection time'
+            }
+          >
             <Text size="xs">{cell.getValue()}</Text>
           </Tooltip>
         ),
@@ -258,27 +282,36 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           }
 
           if (row.connection_duration) {
-            return dayjs.duration(row.connection_duration, 'seconds').humanize();
+            return dayjs
+              .duration(row.connection_duration, 'seconds')
+              .humanize();
           }
 
           return '-';
         },
         Cell: ({ cell, row }) => {
-          const exactDuration = row.original.connected_since || row.original.connection_duration;
+          const exactDuration =
+            row.original.connected_since || row.original.connection_duration;
           return (
-            <Tooltip label={exactDuration ? `${exactDuration.toFixed(1)} seconds` : 'Unknown duration'}>
+            <Tooltip
+              label={
+                exactDuration
+                  ? `${exactDuration.toFixed(1)} seconds`
+                  : 'Unknown duration'
+              }
+            >
               <Text size="xs">{cell.getValue()}</Text>
             </Tooltip>
           );
         },
         size: 50,
-      }
+      },
     ],
     []
   );
 
   // This hook is now at the top level of this component
-  const channelClientsTable = useMantineReactTable({
+  const channelClientsTable = useTable({
     ...TableHelper.defaultProperties,
     columns: clientsColumns,
     data: clients.filter(
@@ -319,8 +352,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     renderDetailPanel: ({ row }) => (
       <Box p="xs">
         <Group spacing="xs" align="flex-start">
-          <Text size="xs" fw={500} color="dimmed">User Agent:</Text>
-          <Text size="xs">{row.original.user_agent || "Unknown"}</Text>
+          <Text size="xs" fw={500} color="dimmed">
+            User Agent:
+          </Text>
+          <Text size="xs">{row.original.user_agent || 'Unknown'}</Text>
         </Group>
       </Box>
     ),
@@ -347,8 +382,10 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   }
 
   // Get logo URL from the logos object if available
-  const logoUrl = channel.logo_id && logos && logos[channel.logo_id] ?
-    logos[channel.logo_id].cache_url : null;
+  const logoUrl =
+    channel.logo_id && logos && logos[channel.logo_id]
+      ? logos[channel.logo_id].cache_url
+      : null;
 
   // Ensure these values exist to prevent errors
   const channelName = channel.name || 'Unnamed Channel';
@@ -360,19 +397,21 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
   const streamProfileName = channel.stream_profile?.name || 'Unknown Profile';
 
   // Use currentM3UProfile if available, otherwise fall back to channel data
-  const m3uProfileName = currentM3UProfile?.name ||
+  const m3uProfileName =
+    currentM3UProfile?.name ||
     channel.m3u_profile?.name ||
     channel.m3u_profile_name ||
     'Unknown M3U Profile';
 
   // Create select options for available streams
-  const streamOptions = availableStreams.map(stream => {
+  const streamOptions = availableStreams.map((stream) => {
     // Get account name from our mapping if it exists
-    const accountName = stream.m3u_account && m3uAccountsMap[stream.m3u_account]
-      ? m3uAccountsMap[stream.m3u_account]
-      : stream.m3u_account
-        ? `M3U #${stream.m3u_account}`
-        : 'Unknown M3U';
+    const accountName =
+      stream.m3u_account && m3uAccountsMap[stream.m3u_account]
+        ? m3uAccountsMap[stream.m3u_account]
+        : stream.m3u_account
+          ? `M3U #${stream.m3u_account}`
+          : 'Unknown M3U';
 
     return {
       value: stream.id.toString(),
@@ -394,19 +433,21 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
     >
       <Stack style={{ position: 'relative' }}>
         <Group justify="space-between">
-          <Box style={{
-            width: '100px',
-            height: '50px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
+          <Box
+            style={{
+              width: '100px',
+              height: '50px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <img
               src={logoUrl || logo}
               style={{
                 maxWidth: '100%',
                 maxHeight: '100%',
-                objectFit: 'contain'
+                objectFit: 'contain',
               }}
               alt="channel logo"
             />
@@ -464,7 +505,9 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
             <Select
               size="xs"
               label="Active Stream"
-              placeholder={isLoadingStreams ? "Loading streams..." : "Select stream"}
+              placeholder={
+                isLoadingStreams ? 'Loading streams...' : 'Select stream'
+              }
               data={streamOptions}
               value={activeStreamId || channel.stream_id?.toString() || null}
               onChange={handleStreamChange}
@@ -476,7 +519,9 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
 
         <Group justify="space-between">
           <Group gap={4}>
-            <Tooltip label={`Current bitrate: ${formatSpeed(bitrates.at(-1) || 0)}`}>
+            <Tooltip
+              label={`Current bitrate: ${formatSpeed(bitrates.at(-1) || 0)}`}
+            >
               <Group gap={4} style={{ cursor: 'help' }}>
                 <Gauge style={{ paddingRight: 5 }} size="22" />
                 <Text size="sm">{formatSpeed(bitrates.at(-1) || 0)}</Text>
@@ -485,7 +530,9 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           </Group>
 
           <Tooltip label={`Average bitrate: ${avgBitrate}`}>
-            <Text size="sm" style={{ cursor: 'help' }}>Avg: {avgBitrate}</Text>
+            <Text size="sm" style={{ cursor: 'help' }}>
+              Avg: {avgBitrate}
+            </Text>
           </Tooltip>
 
           <Group gap={4}>
@@ -498,7 +545,9 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           </Group>
 
           <Group gap={5}>
-            <Tooltip label={`${clientCount} active client${clientCount !== 1 ? 's' : ''}`}>
+            <Tooltip
+              label={`${clientCount} active client${clientCount !== 1 ? 's' : ''}`}
+            >
               <Group gap={4} style={{ cursor: 'help' }}>
                 <Users size="18" />
                 <Text size="sm">{clientCount}</Text>
@@ -507,7 +556,7 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           </Group>
         </Group>
 
-        <MantineReactTable table={channelClientsTable} />
+        <CustomTable table={channelClientsTable} />
       </Stack>
     </Card>
   );
@@ -616,8 +665,13 @@ const ChannelsPage = () => {
   // The main clientsTable is no longer needed since each channel card has its own table
 
   useEffect(() => {
-    if (!channelStats || !channelStats.channels || !Array.isArray(channelStats.channels) || channelStats.channels.length === 0) {
-      console.log("No channel stats available:", channelStats);
+    if (
+      !channelStats ||
+      !channelStats.channels ||
+      !Array.isArray(channelStats.channels) ||
+      channelStats.channels.length === 0
+    ) {
+      console.log('No channel stats available:', channelStats);
       // Clear active channels when there are no stats
       if (Object.keys(activeChannels).length > 0) {
         setActiveChannels({});
@@ -631,13 +685,13 @@ const ChannelsPage = () => {
 
     // Track which channels are currently active according to channelStats
     const currentActiveChannelIds = new Set(
-      channelStats.channels.map(ch => ch.channel_id).filter(Boolean)
+      channelStats.channels.map((ch) => ch.channel_id).filter(Boolean)
     );
 
-    channelStats.channels.forEach(ch => {
+    channelStats.channels.forEach((ch) => {
       // Make sure we have a valid channel_id
       if (!ch.channel_id) {
-        console.warn("Found channel without channel_id:", ch);
+        console.warn('Found channel without channel_id:', ch);
         return;
       }
 
@@ -656,12 +710,14 @@ const ChannelsPage = () => {
       }
 
       // Find corresponding channel data
-      const channelData = channelsByUUID && ch.channel_id ?
-        channels[channelsByUUID[ch.channel_id]] : null;
+      const channelData =
+        channelsByUUID && ch.channel_id
+          ? channels[channelsByUUID[ch.channel_id]]
+          : null;
 
       // Find stream profile
       const streamProfile = streamProfiles.find(
-        profile => profile.id == parseInt(ch.stream_profile)
+        (profile) => profile.id == parseInt(ch.stream_profile)
       );
 
       stats[ch.channel_id] = {
@@ -674,7 +730,7 @@ const ChannelsPage = () => {
       };
     });
 
-    console.log("Processed active channels:", stats);
+    console.log('Processed active channels:', stats);
     setActiveChannels(stats);
 
     const clientStats = Object.values(stats).reduce((acc, ch) => {
@@ -704,8 +760,16 @@ const ChannelsPage = () => {
         verticalSpacing="lg"
       >
         {Object.keys(activeChannels).length === 0 ? (
-          <Box style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>
-            <Text size="xl" color="dimmed">No active channels currently streaming</Text>
+          <Box
+            style={{
+              gridColumn: '1 / -1',
+              textAlign: 'center',
+              padding: '40px',
+            }}
+          >
+            <Text size="xl" color="dimmed">
+              No active channels currently streaming
+            </Text>
           </Box>
         ) : (
           Object.values(activeChannels).map((channel) => (

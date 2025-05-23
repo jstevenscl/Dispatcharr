@@ -34,6 +34,8 @@ const useAuthStore = create((set, get) => ({
   isLoading: false,
   error: null,
 
+  setUser: (user) => set({ user }),
+
   initData: async () => {
     const user = await API.me();
     if (user.user_level <= USER_LEVELS.STREAMER) {

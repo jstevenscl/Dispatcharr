@@ -489,6 +489,11 @@ def xc_player_api(request):
     if action == "get_live_streams":
         return xc_get_live_streams(request, user, request.GET.get("category_id"))
 
+    if action == "get_vod_categories":
+        return JsonResponse([], safe=False)
+    if action == "get_vod_streams":
+        return JsonResponse([], safe=False)
+
 
 def xc_get(request):
     action = request.GET.get("action")

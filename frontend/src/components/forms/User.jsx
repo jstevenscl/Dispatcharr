@@ -23,7 +23,7 @@ import {
   Center,
   ActionIcon,
 } from '@mantine/core';
-import { RotateCcw, X } from 'lucide-react';
+import { RotateCcwKey, X } from 'lucide-react';
 import { isNotEmpty, useForm } from '@mantine/form';
 import useChannelsStore from '../../store/channels';
 import { USER_LEVELS, USER_LEVEL_LABELS } from '../../constants';
@@ -32,6 +32,7 @@ import useAuthStore from '../../store/auth';
 const User = ({ user = null, isOpen, onClose }) => {
   const profiles = useChannelsStore((s) => s.profiles);
   const authUser = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
 
   const [enableXC, setEnableXC] = useState(false);
   const [selectedProfiles, setSelectedProfiles] = useState(new Set());
@@ -108,7 +109,11 @@ const User = ({ user = null, isOpen, onClose }) => {
         delete values.password;
       }
 
-      await API.updateUser(user.id, values);
+      const response = await API.updateUser(user.id, values);
+
+      if (user.id == authUser.id) {
+        setUser(response);
+      }
     }
 
     form.reset();
@@ -123,7 +128,10 @@ const User = ({ user = null, isOpen, onClose }) => {
         username: user.username,
         email: user.email,
         user_level: `${user.user_level}`,
-        channel_profiles: user.channel_profiles.map((id) => `${id}`),
+        channel_profiles:
+          user.channel_profiles.length > 0
+            ? user.channel_profiles.map((id) => `${id}`)
+            : ['0'],
         xc_password: customProps.xc_password || '',
       });
 
@@ -197,7 +205,6 @@ const User = ({ user = null, isOpen, onClose }) => {
                 label="XC Password"
                 description="Auto-generated - clear to disable XC API"
                 {...form.getInputProps('xc_password')}
-                onChange={onChannelProfilesChange}
                 key={form.key('xc_password')}
                 style={{ flex: 1 }}
                 rightSectionWidth={30}
@@ -208,7 +215,7 @@ const User = ({ user = null, isOpen, onClose }) => {
                     color="white"
                     onClick={generateXCPassword}
                   >
-                    <RotateCcw />
+                    <RotateCcwKey />
                   </ActionIcon>
                 }
               />
