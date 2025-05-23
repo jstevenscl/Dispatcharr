@@ -461,13 +461,15 @@ def stream_xc(request, username, password, channel_id):
         return Response({"error": "Invalid credentials"}, status=401)
 
     if user.user_level < 10:
-        channel_profiles = user.channel_profiles.all()
         filters = {
             "id": channel_id,
-            "channelprofilemembership__channel_profile__in": channel_profiles,
             "channelprofilemembership__enabled": True,
             "user_level__lte": user.user_level,
         }
+
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            filters["channelprofilemembership__channel_profile__in"] = channel_profiles
 
         channel = get_object_or_404(Channel, **filters)
     else:

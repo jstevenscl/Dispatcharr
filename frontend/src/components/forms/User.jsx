@@ -34,6 +34,7 @@ const User = ({ user = null, isOpen, onClose }) => {
   const authUser = useAuthStore((s) => s.user);
 
   const [enableXC, setEnableXC] = useState(false);
+  const [selectedProfiles, setSelectedProfiles] = useState(new Set());
 
   const form = useForm({
     mode: 'uncontrolled',
@@ -68,20 +69,37 @@ const User = ({ user = null, isOpen, onClose }) => {
     }),
   });
 
+  const onChannelProfilesChange = (values) => {
+    let newValues = new Set(values);
+    if (selectedProfiles.has('0')) {
+      newValues.delete('0');
+    } else if (newValues.has('0')) {
+      newValues = new Set(['0']);
+    }
+
+    setSelectedProfiles(newValues);
+
+    form.setFieldValue('channel_profiles', [...newValues]);
+  };
+
   const onSubmit = async () => {
     const values = form.getValues();
 
     const { xc_password, ...customProps } = JSON.parse(
-      user.custom_properties || '{}'
+      user?.custom_properties || '{}'
     );
 
     if (values.xc_password) {
       customProps.xc_password = values.xc_password;
     }
-
     delete values.xc_password;
 
     values.custom_properties = JSON.stringify(customProps);
+
+    // If 'All' is included, clear this and we assume access to all channels
+    if (values.channel_profiles.includes('0')) {
+      values.channel_profiles = [];
+    }
 
     if (!user) {
       await API.createUser(values);
@@ -179,6 +197,7 @@ const User = ({ user = null, isOpen, onClose }) => {
                 label="XC Password"
                 description="Auto-generated - clear to disable XC API"
                 {...form.getInputProps('xc_password')}
+                onChange={onChannelProfilesChange}
                 key={form.key('xc_password')}
                 style={{ flex: 1 }}
                 rightSectionWidth={30}
@@ -200,12 +219,11 @@ const User = ({ user = null, isOpen, onClose }) => {
                 label="Channel Profiles"
                 {...form.getInputProps('channel_profiles')}
                 key={form.key('channel_profiles')}
-                data={Object.values(profiles)
-                  .filter((profile) => profile.id != 0)
-                  .map((profile) => ({
-                    label: profile.name,
-                    value: `${profile.id}`,
-                  }))}
+                onChange={onChannelProfilesChange}
+                data={Object.values(profiles).map((profile) => ({
+                  label: profile.name,
+                  value: `${profile.id}`,
+                }))}
               />
             )}
           </Stack>

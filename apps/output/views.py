@@ -22,12 +22,16 @@ def generate_m3u(request, profile_name=None, user=None):
     """
     if user is not None:
         if user.user_level == 0:
-            channel_profiles = user.channel_profiles.all()
             filters = {
-                "channelprofilemembership__channel_profile__in": channel_profiles,
                 "channelprofilemembership__enabled": True,
                 "user_level__lte": user.user_level,
             }
+
+            if user.channel_profiles.count() != 0:
+                channel_profiles = user.channel_profiles.all()
+                filters["channelprofilemembership__channel_profile__in"] = (
+                    channel_profiles
+                )
 
             channels = Channel.objects.filter(**filters).order_by("channel_number")
         else:
@@ -207,12 +211,16 @@ def generate_epg(request, profile_name=None, user=None):
 
     if user is not None:
         if user.user_level == 0:
-            channel_profiles = user.channel_profiles.all()
             filters = {
-                "channelprofilemembership__channel_profile__in": channel_profiles,
                 "channelprofilemembership__enabled": True,
                 "user_level__lte": user.user_level,
             }
+
+            if user.channel_profiles.count() != 0:
+                channel_profiles = user.channel_profiles.all()
+                filters["channelprofilemembership__channel_profile__in"] = (
+                    channel_profiles
+                )
 
             channels = Channel.objects.filter(**filters).order_by("channel_number")
         else:
@@ -490,7 +498,7 @@ def xc_get(request):
         raise Http404()
 
     if not action:
-        return generate_m3u(request, user)
+        return generate_m3u(request, None, user)
 
 
 def xc_xmltv(request):
@@ -506,15 +514,19 @@ def xc_get_live_categories(user):
     response = []
 
     if user.user_level == 0:
-        # Only get data from active profile
-        channel_profiles = user.channel_profiles.all()
-        print(channel_profiles)
+        filters = {
+            "channels__channelprofilemembership__enabled": True,
+            "channels__user_level": 0,
+        }
 
-        channel_groups = ChannelGroup.objects.filter(
-            channels__channelprofilemembership__channel_profile__in=channel_profiles,
-            channels__channelprofilemembership__enabled=True,
-            channels__user_level=0,
-        ).distinct()
+        if user.channel_profiles.count() != 0:
+            # Only get data from active profile
+            channel_profiles = user.channel_profiles.all()
+            filters["channels__channelprofilemembership__channel_profile__in"] = (
+                channel_profiles
+            )
+
+        channel_groups = ChannelGroup.objects.filter(**filters).distinct()
     else:
         channel_groups = ChannelGroup.objects.filter(
             channels__isnull=False, channels__user_level__lte=user.user_level
@@ -536,13 +548,15 @@ def xc_get_live_streams(request, user, category_id=None):
     streams = []
 
     if user.user_level == 0:
-        # Only get data from active profile
-        channel_profiles = user.channel_profiles.all()
         filters = {
-            "channelprofilemembership__channel_profile__in": channel_profiles,
             "channelprofilemembership__enabled": True,
             "user_level__lte": user.user_level,
         }
+
+        if user.channel_profiles.count() > 0:
+            # Only get data from active profile
+            channel_profiles = user.channel_profiles.all()
+            filters["channelprofilemembership__channel_profile__in"] = channel_profiles
 
         if category_id is not None:
             filters["channel_group__id"] = category_id
