@@ -37,6 +37,7 @@ import usePlaylistsStore from '../store/playlists'; // Add this import
 import { useLocation } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import { CustomTable, useTable } from '../components/tables/CustomTable';
+import useLocalStorage from '../hooks/useLocalStorage';
 
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
@@ -91,9 +92,11 @@ const ChannelCard = ({
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
   const [currentM3UProfile, setCurrentM3UProfile] = useState(null); // Add state for current M3U profile
+  const [data, setData] = useState([]);
 
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
+  const [tableSize] = useLocalStorage('table-size', 'default');
 
   // Create a map of M3U account IDs to names for quick lookup
   const m3uAccountsMap = useMemo(() => {
@@ -107,11 +110,6 @@ const ChannelCard = ({
     }
     return map;
   }, [m3uAccounts]);
-
-  // Safety check - if channel doesn't have required data, don't render
-  if (!channel || !channel.channel_id) {
-    return null;
-  }
 
   // Update M3U profile information when channel data changes
   useEffect(() => {
@@ -167,6 +165,57 @@ const ChannelCard = ({
 
     fetchStreams();
   }, [channel.channel_id, channel.url, channelsByUUID]);
+
+  useEffect(() => {
+    setData(
+      clients
+        .filter((client) => client.channel.channel_id === channel.channel_id)
+        .map((client) => ({
+          id: client.client_id,
+          ...client,
+        }))
+    );
+  }, [clients]);
+
+  const renderHeaderCell = (header) => {
+    switch (header.id) {
+      default:
+        return (
+          <Group>
+            <Text size="sm" name={header.id}>
+              {header.column.columnDef.header}
+            </Text>
+          </Group>
+        );
+    }
+  };
+
+  const renderBodyCell = ({ cell, row }) => {
+    switch (cell.column.id) {
+      case 'actions':
+        return (
+          <Box sx={{ justifyContent: 'right' }}>
+            <Center>
+              <Tooltip label="Disconnect client">
+                <ActionIcon
+                  size="sm"
+                  variant="transparent"
+                  color="red.9"
+                  onClick={() =>
+                    stopClient(
+                      row.original.channel.uuid,
+                      row.original.client_id
+                    )
+                  }
+                >
+                  <SquareX size="18" />
+                </ActionIcon>
+              </Tooltip>
+            </Center>
+          </Box>
+        );
+    }
+  };
 
   // Handle stream switching
   const handleStreamChange = async (streamId) => {
@@ -229,16 +278,21 @@ const ChannelCard = ({
       });
     }
   };
+  console.log(data);
 
   const clientsColumns = useMemo(
     () => [
       {
+        id: 'expand',
+        size: 20,
+      },
+      {
         header: 'IP Address',
         accessorKey: 'ip_address',
-        size: 50,
       },
       // Updated Connected column with tooltip
       {
+        id: 'connected',
         header: 'Connected',
         accessorFn: (row) => {
           // Check for connected_since (which is seconds since connection)
@@ -260,7 +314,7 @@ const ChannelCard = ({
 
           return 'Unknown';
         },
-        Cell: ({ cell }) => (
+        cell: ({ cell }) => (
           <Tooltip
             label={
               cell.getValue() !== 'Unknown'
@@ -271,10 +325,10 @@ const ChannelCard = ({
             <Text size="xs">{cell.getValue()}</Text>
           </Tooltip>
         ),
-        size: 50,
       },
       // Update Duration column with tooltip showing exact seconds
       {
+        id: 'duration',
         header: 'Duration',
         accessorFn: (row) => {
           if (row.connected_since) {
@@ -289,7 +343,7 @@ const ChannelCard = ({
 
           return '-';
         },
-        Cell: ({ cell, row }) => {
+        cell: ({ cell, row }) => {
           const exactDuration =
             row.original.connected_since || row.original.connection_duration;
           return (
@@ -304,7 +358,11 @@ const ChannelCard = ({
             </Tooltip>
           );
         },
-        size: 50,
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        size: tableSize == 'compact' ? 75 : 100,
       },
     ],
     []
@@ -314,51 +372,38 @@ const ChannelCard = ({
   const channelClientsTable = useTable({
     ...TableHelper.defaultProperties,
     columns: clientsColumns,
-    data: clients.filter(
-      (client) => client.channel.channel_id === channel.channel_id
-    ),
-    enablePagination: false,
-    enableTopToolbar: false,
-    enableBottomToolbar: false,
-    enableRowSelection: false,
-    enableColumnFilters: false,
-    mantineTableBodyCellProps: {
-      style: {
-        padding: 4,
-        borderColor: '#444',
-        color: '#E0E0E0',
-        fontSize: '0.85rem',
-      },
+    data,
+    allRowIds: data.map((client) => client.id),
+    tableCellProps: () => ({
+      padding: 4,
+      borderColor: '#444',
+      color: '#E0E0E0',
+      fontSize: '0.85rem',
+    }),
+    headerCellRenderFns: {
+      ip_address: renderHeaderCell,
+      connected: renderHeaderCell,
+      duration: renderHeaderCell,
+      actions: renderHeaderCell,
     },
-    enableRowActions: true,
-    renderRowActions: ({ row }) => (
-      <Box sx={{ justifyContent: 'right' }}>
-        <Center>
-          <Tooltip label="Disconnect client">
-            <ActionIcon
-              size="sm"
-              variant="transparent"
-              color="red.9"
-              onClick={() =>
-                stopClient(row.original.channel.uuid, row.original.client_id)
-              }
-            >
-              <SquareX size="18" />
-            </ActionIcon>
-          </Tooltip>
-        </Center>
-      </Box>
-    ),
-    renderDetailPanel: ({ row }) => (
-      <Box p="xs">
-        <Group spacing="xs" align="flex-start">
-          <Text size="xs" fw={500} color="dimmed">
-            User Agent:
-          </Text>
-          <Text size="xs">{row.original.user_agent || 'Unknown'}</Text>
-        </Group>
-      </Box>
-    ),
+    bodyCellRenderFns: {
+      actions: renderBodyCell,
+    },
+    getExpandedRowHeight: (row) => {
+      return 20 + 28 * row.original.streams.length;
+    },
+    expandedRowRenderer: ({ row }) => {
+      return (
+        <Box p="xs">
+          <Group spacing="xs" align="flex-start">
+            <Text size="xs" fw={500} color="dimmed">
+              User Agent:
+            </Text>
+            <Text size="xs">{row.original.user_agent || 'Unknown'}</Text>
+          </Group>
+        </Box>
+      );
+    },
     mantineExpandButtonProps: ({ row, table }) => ({
       size: 'xs',
       style: {
@@ -376,10 +421,6 @@ const ChannelCard = ({
       },
     },
   });
-
-  if (location.pathname != '/stats') {
-    return <></>;
-  }
 
   // Get logo URL from the logos object if available
   const logoUrl =
@@ -418,6 +459,15 @@ const ChannelCard = ({
       label: `${stream.name || `Stream #${stream.id}`} [${accountName}]`,
     };
   });
+
+  if (location.pathname != '/stats') {
+    return <></>;
+  }
+
+  // Safety check - if channel doesn't have required data, don't render
+  if (!channel || !channel.channel_id) {
+    return null;
+  }
 
   return (
     <Card
@@ -581,7 +631,7 @@ const ChannelsPage = () => {
         header: 'Logo',
         accessorKey: 'logo_url',
         size: 50,
-        Cell: ({ cell }) => (
+        cell: ({ cell }) => (
           <Center>
             <img src={cell.getValue() || logo} width="20" alt="channel logo" />
           </Center>
@@ -591,7 +641,7 @@ const ChannelsPage = () => {
         id: 'name',
         header: 'Name',
         accessorKey: 'name',
-        Cell: ({ cell }) => (
+        cell: ({ cell }) => (
           <div
             style={{
               whiteSpace: 'nowrap',

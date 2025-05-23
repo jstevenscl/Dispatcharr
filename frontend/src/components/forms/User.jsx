@@ -56,13 +56,9 @@ const User = ({ user = null, isOpen, onClose }) => {
           ? 'Streamer username must be alphanumeric'
           : null,
       password:
-        !user && !values.password
+        !user && !values.password && values.user_level != USER_LEVELS.STREAMER
           ? 'Password is requried'
-          : values.user_level == USER_LEVELS.STREAMER &&
-              !user &&
-              !values.password.match(/^[a-z0-9]+$/i)
-            ? 'Streamer password must be alphanumeric'
-            : null,
+          : null,
       xc_password:
         values.xc_password && !values.xc_password.match(/^[a-z0-9]+$/i)
           ? 'XC password must be alphanumeric'
@@ -100,6 +96,11 @@ const User = ({ user = null, isOpen, onClose }) => {
     // If 'All' is included, clear this and we assume access to all channels
     if (values.channel_profiles.includes('0')) {
       values.channel_profiles = [];
+    }
+
+    if (!user && values.user_level == USER_LEVELS.STREAMER) {
+      // Generate random password - they can't log in, but user can't be created without a password
+      values.password = Math.random().toString(36).slice(2);
     }
 
     if (!user) {
@@ -174,6 +175,7 @@ const User = ({ user = null, isOpen, onClose }) => {
               description="Used for UI authentication"
               {...form.getInputProps('password')}
               key={form.key('password')}
+              disabled={form.getValues().user_level == USER_LEVELS.STREAMER}
             />
 
             {showPermissions && (
