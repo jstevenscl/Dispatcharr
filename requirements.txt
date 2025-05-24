@@ -21,6 +21,7 @@ rapidfuzz==3.12.1
 # PyTorch dependencies (CPU only)
 --extra-index-url https://download.pytorch.org/whl/cpu/
 torch==2.6.0+cpu
+tzlocal
 
 # ML/NLP dependencies
 sentence-transformers==3.4.1
