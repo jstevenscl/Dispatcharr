@@ -588,27 +588,13 @@ def parse_channels_only(source):
             logger.info(f"[parse_channels_only] Memory before opening file: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
         try:
-            # Create a parser with the desired options
-            #parser = etree.XMLParser(huge_tree=True, remove_blank_text=True)
-
-            # Count channels for progress reporting - use proper lxml approach
-            # Open the file first
-            logger.info(f"Opening file for initial channel count: {file_path}")
-            source_file = gzip.open(file_path, 'rb') if is_gzipped else open(file_path, 'rb')
-            if process:
-                logger.info(f"[parse_channels_only] Memory after opening file: {process.memory_info().rss / 1024 / 1024:.2f} MB")
-
-            # Count channels
+            # Attempt to count existing channels in the database
             try:
                 total_channels = EPGData.objects.filter(epg_source=source).count()
                 logger.info(f"Found {total_channels} existing channels for this source")
             except Exception as e:
                 logger.error(f"Error counting channels: {e}")
                 total_channels = 500  # Default estimate
-
-            # Close the file to reset position
-            logger.debug(f"Closing initial file handle")
-            source_file.close()
             if process:
                 logger.debug(f"[parse_channels_only] Memory after closing initial file: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
@@ -616,10 +602,10 @@ def parse_channels_only(source):
             send_epg_update(source.id, "parsing_channels", 25, total_channels=total_channels)
 
             # Reset file position for actual processing
-            logger.debug(f"Re-opening file for channel parsing: {file_path}")
+            logger.debug(f"Opening file for channel parsing: {file_path}")
             source_file = gzip.open(file_path, 'rb') if is_gzipped else open(file_path, 'rb')
             if process:
-                logger.debug(f"[parse_channels_only] Memory after re-opening file: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+                logger.debug(f"[parse_channels_only] Memory after opening file: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
             # Change iterparse to look for both channel and programme elements
             logger.debug(f"Creating iterparse context for channels and programmes")
