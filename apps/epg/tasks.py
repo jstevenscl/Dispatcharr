@@ -1445,17 +1445,42 @@ def fetch_schedules_direct(source):
 # -------------------------------
 def parse_xmltv_time(time_str):
     try:
+        # Basic format validation
+        if len(time_str) < 14:
+            logger.warning(f"XMLTV timestamp too short: '{time_str}', using as-is")
+            dt_obj = datetime.strptime(time_str, '%Y%m%d%H%M%S')
+            return timezone.make_aware(dt_obj, timezone=dt_timezone.utc)
+
+        # Parse base datetime
         dt_obj = datetime.strptime(time_str[:14], '%Y%m%d%H%M%S')
-        tz_sign = time_str[15]
-        tz_hours = int(time_str[16:18])
-        tz_minutes = int(time_str[18:20])
-        if tz_sign == '+':
-            dt_obj = dt_obj - timedelta(hours=tz_hours, minutes=tz_minutes)
-        elif tz_sign == '-':
-            dt_obj = dt_obj + timedelta(hours=tz_hours, minutes=tz_minutes)
-        aware_dt = timezone.make_aware(dt_obj, timezone=dt_timezone.utc)
-        logger.trace(f"Parsed XMLTV time '{time_str}' to {aware_dt}")
-        return aware_dt
+
+        # Handle timezone if present
+        if len(time_str) >= 20:  # Has timezone info
+            tz_sign = time_str[15]
+            tz_hours = int(time_str[16:18])
+            tz_minutes = int(time_str[18:20])
+
+            # Create a timezone object
+            if tz_sign == '+':
+                tz_offset = dt_timezone(timedelta(hours=tz_hours, minutes=tz_minutes))
+            elif tz_sign == '-':
+                tz_offset = dt_timezone(timedelta(hours=-tz_hours, minutes=-tz_minutes))
+            else:
+                tz_offset = dt_timezone.utc
+
+            # Make datetime aware with correct timezone
+            aware_dt = datetime.replace(dt_obj, tzinfo=tz_offset)
+            # Convert to UTC
+            aware_dt = aware_dt.astimezone(dt_timezone.utc)
+
+            logger.trace(f"Parsed XMLTV time '{time_str}' to {aware_dt}")
+            return aware_dt
+        else:
+            # No timezone info, assume UTC
+            aware_dt = timezone.make_aware(dt_obj, timezone=dt_timezone.utc)
+            logger.trace(f"Parsed XMLTV time without timezone '{time_str}' as UTC: {aware_dt}")
+            return aware_dt
+
     except Exception as e:
         logger.error(f"Error parsing XMLTV time '{time_str}': {e}", exc_info=True)
         raise

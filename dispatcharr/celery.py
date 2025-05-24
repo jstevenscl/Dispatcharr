@@ -50,7 +50,7 @@ app.conf.update(
 )
 
 # Add memory cleanup after task completion
-@task_postrun.connect  # Use the imported signal
+#@task_postrun.connect  # Use the imported signal
 def cleanup_task_memory(**kwargs):
     """Clean up memory after each task completes"""
     # Get task name from kwargs

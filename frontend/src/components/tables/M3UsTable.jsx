@@ -306,14 +306,14 @@ const M3UTable = () => {
       <Box>
         <Flex direction="column" gap={2}>
           <Flex justify="space-between" align="center">
-            <Text size="xs" fw={500}>
+            <Text size="xs" fw={500} style={{ width: '80px' }}>
               Parsing:
             </Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
           </Flex>
           {data.elapsed_time && (
             <Flex justify="space-between" align="center">
-              <Text size="xs" fw={500}>
+              <Text size="xs" fw={500} style={{ width: '80px' }}>
                 Elapsed:
               </Text>
               <Text size="xs">{elapsedTime}</Text>
@@ -321,7 +321,7 @@ const M3UTable = () => {
           )}
           {data.time_remaining && (
             <Flex justify="space-between" align="center">
-              <Text size="xs" fw={500}>
+              <Text size="xs" fw={500} style={{ width: '60px' }}>
                 Remaining:
               </Text>
               <Text size="xs">{timeRemaining}</Text>
@@ -329,7 +329,7 @@ const M3UTable = () => {
           )}
           {data.streams_processed && (
             <Flex justify="space-between" align="center">
-              <Text size="xs" fw={500}>
+              <Text size="xs" fw={500} style={{ width: '80px' }}>
                 Streams:
               </Text>
               <Text size="xs">{data.streams_processed}</Text>
@@ -561,7 +561,7 @@ const M3UTable = () => {
                 c="dimmed"
                 size="xs"
                 lineClamp={2}
-                style={{ lineHeight: 1.3 }}
+                style={{ lineHeight: 1.1 }}
               >
                 {value}
               </Text>

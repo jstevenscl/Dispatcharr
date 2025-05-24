@@ -59,9 +59,16 @@ class RedisClient:
                         client.config_set('save', '')  # Disable RDB snapshots
                         client.config_set('appendonly', 'no')  # Disable AOF logging
 
-                        # Set optimal memory settings
-                        client.config_set('maxmemory-policy', 'allkeys-lru')  # Use LRU eviction
-                        client.config_set('maxmemory', '256mb')  # Set reasonable memory limit
+                        # Set optimal memory settings with environment variable support
+                        # Get max memory from environment or use a larger default (512MB instead of 256MB)
+                        #max_memory = os.environ.get('REDIS_MAX_MEMORY', '512mb')
+                        #eviction_policy = os.environ.get('REDIS_EVICTION_POLICY', 'allkeys-lru')
+
+                        # Apply memory settings
+                        #client.config_set('maxmemory-policy', eviction_policy)
+                        #client.config_set('maxmemory', max_memory)
+
+                        #logger.info(f"Redis configured with maxmemory={max_memory}, policy={eviction_policy}")
 
                         # Disable protected mode when in debug mode
                         if os.environ.get('DISPATCHARR_DEBUG', '').lower() == 'true':
@@ -69,10 +76,18 @@ class RedisClient:
                             logger.warning("Redis protected mode disabled for debug environment")
 
                         logger.trace("Redis persistence disabled for better performance")
-                    except redis.exceptions.ResponseError:
-                        # This might fail if Redis is configured to prohibit CONFIG command
-                        # or if running in protected mode - that's okay
-                        logger.error("Could not modify Redis persistence settings (may be restricted)")
+                    except redis.exceptions.ResponseError as e:
+                        # Improve error handling for Redis configuration errors
+                        if "OOM" in str(e):
+                            logger.error(f"Redis OOM during configuration: {e}")
+                            # Try to increase maxmemory as an emergency measure
+                            try:
+                                client.config_set('maxmemory', '768mb')
+                                logger.warning("Applied emergency Redis memory increase to 768MB")
+                            except:
+                                pass
+                        else:
+                            logger.error(f"Redis configuration error: {e}")
 
                     logger.info(f"Connected to Redis at {redis_host}:{redis_port}/{redis_db}")
 
