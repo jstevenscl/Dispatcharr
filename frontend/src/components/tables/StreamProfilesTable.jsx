@@ -99,15 +99,17 @@ const StreamProfiles = () => {
         accessorKey: 'parameters',
         // size: 200,
         cell: ({ cell }) => (
-          <div
-            style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {cell.getValue()}
-          </div>
+          <Tooltip label={cell.getValue()}>
+            <div
+              style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {cell.getValue()}
+            </div>
+          </Tooltip>
         ),
       },
       {
