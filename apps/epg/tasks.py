@@ -732,7 +732,7 @@ def parse_channels_only(source):
                             except (ValueError, KeyError, TypeError):
                                 # Element might already be removed or detached
                                 pass
-                        cleanup_memory(log_usage=should_log_memory, force_collection=True)
+                        #cleanup_memory(log_usage=should_log_memory, force_collection=True)
 
                     except Exception as e:
                         # Just log the error and continue - don't let cleanup errors stop processing
@@ -746,60 +746,6 @@ def parse_channels_only(source):
                             logger.debug(f"[parse_channels_only] Memory usage after {processed_channels}: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
                     logger.debug(f"[parse_channels_only] Total elements processed: {total_elements_processed}")
-                    # Add periodic forced cleanup based on TOTAL ELEMENTS, not just channels
-                    # This ensures we clean up even if processing many non-channel elements
-                    if total_elements_processed % 1000 == 0:
-                        logger.info(f"[parse_channels_only] Performing preventative memory cleanup after {total_elements_processed} elements (found {processed_channels} channels)")
-                        # Close and reopen the parser to release memory
-                        if source_file and channel_parser:
-                            # First clear element references - safely with checks
-                            if 'elem' in locals() and elem is not None:
-                                try:
-                                    elem.clear()
-                                    parent = elem.getparent()
-                                    if parent is not None:
-                                        parent.remove(elem)
-                                except Exception as e:
-                                    logger.debug(f"Non-critical error during cleanup: {e}")
-
-                            # Reset parser state
-                            del channel_parser
-                            channel_parser = None
-                            gc.collect()
-
-                            # Perform thorough cleanup
-                            cleanup_memory(log_usage=should_log_memory, force_collection=True)
-
-                            # Create a new parser context - continue looking for both tags
-                            # This doesn't restart from the beginning but continues from current position
-                            channel_parser = etree.iterparse(source_file, events=('end',), tag=('channel', 'programme'))
-                            logger.info(f"[parse_channels_only] Recreated parser context after memory cleanup")
-
-                    # Also do cleanup based on processed channels as before
-                    elif processed_channels % 1000 == 0 and processed_channels > 0:
-                        logger.info(f"[parse_channels_only] Performing preventative memory cleanup at {processed_channels} channels")
-                        # Close and reopen the parser to release memory
-                        if source_file and channel_parser:
-                            # First clear element references - safely with checks
-                            if 'elem' in locals() and elem is not None:
-                                try:
-                                    elem.clear()
-                                    parent = elem.getparent()
-                                    if parent is not None:
-                                        parent.remove(elem)
-                                except Exception as e:
-                                    logger.debug(f"Non-critical error during cleanup: {e}")
-
-                            # Reset parser state
-                            del channel_parser
-                            channel_parser = None
-                            # Perform thorough cleanup
-                            cleanup_memory(log_usage=should_log_memory, force_collection=True)
-
-                            # Create a new parser context
-                            # This doesn't restart from the beginning but continues from current position
-                            channel_parser = etree.iterparse(source_file, events=('end',), tag=('channel', 'programme'))
-                            logger.info(f"[parse_channels_only] Recreated parser context after memory cleanup")
 
                     if processed_channels == total_channels:
                             if process:
@@ -860,7 +806,7 @@ def parse_channels_only(source):
         send_websocket_update('updates', 'update', {"success": True, "type": "epg_channels"})
 
         logger.info(f"Finished parsing channel info. Found {processed_channels} channels.")
-
+        time.sleep(10)
         return True
 
     except FileNotFoundError:
