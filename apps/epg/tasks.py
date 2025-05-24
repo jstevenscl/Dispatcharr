@@ -632,17 +632,6 @@ def parse_channels_only(source):
             for _, elem in channel_parser:
                 total_elements_processed += 1
 
-                # If we encounter a programme element, we've processed all channels
-                # Break out of the loop to avoid memory spike
-                if elem.tag == 'programme':
-                    logger.debug(f"[parse_channels_only] Found first programme element after processing {processed_channels} channels - exiting channel parsing")
-                    # Clean up the element before breaking
-                    elem.clear()
-                    parent = elem.getparent()
-                    if parent is not None:
-                        parent.remove(elem)
-                    break
-
                 # Only process channel elements
                 if elem.tag == 'channel':
                     channel_count += 1
@@ -818,8 +807,6 @@ def parse_channels_only(source):
                             # Reset parser state
                             del channel_parser
                             channel_parser = None
-                            gc.collect()
-
                             # Perform thorough cleanup
                             cleanup_memory(log_usage=should_log_memory, force_collection=True)
 
@@ -833,6 +820,20 @@ def parse_channels_only(source):
                                logger.info(f"[parse_channels_only] Processed all channels current memory: {process.memory_info().rss / 1024 / 1024:.2f} MB")
                             else:
                                 logger.info(f"[parse_channels_only] Processed all channels")
+                else:
+                    # Just clear the element to avoid memory leaks
+                    if elem is not None:
+                        elem.clear()
+                        parent = elem.getparent()
+                        if parent is not None:
+                            while elem.getprevious() is not None:
+                                del parent[0]
+                            try:
+                                parent.remove(elem)
+                            except (ValueError, KeyError, TypeError):
+                                pass
+                        del elem
+                    continue
 
         except (etree.XMLSyntaxError, Exception) as xml_error:
             logger.error(f"[parse_channels_only] XML parsing failed: {xml_error}")
