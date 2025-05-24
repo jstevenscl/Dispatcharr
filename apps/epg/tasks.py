@@ -806,7 +806,7 @@ def parse_channels_only(source):
         send_websocket_update('updates', 'update', {"success": True, "type": "epg_channels"})
 
         logger.info(f"Finished parsing channel info. Found {processed_channels} channels.")
-        time.sleep(10)
+
         return True
 
     except FileNotFoundError:
