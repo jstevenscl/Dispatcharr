@@ -11,6 +11,7 @@ import gc  # Add garbage collection module
 import json
 from lxml import etree  # Using lxml exclusively
 import psutil  # Add import for memory tracking
+import zipfile
 
 from celery import shared_task
 from django.conf import settings
@@ -546,8 +547,6 @@ def parse_channels_only(source):
                 process = psutil.Process()
                 initial_memory = process.memory_info().rss / 1024 / 1024
                 logger.debug(f"[parse_channels_only] Initial memory usage: {initial_memory:.2f} MB")
-            else:
-                logger.debug("Memory tracking disabled in production mode")
         except (ImportError, NameError):
             process = None
             should_log_memory = False
@@ -575,6 +574,7 @@ def parse_channels_only(source):
 
         # Stream parsing instead of loading entire file at once
         is_gzipped = file_path.endswith('.gz')
+        is_zipped = file_path.endswith('.zip')
 
         epgs_to_create = []
         epgs_to_update = []
@@ -603,7 +603,19 @@ def parse_channels_only(source):
 
             # Reset file position for actual processing
             logger.debug(f"Opening file for channel parsing: {file_path}")
-            source_file = gzip.open(file_path, 'rb') if is_gzipped else open(file_path, 'rb')
+
+            # Open the file based on its type
+            if is_gzipped:
+                source_file = gzip.open(file_path, 'rb')
+            elif is_zipped:
+                # For ZIP files, need to open the first file in the archive
+                zip_archive = zipfile.ZipFile(file_path, 'r')
+                # Use the first file in the archive
+                first_file = zip_archive.namelist()[0]
+                source_file = zip_archive.open(first_file, 'r')
+            else:
+                source_file = open(file_path, 'rb')
+
             if process:
                 logger.debug(f"[parse_channels_only] Memory after opening file: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
@@ -736,6 +748,14 @@ def parse_channels_only(source):
                     clear_element(elem)
                     continue
 
+        except zipfile.BadZipFile as zip_error:
+            logger.error(f"Bad ZIP file: {zip_error}")
+            # Update status to error
+            source.status = 'error'
+            source.last_message = f"Error parsing ZIP file: {str(zip_error)}"
+            source.save(update_fields=['status', 'last_message'])
+            send_epg_update(source.id, "parsing_channels", 100, status="error", error=str(zip_error))
+            return False
         except (etree.XMLSyntaxError, Exception) as xml_error:
             logger.error(f"[parse_channels_only] XML parsing failed: {xml_error}")
             # Update status to error
@@ -847,16 +867,14 @@ def parse_programs_for_tvg_id(epg_id):
             # Get current log level as a number
             current_log_level = logger.getEffectiveLevel()
 
-            # Only track memory usage when log level is TRACE or more verbose
-            should_log_memory = current_log_level <= 5
+            # Only track memory usage when log level is TRACE or more verbose or if running in DEBUG mode
+            should_log_memory = current_log_level <= 5 or settings.DEBUG
 
             if should_log_memory:
                 process = psutil.Process()
                 initial_memory = process.memory_info().rss / 1024 / 1024
                 logger.info(f"[parse_programs_for_tvg_id] Initial memory usage: {initial_memory:.2f} MB")
                 mem_before = initial_memory
-            else:
-                logger.debug("Memory tracking disabled in production mode")
         except ImportError:
             process = None
             should_log_memory = False
@@ -929,6 +947,7 @@ def parse_programs_for_tvg_id(epg_id):
 
         # Use streaming parsing to reduce memory usage
         is_gzipped = file_path.endswith('.gz')
+        is_zipped = file_path.endswith('.zip')
 
         logger.info(f"Parsing programs for tvg_id={epg.tvg_id} from {file_path}")
 
@@ -946,8 +965,17 @@ def parse_programs_for_tvg_id(epg_id):
         programs_processed = 0
 
         try:
-            # Open the file properly
-            source_file = gzip.open(file_path, 'rb') if is_gzipped else open(file_path, 'rb')
+            # Open the file based on its type
+            if is_gzipped:
+                source_file = gzip.open(file_path, 'rb')
+            elif is_zipped:
+                # For ZIP files, need to open the first file in the archive
+                zip_archive = zipfile.ZipFile(file_path, 'r')
+                # Use the first file in the archive
+                first_file = zip_archive.namelist()[0]
+                source_file = zip_archive.open(first_file, 'r')
+            else:
+                source_file = open(file_path, 'rb')
 
             # Stream parse the file using lxml's iterparse
             program_parser = etree.iterparse(source_file, events=('end',), tag='programme')
@@ -1024,6 +1052,9 @@ def parse_programs_for_tvg_id(epg_id):
 
             gc.collect()
 
+        except zipfile.BadZipFile as zip_error:
+            logger.error(f"Bad ZIP file: {zip_error}")
+            raise
         except etree.XMLSyntaxError as xml_error:
             logger.error(f"XML syntax error parsing program data: {xml_error}")
             raise
@@ -1105,8 +1136,6 @@ def parse_programs_for_source(epg_source, tvg_id=None):
             process = psutil.Process()
             initial_memory = process.memory_info().rss / 1024 / 1024
             logger.info(f"[parse_programs_for_source] Initial memory usage: {initial_memory:.2f} MB")
-        else:
-            logger.debug("Memory tracking disabled in production mode")
     except ImportError:
         logger.warning("psutil not available for memory tracking")
         process = None
