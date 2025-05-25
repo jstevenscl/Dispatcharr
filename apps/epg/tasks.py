@@ -601,19 +601,19 @@ def parse_channels_only(source):
             # Update progress after counting
             send_epg_update(source.id, "parsing_channels", 25, total_channels=total_channels)
 
-            # Reset file position for actual processing
-            logger.debug(f"Opening file for channel parsing: {file_path}")
-
             # Open the file based on its type
             if is_gzipped:
+                logger.debug(f"Opening gzipped file for channel parsing: {file_path}")
                 source_file = gzip.open(file_path, 'rb')
             elif is_zipped:
+                logger.debug(f"Opening zipped file for channel parsing: {file_path}")
                 # For ZIP files, need to open the first file in the archive
                 zip_archive = zipfile.ZipFile(file_path, 'r')
                 # Use the first file in the archive
                 first_file = zip_archive.namelist()[0]
                 source_file = zip_archive.open(first_file, 'r')
             else:
+                logger.debug(f"Opening file for channel parsing: {file_path}")
                 source_file = open(file_path, 'rb')
 
             if process:
@@ -967,8 +967,10 @@ def parse_programs_for_tvg_id(epg_id):
         try:
             # Open the file based on its type
             if is_gzipped:
+                logger.debug(f"Opening GZ file for parsing: {file_path}")
                 source_file = gzip.open(file_path, 'rb')
             elif is_zipped:
+                logger.debug(f"Opening ZIP file for parsing: {file_path}")
                 # For ZIP files, need to open the first file in the archive
                 zip_archive = zipfile.ZipFile(file_path, 'r')
                 # Use the first file in the archive
