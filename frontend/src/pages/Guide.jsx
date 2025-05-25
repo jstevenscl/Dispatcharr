@@ -78,31 +78,14 @@ export default function TVChannelGuide({ startDate, endDate }) {
       const fetched = await API.getGrid(); // GETs your EPG grid
       console.log(`Received ${fetched.length} programs`);
 
-      // Unique tvg_ids from returned programs
-      const programIds = [...new Set(fetched.map((p) => p.tvg_id))];
+      // Include ALL channels, sorted by channel number - don't filter by EPG data
+      const sortedChannels = Object.values(channels)
+        .sort((a, b) => (a.channel_number || Infinity) - (b.channel_number || Infinity));
 
-      // Filter your Redux/Zustand channels by matching tvg_id
-      const filteredChannels = Object.values(channels)
-        // Include channels with matching tvg_ids OR channels with null epg_data
-        .filter(
-          (ch) =>
-            programIds.includes(tvgsById[ch.epg_data_id]?.tvg_id) ||
-            programIds.includes(ch.uuid) ||
-            ch.epg_data_id === null
-        )
-        // Add sorting by channel_number
-        .sort(
-          (a, b) =>
-            (a.channel_number || Infinity) - (b.channel_number || Infinity)
-        );
+      console.log(`Using all ${sortedChannels.length} available channels`);
 
-      console.log(
-        `found ${filteredChannels.length} channels with matching tvg_ids`
-      );
-
-      setGuideChannels(filteredChannels);
-      setFilteredChannels(filteredChannels); // Initialize filtered channels
-      console.log(fetched);
+      setGuideChannels(sortedChannels);
+      setFilteredChannels(sortedChannels); // Initialize filtered channels
       setPrograms(fetched);
       setLoading(false);
     };
@@ -1210,13 +1193,51 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         paddingLeft: 0, // Remove any padding that might push content
                       }}
                     >
-                      {channelPrograms.map((program) => {
-                        return (
+                      {channelPrograms.length > 0 ? (
+                        channelPrograms.map((program) => (
                           <div key={`${channel.id}-${program.id}-${program.start_time}`}>
                             {renderProgram(program, start)}
                           </div>
-                        );
-                      })}
+                        ))
+                      ) : (
+                        // Simple placeholder for channels with no program data - 2 hour blocks
+                        <>
+                          {/* Generate repeating placeholder blocks every 2 hours across the timeline */}
+                          {Array.from({ length: Math.ceil(hourTimeline.length / 2) }).map((_, index) => (
+                            <Box
+                              key={`placeholder-${channel.id}-${index}`}
+                              style={{
+                                position: 'absolute',
+                                left: index * 2 * HOUR_WIDTH + 2,
+                                top: 0,
+                                width: 2 * HOUR_WIDTH - 4,
+                                height: rowHeight - 4,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Paper
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  backgroundColor: '#2D3748',
+                                  color: '#A0AEC0',
+                                  opacity: 0.8,
+                                  border: '1px dashed #718096',
+                                }}
+                              >
+                                <Text size="sm" align="center">
+                                  No Program Information Available
+                                </Text>
+                              </Paper>
+                            </Box>
+                          ))}
+                        </>
+                      )}
                     </Box>
                   </Box>
                 );
