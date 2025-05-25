@@ -240,13 +240,6 @@ def fetch_xmltv(source):
         send_epg_update(source.id, "downloading", 100, status="error", error="No URL provided and no valid local file exists")
         return False
 
-    # Clean up existing cache file
-    if os.path.exists(source.get_cache_file()):
-        try:
-            os.remove(source.get_cache_file())
-        except Exception as e:
-            logger.warning(f"Failed to remove existing cache file: {e}")
-
     logger.info(f"Fetching XMLTV data from source: {source.name}")
     try:
         # Get default user agent from settings
@@ -335,7 +328,16 @@ def fetch_xmltv(source):
             response.raise_for_status()
             logger.debug("XMLTV data fetched successfully.")
 
-            cache_file = source.get_cache_file()
+            # Define base paths for consistent file naming
+            cache_dir = os.path.join(settings.MEDIA_ROOT, "cached_epg")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            # Create temporary download file with .tmp extension
+            temp_download_path = os.path.join(cache_dir, f"{source.id}.tmp")
+            
+            # Define final paths based on content type
+            compressed_path = os.path.join(cache_dir, f"{source.id}.compressed");
+            xml_path = os.path.join(cache_dir, f"{source.id}.xml");
 
             # Check if we have content length for progress tracking
             total_size = int(response.headers.get('content-length', 0))
@@ -344,7 +346,8 @@ def fetch_xmltv(source):
             last_update_time = start_time
             update_interval = 0.5  # Only update every 0.5 seconds
 
-            with open(cache_file, 'wb') as f:
+            # Download to temporary file
+            with open(temp_download_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=16384):  # Increased chunk size for better performance
                     if chunk:
                         f.write(chunk)
@@ -389,65 +392,79 @@ def fetch_xmltv(source):
             content_type = response.headers.get('Content-Type', '').lower()
             original_url = source.url.lower()
 
-            # Default extension is xml
-            file_extension = '.xml'
+            # Is this file compressed?
+            is_compressed = False
+            if 'application/x-gzip' in content_type or 'application/gzip' in content_type or 'application/zip' in content_type:
+                is_compressed = True
+            elif original_url.endswith('.gz') or original_url.endswith('.zip'):
+                is_compressed = True
 
-            # Check content type first
-            if 'application/x-gzip' in content_type or 'application/gzip' in content_type:
-                file_extension = '.gz'
-            elif 'application/zip' in content_type:
-                file_extension = '.zip'
-            # If content type didn't help, try the URL
-            elif original_url.endswith('.gz'):
-                file_extension = '.gz'
-            elif original_url.endswith('.zip'):
-                file_extension = '.zip'
+            # Clean up old files before saving new ones
+            if os.path.exists(compressed_path):
+                try:
+                    os.remove(compressed_path)
+                    logger.debug(f"Removed old compressed file: {compressed_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to remove old compressed file: {e}")
 
-            # Update the cache file path with the correct extension
-            base_cache_path = os.path.splitext(cache_file)[0]
-            new_cache_file = f"{base_cache_path}{file_extension}"
+            if os.path.exists(xml_path):
+                try:
+                    os.remove(xml_path)
+                    logger.debug(f"Removed old XML file: {xml_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to remove old XML file: {e}")
 
-            # Actually rename the file on disk
-            logger.debug(f"Renaming file from {cache_file} to {new_cache_file}")
-            try:
-                os.rename(cache_file, new_cache_file)
-                cache_file = new_cache_file  # Update the variable to point to the renamed file
-            except OSError as e:
-                logger.error(f"Failed to rename temporary file: {e}")
-                # If rename fails, keep using the original file
-                logger.warning(f"Continuing with temporary file: {cache_file}")
-                new_cache_file = cache_file  # Fall back to the tmp file
+            # Rename the temp file to appropriate final path
+            if is_compressed:
+                try:
+                    os.rename(temp_download_path, compressed_path)
+                    logger.debug(f"Renamed temp file to compressed file: {compressed_path}")
+                    current_file_path = compressed_path
+                except OSError as e:
+                    logger.error(f"Failed to rename temp file to compressed file: {e}")
+                    current_file_path = temp_download_path  # Fall back to using temp file
+            else:
+                try:
+                    os.rename(temp_download_path, xml_path)
+                    logger.debug(f"Renamed temp file to XML file: {xml_path}")
+                    current_file_path = xml_path
+                except OSError as e:
+                    logger.error(f"Failed to rename temp file to XML file: {e}")
+                    current_file_path = temp_download_path  # Fall back to using temp file
 
             # Now extract the file if it's compressed
-            extracted_file = None
-            if file_extension in ('.gz', '.zip'):
+            if is_compressed:
                 try:
-                    logger.info(f"Extracting compressed file {new_cache_file}")
+                    logger.info(f"Extracting compressed file {current_file_path}")
                     send_epg_update(source.id, "extracting", 0, message="Extracting downloaded file")
 
-                    extracted_file = extract_compressed_file(new_cache_file)
+                    # Always extract to the standard XML path
+                    extracted = extract_compressed_file(current_file_path, xml_path)
 
-                    if extracted_file:
-                        logger.info(f"Successfully extracted to {extracted_file}")
-                        send_epg_update(source.id, "extracting", 100, message=f"File extracted successfully: {os.path.basename(extracted_file)}")
+                    if extracted:
+                        logger.info(f"Successfully extracted to {xml_path}")
+                        send_epg_update(source.id, "extracting", 100, message=f"File extracted successfully")
                         # Update the source's file_path to the extracted XML file
-                        source.file_path = extracted_file
+                        source.file_path = xml_path
+                        
+                        # Store the original compressed file path
+                        source.original_file_path = current_file_path
                     else:
                         logger.error("Extraction failed, using compressed file")
                         send_epg_update(source.id, "extracting", 100, status="error", message="Extraction failed, using compressed file")
                         # Use the compressed file
-                        source.file_path = new_cache_file
+                        source.file_path = current_file_path
                 except Exception as e:
                     logger.error(f"Error extracting file: {str(e)}", exc_info=True)
                     send_epg_update(source.id, "extracting", 100, status="error", message=f"Error during extraction: {str(e)}")
                     # Use the compressed file if extraction fails
-                    source.file_path = new_cache_file
+                    source.file_path = current_file_path
             else:
                 # It's already an XML file
-                source.file_path = new_cache_file
+                source.file_path = current_file_path
 
             # Update the source's file_path to reflect the correct file
-            source.save(update_fields=['file_path', 'status'])
+            source.save(update_fields=['file_path', 'status', 'original_file_path'])
 
             # Update status to parsing
             source.status = 'parsing'
@@ -559,29 +576,37 @@ def fetch_xmltv(source):
         return False
 
 
-def extract_compressed_file(file_path, delete_original=True):
+def extract_compressed_file(file_path, output_path=None, delete_original=False):
     """
     Extracts a compressed file (.gz or .zip) to an XML file.
 
     Args:
         file_path: Path to the compressed file
+        output_path: Specific path where the file should be extracted (optional)
         delete_original: Whether to delete the original compressed file after successful extraction
 
     Returns:
         Path to the extracted XML file, or None if extraction failed
     """
     try:
-        base_path = os.path.splitext(file_path)[0]
-        extracted_path = f"{base_path}.xml"
+        if output_path is None:
+            base_path = os.path.splitext(file_path)[0]
+            extracted_path = f"{base_path}.xml"
+        else:
+            extracted_path = output_path
 
         # Make sure the output path doesn't already exist
         if os.path.exists(extracted_path):
             try:
                 os.remove(extracted_path)
+                logger.info(f"Removed existing extracted file: {extracted_path}")
             except Exception as e:
                 logger.warning(f"Failed to remove existing extracted file: {e}")
-                # Try with a unique filename instead
-                extracted_path = f"{base_path}_{uuid.uuid4().hex[:8]}.xml"
+                # If we can't delete the existing file and no specific output was requested,
+                # create a unique filename instead
+                if output_path is None:
+                    base_path = os.path.splitext(file_path)[0]
+                    extracted_path = f"{base_path}_{uuid.uuid4().hex[:8]}.xml"
 
         if file_path.endswith('.gz'):
             logger.debug(f"Extracting gzip file: {file_path}")
@@ -1588,14 +1613,14 @@ def extract_custom_properties(prog):
 
     return custom_props
 
-def clear_element(elem):
-    """Clear an XML element and its parent to free memory."""
-    try:
-        elem.clear()
-        parent = elem.getparent()
-        if parent is not None:
-            while elem.getprevious() is not None:
-                del parent[0]
+
+
+
+
+
+
+
+            while elem.getprevious() is not None:        if parent is not None:        parent = elem.getparent()        elem.clear()    try:    """Clear an XML element and its parent to free memory."""def clear_element(elem):                del parent[0]
             parent.remove(elem)
     except Exception as e:
         logger.warning(f"Error clearing XML element: {e}", exc_info=True)
