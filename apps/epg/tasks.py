@@ -372,6 +372,43 @@ def fetch_xmltv(source):
             # Send completion notification
             send_epg_update(source.id, "downloading", 100)
 
+            # Determine the appropriate file extension based on content type or URL
+            content_type = response.headers.get('Content-Type', '').lower()
+            original_url = source.url.lower()
+
+            # Default extension is xml
+            file_extension = '.xml'
+
+            # Check content type first
+            if 'application/x-gzip' in content_type or 'application/gzip' in content_type:
+                file_extension = '.gz'
+            elif 'application/zip' in content_type:
+                file_extension = '.zip'
+            # If content type didn't help, try the URL
+            elif original_url.endswith('.gz'):
+                file_extension = '.gz'
+            elif original_url.endswith('.zip'):
+                file_extension = '.zip'
+
+            # Update the cache file path with the correct extension
+            base_cache_path = os.path.splitext(cache_file)[0]
+            new_cache_file = f"{base_cache_path}{file_extension}"
+
+            # Actually rename the file on disk
+            logger.debug(f"Renaming file from {cache_file} to {new_cache_file}")
+            try:
+                os.rename(cache_file, new_cache_file)
+                cache_file = new_cache_file  # Update the variable to point to the renamed file
+            except OSError as e:
+                logger.error(f"Failed to rename temporary file: {e}")
+                # If rename fails, keep using the original file
+                logger.warning(f"Continuing with temporary file: {cache_file}")
+                new_cache_file = cache_file  # Fall back to the tmp file
+
+            # Update the source's file_path to reflect the correct extension
+            source.file_path = new_cache_file
+            source.save(update_fields=['file_path', 'status'])
+
             # Update status to parsing
             source.status = 'parsing'
             source.save(update_fields=['status'])
@@ -489,6 +526,9 @@ def parse_channels_only(source):
 
     # Send initial parsing notification
     send_epg_update(source.id, "parsing_channels", 0)
+
+    process = None
+    should_log_memory = False
 
     try:
         # Check if the file exists
@@ -860,6 +900,7 @@ def parse_programs_for_tvg_id(epg_id):
     source_file = None
     program_parser = None
     programs_to_create = []
+    programs_processed = 0
     try:
         # Add memory tracking only in trace mode or higher
         try:
@@ -962,7 +1003,6 @@ def parse_programs_for_tvg_id(epg_id):
 
         programs_to_create = []
         batch_size = 1000  # Process in batches to limit memory usage
-        programs_processed = 0
 
         try:
             # Open the file based on its type

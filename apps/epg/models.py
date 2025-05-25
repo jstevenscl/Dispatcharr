@@ -59,8 +59,46 @@ class EPGSource(models.Model):
         return self.name
 
     def get_cache_file(self):
-        # Decide on file extension
-        file_ext = ".gz" if self.url.lower().endswith('.gz') else ".xml"
+        import mimetypes
+
+        # Use a temporary extension for initial download
+        # The actual extension will be determined after content inspection
+        file_ext = ".tmp"
+
+        # If file_path is already set and contains an extension, use that
+        # This handles cases where we've already detected the proper type
+        if self.file_path and os.path.exists(self.file_path):
+            _, existing_ext = os.path.splitext(self.file_path)
+            if existing_ext:
+                file_ext = existing_ext
+            else:
+                # Try to detect the MIME type and map to extension
+                mime_type, _ = mimetypes.guess_type(self.file_path)
+                if mime_type:
+                    if mime_type == 'application/gzip' or mime_type == 'application/x-gzip':
+                        file_ext = '.gz'
+                    elif mime_type == 'application/zip':
+                        file_ext = '.zip'
+                    elif mime_type == 'application/xml' or mime_type == 'text/xml':
+                        file_ext = '.xml'
+                # For files without mime type detection, try peeking at content
+                else:
+                    try:
+                        with open(self.file_path, 'rb') as f:
+                            header = f.read(4)
+                            # Check for gzip magic number (1f 8b)
+                            if header[:2] == b'\x1f\x8b':
+                                file_ext = '.gz'
+                            # Check for zip magic number (PK..)
+                            elif header[:2] == b'PK':
+                                file_ext = '.zip'
+                            # Check for XML
+                            elif header[:5] == b'<?xml' or header[:5] == b'<tv>':
+                                file_ext = '.xml'
+                    except Exception as e:
+                        # If we can't read the file, just keep the default extension
+                        pass
+
         filename = f"{self.id}{file_ext}"
 
         # Build full path in MEDIA_ROOT/cached_epg
