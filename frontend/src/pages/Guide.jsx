@@ -118,9 +118,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
     if (selectedProfileId !== 'all') {
       // Get the profile's enabled channels
       const profileChannels = profiles[selectedProfileId]?.channels || [];
-      const enabledChannelIds = profileChannels
-        .filter((pc) => pc.enabled)
-        .map((pc) => pc.id);
+      // Check if channels is a Set (from the error message, it likely is)
+      const enabledChannelIds = Array.isArray(profileChannels)
+        ? profileChannels.filter((pc) => pc.enabled).map((pc) => pc.id)
+        : profiles[selectedProfileId]?.channels instanceof Set
+          ? Array.from(profiles[selectedProfileId].channels)
+          : [];
 
       result = result.filter((channel) =>
         enabledChannelIds.includes(channel.id)
