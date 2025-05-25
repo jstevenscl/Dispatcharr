@@ -995,22 +995,8 @@ def parse_programs_for_tvg_id(epg_id):
                             custom_properties=custom_properties_json
                         ))
                         programs_processed += 1
-                        del custom_props
-                        del custom_properties_json
-                        del start_time
-                        del end_time
-                        del title
-                        del desc
-                        del sub_title
-                        elem.clear()
-                        parent = elem.getparent()
-                        if parent is not None:
-                            while elem.getprevious() is not None:
-                                del parent[0]
-                            parent.remove(elem)
-                        del elem
-                        del parent
-                        #gc.collect()
+                        # Clear the element to free memory
+                        clear_element(elem)
                         # Batch processing
                         if len(programs_to_create) >= batch_size:
                             ProgramData.objects.bulk_create(programs_to_create)
