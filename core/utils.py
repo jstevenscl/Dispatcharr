@@ -303,3 +303,30 @@ def cleanup_memory(log_usage=False, force_collection=True):
         except (ImportError, Exception):
             pass
     logger.trace("Memory cleanup complete for django")
+
+def is_protected_path(file_path):
+    """
+    Determine if a file path is in a protected directory that shouldn't be deleted.
+
+    Args:
+        file_path (str): The file path to check
+
+    Returns:
+        bool: True if the path is protected, False otherwise
+    """
+    if not file_path:
+        return False
+
+    # List of protected directory prefixes
+    protected_dirs = [
+        '/data/epgs',     # EPG files mapped from host
+        '/data/uploads',   # User uploaded files
+        '/data/m3us'       # M3U files mapped from host
+    ]
+
+    # Check if the path starts with any protected directory
+    for protected_dir in protected_dirs:
+        if file_path.startswith(protected_dir):
+            return True
+
+    return False

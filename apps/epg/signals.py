@@ -3,8 +3,10 @@ from django.dispatch import receiver
 from .models import EPGSource
 from .tasks import refresh_epg_data, delete_epg_refresh_task_by_id
 from django_celery_beat.models import PeriodicTask, IntervalSchedule
+from core.utils import is_protected_path
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -95,3 +97,31 @@ def update_status_on_active_change(sender, instance, **kwargs):
         except EPGSource.DoesNotExist:
             # New record, will use default status
             pass
+
+@receiver(post_delete, sender=EPGSource)
+def delete_cached_files(sender, instance, **kwargs):
+    """
+    Delete cached files associated with an EPGSource when it's deleted.
+    Only deletes files that aren't in protected directories.
+    """
+    # Check and delete the main file path if not protected
+    if instance.file_path and os.path.exists(instance.file_path):
+        if is_protected_path(instance.file_path):
+            logger.info(f"Skipping deletion of protected file: {instance.file_path}")
+        else:
+            try:
+                os.remove(instance.file_path)
+                logger.info(f"Deleted cached file: {instance.file_path}")
+            except OSError as e:
+                logger.error(f"Error deleting cached file {instance.file_path}: {e}")
+
+    # Check and delete the extracted file path if it exists, is different from main path, and not protected
+    if instance.extracted_file_path and os.path.exists(instance.extracted_file_path) and instance.extracted_file_path != instance.file_path:
+        if is_protected_path(instance.extracted_file_path):
+            logger.info(f"Skipping deletion of protected extracted file: {instance.extracted_file_path}")
+        else:
+            try:
+                os.remove(instance.extracted_file_path)
+                logger.info(f"Deleted extracted file: {instance.extracted_file_path}")
+            except OSError as e:
+                logger.error(f"Error deleting extracted file {instance.extracted_file_path}: {e}")
