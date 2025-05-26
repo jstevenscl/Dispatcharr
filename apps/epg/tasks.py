@@ -212,11 +212,21 @@ def fetch_xmltv(source):
         # Check if the existing file is compressed and we need to extract it
         if source.file_path.endswith(('.gz', '.zip')) and not source.file_path.endswith('.xml'):
             try:
-                extracted_path = extract_compressed_file(source.file_path)
+                # Define the path for the extracted file in the cache directory
+                cache_dir = os.path.join(settings.MEDIA_ROOT, "cached_epg")
+                os.makedirs(cache_dir, exist_ok=True)
+                xml_path = os.path.join(cache_dir, f"{source.id}.xml")
+
+                # Extract to the cache location keeping the original
+                extracted_path = extract_compressed_file(source.file_path, xml_path, delete_original=False)
+
                 if extracted_path:
-                    logger.info(f"Extracted existing compressed file to: {extracted_path}")
-                    source.file_path = extracted_path
-                    source.save(update_fields=['file_path'])
+                    logger.info(f"Extracted mapped compressed file to: {extracted_path}")
+                    # Update to use extracted_file_path instead of changing file_path
+                    source.extracted_file_path = extracted_path
+                    source.save(update_fields=['extracted_file_path'])
+                else:
+                    logger.error(f"Failed to extract mapped compressed file. Using original file: {source.file_path}")
             except Exception as e:
                 logger.error(f"Failed to extract existing compressed file: {e}")
                 # Continue with the original file if extraction fails
@@ -331,13 +341,9 @@ def fetch_xmltv(source):
             # Define base paths for consistent file naming
             cache_dir = os.path.join(settings.MEDIA_ROOT, "cached_epg")
             os.makedirs(cache_dir, exist_ok=True)
-            
+
             # Create temporary download file with .tmp extension
             temp_download_path = os.path.join(cache_dir, f"{source.id}.tmp")
-            
-            # Define final paths based on content type
-            compressed_path = os.path.join(cache_dir, f"{source.id}.compressed");
-            xml_path = os.path.join(cache_dir, f"{source.id}.xml");
 
             # Check if we have content length for progress tracking
             total_size = int(response.headers.get('content-length', 0))
@@ -388,16 +394,21 @@ def fetch_xmltv(source):
             # Send completion notification
             send_epg_update(source.id, "downloading", 100)
 
-            # Determine the appropriate file extension based on content type or URL
-            content_type = response.headers.get('Content-Type', '').lower()
-            original_url = source.url.lower()
+            # Determine the appropriate file extension based on content detection
+            with open(temp_download_path, 'rb') as f:
+                content_sample = f.read(1024)  # Just need the first 1KB to detect format
 
-            # Is this file compressed?
-            is_compressed = False
-            if 'application/x-gzip' in content_type or 'application/gzip' in content_type or 'application/zip' in content_type:
-                is_compressed = True
-            elif original_url.endswith('.gz') or original_url.endswith('.zip'):
-                is_compressed = True
+            # Use our helper function to detect the format
+            format_type, is_compressed, file_extension = detect_file_format(
+                file_path=source.url,  # Original URL as a hint
+                content=content_sample  # Actual file content for detection
+            )
+
+            logger.debug(f"File format detection results: type={format_type}, compressed={is_compressed}, extension={file_extension}")
+
+            # Ensure consistent final paths
+            compressed_path = os.path.join(cache_dir, f"{source.id}{file_extension}" if is_compressed else f"{source.id}.compressed")
+            xml_path = os.path.join(cache_dir, f"{source.id}.xml")
 
             # Clean up old files before saving new ones
             if os.path.exists(compressed_path):
@@ -439,32 +450,33 @@ def fetch_xmltv(source):
                     send_epg_update(source.id, "extracting", 0, message="Extracting downloaded file")
 
                     # Always extract to the standard XML path
-                    extracted = extract_compressed_file(current_file_path, xml_path)
+                    extracted = extract_compressed_file(current_file_path, xml_path, delete_original=False)
 
                     if extracted:
                         logger.info(f"Successfully extracted to {xml_path}")
                         send_epg_update(source.id, "extracting", 100, message=f"File extracted successfully")
-                        # Update the source's file_path to the extracted XML file
-                        source.file_path = xml_path
-                        
-                        # Store the original compressed file path
-                        source.original_file_path = current_file_path
+                        # Update to store both paths properly
+                        source.file_path = current_file_path
+                        source.extracted_file_path = xml_path
                     else:
                         logger.error("Extraction failed, using compressed file")
                         send_epg_update(source.id, "extracting", 100, status="error", message="Extraction failed, using compressed file")
                         # Use the compressed file
                         source.file_path = current_file_path
+                        source.extracted_file_path = None
                 except Exception as e:
                     logger.error(f"Error extracting file: {str(e)}", exc_info=True)
                     send_epg_update(source.id, "extracting", 100, status="error", message=f"Error during extraction: {str(e)}")
                     # Use the compressed file if extraction fails
                     source.file_path = current_file_path
+                    source.extracted_file_path = None
             else:
                 # It's already an XML file
                 source.file_path = current_file_path
+                source.extracted_file_path = None
 
-            # Update the source's file_path to reflect the correct file
-            source.save(update_fields=['file_path', 'status', 'original_file_path'])
+            # Update the source's file paths
+            source.save(update_fields=['file_path', 'status', 'extracted_file_path'])
 
             # Update status to parsing
             source.status = 'parsing'
@@ -608,7 +620,13 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
                     base_path = os.path.splitext(file_path)[0]
                     extracted_path = f"{base_path}_{uuid.uuid4().hex[:8]}.xml"
 
-        if file_path.endswith('.gz'):
+        # Use our detection helper to determine the file format instead of relying on extension
+        with open(file_path, 'rb') as f:
+            content_sample = f.read(4096)  # Read a larger sample to ensure accurate detection
+
+        format_type, is_compressed, _ = detect_file_format(file_path=file_path, content=content_sample)
+
+        if format_type == 'gzip':
             logger.debug(f"Extracting gzip file: {file_path}")
             with gzip.open(file_path, 'rb') as gz_file:
                 with open(extracted_path, 'wb') as out_file:
@@ -625,7 +643,7 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
 
             return extracted_path
 
-        elif file_path.endswith('.zip'):
+        elif format_type == 'zip':
             logger.debug(f"Extracting zip file: {file_path}")
             with zipfile.ZipFile(file_path, 'r') as zip_file:
                 # Find the first XML file in the ZIP archive
@@ -653,7 +671,7 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
             return extracted_path
 
         else:
-            logger.error(f"Unsupported compressed file format: {file_path}")
+            logger.error(f"Unsupported or unrecognized compressed file format: {file_path} (detected as: {format_type})")
             return None
 
     except Exception as e:
@@ -662,7 +680,8 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
 
 
 def parse_channels_only(source):
-    file_path = source.file_path
+    # Use extracted file if available, otherwise use the original file path
+    file_path = source.extracted_file_path if source.extracted_file_path else source.file_path
     if not file_path:
         file_path = source.get_cache_file()
 
@@ -1058,7 +1077,7 @@ def parse_programs_for_tvg_id(epg_id):
         # This is faster for most database engines
         ProgramData.objects.filter(epg=epg).delete()
 
-        file_path = epg_source.file_path
+        file_path = epg_source.extracted_file_path if epg_source.extracted_file_path else epg_source.file_path
         if not file_path:
             file_path = epg_source.get_cache_file()
 
@@ -1113,13 +1132,13 @@ def parse_programs_for_tvg_id(epg_id):
 
         # Use streaming parsing to reduce memory usage
         # No need to check file type anymore since it's always XML
-        logger.info(f"Parsing programs for tvg_id={epg.tvg_id} from {file_path}")
+        logger.debug(f"Parsing programs for tvg_id={epg.tvg_id} from {file_path}")
 
         # Memory usage tracking
         if process:
             try:
                 mem_before = process.memory_info().rss / 1024 / 1024
-                logger.info(f"[parse_programs_for_tvg_id] Memory before parsing {epg.tvg_id} -  {mem_before:.2f} MB")
+                logger.debug(f"[parse_programs_for_tvg_id] Memory before parsing {epg.tvg_id} -  {mem_before:.2f} MB")
             except Exception as e:
                 logger.warning(f"Error tracking memory: {e}")
                 mem_before = 0
@@ -1613,14 +1632,81 @@ def extract_custom_properties(prog):
 
     return custom_props
 
-
-
-
-
-
-
-
-            while elem.getprevious() is not None:        if parent is not None:        parent = elem.getparent()        elem.clear()    try:    """Clear an XML element and its parent to free memory."""def clear_element(elem):                del parent[0]
+def clear_element(elem):
+    """Clear an XML element and its parent to free memory."""
+    try:
+        elem.clear()
+        parent = elem.getparent()
+        if parent is not None:
+            while elem.getprevious() is not None:
+                del parent[0]
             parent.remove(elem)
     except Exception as e:
         logger.warning(f"Error clearing XML element: {e}", exc_info=True)
+
+
+def detect_file_format(file_path=None, content=None):
+    """
+    Detect file format by examining content or file path.
+
+    Args:
+        file_path: Path to file (optional)
+        content: Raw file content bytes (optional)
+
+    Returns:
+        tuple: (format_type, is_compressed, file_extension)
+        format_type: 'gzip', 'zip', 'xml', or 'unknown'
+        is_compressed: Boolean indicating if the file is compressed
+        file_extension: Appropriate file extension including dot (.gz, .zip, .xml)
+    """
+    # Default return values
+    format_type = 'unknown'
+    is_compressed = False
+    file_extension = '.tmp'
+
+    # First priority: check content magic numbers as they're most reliable
+    if content:
+        # We only need the first few bytes for magic number detection
+        header = content[:20] if len(content) >= 20 else content
+
+        # Check for gzip magic number (1f 8b)
+        if len(header) >= 2 and header[:2] == b'\x1f\x8b':
+            return 'gzip', True, '.gz'
+
+        # Check for zip magic number (PK..)
+        if len(header) >= 2 and header[:2] == b'PK':
+            return 'zip', True, '.zip'
+
+        # Check for XML - either standard XML header or XMLTV-specific tag
+        if len(header) >= 5 and (b'<?xml' in header or b'<tv>' in header):
+            return 'xml', False, '.xml'
+
+    # Second priority: check file extension - focus on the final extension for compression
+    if file_path:
+        logger.debug(f"Detecting file format for: {file_path}")
+
+        # Handle compound extensions like .xml.gz - prioritize compression extensions
+        lower_path = file_path.lower()
+
+        # Check for compression extensions explicitly
+        if lower_path.endswith('.gz') or lower_path.endswith('.gzip'):
+            return 'gzip', True, '.gz'
+        elif lower_path.endswith('.zip'):
+            return 'zip', True, '.zip'
+        elif lower_path.endswith('.xml'):
+            return 'xml', False, '.xml'
+
+        # Fallback to mimetypes only if direct extension check doesn't work
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(file_path)
+        logger.debug(f"Guessed MIME type: {mime_type}")
+        if mime_type:
+            if mime_type == 'application/gzip' or mime_type == 'application/x-gzip':
+                return 'gzip', True, '.gz'
+            elif mime_type == 'application/zip':
+                return 'zip', True, '.zip'
+            elif mime_type == 'application/xml' or mime_type == 'text/xml':
+                return 'xml', False, '.xml'
+
+    # If we reach here, we couldn't reliably determine the format
+    return format_type, is_compressed, file_extension

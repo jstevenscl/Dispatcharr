@@ -7,9 +7,6 @@ import logging
 import re
 import time
 import os
-import gzip
-import zipfile
-import uuid
 from core.utils import RedisClient, send_websocket_update
 from apps.proxy.ts_proxy.channel_status import ChannelStatus
 from apps.m3u.models import M3UAccount
@@ -19,13 +16,11 @@ from apps.epg.tasks import refresh_epg_data
 from .models import CoreSettings
 from apps.channels.models import Stream, ChannelStream
 from django.db import transaction
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 EPG_WATCH_DIR = '/data/epgs'
 M3U_WATCH_DIR = '/data/m3us'
-EPG_CACHE_DIR = os.path.join(settings.MEDIA_ROOT, "cached_epg")
 MIN_AGE_SECONDS = 6
 STARTUP_SKIP_AGE = 30
 REDIS_PREFIX = "processed_file:"
@@ -50,58 +45,6 @@ def throttled_log(logger_method, message, key=None, *args, **kwargs):
     if key not in _last_log_times or (now - _last_log_times[key]) >= LOG_THROTTLE_SECONDS:
         logger_method(message, *args, **kwargs)
         _last_log_times[key] = now
-
-def extract_compressed_file(file_path):
-    """
-    Extracts a compressed file (.gz or .zip) to an XML file in the cache directory.
-
-    Args:
-        file_path: Path to the compressed file
-
-    Returns:
-        Path to the extracted XML file, or None if extraction failed
-    """
-    try:
-        # Create cache directory if it doesn't exist
-        os.makedirs(EPG_CACHE_DIR, exist_ok=True)
-
-        # Generate a unique filename for the extracted file
-        extracted_filename = f"extracted_{uuid.uuid4().hex[:8]}.xml"
-        extracted_path = os.path.join(EPG_CACHE_DIR, extracted_filename)
-
-        if file_path.endswith('.gz'):
-            logger.debug(f"Extracting gzip file: {file_path}")
-            with gzip.open(file_path, 'rb') as gz_file:
-                with open(extracted_path, 'wb') as out_file:
-                    out_file.write(gz_file.read())
-            logger.info(f"Successfully extracted gzip file to: {extracted_path}")
-            return extracted_path
-
-        elif file_path.endswith('.zip'):
-            logger.debug(f"Extracting zip file: {file_path}")
-            with zipfile.ZipFile(file_path, 'r') as zip_file:
-                # Find the first XML file in the ZIP archive
-                xml_files = [f for f in zip_file.namelist() if f.lower().endswith('.xml')]
-
-                if not xml_files:
-                    logger.error("No XML file found in ZIP archive")
-                    return None
-
-                # Extract the first XML file
-                xml_content = zip_file.read(xml_files[0])
-                with open(extracted_path, 'wb') as out_file:
-                    out_file.write(xml_content)
-
-            logger.info(f"Successfully extracted zip file to: {extracted_path}")
-            return extracted_path
-
-        else:
-            logger.error(f"Unsupported compressed file format: {file_path}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error extracting {file_path}: {str(e)}", exc_info=True)
-        return None
 
 @shared_task
 def beat_periodic_task():
@@ -235,9 +178,9 @@ def scan_and_process_files():
         if not filename.endswith('.xml') and not filename.endswith('.gz') and not filename.endswith('.zip'):
             # Use trace level if not first scan
             if _first_scan_completed:
-                logger.trace(f"Skipping {filename}: Not an XML, GZ, or ZIP file")
+                logger.trace(f"Skipping {filename}: Not an XML, GZ or zip file")
             else:
-                logger.debug(f"Skipping {filename}: Not an XML, GZ, or ZIP file")
+                logger.debug(f"Skipping {filename}: Not an XML, GZ or zip file")
             epg_skipped += 1
             continue
 
@@ -249,7 +192,7 @@ def scan_and_process_files():
         # Instead of assuming old files were processed, check if they exist in the database
         if not stored_mtime and age > STARTUP_SKIP_AGE:
             # Check if this file is already in the database
-            existing_epg = EPGSource.objects.filter(original_file_path=filepath).exists()
+            existing_epg = EPGSource.objects.filter(file_path=filepath).exists()
             if existing_epg:
                 # Use trace level if not first scan
                 if _first_scan_completed:
@@ -284,39 +227,11 @@ def scan_and_process_files():
             continue
 
         try:
-            extracted_path = None
-            is_compressed = filename.endswith('.gz') or filename.endswith('.zip')
-
-            # Extract compressed files
-            if is_compressed:
-                logger.info(f"Detected compressed EPG file: {filename}, extracting")
-                extracted_path = extract_compressed_file(filepath)
-
-                if not extracted_path:
-                    logger.error(f"Failed to extract compressed file: {filename}")
-                    epg_errors += 1
-                    continue
-
-                logger.info(f"Successfully extracted {filename} to {extracted_path}")
-
-            # Set the file path to use (either extracted or original)
-            file_to_use = extracted_path if extracted_path else filepath
-
-            epg_source, created = EPGSource.objects.get_or_create(
-                original_file_path=filepath,
-                defaults={
-                    "name": filename,
-                    "source_type": "xmltv",
-                    "is_active": CoreSettings.get_auto_import_mapped_files() in [True, "true", "True"],
-                    "file_path": file_to_use
-                }
-            )
-
-            # If the source already exists but we extracted a new file, update its file_path
-            if not created and extracted_path:
-                epg_source.file_path = extracted_path
-                epg_source.save(update_fields=['file_path'])
-                logger.info(f"Updated existing EPG source with new extracted file: {extracted_path}")
+            epg_source, created = EPGSource.objects.get_or_create(file_path=filepath, defaults={
+                "name": filename,
+                "source_type": "xmltv",
+                "is_active": CoreSettings.get_auto_import_mapped_files() in [True, "true", "True"],
+            })
 
             redis_client.set(redis_key, mtime, ex=REDIS_TTL)
 

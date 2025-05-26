@@ -32,8 +32,8 @@ class EPGSource(models.Model):
     api_key = models.CharField(max_length=255, blank=True, null=True)  # For Schedules Direct
     is_active = models.BooleanField(default=True)
     file_path = models.CharField(max_length=1024, blank=True, null=True)
-    original_file_path = models.CharField(max_length=1024, blank=True, null=True,
-                                         help_text="Original path to compressed file before extraction")
+    extracted_file_path = models.CharField(max_length=1024, blank=True, null=True,
+                                         help_text="Path to extracted XML file after decompression")
     refresh_interval = models.IntegerField(default=0)
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
