@@ -84,13 +84,19 @@ class DiscoverAPIView(APIView):
 
         logger.debug(f"Calculated tuner count: {tuner_count} (limited profiles: {limited_tuners}, custom streams: {custom_stream_count}, unlimited: {has_unlimited})")
 
+        # Create a unique DeviceID for the HDHomeRun device based on profile ID or a default value
+        device_ID = "12345678"  # Default DeviceID
+        friendly_name = "Dispatcharr HDHomeRun"
+        if profile is not None:
+            device_ID = f"dispatcharr-hdhr-{profile}"
+            friendly_name = f"Dispatcharr HDHomeRun - {profile}"
         if not device:
             data = {
-                "FriendlyName": "Dispatcharr HDHomeRun",
+                "FriendlyName": friendly_name,
                 "ModelNumber": "HDTC-2US",
                 "FirmwareName": "hdhomerun3_atsc",
                 "FirmwareVersion": "20200101",
-                "DeviceID": "12345678",
+                "DeviceID": device_ID,
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
