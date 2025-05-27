@@ -633,11 +633,11 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
                 with gzip.open(file_path, 'rb') as gz_file:
                     content_sample = gz_file.read(4096)  # Read first 4KB for detection
                     detected_format, _, _ = detect_file_format(content=content_sample)
-                    
+
                     if detected_format != 'xml':
                         logger.warning(f"GZIP file does not appear to contain XML content: {file_path} (detected as: {detected_format})")
                         # Continue anyway since GZIP only contains one file
-                    
+
                     # Reset file pointer and extract the content
                     gz_file.seek(0)
                     with open(extracted_path, 'wb') as out_file:
@@ -645,9 +645,9 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
             except Exception as e:
                 logger.error(f"Error extracting GZIP file: {e}", exc_info=True)
                 return None
-                
+
             logger.info(f"Successfully extracted gzip file to: {extracted_path}")
-            
+
             # Delete original compressed file if requested
             if delete_original:
                 try:
@@ -1116,15 +1116,19 @@ def parse_programs_for_tvg_id(epg_id):
         if not os.path.exists(file_path):
             logger.error(f"EPG file not found at: {file_path}")
 
-            # Update the file path in the database
-            new_path = epg_source.get_cache_file()
-            logger.info(f"Updating file_path from '{file_path}' to '{new_path}'")
-            epg_source.file_path = new_path
-            epg_source.save(update_fields=['file_path'])
+            if epg_source.url:
+                # Update the file path in the database
+                new_path = epg_source.get_cache_file()
+                logger.info(f"Updating file_path from '{file_path}' to '{new_path}'")
+                epg_source.file_path = new_path
+                epg_source.save(update_fields=['file_path'])
+                logger.info(f"Fetching new EPG data from URL: {epg_source.url}")
+            else:
+                logger.info(f"EPG source does not have a URL, using existing file path: {file_path} to rebuild cache")
 
             # Fetch new data before continuing
-            if epg_source.url:
-                logger.info(f"Fetching new EPG data from URL: {epg_source.url}")
+            if epg_source:
+
                 # Properly check the return value from fetch_xmltv
                 fetch_success = fetch_xmltv(epg_source)
 
@@ -1150,7 +1154,10 @@ def parse_programs_for_tvg_id(epg_id):
                     return
 
                 # Update file_path with the new location
-                file_path = epg_source.file_path
+                if epg_source.extracted_file_path:
+                    file_path = epg_source.extracted_file_path
+                else:
+                    file_path = epg_source.file_path
             else:
                 logger.error(f"No URL provided for EPG source {epg_source.name}, cannot fetch new data")
                 # Update status to error
