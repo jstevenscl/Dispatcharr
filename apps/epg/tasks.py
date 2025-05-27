@@ -948,9 +948,9 @@ def parse_channels_only(source):
                             total=total_channels
                         )
                     if processed_channels > total_channels:
-                        logger.debug(f"[parse_channels_only] Processed channel {tvg_id} - {display_name} - processed {processed_channels - total_channels} additional channels")
+                        logger.debug(f"[parse_channels_only] Processed channel {tvg_id} - processed {processed_channels - total_channels} additional channels")
                     else:
-                        logger.debug(f"[parse_channels_only] Processed channel {tvg_id} - {display_name} - processed {processed_channels}/{total_channels}")
+                        logger.debug(f"[parse_channels_only] Processed channel {tvg_id} - processed {processed_channels}/{total_channels}")
                     if process:
                         logger.debug(f"[parse_channels_only] Memory before elem cleanup: {process.memory_info().rss / 1024 / 1024:.2f} MB")
                     # Clear memory
