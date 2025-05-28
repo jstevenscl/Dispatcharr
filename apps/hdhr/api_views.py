@@ -84,13 +84,19 @@ class DiscoverAPIView(APIView):
 
         logger.debug(f"Calculated tuner count: {tuner_count} (limited profiles: {limited_tuners}, custom streams: {custom_stream_count}, unlimited: {has_unlimited})")
 
+        # Create a unique DeviceID for the HDHomeRun device based on profile ID or a default value
+        device_ID = "12345678"  # Default DeviceID
+        friendly_name = "Dispatcharr HDHomeRun"
+        if profile is not None:
+            device_ID = f"dispatcharr-hdhr-{profile}"
+            friendly_name = f"Dispatcharr HDHomeRun - {profile}"
         if not device:
             data = {
-                "FriendlyName": "Dispatcharr HDHomeRun",
+                "FriendlyName": friendly_name,
                 "ModelNumber": "HDTC-2US",
                 "FirmwareName": "hdhomerun3_atsc",
                 "FirmwareVersion": "20200101",
-                "DeviceID": "12345678",
+                "DeviceID": device_ID,
                 "DeviceAuth": "test_auth_token",
                 "BaseURL": base_url,
                 "LineupURL": f"{base_url}/lineup.json",
@@ -129,16 +135,24 @@ class LineupAPIView(APIView):
         else:
             channels = Channel.objects.all().order_by('channel_number')
 
-        lineup = [
-            {
-                "GuideNumber": str(ch.channel_number),
+        lineup = []
+        for ch in channels:
+            # Format channel number as integer if it has no decimal component
+            if ch.channel_number is not None:
+                if ch.channel_number == int(ch.channel_number):
+                    formatted_channel_number = str(int(ch.channel_number))
+                else:
+                    formatted_channel_number = str(ch.channel_number)
+            else:
+                formatted_channel_number = ""
+
+            lineup.append({
+                "GuideNumber": formatted_channel_number,
                 "GuideName": ch.name,
                 "URL": request.build_absolute_uri(f"/proxy/ts/stream/{ch.uuid}"),
-                "Guide_ID": str(ch.channel_number),
-                "Station": str(ch.channel_number),
-            }
-            for ch in channels
-        ]
+                "Guide_ID": formatted_channel_number,
+                "Station": formatted_channel_number,
+            })
         return JsonResponse(lineup, safe=False)
 
 

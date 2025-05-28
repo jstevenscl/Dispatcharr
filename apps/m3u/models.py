@@ -96,7 +96,7 @@ class M3UAccount(models.Model):
     username = models.CharField(max_length=255, null=True, blank=True)
     password = models.CharField(max_length=255, null=True, blank=True)
     custom_properties = models.TextField(null=True, blank=True)
-    refresh_interval = models.IntegerField(default=24)
+    refresh_interval = models.IntegerField(default=0)
     refresh_task = models.ForeignKey(
         PeriodicTask, on_delete=models.SET_NULL, null=True, blank=True
     )

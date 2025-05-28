@@ -210,24 +210,24 @@ const M3UTable = () => {
       <Box>
         <Flex direction="column" gap={2}>
           <Flex justify="space-between" align="center">
-            <Text size="xs" fw={500}>Parsing:</Text>
+            <Text size="xs" fw={500} style={{ width: '80px' }}>Parsing:</Text>
             <Text size="xs">{parseInt(data.progress)}%</Text>
           </Flex>
           {data.elapsed_time && (
             <Flex justify="space-between" align="center">
-              <Text size="xs" fw={500}>Elapsed:</Text>
+              <Text size="xs" fw={500} style={{ width: '80px' }}>Elapsed:</Text>
               <Text size="xs">{elapsedTime}</Text>
             </Flex>
           )}
           {data.time_remaining && (
             <Flex justify="space-between" align="center">
-              <Text size="xs" fw={500}>Remaining:</Text>
+              <Text size="xs" fw={500} style={{ width: '60px' }}>Remaining:</Text>
               <Text size="xs">{timeRemaining}</Text>
             </Flex>
           )}
           {data.streams_processed && (
             <Flex justify="space-between" align="center">
-              <Text size="xs" fw={500}>Streams:</Text>
+              <Text size="xs" fw={500} style={{ width: '80px' }}>Streams:</Text>
               <Text size="xs">{data.streams_processed}</Text>
             </Flex>
           )}
@@ -424,7 +424,7 @@ const M3UTable = () => {
           if (data.status === 'success') {
             return (
               <Tooltip label={value} multiline width={300}>
-                <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6], lineHeight: 1.3 }}>
+                <Text c="dimmed" size="xs" style={{ color: theme.colors.green[6], lineHeight: 1.1 }}>
                   {value}
                 </Text>
               </Tooltip>
@@ -434,7 +434,7 @@ const M3UTable = () => {
           // For all other status values, just use dimmed text
           return (
             <Tooltip label={value} multiline width={300}>
-              <Text c="dimmed" size="xs" lineClamp={2} style={{ lineHeight: 1.3 }}>
+              <Text c="dimmed" size="xs" lineClamp={2} style={{ lineHeight: 1.1 }}>
                 {value}
               </Text>
             </Tooltip>

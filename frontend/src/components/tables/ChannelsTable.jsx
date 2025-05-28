@@ -593,11 +593,18 @@ const ChannelsTable = ({ }) => {
         id: 'channel_number',
         accessorKey: 'channel_number',
         size: 40,
-        cell: ({ getValue }) => (
-          <Flex justify="flex-end" style={{ width: '100%' }}>
-            {getValue()}
-          </Flex>
-        ),
+        cell: ({ getValue }) => {
+          const value = getValue();
+          // Format as integer if no decimal component
+          const formattedValue = value !== null && value !== undefined ?
+            (value === Math.floor(value) ? Math.floor(value) : value) : '';
+
+          return (
+            <Flex justify="flex-end" style={{ width: '100%' }}>
+              {formattedValue}
+            </Flex>
+          );
+        },
       },
       {
         id: 'name',

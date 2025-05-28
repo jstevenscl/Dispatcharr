@@ -2,13 +2,12 @@
 from celery import shared_task
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-import redis
 import json
 import logging
 import re
 import time
 import os
-from core.utils import RedisClient
+from core.utils import RedisClient, send_websocket_update
 from apps.proxy.ts_proxy.channel_status import ChannelStatus
 from apps.m3u.models import M3UAccount
 from apps.epg.models import EPGSource
@@ -36,11 +35,6 @@ LOG_THROTTLE_SECONDS = 300  # 5 minutes
 # Track if this is the first scan since startup
 _first_scan_completed = False
 
-@shared_task
-def beat_periodic_task():
-    fetch_channel_stats()
-    scan_and_process_files()
-
 def throttled_log(logger_method, message, key=None, *args, **kwargs):
     """Only log messages with the same key once per throttle period"""
     if key is None:
@@ -51,6 +45,11 @@ def throttled_log(logger_method, message, key=None, *args, **kwargs):
     if key not in _last_log_times or (now - _last_log_times[key]) >= LOG_THROTTLE_SECONDS:
         logger_method(message, *args, **kwargs)
         _last_log_times[key] = now
+
+@shared_task
+def beat_periodic_task():
+    fetch_channel_stats()
+    scan_and_process_files()
 
 @shared_task
 def scan_and_process_files():
@@ -176,12 +175,12 @@ def scan_and_process_files():
             epg_skipped += 1
             continue
 
-        if not filename.endswith('.xml') and not filename.endswith('.gz'):
+        if not filename.endswith('.xml') and not filename.endswith('.gz') and not filename.endswith('.zip'):
             # Use trace level if not first scan
             if _first_scan_completed:
-                logger.trace(f"Skipping {filename}: Not an XML or GZ file")
+                logger.trace(f"Skipping {filename}: Not an XML, GZ or zip file")
             else:
-                logger.debug(f"Skipping {filename}: Not an XML or GZ file")
+                logger.debug(f"Skipping {filename}: Not an XML, GZ or zip file")
             epg_skipped += 1
             continue
 
@@ -293,19 +292,23 @@ def fetch_channel_stats():
             if cursor == 0:
                 break
 
+        send_websocket_update(
+            "updates",
+            "update",
+            {
+                "success": True,
+                "type": "channel_stats",
+                "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})
+            },
+            collect_garbage=True
+        )
+
+        # Explicitly clean up large data structures
+        all_channels = None
+
     except Exception as e:
         logger.error(f"Error in channel_status: {e}", exc_info=True)
         return
-        # return JsonResponse({'error': str(e)}, status=500)
-
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        "updates",
-        {
-            "type": "update",
-            "data": {"success": True, "type": "channel_stats", "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})}
-        },
-    )
 
 @shared_task
 def rehash_streams(keys):

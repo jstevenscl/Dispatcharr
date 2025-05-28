@@ -6,8 +6,10 @@ import redis
 import json
 import logging
 import re
+import gc  # Add import for garbage collection
 from core.utils import RedisClient
 from apps.proxy.ts_proxy.channel_status import ChannelStatus
+from core.utils import send_websocket_update
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +45,17 @@ def fetch_channel_stats():
         return
         # return JsonResponse({'error': str(e)}, status=500)
 
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
+    send_websocket_update(
         "updates",
+        "update",
         {
-            "type": "update",
-            "data": {"success": True, "type": "channel_stats", "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})}
+            "success": True,
+            "type": "channel_stats",
+            "stats": json.dumps({'channels': all_channels, 'count': len(all_channels)})
         },
+        collect_garbage=True
     )
+
+    # Explicitly clean up large data structures
+    all_channels = None
+    gc.collect()

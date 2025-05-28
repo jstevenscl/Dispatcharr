@@ -22,11 +22,11 @@ from core.utils import RedisClient, acquire_task_lock, release_task_lock
 from core.models import CoreSettings, UserAgent
 from asgiref.sync import async_to_sync
 from core.xtream_codes import Client as XCClient
+from core.utils import send_websocket_update
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1000
-SKIP_EXTS = {}
 m3u_dir = os.path.join(settings.MEDIA_ROOT, "cached_m3u")
 
 def fetch_m3u_lines(account, use_cache=False):
@@ -200,11 +200,6 @@ def parse_extinf_line(line: str) -> dict:
         'name': name
     }
 
-import re
-import logging
-
-logger = logging.getLogger(__name__)
-
 def _matches_filters(stream_name: str, group_name: str, filters):
     """Check if a stream or group name matches a precompiled regex filter."""
     compiled_filters = [(re.compile(f.regex_pattern, re.IGNORECASE), f.exclude) for f in filters]
@@ -245,7 +240,7 @@ def process_groups(account, groups):
     groups_to_create = []
     for group_name, custom_props in groups.items():
         logger.debug(f"Handling group: {group_name}")
-        if (group_name not in existing_groups) and (group_name not in SKIP_EXTS):
+        if (group_name not in existing_groups):
             groups_to_create.append(ChannelGroup(
                 name=group_name,
             ))
@@ -495,8 +490,9 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     retval = f"Batch processed: {len(streams_to_create)} created, {len(streams_to_update)} updated."
 
     # Aggressive garbage collection
-    del streams_to_create, streams_to_update, stream_hashes, existing_streams
-    gc.collect()
+    #del streams_to_create, streams_to_update, stream_hashes, existing_streams
+    #from core.utils import cleanup_memory
+    #cleanup_memory(log_usage=True, force_collection=True)
 
     return retval
 
@@ -695,25 +691,68 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
             release_task_lock('refresh_m3u_account_groups', account_id)
             return f"Failed to fetch M3U data for account_id={account_id}.", None
 
-        for line in lines:
+        # Log basic file structure for debugging
+        logger.debug(f"Processing {len(lines)} lines from M3U file")
+
+        line_count = 0
+        extinf_count = 0
+        url_count = 0
+        valid_stream_count = 0
+        problematic_lines = []
+
+        for line_index, line in enumerate(lines):
+            line_count += 1
             line = line.strip()
+
             if line.startswith("#EXTINF"):
+                extinf_count += 1
                 parsed = parse_extinf_line(line)
                 if parsed:
                     if "group-title" in parsed["attributes"]:
-                        groups[parsed["attributes"]["group-title"]] = {}
+                        group_name = parsed["attributes"]["group-title"]
+                        # Log new groups as they're discovered
+                        if group_name not in groups:
+                            logger.debug(f"Found new group: '{group_name}'")
+                        groups[group_name] = {}
 
                     extinf_data.append(parsed)
+                else:
+                    # Log problematic EXTINF lines
+                    logger.warning(f"Failed to parse EXTINF at line {line_index+1}: {line[:200]}")
+                    problematic_lines.append((line_index+1, line[:200]))
+
             elif extinf_data and line.startswith("http"):
+                url_count += 1
                 # Associate URL with the last EXTINF line
                 extinf_data[-1]["url"] = line
+                valid_stream_count += 1
 
+                # Periodically log progress for large files
+                if valid_stream_count % 1000 == 0:
+                    logger.debug(f"Processed {valid_stream_count} valid streams so far...")
+
+        # Log summary statistics
+        logger.info(f"M3U parsing complete - Lines: {line_count}, EXTINF: {extinf_count}, URLs: {url_count}, Valid streams: {valid_stream_count}")
+
+        if problematic_lines:
+            logger.warning(f"Found {len(problematic_lines)} problematic lines during parsing")
+            for i, (line_num, content) in enumerate(problematic_lines[:10]):  # Log max 10 examples
+                logger.warning(f"Problematic line #{i+1} at line {line_num}: {content}")
+            if len(problematic_lines) > 10:
+                logger.warning(f"... and {len(problematic_lines) - 10} more problematic lines")
+
+        # Log group statistics
+        logger.info(f"Found {len(groups)} groups in M3U file: {', '.join(list(groups.keys())[:20])}" +
+                   ("..." if len(groups) > 20 else ""))
+
+        # Cache processed data
         cache_path = os.path.join(m3u_dir, f"{account_id}.json")
         with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump({
                 "extinf_data": extinf_data,
                 "groups": groups,
             }, f)
+            logger.debug(f"Cached parsed M3U data to {cache_path}")
 
     send_m3u_update(account_id, "processing_groups", 0)
 
@@ -830,11 +869,31 @@ def refresh_single_m3u_account(account_id):
 
     cache_path = os.path.join(m3u_dir, f"{account_id}.json")
     if os.path.exists(cache_path):
-        with open(cache_path, 'r') as file:
-            data = json.load(file)
+        try:
+            with open(cache_path, 'r') as file:
+                data = json.load(file)
 
-        extinf_data = data['extinf_data']
-        groups = data['groups']
+            extinf_data = data['extinf_data']
+            groups = data['groups']
+        except json.JSONDecodeError as e:
+            # Handle corrupted JSON file
+            logger.error(f"Error parsing cached M3U data for account {account_id}: {str(e)}")
+
+            # Backup the corrupted file for potential analysis
+            backup_path = f"{cache_path}.corrupted"
+            try:
+                os.rename(cache_path, backup_path)
+                logger.info(f"Renamed corrupted cache file to {backup_path}")
+            except OSError as rename_err:
+                logger.warning(f"Failed to rename corrupted cache file: {str(rename_err)}")
+
+            # Reset the data to empty structures
+            extinf_data = []
+            groups = None
+        except Exception as e:
+            logger.error(f"Unexpected error reading cached M3U data: {str(e)}")
+            extinf_data = []
+            groups = None
 
     if not extinf_data:
         try:
@@ -903,6 +962,7 @@ def refresh_single_m3u_account(account_id):
         account.save(update_fields=['status'])
 
         if account.account_type == M3UAccount.Types.STADNARD:
+            logger.debug(f"Processing Standard account with groups: {existing_groups}")
             # Break into batches and process in parallel
             batches = [extinf_data[i:i + BATCH_SIZE] for i in range(0, len(extinf_data), BATCH_SIZE)]
             task_group = group(process_m3u_batch.s(account_id, batch, existing_groups, hash_keys) for batch in batches)
@@ -1060,7 +1120,8 @@ def refresh_single_m3u_account(account_id):
 
     # Aggressive garbage collection
     del existing_groups, extinf_data, groups, batches
-    gc.collect()
+    from core.utils import cleanup_memory
+    cleanup_memory(log_usage=True, force_collection=True)
 
     # Clean up cache file since we've fully processed it
     if os.path.exists(cache_path):
@@ -1091,12 +1152,10 @@ def send_m3u_update(account_id, action, progress, **kwargs):
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)
 
-    # Now, send the updated data dictionary
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        'updates',
-        {
-            'type': 'update',
-            'data': data
-        }
-    )
+    # Use the standardized function with memory management
+    # Enable garbage collection for certain operations
+    collect_garbage = action == "parsing" and progress % 25 == 0
+    send_websocket_update('updates', 'update', data, collect_garbage=collect_garbage)
+
+    # Explicitly clear data reference to help garbage collection
+    data = None

@@ -120,9 +120,19 @@ class StreamGenerator:
                         yield create_ts_packet('error', f"Error: {error_message}")
                         return False
                     else:
+                        # Improved logging to track initialization progress
+                        init_time = "unknown"
+                        if b'init_time' in metadata:
+                            try:
+                                init_time_float = float(metadata[b'init_time'].decode('utf-8'))
+                                init_duration = time.time() - init_time_float
+                                init_time = f"{init_duration:.1f}s ago"
+                            except:
+                                pass
+
                         # Still initializing - send keepalive if needed
                         if time.time() - last_keepalive >= keepalive_interval:
-                            status_msg = f"Initializing: {state}"
+                            status_msg = f"Initializing: {state} (started {init_time})"
                             keepalive_packet = create_ts_packet('keepalive', status_msg)
                             logger.debug(f"[{self.client_id}] Sending keepalive packet during initialization, state={state}")
                             yield keepalive_packet

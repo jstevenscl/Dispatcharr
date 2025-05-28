@@ -52,6 +52,43 @@ class RedisClient:
                     # Validate connection with ping
                     client.ping()
                     client.flushdb()
+
+                    # Disable persistence on first connection - improves performance
+                    # Only try to disable if not in a read-only environment
+                    try:
+                        client.config_set('save', '')  # Disable RDB snapshots
+                        client.config_set('appendonly', 'no')  # Disable AOF logging
+
+                        # Set optimal memory settings with environment variable support
+                        # Get max memory from environment or use a larger default (512MB instead of 256MB)
+                        #max_memory = os.environ.get('REDIS_MAX_MEMORY', '512mb')
+                        #eviction_policy = os.environ.get('REDIS_EVICTION_POLICY', 'allkeys-lru')
+
+                        # Apply memory settings
+                        #client.config_set('maxmemory-policy', eviction_policy)
+                        #client.config_set('maxmemory', max_memory)
+
+                        #logger.info(f"Redis configured with maxmemory={max_memory}, policy={eviction_policy}")
+
+                        # Disable protected mode when in debug mode
+                        if os.environ.get('DISPATCHARR_DEBUG', '').lower() == 'true':
+                            client.config_set('protected-mode', 'no')  # Disable protected mode in debug
+                            logger.warning("Redis protected mode disabled for debug environment")
+
+                        logger.trace("Redis persistence disabled for better performance")
+                    except redis.exceptions.ResponseError as e:
+                        # Improve error handling for Redis configuration errors
+                        if "OOM" in str(e):
+                            logger.error(f"Redis OOM during configuration: {e}")
+                            # Try to increase maxmemory as an emergency measure
+                            try:
+                                client.config_set('maxmemory', '768mb')
+                                logger.warning("Applied emergency Redis memory increase to 768MB")
+                            except:
+                                pass
+                        else:
+                            logger.error(f"Redis configuration error: {e}")
+
                     logger.info(f"Connected to Redis at {redis_host}:{redis_port}/{redis_db}")
 
                     cls._client = client
@@ -151,12 +188,145 @@ def release_task_lock(task_name, id):
     # Remove the lock
     redis_client.delete(lock_id)
 
-def send_websocket_event(event, success, data):
+def send_websocket_update(group_name, event_type, data, collect_garbage=False):
+    """
+    Standardized function to send WebSocket updates with proper memory management.
+
+    Args:
+        group_name: The WebSocket group to send to (e.g. 'updates')
+        event_type: The type of message (e.g. 'update')
+        data: The data to send
+        collect_garbage: Whether to force garbage collection after sending
+    """
     channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        'updates',
-        {
-            'type': 'update',
-            "data": {"success": True, "type": "epg_channels"}
-        }
-    )
+    try:
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': event_type,
+                'data': data
+            }
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send WebSocket update: {e}")
+    finally:
+        # Explicitly release references to help garbage collection
+        channel_layer = None
+
+        # Force garbage collection if requested
+        if collect_garbage:
+            gc.collect()
+
+def send_websocket_event(event, success, data):
+    """Acquire a lock to prevent concurrent task execution."""
+    data_payload = {"success": success, "type": event}
+    if data:
+        # Make a copy to avoid modifying the original
+        data_payload.update(data)
+
+    # Use the standardized function
+    send_websocket_update('updates', 'update', data_payload)
+
+    # Help garbage collection by clearing references
+    data_payload = None
+
+# Add memory monitoring utilities
+def get_memory_usage():
+    """Returns current memory usage in MB"""
+    import psutil
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
+
+def monitor_memory_usage(func):
+    """Decorator to monitor memory usage before and after function execution"""
+    def wrapper(*args, **kwargs):
+        import gc
+        # Force garbage collection before measuring
+        gc.collect()
+
+        # Get initial memory usage
+        start_mem = get_memory_usage()
+        logger.debug(f"Memory usage before {func.__name__}: {start_mem:.2f} MB")
+
+        # Call the original function
+        result = func(*args, **kwargs)
+
+        # Force garbage collection before measuring again
+        gc.collect()
+
+        # Get final memory usage
+        end_mem = get_memory_usage()
+        logger.debug(f"Memory usage after {func.__name__}: {end_mem:.2f} MB (Change: {end_mem - start_mem:.2f} MB)")
+
+        return result
+    return wrapper
+
+def cleanup_memory(log_usage=False, force_collection=True):
+    """
+    Comprehensive memory cleanup function to reduce memory footprint
+
+    Args:
+        log_usage: Whether to log memory usage before and after cleanup
+        force_collection: Whether to force garbage collection
+    """
+    logger.trace("Starting memory cleanup django memory cleanup")
+    # Skip logging if log level is not set to debug or more verbose (like trace)
+    current_log_level = logger.getEffectiveLevel()
+    if not current_log_level <= logging.DEBUG:
+        log_usage = False
+    if log_usage:
+        try:
+            import psutil
+            process = psutil.Process()
+            before_mem = process.memory_info().rss / (1024 * 1024)
+            logger.debug(f"Memory before cleanup: {before_mem:.2f} MB")
+        except (ImportError, Exception) as e:
+            logger.debug(f"Error getting memory usage: {e}")
+
+    # Clear any object caches from Django ORM
+    from django.db import connection, reset_queries
+    reset_queries()
+
+    # Force garbage collection
+    if force_collection:
+        # Run full collection
+        gc.collect(generation=2)
+        # Clear cyclic references
+        gc.collect(generation=0)
+
+    if log_usage:
+        try:
+            import psutil
+            process = psutil.Process()
+            after_mem = process.memory_info().rss / (1024 * 1024)
+            logger.debug(f"Memory after cleanup: {after_mem:.2f} MB (change: {after_mem-before_mem:.2f} MB)")
+        except (ImportError, Exception):
+            pass
+    logger.trace("Memory cleanup complete for django")
+
+def is_protected_path(file_path):
+    """
+    Determine if a file path is in a protected directory that shouldn't be deleted.
+
+    Args:
+        file_path (str): The file path to check
+
+    Returns:
+        bool: True if the path is protected, False otherwise
+    """
+    if not file_path:
+        return False
+
+    # List of protected directory prefixes
+    protected_dirs = [
+        '/data/epgs',     # EPG files mapped from host
+        '/data/uploads',   # User uploaded files
+        '/data/m3us'       # M3U files mapped from host
+    ]
+
+    # Check if the path starts with any protected directory
+    for protected_dir in protected_dirs:
+        if file_path.startswith(protected_dir):
+            return True
+
+    return False

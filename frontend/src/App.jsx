@@ -57,6 +57,12 @@ const App = () => {
         }
       } catch (error) {
         console.error('Error checking superuser status:', error);
+        // If authentication error, redirect to login
+        if (error.status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          window.location.href = '/login';
+        }
       }
     }
     checkSuperuser();
