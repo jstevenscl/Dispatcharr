@@ -376,26 +376,48 @@ class StreamManager:
             logger.debug(f"Started stderr reader thread for channel {self.channel_id}")
 
     def _read_stderr(self):
-        """Read and log ffmpeg stderr output"""
+        """Read and log ffmpeg stderr output with stats lines combined"""
         try:
-            for error_line in iter(self.transcode_process.stderr.readline, b''):
-                if error_line:
-                    error_line = error_line.decode('utf-8', errors='replace').strip()
-                    try:
-                        # Wrap the logging call in a try-except to prevent crashes due to logging errors
-                        logger.debug(f"Transcode stderr [{self.channel_id}]: {error_line}")
-                    except OSError as e:
-                        # If logging fails, try a simplified log message
-                        if e.errno == 105:  # No buffer space available
-                            try:
-                                # Try a much shorter message without the error content
-                                logger.warning(f"Logging error (buffer full) in channel {self.channel_id}")
-                            except:
-                                # If even that fails, we have to silently continue
-                                pass
-                    except Exception:
-                        # Ignore other logging errors to prevent thread crashes
-                        pass
+            buffer = b""
+            in_stats_line = False
+            # Common FFmpeg stats line prefixes for detection
+            stats_prefixes = [b"frame=", b"size=", b"time=", b"bitrate=", b"speed="]
+
+            # Read in small chunks
+            while self.transcode_process and self.transcode_process.stderr:
+                chunk = self.transcode_process.stderr.read(1)
+                if not chunk:  # EOF
+                    break
+
+                buffer += chunk
+
+                # Check if we have a complete line
+                if chunk == b'\n' or chunk == b'\r':
+                    # We have a complete line
+                    if buffer.strip():
+                        line = buffer.decode('utf-8', errors='replace').strip()
+                        # Check if this is a stats line
+                        if any(stat_prefix in line for stat_prefix in [p.decode() for p in stats_prefixes]):
+                            self._log_stderr_content(f"FFmpeg stats: {line}")
+                        else:
+                            self._log_stderr_content(line)
+                    buffer = b""
+                    in_stats_line = False
+                    continue
+
+                # Check if this is the start of a new non-stats line after we were in a stats line
+                if in_stats_line:
+                    # If we see two consecutive newlines or a non-stats-related line,
+                    # consider the stats block complete
+                    if chunk == b'\n' or chunk == b'\r':
+                        in_stats_line = False
+                        if buffer.strip():
+                            self._log_stderr_content(buffer.decode('utf-8', errors='replace').strip())
+                        buffer = b""
+                # Check if this is the start of a new stats line
+                elif any(prefix in buffer for prefix in stats_prefixes):
+                    # We're now in a stats line
+                    in_stats_line = True
         except Exception as e:
             # Catch any other exceptions in the thread to prevent crashes
             try:
@@ -403,6 +425,24 @@ class StreamManager:
             except:
                 # Again, if logging fails, continue silently
                 pass
+
+    def _log_stderr_content(self, content):
+        """Helper method to log stderr content with error handling"""
+        try:
+            # Wrap the logging call in a try-except to prevent crashes due to logging errors
+            logger.debug(f"Transcode stderr [{self.channel_id}]: {content}")
+        except OSError as e:
+            # If logging fails, try a simplified log message
+            if e.errno == 105:  # No buffer space available
+                try:
+                    # Try a much shorter message without the error content
+                    logger.warning(f"Logging error (buffer full) in channel {self.channel_id}")
+                except:
+                    # If even that fails, we have to silently continue
+                    pass
+        except Exception:
+            # Ignore other logging errors to prevent thread crashes
+            pass
 
     def _establish_http_connection(self):
         """Establish a direct HTTP connection to the stream"""
