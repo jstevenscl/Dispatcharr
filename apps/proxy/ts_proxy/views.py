@@ -67,6 +67,7 @@ def stream_ts(request, channel_id):
         # Check if we need to reinitialize the channel
         needs_initialization = True
         channel_state = None
+        channel_initializing = False
 
         # Get current channel state from Redis if available
         if proxy_server.redis_client:
@@ -77,28 +78,46 @@ def stream_ts(request, channel_id):
                 if state_field in metadata:
                     channel_state = metadata[state_field].decode("utf-8")
 
-                    # Only skip initialization if channel is in a healthy state
-                    valid_states = [
-                        ChannelState.ACTIVE,
+                    # IMPROVED: Check for *any* state that indicates initialization is in progress
+                    active_states = [
+                        ChannelState.INITIALIZING,
+                        ChannelState.CONNECTING,
                         ChannelState.WAITING_FOR_CLIENTS,
+                        ChannelState.ACTIVE,
                     ]
-                    if channel_state in valid_states:
-                        # Verify the owner is still active
+                    if channel_state in active_states:
+                        # Channel is being initialized or already active - no need for reinitialization
+                        needs_initialization = False
+                        logger.debug(
+                            f"[{client_id}] Channel {channel_id} already in state {channel_state}, skipping initialization"
+                        )
+
+                        # Special handling for initializing/connecting states
+                        if channel_state in [
+                            ChannelState.INITIALIZING,
+                            ChannelState.CONNECTING,
+                        ]:
+                            channel_initializing = True
+                            logger.debug(
+                                f"[{client_id}] Channel {channel_id} is still initializing, client will wait for completion"
+                            )
+                    else:
+                        # Only check for owner if channel is in a valid state
                         owner_field = ChannelMetadataField.OWNER.encode("utf-8")
                         if owner_field in metadata:
                             owner = metadata[owner_field].decode("utf-8")
                             owner_heartbeat_key = f"ts_proxy:worker:{owner}:heartbeat"
                             if proxy_server.redis_client.exists(owner_heartbeat_key):
-                                # Owner is active and channel is in good state
+                                # Owner is still active, so we don't need to reinitialize
                                 needs_initialization = False
-                                logger.info(
-                                    f"[{client_id}] Channel {channel_id} in state {channel_state} with active owner {owner}"
+                                logger.debug(
+                                    f"[{client_id}] Channel {channel_id} has active owner {owner}"
                                 )
 
         # Start initialization if needed
-        channel_initializing = False
         if needs_initialization or not proxy_server.check_if_channel_exists(channel_id):
-            # Force cleanup of any previous instance
+            logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
+            # Force cleanup of any previous instance if in terminal state
             if channel_state in [
                 ChannelState.ERROR,
                 ChannelState.STOPPING,
@@ -108,9 +127,6 @@ def stream_ts(request, channel_id):
                     f"[{client_id}] Channel {channel_id} in state {channel_state}, forcing cleanup"
                 )
                 proxy_server.stop_channel(channel_id)
-
-            # Initialize the channel (but don't wait for completion)
-            logger.info(f"[{client_id}] Starting channel {channel_id} initialization")
 
             # Use max retry attempts and connection timeout from config
             max_retries = ConfigHelper.max_retries()

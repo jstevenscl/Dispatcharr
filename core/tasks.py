@@ -175,12 +175,12 @@ def scan_and_process_files():
             epg_skipped += 1
             continue
 
-        if not filename.endswith('.xml') and not filename.endswith('.gz'):
+        if not filename.endswith('.xml') and not filename.endswith('.gz') and not filename.endswith('.zip'):
             # Use trace level if not first scan
             if _first_scan_completed:
-                logger.trace(f"Skipping {filename}: Not an XML or GZ file")
+                logger.trace(f"Skipping {filename}: Not an XML, GZ or zip file")
             else:
-                logger.debug(f"Skipping {filename}: Not an XML or GZ file")
+                logger.debug(f"Skipping {filename}: Not an XML, GZ or zip file")
             epg_skipped += 1
             continue
 

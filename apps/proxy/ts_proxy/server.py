@@ -464,6 +464,28 @@ class ProxyServer:
     def initialize_channel(self, url, channel_id, user_agent=None, transcode=False, stream_id=None):
         """Initialize a channel without redundant active key"""
         try:
+            # IMPROVED: First check if channel is already being initialized by another process
+            if self.redis_client:
+                metadata_key = RedisKeys.channel_metadata(channel_id)
+                if self.redis_client.exists(metadata_key):
+                    metadata = self.redis_client.hgetall(metadata_key)
+                    if b'state' in metadata:
+                        state = metadata[b'state'].decode('utf-8')
+                        active_states = [ChannelState.INITIALIZING, ChannelState.CONNECTING,
+                                        ChannelState.WAITING_FOR_CLIENTS, ChannelState.ACTIVE]
+                        if state in active_states:
+                            logger.info(f"Channel {channel_id} already being initialized with state {state}")
+                            # Create buffer and client manager only if we don't have them
+                            if channel_id not in self.stream_buffers:
+                                self.stream_buffers[channel_id] = StreamBuffer(channel_id, redis_client=self.redis_client)
+                            if channel_id not in self.client_managers:
+                                self.client_managers[channel_id] = ClientManager(
+                                    channel_id,
+                                    redis_client=self.redis_client,
+                                    worker_id=self.worker_id
+                                )
+                            return True
+
             # Create buffer and client manager instances
             buffer = StreamBuffer(channel_id, redis_client=self.redis_client)
             client_manager = ClientManager(
@@ -475,6 +497,20 @@ class ProxyServer:
             # Store in local tracking
             self.stream_buffers[channel_id] = buffer
             self.client_managers[channel_id] = client_manager
+
+            # IMPROVED: Set initializing state in Redis BEFORE any other operations
+            if self.redis_client:
+                # Set early initialization state to prevent race conditions
+                metadata_key = RedisKeys.channel_metadata(channel_id)
+                initial_metadata = {
+                    "state": ChannelState.INITIALIZING,
+                    "init_time": str(time.time()),
+                    "owner": self.worker_id
+                }
+                if stream_id:
+                    initial_metadata["stream_id"] = str(stream_id)
+                self.redis_client.hset(metadata_key, mapping=initial_metadata)
+                logger.info(f"Set early initializing state for channel {channel_id}")
 
             # Get channel URL from Redis if available
             channel_url = url
