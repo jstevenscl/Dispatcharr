@@ -1034,6 +1034,11 @@ def parse_channels_only(source):
         if process:
             logger.debug(f"[parse_channels_only] Memory before cleanup: {process.memory_info().rss / 1024 / 1024:.2f} MB")
         try:
+            # Output any errors in the channel_parser error log
+            if 'channel_parser' in locals() and hasattr(channel_parser, 'error_log') and len(channel_parser.error_log) > 0:
+                logger.debug(f"XML parser errors found ({len(channel_parser.error_log)} total):")
+                for i, error in enumerate(channel_parser.error_log):
+                    logger.debug(f"  Error {i+1}: {error}")
             if 'channel_parser' in locals():
                 del channel_parser
             if 'elem' in locals():
