@@ -4,6 +4,8 @@ from .api_views import (
     AuthViewSet,
     UserViewSet,
     GroupViewSet,
+    TokenObtainPairView,
+    TokenRefreshView,
     list_permissions,
     initialize_superuser,
 )
@@ -30,8 +32,8 @@ urlpatterns = [
     path("initialize-superuser/", initialize_superuser, name="initialize_superuser"),
     # Permissions API
     path("permissions/", list_permissions, name="list-permissions"),
-    path("token/", jwt_views.TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("token/refresh/", jwt_views.TokenRefreshView.as_view(), name="token_refresh"),
+    path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 ]
 
 # 🔹 Include ViewSet routes

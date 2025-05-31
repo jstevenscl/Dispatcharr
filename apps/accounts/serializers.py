@@ -44,9 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         channel_profiles = validated_data.pop("channel_profiles", [])
 
-        user = User(
-            username=validated_data["username"], email=validated_data.get("email", "")
-        )
+        user = User(**validated_data)
         user.set_password(validated_data["password"])
         user.is_active = True
         user.save()

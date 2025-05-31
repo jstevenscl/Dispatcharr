@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, get_list_or_404
 from django.db import transaction
 import os, json, requests
 from apps.accounts.permissions import (
+    Authenticated,
     IsAdmin,
     IsOwnerOfObject,
     permission_classes_by_action,
@@ -110,7 +111,7 @@ class StreamViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -181,7 +182,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
 
 # ─────────────────────────────────────────────────────────
@@ -239,7 +240,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def get_queryset(self):
         qs = (
@@ -815,7 +816,7 @@ class BulkDeleteStreamsAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @swagger_auto_schema(
         operation_description="Bulk delete streams by ID",
@@ -851,7 +852,7 @@ class BulkDeleteChannelsAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @swagger_auto_schema(
         operation_description="Bulk delete channels by ID",
@@ -891,7 +892,7 @@ class LogoViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @action(detail=False, methods=["post"])
     def upload(self, request):
@@ -991,7 +992,7 @@ class ChannelProfileViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
 
 class GetChannelStreamsAPIView(APIView):
@@ -1001,7 +1002,7 @@ class GetChannelStreamsAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def get(self, request, channel_id):
         channel = get_object_or_404(Channel, id=channel_id)
@@ -1039,7 +1040,7 @@ class BulkUpdateChannelMembershipAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def patch(self, request, profile_id):
         """Bulk enable or disable channels for a specific profile"""
@@ -1080,4 +1081,4 @@ class RecordingViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]

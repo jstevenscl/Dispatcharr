@@ -17,8 +17,7 @@ import {
   Button,
   Stack,
 } from '@mantine/core';
-import { IconSquarePlus } from '@tabler/icons-react';
-import { SquareMinus, SquarePen, Check, X } from 'lucide-react';
+import { SquareMinus, SquarePen, Check, X, SquarePlus } from 'lucide-react';
 import { CustomTable, useTable } from './CustomTable';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
@@ -211,7 +210,7 @@ const UserAgentsTable = () => {
           <Flex gap={6}>
             <Tooltip label="Assign">
               <Button
-                leftSection={<IconSquarePlus size={18} />}
+                leftSection={<SquarePlus size={18} />}
                 variant="light"
                 size="xs"
                 onClick={() => editUserAgent()}

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import API from '../api';
 import useSettingsStore from '../store/settings';
 import useUserAgentsStore from '../store/userAgents';
@@ -12,21 +12,25 @@ import {
   Group,
   MultiSelect,
   Select,
+  Stack,
   Switch,
   Text,
+  TextInput,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
 import UserAgentsTable from '../components/tables/UserAgentsTable';
 import StreamProfilesTable from '../components/tables/StreamProfilesTable';
 import useLocalStorage from '../hooks/useLocalStorage';
 import useAuthStore from '../store/auth';
-import { USER_LEVELS } from '../constants';
+import { USER_LEVELS, NETWORK_ACCESS_OPTIONS } from '../constants';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
   const userAgents = useUserAgentsStore((s) => s.userAgents);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
   const authUser = useAuthStore((s) => s.user);
+
+  const [accordianValue, setAccordianValue] = useState(null);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -299,6 +303,14 @@ const SettingsPage = () => {
     },
   });
 
+  const networkAccessForm = useForm({
+    mode: 'uncontrolled',
+    initialValues: Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
+      acc[key] = '0.0.0.0/0';
+      return acc;
+    }, {}),
+  });
+
   useEffect(() => {
     if (settings) {
       console.log(settings);
@@ -329,8 +341,18 @@ const SettingsPage = () => {
         },
         {}
       );
-      console.log(formValues);
+
       form.setValues(formValues);
+
+      const networkAccessSettings = JSON.parse(
+        settings['network-access'].value || '{}'
+      );
+      networkAccessForm.setValues(
+        Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
+          acc[key] = networkAccessSettings[key];
+          return acc;
+        }, {})
+      );
     }
   }, [settings]);
 
@@ -353,6 +375,14 @@ const SettingsPage = () => {
     }
   };
 
+  const onNetworkAccessSubmit = async () => {
+    console.log(networkAccessForm.getValues());
+    API.updateSetting({
+      ...settings['network-access'],
+      value: JSON.stringify(networkAccessForm.getValues()),
+    });
+  };
+
   const onUISettingsChange = (name, value) => {
     switch (name) {
       case 'table-size':
@@ -368,7 +398,11 @@ const SettingsPage = () => {
       }}
     >
       <Box style={{ width: '100%', maxWidth: 800 }}>
-        <Accordion variant="separated" defaultValue="ui-settings">
+        <Accordion
+          variant="separated"
+          defaultValue="ui-settings"
+          onChange={setAccordianValue}
+        >
           {[
             <Accordion.Item value="ui-settings">
               <Accordion.Control>UI Settings</Accordion.Control>
@@ -536,6 +570,54 @@ const SettingsPage = () => {
                     <Accordion.Control>Stream Profiles</Accordion.Control>
                     <Accordion.Panel>
                       <StreamProfilesTable />
+                    </Accordion.Panel>
+                  </Accordion.Item>,
+
+                  <Accordion.Item value="network-access">
+                    <Accordion.Control>
+                      <Box>Network Access</Box>
+                      {accordianValue == 'network-access' && (
+                        <Box>
+                          <Text size="sm">Comma-Delimited CIDR ranges</Text>
+                        </Box>
+                      )}
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <form
+                        onSubmit={networkAccessForm.onSubmit(
+                          onNetworkAccessSubmit
+                        )}
+                      >
+                        <Stack gap="sm">
+                          {Object.entries(NETWORK_ACCESS_OPTIONS).map(
+                            ([key, config]) => {
+                              return (
+                                <TextInput
+                                  label={config.label}
+                                  {...networkAccessForm.getInputProps(key)}
+                                  key={networkAccessForm.key(key)}
+                                  description={config.description}
+                                />
+                              );
+                            }
+                          )}
+
+                          <Flex
+                            mih={50}
+                            gap="xs"
+                            justify="flex-end"
+                            align="flex-end"
+                          >
+                            <Button
+                              type="submit"
+                              disabled={networkAccessForm.submitting}
+                              variant="default"
+                            >
+                              Save
+                            </Button>
+                          </Flex>
+                        </Stack>
+                      </form>
                     </Accordion.Panel>
                   </Accordion.Item>,
                 ]

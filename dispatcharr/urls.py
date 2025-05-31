@@ -7,7 +7,7 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from .routing import websocket_urlpatterns
-from apps.output.views import xc_player_api, xc_get, xc_xmltv
+from apps.output.views import xc_player_api, xc_panel_api, xc_get, xc_xmltv
 from apps.proxy.ts_proxy.views import stream_xc
 
 # Define schema_view for Swagger
@@ -40,15 +40,21 @@ urlpatterns = [
     # Add proxy apps - Move these before the catch-all
     path("proxy/", include(("apps.proxy.urls", "proxy"), namespace="proxy")),
     path("proxy", RedirectView.as_view(url="/proxy/", permanent=True)),
+    # xc
+    re_path("player_api.php", xc_player_api, name="xc_player_api"),
+    re_path("panel_api.php", xc_panel_api, name="xc_panel_api"),
+    re_path("get.php", xc_get, name="xc_get"),
+    re_path("xmltv.php", xc_xmltv, name="xc_xmltv"),
     path(
-        "<slug:username>/<slug:password>/<int:channel_id>",
+        "live/<str:username>/<str:password>/<str:channel_id>",
+        stream_xc,
+        name="xc_live_stream_endpoint",
+    ),
+    path(
+        "<str:username>/<str:password>/<str:channel_id>",
         stream_xc,
         name="xc_stream_endpoint",
     ),
-    # xc
-    re_path("player_api.php", xc_player_api, name="xc_get"),
-    re_path("get.php", xc_get, name="xc_get"),
-    re_path("xmltv.php", xc_xmltv, name="xc_xmltv"),
     # Swagger UI
     path(
         "swagger/",

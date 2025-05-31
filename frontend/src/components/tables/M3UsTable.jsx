@@ -34,8 +34,8 @@ import {
   ArrowUpDown,
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
+  SquarePlus,
 } from 'lucide-react';
-import { IconSquarePlus } from '@tabler/icons-react'; // Import custom icons
 import dayjs from 'dayjs';
 import useSettingsStore from '../../store/settings';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -572,7 +572,7 @@ const M3UTable = () => {
       {
         header: 'Updated',
         accessorKey: 'updated_at',
-        size: 150,
+        size: 175,
         cell: ({ cell }) => {
           const value = cell.getValue();
           return value ? (
@@ -842,7 +842,7 @@ const M3UTable = () => {
           <Flex gap={6}>
             <Tooltip label="Assign">
               <Button
-                leftSection={<IconSquarePlus size={14} />}
+                leftSection={<SquarePlus size={14} />}
                 variant="light"
                 size="xs"
                 onClick={() => editPlaylist()}
@@ -854,7 +854,7 @@ const M3UTable = () => {
                   color: 'white',
                 }}
               >
-                Add
+                Add M3U
               </Button>
             </Tooltip>
           </Flex>

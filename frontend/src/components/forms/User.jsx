@@ -205,7 +205,7 @@ const User = ({ user = null, isOpen, onClose }) => {
             <Group align="flex-end">
               <TextInput
                 label="XC Password"
-                description="Auto-generated - clear to disable XC API"
+                description="Clear to disable XC API"
                 {...form.getInputProps('xc_password')}
                 key={form.key('xc_password')}
                 style={{ flex: 1 }}

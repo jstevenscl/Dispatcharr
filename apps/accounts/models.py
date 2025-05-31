@@ -11,7 +11,7 @@ class User(AbstractUser):
 
     class UserLevel(models.IntegerChoices):
         STREAMER = 0, "Streamer"
-        READ_ONLY = 1, "ReadOnly"
+        STANDARD = 1, "Standard User"
         ADMIN = 10, "Admin"
 
     avatar_config = models.JSONField(default=dict, blank=True, null=True)

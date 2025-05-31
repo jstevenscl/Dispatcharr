@@ -3,18 +3,35 @@ from django.contrib.auth.models import Group, Permission
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes, action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 import json
-from .permissions import ReadOnly, IsAdmin
+from .permissions import IsAdmin, Authenticated
+from dispatcharr.utils import network_access_allowed
 
 from .models import User
 from .serializers import UserSerializer, GroupSerializer, PermissionSerializer
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+
+class TokenObtainPairView(TokenObtainPairView):
+    def post(self, request, *args, **kwargs):
+        # Custom logic here
+        if not network_access_allowed(request, "UI"):
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        return super().post(request, *args, **kwargs)
+
+
+class TokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        # Custom logic here
+        if not network_access_allowed(request, "UI"):
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        return super().post(request, *args, **kwargs)
 
 
 @csrf_exempt  # In production, consider CSRF protection strategies or ensure this endpoint is only accessible when no superuser exists.
@@ -102,7 +119,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action == "me":
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
         return [IsAdmin()]
 
@@ -146,7 +163,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [Authenticated]
 
     @swagger_auto_schema(
         operation_description="Retrieve a list of groups",
@@ -179,7 +196,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     responses={200: PermissionSerializer(many=True)},
 )
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([Authenticated])
 def list_permissions(request):
     """Returns a list of all available permissions"""
     permissions = Permission.objects.all()

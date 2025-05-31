@@ -2,7 +2,6 @@ import logging, os
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -16,6 +15,7 @@ from .serializers import (
 )  # Updated serializer
 from .tasks import refresh_epg_data
 from apps.accounts.permissions import (
+    Authenticated,
     permission_classes_by_action,
     permission_classes_by_method,
 )
@@ -38,7 +38,7 @@ class EPGSourceViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def list(self, request, *args, **kwargs):
         logger.debug("Listing all EPG sources.")
@@ -101,7 +101,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def list(self, request, *args, **kwargs):
         logger.debug("Listing all EPG programs.")
@@ -120,7 +120,7 @@ class EPGGridAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @swagger_auto_schema(
         operation_description="Retrieve programs from the previous hour, currently running and upcoming for the next 24 hours",
@@ -276,7 +276,7 @@ class EPGImportAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @swagger_auto_schema(
         operation_description="Triggers an EPG data import",
@@ -307,4 +307,4 @@ class EPGDataViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]

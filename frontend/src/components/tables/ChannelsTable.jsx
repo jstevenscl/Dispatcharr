@@ -300,7 +300,12 @@ const ChannelsTable = ({}) => {
   const groupOptions = Object.values(channelGroups)
     .filter((group) => activeGroupIds.has(group.id))
     .map((group) => group.name);
-  const debouncedFilters = useDebounce(filters, 500);
+  const debouncedFilters = useDebounce(filters, 500, () => {
+    setPagination({
+      ...pagination,
+      pageIndex: 0,
+    });
+  });
 
   /**
    * Functions
@@ -338,14 +343,8 @@ const ChannelsTable = ({}) => {
     e.stopPropagation();
   }, []);
 
-  // Remove useCallback to ensure we're using the latest setPagination function
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    // First reset pagination to page 0
-    setPagination({
-      ...pagination,
-      pageIndex: 0,
-    });
     // Then update filters
     setFilters((prev) => ({
       ...prev,
@@ -354,11 +353,6 @@ const ChannelsTable = ({}) => {
   };
 
   const handleGroupChange = (value) => {
-    // First reset pagination to page 0
-    setPagination({
-      ...pagination,
-      pageIndex: 0,
-    });
     // Then update filters
     setFilters((prev) => ({
       ...prev,

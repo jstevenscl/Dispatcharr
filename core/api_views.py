@@ -9,13 +9,15 @@ from .serializers import (
     StreamProfileSerializer,
     CoreSettingsSerializer,
 )
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from drf_yasg.utils import swagger_auto_schema
 import socket
 import requests
 import os
 from core.tasks import rehash_streams
+from apps.accounts.permissions import (
+    Authenticated,
+)
 
 
 class UserAgentViewSet(viewsets.ModelViewSet):
@@ -61,7 +63,7 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
     responses={200: "Environment variables"},
 )
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([Authenticated])
 def environment(request):
     public_ip = None
     local_ip = None

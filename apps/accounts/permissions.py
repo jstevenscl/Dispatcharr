@@ -1,19 +1,37 @@
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from .models import User
+from dispatcharr.utils import network_access_allowed
 
 
-class ReadOnly(BasePermission):
+class Authenticated(IsAuthenticated):
     def has_permission(self, request, view):
-        return request.user and request.user.user_level >= User.UserLevel.READ_ONLY
+        is_authenticated = super().has_permission(request, view)
+        network_allowed = network_access_allowed(request, "UI")
+
+        return is_authenticated and network_allowed
 
 
-class IsAdmin(BasePermission):
+class IsStandardUser(Authenticated):
     def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+
+        return request.user and request.user.user_level >= User.UserLevel.STANDARD
+
+
+class IsAdmin(Authenticated):
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+
         return request.user.user_level >= 10
 
 
-class IsOwnerOfObject(BasePermission):
+class IsOwnerOfObject(Authenticated):
     def has_object_permission(self, request, view, obj):
+        if not super().has_permission(request, view):
+            return False
+
         is_admin = IsAdmin().has_permission(request, view)
         is_owner = request.user in obj.users.all()
 
@@ -21,16 +39,16 @@ class IsOwnerOfObject(BasePermission):
 
 
 permission_classes_by_action = {
-    "list": [ReadOnly],
+    "list": [IsStandardUser],
     "create": [IsAdmin],
-    "retrieve": [ReadOnly],
+    "retrieve": [IsStandardUser],
     "update": [IsAdmin],
     "partial_update": [IsAdmin],
     "destroy": [IsAdmin],
 }
 
 permission_classes_by_method = {
-    "GET": [ReadOnly],
+    "GET": [IsStandardUser],
     "POST": [IsAdmin],
     "PATCH": [IsAdmin],
     "PUT": [IsAdmin],

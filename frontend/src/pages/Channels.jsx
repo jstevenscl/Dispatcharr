@@ -13,7 +13,7 @@ const ChannelsPage = () => {
     return <></>;
   }
 
-  if (authUser.user_level <= USER_LEVELS.READ_ONLY) {
+  if (authUser.user_level <= USER_LEVELS.STANDARD) {
     return (
       <Box style={{ padding: 10 }}>
         <ChannelsTable />

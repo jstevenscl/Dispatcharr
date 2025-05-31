@@ -3,6 +3,7 @@ import threading
 import time
 import random
 import re
+import pathlib
 from django.http import StreamingHttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
@@ -37,12 +38,16 @@ from .url_utils import (
 from .utils import get_logger
 from uuid import UUID
 import gevent
+from dispatcharr.utils import network_access_allowed
 
 logger = get_logger()
 
 
 @api_view(["GET"])
 def stream_ts(request, channel_id):
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     """Stream TS data to client with immediate response and keep-alive packets during initialization"""
     channel = get_stream_object(channel_id)
 
@@ -466,6 +471,9 @@ def stream_ts(request, channel_id):
 def stream_xc(request, username, password, channel_id):
     user = get_object_or_404(User, username=username)
 
+    extension = pathlib.Path(channel_id).suffix
+    channel_id = pathlib.Path(channel_id).stem
+
     custom_properties = (
         json.loads(user.custom_properties) if user.custom_properties else {}
     )
@@ -476,9 +484,10 @@ def stream_xc(request, username, password, channel_id):
     if custom_properties["xc_password"] != password:
         return Response({"error": "Invalid credentials"}, status=401)
 
+    print(f"Fetchin channel with ID: {channel_id}")
     if user.user_level < 10:
         filters = {
-            "id": channel_id,
+            "id": int(channel_id),
             "channelprofilemembership__enabled": True,
             "user_level__lte": user.user_level,
         }
@@ -487,10 +496,13 @@ def stream_xc(request, username, password, channel_id):
             channel_profiles = user.channel_profiles.all()
             filters["channelprofilemembership__channel_profile__in"] = channel_profiles
 
-        channel = get_object_or_404(Channel, **filters)
+        channel = Channel.objects.filter(**filters).distinct().first()
+        if not channel:
+            return JsonResponse({"error": "Not found"}, status=404)
     else:
         channel = get_object_or_404(Channel, id=channel_id)
 
+    # @TODO: we've got the  file 'type' via extension, support this when we support multiple outputs
     return stream_ts(request._request, channel.uuid)
 
 

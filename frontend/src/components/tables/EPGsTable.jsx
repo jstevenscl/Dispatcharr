@@ -19,7 +19,6 @@ import {
   Group,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconSquarePlus } from '@tabler/icons-react';
 import {
   ArrowDownWideNarrow,
   ArrowUpDown,
@@ -27,6 +26,7 @@ import {
   RefreshCcw,
   SquareMinus,
   SquarePen,
+  SquarePlus,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import useSettingsStore from '../../store/settings';
@@ -283,7 +283,7 @@ const EPGsTable = () => {
       {
         header: 'Updated',
         accessorKey: 'updated_at',
-        size: 150,
+        size: 175,
         enableSorting: false,
         cell: ({ cell }) => {
           const value = cell.getValue();
@@ -540,7 +540,7 @@ const EPGsTable = () => {
           <Flex gap={6}>
             <Tooltip label="Assign">
               <Button
-                leftSection={<IconSquarePlus size={18} />}
+                leftSection={<SquarePlus size={18} />}
                 variant="light"
                 size="xs"
                 onClick={() => editEPG()}

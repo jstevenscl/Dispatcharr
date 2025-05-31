@@ -1,9 +1,12 @@
+import ipaddress
 from django.http import HttpResponse, JsonResponse, Http404
 from rest_framework.response import Response
 from django.urls import reverse
 from apps.channels.models import Channel, ChannelProfile, ChannelGroup
 from apps.epg.models import ProgramData
 from apps.accounts.models import User
+from core.models import CoreSettings, NETWORK_ACCESS
+from dispatcharr.utils import network_access_allowed
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
@@ -13,7 +16,19 @@ from tzlocal import get_localzone
 import time
 import json
 from urllib.parse import urlparse
+import base64
 
+def m3u_endpoint(request, profile_name=None, user=None):
+    if not network_access_allowed(request, "M3U_EPG"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    return generate_m3u(request, profile_name, user)
+
+def epg_endpoint(request, profile_name=None, user=None):
+    if not network_access_allowed(request, "M3U_EPG"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    return generate_epg(request, profile_name, user)
 
 def generate_m3u(request, profile_name=None, user=None):
     """
@@ -98,26 +113,7 @@ def generate_m3u(request, profile_name=None, user=None):
     return response
 
 
-def generate_dummy_epg(
-    channel_id, channel_name, xml_lines=None, num_days=1, program_length_hours=4
-):
-    """
-    Generate dummy EPG programs for channels without EPG data.
-    Creates program blocks for a specified number of days.
-
-    Args:
-        channel_id: The channel ID to use in the program entries
-        channel_name: The name of the channel to use in program titles
-        xml_lines: Optional list to append lines to, otherwise returns new list
-        num_days: Number of days to generate EPG data for (default: 1)
-        program_length_hours: Length of each program block in hours (default: 4)
-
-    Returns:
-        List of XML lines for the dummy EPG entries
-    """
-    if xml_lines is None:
-        xml_lines = []
-
+def generate_dummy_programs(channel_id, channel_name, num_days=1, program_length_hours=4):
     # Get current time rounded to hour
     now = timezone.now()
     now = now.replace(minute=0, second=0, microsecond=0)
@@ -156,6 +152,8 @@ def generate_dummy_epg(
         ],
     }
 
+    programs = []
+
     # Create programs for each day
     for day in range(num_days):
         day_start = now + timedelta(days=day)
@@ -181,17 +179,49 @@ def generate_dummy_epg(
                 # Fallback description if somehow no range matches
                 description = f"Placeholder program for {channel_name} - EPG data went on vacation"
 
-            # Format times in XMLTV format
-            start_str = start_time.strftime("%Y%m%d%H%M%S %z")
-            stop_str = end_time.strftime("%Y%m%d%H%M%S %z")
+            programs.append({
+                "channel_id": channel_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "title": channel_name,
+                "description": description,
+            })
 
-            # Create program entry with escaped channel name
-            xml_lines.append(
-                f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">'
-            )
-            xml_lines.append(f"    <title>{html.escape(channel_name)}</title>")
-            xml_lines.append(f"    <desc>{html.escape(description)}</desc>")
-            xml_lines.append(f"  </programme>")
+    return programs
+
+
+def generate_dummy_epg(
+    channel_id, channel_name, xml_lines=None, num_days=1, program_length_hours=4
+):
+    """
+    Generate dummy EPG programs for channels without EPG data.
+    Creates program blocks for a specified number of days.
+
+    Args:
+        channel_id: The channel ID to use in the program entries
+        channel_name: The name of the channel to use in program titles
+        xml_lines: Optional list to append lines to, otherwise returns new list
+        num_days: Number of days to generate EPG data for (default: 1)
+        program_length_hours: Length of each program block in hours (default: 4)
+
+    Returns:
+        List of XML lines for the dummy EPG entries
+    """
+    if xml_lines is None:
+        xml_lines = []
+
+    for program in generate_dummy_programs(channel_id, channel_name, num_days=1, program_length_hours=4):
+        # Format times in XMLTV format
+        start_str = program['start_time'].strftime("%Y%m%d%H%M%S %z")
+        stop_str = program['end_time'].strftime("%Y%m%d%H%M%S %z")
+
+        # Create program entry with escaped channel name
+        xml_lines.append(
+            f'  <programme start="{start_str}" stop="{stop_str}" channel="{program['channel_id']}">'
+        )
+        xml_lines.append(f"    <title>{html.escape(program['title'])}</title>")
+        xml_lines.append(f"    <desc>{html.escape(program['description'])}</desc>")
+        xml_lines.append(f"  </programme>")
 
     return xml_lines
 
@@ -427,7 +457,7 @@ def xc_get_user(request):
     password = request.GET.get("password")
 
     if not username or not password:
-        raise Http404()
+        return None
 
     user = get_object_or_404(User, username=username)
     custom_properties = (
@@ -435,20 +465,22 @@ def xc_get_user(request):
     )
 
     if "xc_password" not in custom_properties:
-        raise Http404()
+        return None
 
     if custom_properties["xc_password"] != password:
-        raise Http404()
+        return None
 
     return user
 
 
-def xc_player_api(request):
-    action = request.GET.get("action")
+def xc_get_info(request, full=False):
+    if not network_access_allowed(request, 'XC_API'):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
     user = xc_get_user(request)
 
     if user is None:
-        raise Http404()
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
 
     raw_host = request.get_host()
     if ":" in raw_host:
@@ -457,62 +489,114 @@ def xc_player_api(request):
         hostname = raw_host
         port = "443" if request.is_secure() else "80"
 
-    if not action:
-        return JsonResponse(
-            {
-                "user_info": {
-                    "username": request.GET.get("username"),
-                    "password": request.GET.get("password"),
-                    "message": "",
-                    "auth": 1,
-                    "status": "Active",
-                    "exp_date": "1715062090",
-                    "max_connections": "99",
-                    "allowed_output_formats": [
-                        "ts",
-                    ],
-                },
-                "server_info": {
-                    "url": hostname,
-                    "server_protocol": request.scheme,
-                    "port": port,
-                    "timezone": get_localzone().key,
-                    "timestamp_now": int(time.time()),
-                    "time_now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "process": True,
-                },
-            }
-        )
+    info = {
+        "user_info": {
+            "username": request.GET.get("username"),
+            "password": request.GET.get("password"),
+            "message": "",
+            "auth": 1,
+            "status": "Active",
+            "exp_date": "1715062090",
+            "max_connections": "99",
+            "allowed_output_formats": [
+                "ts",
+            ],
+        },
+        "server_info": {
+            "url": hostname,
+            "server_protocol": request.scheme,
+            "port": port,
+            "timezone": get_localzone().key,
+            "timestamp_now": int(time.time()),
+            "time_now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "process": True,
+        },
+    }
 
-    if action == "get_live_categories":
-        return xc_get_live_categories(user)
-    if action == "get_live_streams":
-        return xc_get_live_streams(request, user, request.GET.get("category_id"))
+    if full == True:
+        info['categories'] = {
+            "series": [],
+            "movie": [],
+            "live": xc_get_live_categories(user),
+        }
+        info['available_channels'] = {channel["stream_id"]: channel for channel in xc_get_live_streams(request, user, request.GET.get("category_id"))}
 
-    if action == "get_vod_categories":
-        return JsonResponse([], safe=False)
-    if action == "get_vod_streams":
-        return JsonResponse([], safe=False)
+    return info
 
 
-def xc_get(request):
+def xc_player_api(request, full=False):
+    if not network_access_allowed(request, 'XC_API'):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
     action = request.GET.get("action")
     user = xc_get_user(request)
 
     if user is None:
-        raise Http404()
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    server_info = xc_get_info(request)
 
     if not action:
-        return generate_m3u(request, None, user)
+        return JsonResponse(server_info)
+
+    if action == "get_live_categories":
+        return JsonResponse(xc_get_live_categories(user), safe=False)
+    if action == "get_live_streams":
+        return JsonResponse(xc_get_live_streams(request, user, request.GET.get("category_id")), safe=False)
+    if action == "get_short_epg":
+        return JsonResponse(xc_get_epg(request, user, short=True), safe=False)
+    if action == "get_simple_data_table":
+        return JsonResponse(xc_get_epg(request, user, short=False), safe=False)
+
+    # Endpoints not implemented, but still provide a response
+    if action in [
+        "get_vod_categories",
+        "get_vod_streams",
+        "get_series",
+        "get_series_categories",
+        "get_series_info",
+        "get_vod_info",
+    ]:
+        return JsonResponse([], safe=False)
+
+    raise Http404()
 
 
-def xc_xmltv(request):
+def xc_panel_api(request):
+    if not network_access_allowed(request, 'XC_API'):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
     user = xc_get_user(request)
 
     if user is None:
-        raise Http404()
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
 
-    return generate_epg(request, user)
+    return JsonResponse(xc_get_info(request, True))
+
+
+def xc_get(request):
+    if not network_access_allowed(request, 'XC_API'):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    action = request.GET.get("action")
+    user = xc_get_user(request)
+
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    return generate_m3u(request, None, user)
+
+
+def xc_xmltv(request):
+    if not network_access_allowed(request, 'XC_API'):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    user = xc_get_user(request)
+
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    return generate_epg(request, None, user)
 
 
 def xc_get_live_categories(user):
@@ -546,7 +630,7 @@ def xc_get_live_categories(user):
             }
         )
 
-    return JsonResponse(response, safe=False)
+    return response
 
 
 def xc_get_live_streams(request, user, category_id=None):
@@ -578,7 +662,7 @@ def xc_get_live_streams(request, user, category_id=None):
     for channel in channels:
         streams.append(
             {
-                "num": channel.channel_number,
+                "num": int(channel.channel_number) if channel.channel_number.is_integer() else channel.channel_number,
                 "name": channel.name,
                 "stream_type": "live",
                 "stream_id": channel.id,
@@ -589,7 +673,7 @@ def xc_get_live_streams(request, user, category_id=None):
                         reverse("api:channels:logo-cache", args=[channel.logo.id])
                     )
                 ),
-                "epg_channel_id": channel.epg_data.tvg_id if channel.epg_data else "",
+                "epg_channel_id": int(channel.channel_number) if channel.channel_number.is_integer() else channel.channel_number,
                 "added": int(time.time()),  # @TODO: make this the actual created date
                 "is_adult": 0,
                 "category_id": channel.channel_group.id,
@@ -601,4 +685,72 @@ def xc_get_live_streams(request, user, category_id=None):
             }
         )
 
-    return JsonResponse(streams, safe=False)
+    return streams
+
+
+def xc_get_epg(request, user, short=False):
+    channel_id = request.GET.get('stream_id')
+    if not channel_id:
+        raise Http404()
+
+    channel = None
+    if user.user_level < 10:
+        filters = {
+            "id": channel_id,
+            "channelprofilemembership__enabled": True,
+            "user_level__lte": user.user_level,
+        }
+
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            filters["channelprofilemembership__channel_profile__in"] = channel_profiles
+
+        channel = get_object_or_404(Channel, **filters)
+    else:
+        channel = get_object_or_404(Channel, id=channel_id)
+
+    if not channel:
+        raise Http404()
+
+    limit = request.GET.get('limit', 4)
+    if channel.epg_data:
+        if short == False:
+            programs = channel.epg_data.programs.filter(
+                start_time__gte=timezone.now()
+            ).order_by('start_time')
+        else:
+            programs = channel.epg_data.programs.all().order_by('start_time')[:limit]
+    else:
+        programs = generate_dummy_programs(channel_id=channel_id, channel_name=channel.name)
+
+    output = {"epg_listings": []}
+    for program in programs:
+        id = "0"
+        epg_id = "0"
+        title = program['title'] if isinstance(program, dict) else program.title
+        description = program['description'] if isinstance(program, dict) else program.description
+
+        start = program["start_time"] if isinstance(program, dict) else program.start_time
+        end = program["end_time"] if isinstance(program, dict) else program.end_time
+
+        program_output = {
+            "id": f"{id}",
+            "epg_id": f"{epg_id}",
+            "title": base64.b64encode(title.encode()).decode(),
+            "lang": "",
+            "start": start.strftime("%Y%m%d%H%M%S"),
+            "end": end.strftime("%Y%m%d%H%M%S"),
+            "description": base64.b64encode(description.encode()).decode(),
+            "channel_id": int(channel.channel_number) if channel.channel_number.is_integer() else channel.channel_number,
+            "start_timestamp": int(start.timestamp()),
+            "stop_timestamp": int(end.timestamp()),
+            "stream_id": f"{channel_id}",
+        }
+
+        if short == False:
+            program_output["now_playing"] = 1 if start <= timezone.now() <= end else 0
+            program_output["has_archive"] = "0"
+
+        output['epg_listings'].append(program_output)
+
+    return output

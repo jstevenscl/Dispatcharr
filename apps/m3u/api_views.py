@@ -1,8 +1,8 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from apps.accounts.permissions import (
+    Authenticated,
     permission_classes_by_action,
     permission_classes_by_method,
 )
@@ -45,7 +45,7 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def create(self, request, *args, **kwargs):
         # Handle file upload first, if any
@@ -155,7 +155,7 @@ class M3UFilterViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
 
 class ServerGroupViewSet(viewsets.ModelViewSet):
@@ -168,7 +168,7 @@ class ServerGroupViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
 
 class RefreshM3UAPIView(APIView):
@@ -180,7 +180,7 @@ class RefreshM3UAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @swagger_auto_schema(
         operation_description="Triggers a refresh of all active M3U accounts",
@@ -203,7 +203,7 @@ class RefreshSingleM3UAPIView(APIView):
                 perm() for perm in permission_classes_by_method[self.request.method]
             ]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     @swagger_auto_schema(
         operation_description="Triggers a refresh of a single M3U account",
@@ -230,7 +230,7 @@ class UserAgentViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
 
 class M3UAccountProfileViewSet(viewsets.ModelViewSet):
@@ -241,7 +241,7 @@ class M3UAccountProfileViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
     def get_queryset(self):
         m3u_account_id = self.kwargs["account_id"]

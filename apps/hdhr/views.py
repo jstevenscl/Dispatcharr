@@ -1,8 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
-from apps.accounts.permissions import permission_classes_by_action
+from apps.accounts.permissions import Authenticated, permission_classes_by_action
 from django.http import JsonResponse, HttpResponseForbidden, HttpResponse
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -36,7 +35,7 @@ class HDHRDeviceViewSet(viewsets.ModelViewSet):
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
-            return [IsAuthenticated()]
+            return [Authenticated()]
 
 
 # 🔹 2) Discover API
