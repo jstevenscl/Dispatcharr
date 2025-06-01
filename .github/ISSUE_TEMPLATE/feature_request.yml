@@ -2,6 +2,7 @@ name: Feature request
 description: I want to suggest a new feature for Dispatcharr
 title: "[Feature]: "
 labels: ["Feature Request"]
+type: "Feature"
 projects: []
 assignees: []
 body:
