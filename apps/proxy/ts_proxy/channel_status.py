@@ -307,16 +307,23 @@ class ChannelStatus:
             client_count = proxy_server.redis_client.scard(client_set_key) or 0
 
             # Calculate uptime
-            created_at = float(metadata.get(ChannelMetadataField.INIT_TIME.encode('utf-8'), b'0').decode('utf-8'))
+            init_time_bytes = metadata.get(ChannelMetadataField.INIT_TIME.encode('utf-8'), b'0')
+            created_at = float(init_time_bytes.decode('utf-8'))
             uptime = time.time() - created_at if created_at > 0 else 0
+
+            # Safely decode bytes or use defaults
+            def safe_decode(bytes_value, default="unknown"):
+                if bytes_value is None:
+                    return default
+                return bytes_value.decode('utf-8')
 
             # Simplified info
             info = {
                 'channel_id': channel_id,
-                'state': metadata.get(ChannelMetadataField.STATE.encode('utf-8'), b'unknown').decode('utf-8'),
-                'url': metadata.get(ChannelMetadataField.URL.encode('utf-8'), b'').decode('utf-8'),
-                'stream_profile': metadata.get(ChannelMetadataField.STREAM_PROFILE.encode('utf-8'), b'').decode('utf-8'),
-                'owner': metadata.get(ChannelMetadataField.OWNER.encode('utf-8'), b'unknown').decode('utf-8'),
+                'state': safe_decode(metadata.get(ChannelMetadataField.STATE.encode('utf-8'))),
+                'url': safe_decode(metadata.get(ChannelMetadataField.URL.encode('utf-8')), ""),
+                'stream_profile': safe_decode(metadata.get(ChannelMetadataField.STREAM_PROFILE.encode('utf-8')), ""),
+                'owner': safe_decode(metadata.get(ChannelMetadataField.OWNER.encode('utf-8'))),
                 'buffer_index': int(buffer_index_value.decode('utf-8')) if buffer_index_value else 0,
                 'client_count': client_count,
                 'uptime': uptime
@@ -376,14 +383,15 @@ class ChannelStatus:
                     # Efficient way - just retrieve the essentials
                     client_info = {
                         'client_id': client_id_str,
-                        'user_agent': proxy_server.redis_client.hget(client_key, 'user_agent'),
-                        'ip_address': proxy_server.redis_client.hget(client_key, 'ip_address').decode('utf-8'),
                     }
 
-                    if client_info['user_agent']:
-                        client_info['user_agent'] = client_info['user_agent'].decode('utf-8')
-                    else:
-                        client_info['user_agent'] = 'unknown'
+                    # Safely get user_agent and ip_address
+                    user_agent_bytes = proxy_server.redis_client.hget(client_key, 'user_agent')
+                    client_info['user_agent'] = safe_decode(user_agent_bytes)
+
+                    ip_address_bytes = proxy_server.redis_client.hget(client_key, 'ip_address')
+                    if ip_address_bytes:
+                        client_info['ip_address'] = safe_decode(ip_address_bytes)
 
                     # Just get connected_at for client age
                     connected_at_bytes = proxy_server.redis_client.hget(client_key, 'connected_at')
@@ -416,5 +424,5 @@ class ChannelStatus:
 
             return info
         except Exception as e:
-            logger.error(f"Error getting channel info: {e}")
+            logger.error(f"Error getting channel info: {e}", exc_info=True)  # Added exc_info for better debugging
             return None

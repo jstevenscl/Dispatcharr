@@ -21,6 +21,9 @@ def generate_m3u(request, profile_name=None):
     else:
         channels = Channel.objects.order_by('channel_number')
 
+    # Check if the request wants to use direct logo URLs instead of cache
+    use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
+
     m3u_content = "#EXTM3U\n"
     for channel in channels:
         group_title = channel.channel_group.name if channel.channel_group else "Default"
@@ -40,7 +43,17 @@ def generate_m3u(request, profile_name=None):
 
         tvg_logo = ""
         if channel.logo:
-            tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+            if use_cached_logos:
+                # Use cached logo as before
+                tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+            else:
+                # Try to find direct logo URL from channel's streams
+                direct_logo = channel.logo.url if channel.logo.url.startswith(('http://', 'https://')) else None
+                # If direct logo found, use it; otherwise fall back to cached version
+                if direct_logo:
+                    tvg_logo = direct_logo
+                else:
+                    tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
 
         # create possible gracenote id insertion
         tvc_guide_stationid = ""
@@ -185,15 +198,26 @@ def generate_epg(request, profile_name=None):
                 formatted_channel_number = str(channel.channel_number)
         else:
             formatted_channel_number = str(channel.id)
-
+        # Check if the request wants to use direct logo URLs instead of cache
+        use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
+        # Add channel logo if available
+        tvg_logo = ""
+        if channel.logo:
+            if use_cached_logos:
+                # Use cached logo as before
+                tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+            else:
+                # Try to find direct logo URL from channel's streams
+                direct_logo = channel.logo.url if channel.logo.url.startswith(('http://', 'https://')) else None
+                # If direct logo found, use it; otherwise fall back to cached version
+                if direct_logo:
+                    tvg_logo = direct_logo
+                else:
+                    tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         xml_lines.append(f'  <channel id="{formatted_channel_number}">')
         xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
-
-        # Add channel logo if available
-        if channel.logo:
-            logo_url = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
-            xml_lines.append(f'    <icon src="{html.escape(logo_url)}" />')
+        xml_lines.append(f'    <icon src="{html.escape(tvg_logo)}" />')
 
         xml_lines.append('  </channel>')
 
