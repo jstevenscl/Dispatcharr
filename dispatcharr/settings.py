@@ -195,15 +195,6 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 
-# Memory management settings
-# CELERY_WORKER_MAX_TASKS_PER_CHILD = 10  # Restart worker after 10 tasks to free memory
-# CELERY_WORKER_PREFETCH_MULTIPLIER = 1   # Don't prefetch tasks - process one at a time
-# CELERY_TASK_ACKS_LATE = True            # Only acknowledge tasks after they're processed
-# CELERY_TASK_TIME_LIMIT = 3600           # 1 hour time limit per task
-# CELERY_TASK_SOFT_TIME_LIMIT = 3540      # Soft limit 60 seconds before hard limit
-# CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True  # Cancel tasks if connection lost
-# CELERY_TASK_IGNORE_RESULT = True        # Don't store results unless explicitly needed
-
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     "fetch-channel-statuses": {
