@@ -314,6 +314,10 @@ def generate_epg(request, profile_name=None):
                         if 'onscreen_episode' in custom_data:
                             xml_lines.append(f'    <episode-num system="onscreen">{html.escape(custom_data["onscreen_episode"])}</episode-num>')
 
+                        # Handle dd_progid format
+                        if 'dd_progid' in custom_data:
+                            xml_lines.append(f'    <episode-num system="dd_progid">{html.escape(custom_data["dd_progid"])}</episode-num>')
+
                         # Add season and episode numbers in xmltv_ns format if available
                         if 'season' in custom_data and 'episode' in custom_data:
                             season = int(custom_data['season']) - 1 if str(custom_data['season']).isdigit() else 0
@@ -359,6 +363,9 @@ def generate_epg(request, profile_name=None):
 
                         if custom_data.get('new', False):
                             xml_lines.append(f'    <new />')
+
+                        if custom_data.get('live', False):
+                            xml_lines.append(f'    <live />')
 
                     except Exception as e:
                         xml_lines.append(f'    <!-- Error parsing custom properties: {html.escape(str(e))} -->')
