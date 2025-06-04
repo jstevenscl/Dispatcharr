@@ -199,18 +199,33 @@ def generate_epg(request, profile_name=None):
     else:
         channels = Channel.objects.all()
 
+    # Check if the request wants to use direct logo URLs instead of cache
+    use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
+
+    # Get the source to use for tvg-id value
+    # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
+    tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
+
     # Retrieve all active channels
     for channel in channels:
         # Format channel number as integer if it has no decimal component - same as M3U generation
         if channel.channel_number is not None:
             if channel.channel_number == int(channel.channel_number):
-                formatted_channel_number = str(int(channel.channel_number))
+                formatted_channel_number = int(channel.channel_number)
             else:
-                formatted_channel_number = str(channel.channel_number)
+                formatted_channel_number = channel.channel_number
         else:
-            formatted_channel_number = str(channel.id)
-        # Check if the request wants to use direct logo URLs instead of cache
-        use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
+            formatted_channel_number = ""
+
+        # Determine the channel ID based on the selected source
+        if tvg_id_source == 'tvg_id' and channel.tvg_id:
+            channel_id = channel.tvg_id
+        elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
+            channel_id = channel.tvc_guide_stationid
+        else:
+            # Default to channel number (original behavior)
+            channel_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
+
         # Add channel logo if available
         tvg_logo = ""
         if channel.logo:
@@ -226,21 +241,29 @@ def generate_epg(request, profile_name=None):
                 else:
                     tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
         display_name = channel.epg_data.name if channel.epg_data else channel.name
-        xml_lines.append(f'  <channel id="{formatted_channel_number}">')
+        xml_lines.append(f'  <channel id="{channel_id}">')
         xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
         xml_lines.append(f'    <icon src="{html.escape(tvg_logo)}" />')
 
         xml_lines.append('  </channel>')
 
     for channel in channels:
-        # Use the same formatting for channel ID in program entries
-        if channel.channel_number is not None:
-            if channel.channel_number == int(channel.channel_number):
-                formatted_channel_number = str(int(channel.channel_number))
-            else:
-                formatted_channel_number = str(channel.channel_number)
+        # Use the same channel ID determination for program entries
+        if tvg_id_source == 'tvg_id' and channel.tvg_id:
+            channel_id = channel.tvg_id
+        elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
+            channel_id = channel.tvc_guide_stationid
         else:
-            formatted_channel_number = str(channel.id)
+            # Get formatted channel number
+            if channel.channel_number is not None:
+                if channel.channel_number == int(channel.channel_number):
+                    formatted_channel_number = int(channel.channel_number)
+                else:
+                    formatted_channel_number = channel.channel_number
+            else:
+                formatted_channel_number = ""
+            # Default to channel number
+            channel_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
 
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         if not channel.epg_data:
@@ -249,7 +272,7 @@ def generate_epg(request, profile_name=None):
             num_days = 1  # Default to 1 days of dummy EPG data
             program_length_hours = 4  # Default to 4-hour program blocks
             generate_dummy_epg(
-                formatted_channel_number,
+                channel_id,
                 display_name,
                 xml_lines,
                 num_days=num_days,
@@ -260,7 +283,7 @@ def generate_epg(request, profile_name=None):
             for prog in programs:
                 start_str = prog.start_time.strftime("%Y%m%d%H%M%S %z")
                 stop_str = prog.end_time.strftime("%Y%m%d%H%M%S %z")
-                xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{formatted_channel_number}">')
+                xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
                 xml_lines.append(f'    <title>{html.escape(prog.title)}</title>')
 
                 # Add subtitle if available
