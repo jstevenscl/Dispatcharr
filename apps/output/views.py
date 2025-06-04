@@ -24,6 +24,10 @@ def generate_m3u(request, profile_name=None):
     # Check if the request wants to use direct logo URLs instead of cache
     use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
 
+    # Get the source to use for tvg-id value
+    # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
+    tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
+
     m3u_content = "#EXTM3U\n"
     for channel in channels:
         group_title = channel.channel_group.name if channel.channel_group else "Default"
@@ -37,8 +41,15 @@ def generate_m3u(request, profile_name=None):
         else:
             formatted_channel_number = ""
 
-        # Use formatted channel number for tvg_id to ensure proper matching with EPG
-        tvg_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
+        # Determine the tvg-id based on the selected source
+        if tvg_id_source == 'tvg_id' and channel.tvg_id:
+            tvg_id = channel.tvg_id
+        elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
+            tvg_id = channel.tvc_guide_stationid
+        else:
+            # Default to channel number (original behavior)
+            tvg_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
+
         tvg_name = channel.name
 
         tvg_logo = ""
