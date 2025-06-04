@@ -85,7 +85,7 @@ const M3U = ({
         account_type: m3uAccount.account_type,
         username: m3uAccount.username ?? '',
         password: '',
-        stale_stream_days: m3uAccount.stale_stream_days || 7,
+        stale_stream_days: m3uAccount.stale_stream_days !== undefined && m3uAccount.stale_stream_days !== null ? m3uAccount.stale_stream_days : 7,
       });
 
       if (m3uAccount.account_type == 'XC') {
