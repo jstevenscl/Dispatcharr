@@ -527,7 +527,11 @@ def cleanup_streams(account_id, scan_start_time=timezone.now):
     streams_to_delete.delete()
     stale_streams.delete()
 
+    total_deleted = deleted_count + stale_count
     logger.info(f"Cleanup for M3U account {account_id} complete: {deleted_count} streams removed due to group filter, {stale_count} removed as stale")
+
+    # Return the total count of deleted streams
+    return total_deleted
 
 @shared_task
 def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
@@ -1078,7 +1082,7 @@ def refresh_single_m3u_account(account_id):
         Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
 
         # Now run cleanup
-        cleanup_streams(account_id, refresh_start_timestamp)
+        streams_deleted = cleanup_streams(account_id, refresh_start_timestamp)
 
         # Calculate elapsed time
         elapsed_time = time.time() - start_time
