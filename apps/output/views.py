@@ -184,7 +184,7 @@ def generate_epg(request, profile_name=None):
     Dynamically generate an XMLTV (EPG) file using the new EPGData/ProgramData models.
     Since the EPG data is stored independently of Channels, we group programmes
     by their associated EPGData record.
-    This version does not filter by time, so it includes the entire EPG saved in the DB.
+    This version filters data based on the 'days' parameter.
     """
     xml_lines = []
     xml_lines.append('<?xml version="1.0" encoding="UTF-8"?>')
@@ -205,6 +205,23 @@ def generate_epg(request, profile_name=None):
     # Get the source to use for tvg-id value
     # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
     tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
+
+    # Get the number of days for EPG data
+    try:
+        # Default to 0 days (everything) for real EPG if not specified
+        days_param = request.GET.get('days', '0')
+        num_days = int(days_param)
+        # Set reasonable limits
+        num_days = max(0, min(num_days, 365))  # Between 0 and 365 days
+    except ValueError:
+        num_days = 0  # Default to all data if invalid value
+
+    # For dummy EPG, use either the specified value or default to 3 days
+    dummy_days = num_days if num_days > 0 else 3
+
+    # Calculate cutoff date for EPG data filtering (only if days > 0)
+    now = timezone.now()
+    cutoff_date = now + timedelta(days=num_days) if num_days > 0 else None
 
     # Retrieve all active channels
     for channel in channels:
@@ -268,18 +285,25 @@ def generate_epg(request, profile_name=None):
         display_name = channel.epg_data.name if channel.epg_data else channel.name
         if not channel.epg_data:
             # Use the enhanced dummy EPG generation function with defaults
-            # These values could be made configurable via settings or request parameters
-            num_days = 1  # Default to 1 days of dummy EPG data
             program_length_hours = 4  # Default to 4-hour program blocks
             generate_dummy_epg(
                 channel_id,
                 display_name,
                 xml_lines,
-                num_days=num_days,
+                num_days=dummy_days,  # Use dummy_days (3 days by default)
                 program_length_hours=program_length_hours
             )
         else:
-            programs = channel.epg_data.programs.all()
+            # For real EPG data - filter only if days parameter was specified
+            if num_days > 0:
+                programs = channel.epg_data.programs.filter(
+                    start_time__gte=now,
+                    start_time__lt=cutoff_date
+                )
+            else:
+                # Return all programs if days=0 or not specified
+                programs = channel.epg_data.programs.all()
+
             for prog in programs:
                 start_str = prog.start_time.strftime("%Y%m%d%H%M%S %z")
                 stop_str = prog.end_time.strftime("%Y%m%d%H%M%S %z")
