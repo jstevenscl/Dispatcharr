@@ -24,6 +24,9 @@ def generate_m3u(request, profile_name=None):
     # Check if the request wants to use direct logo URLs instead of cache
     use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
 
+    # Check if direct stream URLs should be used instead of proxy
+    use_direct_urls = request.GET.get('direct', 'false').lower() == 'true'
+
     # Get the source to use for tvg-id value
     # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
     tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
@@ -76,10 +79,22 @@ def generate_m3u(request, profile_name=None):
             f'tvg-chno="{formatted_channel_number}" {tvc_guide_stationid}group-title="{group_title}",{channel.name}\n'
         )
 
-        base_url = request.build_absolute_uri('/')[:-1]
-        stream_url = f"{base_url}/proxy/ts/stream/{channel.uuid}"
+        # Determine the stream URL based on the direct parameter
+        if use_direct_urls:
+            # Try to get the first stream's direct URL
+            first_stream = channel.streams.first()
+            if first_stream and first_stream.url:
+                # Use the direct stream URL
+                stream_url = first_stream.url
+            else:
+                # Fall back to proxy URL if no direct URL available
+                base_url = request.build_absolute_uri('/')[:-1]
+                stream_url = f"{base_url}/proxy/ts/stream/{channel.uuid}"
+        else:
+            # Standard behavior - use proxy URL
+            base_url = request.build_absolute_uri('/')[:-1]
+            stream_url = f"{base_url}/proxy/ts/stream/{channel.uuid}"
 
-        #stream_url = request.build_absolute_uri(reverse('output:stream', args=[channel.id]))
         m3u_content += extinf_line + stream_url + "\n"
 
     response = HttpResponse(m3u_content, content_type="audio/x-mpegurl")
