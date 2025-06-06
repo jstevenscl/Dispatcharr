@@ -324,7 +324,7 @@ const M3U = ({
             />
 
             <NumberInput
-              min={1}
+              min={0}
               max={365}
               label="Stale Stream Retention (days)"
               description="Streams not seen for this many days will be removed"

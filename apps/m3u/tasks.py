@@ -496,7 +496,7 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
 
     return retval
 
-def cleanup_streams(account_id):
+def cleanup_streams(account_id, scan_start_time=timezone.now):
     account = M3UAccount.objects.get(id=account_id, is_active=True)
     existing_groups = ChannelGroup.objects.filter(
         m3u_account__m3u_account=account,
@@ -505,7 +505,7 @@ def cleanup_streams(account_id):
     logger.info(f"Found {len(existing_groups)} active groups for M3U account {account_id}")
 
     # Calculate cutoff date for stale streams
-    stale_cutoff = timezone.now() - timezone.timedelta(days=account.stale_stream_days)
+    stale_cutoff = scan_start_time - timezone.timedelta(days=account.stale_stream_days)
     logger.info(f"Removing streams not seen since {stale_cutoff} for M3U account {account_id}")
 
     # Delete streams that are not in active groups
@@ -833,7 +833,8 @@ def refresh_single_m3u_account(account_id):
         return f"Task already running for account_id={account_id}."
 
     # Record start time
-    start_time = time.time()
+    refresh_start_timestamp = timezone.now()  # For the cleanup function
+    start_time = time.time()  # For tracking elapsed time as float
     streams_created = 0
     streams_updated = 0
     streams_deleted = 0
@@ -1077,7 +1078,7 @@ def refresh_single_m3u_account(account_id):
         Stream.objects.filter(id=-1).exists()  # This will never find anything but ensures DB sync
 
         # Now run cleanup
-        cleanup_streams(account_id)
+        cleanup_streams(account_id, refresh_start_timestamp)
 
         # Calculate elapsed time
         elapsed_time = time.time() - start_time
