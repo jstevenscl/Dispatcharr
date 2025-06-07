@@ -1,5 +1,7 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseForbidden
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from apps.channels.models import Channel, ChannelProfile
 from apps.epg.models import ProgramData
 from django.utils import timezone
@@ -7,11 +9,18 @@ from datetime import datetime, timedelta
 import re
 import html  # Add this import for XML escaping
 
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def generate_m3u(request, profile_name=None):
     """
     Dynamically generate an M3U file from channels.
     The stream URL now points to the new stream_view that uses StreamProfile.
+    Supports both GET and POST methods for compatibility with IPTVSmarters.
     """
+    # Check if this is a POST request with data (which we don't want to allow)
+    if request.method == "POST" and request.body:
+        return HttpResponseForbidden("POST requests with content are not allowed")
+
     if profile_name is not None:
         channel_profile = ChannelProfile.objects.get(name=profile_name)
         channels = Channel.objects.filter(
