@@ -5,6 +5,7 @@ from django.views.decorators.http import require_http_methods
 from apps.channels.models import Channel, ChannelProfile
 from apps.epg.models import ProgramData
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime, timedelta
 import re
 import html  # Add this import for XML escaping
