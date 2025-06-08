@@ -29,7 +29,7 @@ def validate_logo_file(file):
 
 
 def get_client_ip(request):
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    x_forwarded_for = request.META.get("HTTP_X_REAL_IP")
     if x_forwarded_for:
         # X-Forwarded-For can be a comma-separated list of IPs
         ip = x_forwarded_for.split(",")[0].strip()
@@ -44,7 +44,7 @@ def network_access_allowed(request, settings_key):
     cidrs = (
         network_access[settings_key].split(",")
         if settings_key in network_access
-        else "0.0.0.0/0"
+        else ["0.0.0.0/0"]
     )
 
     network_allowed = False

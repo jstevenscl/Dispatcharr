@@ -5,6 +5,7 @@ import useUserAgentsStore from '../store/userAgents';
 import useStreamProfilesStore from '../store/streamProfiles';
 import {
   Accordion,
+  Alert,
   Box,
   Button,
   Center,
@@ -31,6 +32,7 @@ const SettingsPage = () => {
   const authUser = useAuthStore((s) => s.user);
 
   const [accordianValue, setAccordianValue] = useState(null);
+  const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -376,11 +378,21 @@ const SettingsPage = () => {
   };
 
   const onNetworkAccessSubmit = async () => {
-    console.log(networkAccessForm.getValues());
-    API.updateSetting({
-      ...settings['network-access'],
-      value: JSON.stringify(networkAccessForm.getValues()),
-    });
+    let result = null;
+    setNetworkAccessSaved(false);
+    try {
+      await API.updateSetting({
+        ...settings['network-access'],
+        value: JSON.stringify(networkAccessForm.getValues()),
+      });
+      setNetworkAccessSaved(true);
+    } catch (e) {
+      const errors = {};
+      for (const key in e.body.value) {
+        errors[key] = `Invalid CIDR(s): ${e.body.value[key]}`;
+      }
+      networkAccessForm.setErrors(errors);
+    }
   };
 
   const onUISettingsChange = (name, value) => {
@@ -589,6 +601,13 @@ const SettingsPage = () => {
                         )}
                       >
                         <Stack gap="sm">
+                          {networkAccessSaved && (
+                            <Alert
+                              variant="light"
+                              color="green"
+                              title="Saved Successfully"
+                            ></Alert>
+                          )}
                           {Object.entries(NETWORK_ACCESS_OPTIONS).map(
                             ([key, config]) => {
                               return (
