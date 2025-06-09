@@ -70,6 +70,24 @@ class ChannelMetadataField:
     FFMPEG_BITRATE = "ffmpeg_bitrate"
     FFMPEG_STATS_UPDATED = "ffmpeg_stats_updated"
 
+    # Video stream info
+    VIDEO_CODEC = "video_codec"
+    RESOLUTION = "resolution"
+    WIDTH = "width"
+    HEIGHT = "height"
+    SOURCE_FPS = "source_fps"
+    PIXEL_FORMAT = "pixel_format"
+    VIDEO_BITRATE = "video_bitrate"
+
+    # Audio stream info
+    AUDIO_CODEC = "audio_codec"
+    SAMPLE_RATE = "sample_rate"
+    AUDIO_CHANNELS = "audio_channels"
+    AUDIO_BITRATE = "audio_bitrate"
+
+    # Stream info timestamp
+    STREAM_INFO_UPDATED = "stream_info_updated"
+
     # Client metadata fields
     CONNECTED_AT = "connected_at"
     LAST_ACTIVE = "last_active"
