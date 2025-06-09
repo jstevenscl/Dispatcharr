@@ -63,6 +63,13 @@ class ChannelMetadataField:
     STREAM_SWITCH_TIME = "stream_switch_time"
     STREAM_SWITCH_REASON = "stream_switch_reason"
 
+    # FFmpeg performance metrics
+    FFMPEG_SPEED = "ffmpeg_speed"
+    FFMPEG_FPS = "ffmpeg_fps"
+    ACTUAL_FPS = "actual_fps"
+    FFMPEG_BITRATE = "ffmpeg_bitrate"
+    FFMPEG_STATS_UPDATED = "ffmpeg_stats_updated"
+
     # Client metadata fields
     CONNECTED_AT = "connected_at"
     LAST_ACTIVE = "last_active"
