@@ -488,6 +488,12 @@ class ChannelStatus:
             source_fps = metadata.get(ChannelMetadataField.SOURCE_FPS.encode('utf-8'))
             if source_fps:
                 info['source_fps'] = float(source_fps.decode('utf-8'))
+            ffmpeg_speed = metadata.get(ChannelMetadataField.FFMPEG_SPEED.encode('utf-8'))
+            if ffmpeg_speed:
+                info['ffmpeg_speed'] = float(ffmpeg_speed.decode('utf-8'))
+            audio_codec = metadata.get(ChannelMetadataField.AUDIO_CODEC.encode('utf-8'))
+            if audio_codec:
+                info['audio_codec'] = audio_codec.decode('utf-8')
 
             return info
         except Exception as e:
