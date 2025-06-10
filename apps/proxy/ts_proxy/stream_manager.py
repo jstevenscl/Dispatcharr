@@ -6,8 +6,8 @@ import time
 import socket
 import requests
 import subprocess
-import gevent  # Add this import
-import re  # Add this import at the top
+import gevent
+import re
 from typing import Optional, List
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
@@ -502,6 +502,10 @@ class StreamManager:
             elif any(keyword in content_lower for keyword in ['input', 'output', 'stream', 'video', 'audio']):
                 # Stream info - log at info level
                 logger.info(f"FFmpeg info: {content}")
+                if content.startswith('Input #0'):
+                    # If it's input 0, parse stream info
+                    from .services.channel_service import ChannelService
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "input")
             else:
                 # Everything else at debug level
                 logger.debug(f"FFmpeg stderr: {content}")
