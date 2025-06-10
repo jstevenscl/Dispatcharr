@@ -14,6 +14,7 @@ import {
   Tooltip,
   useMantineTheme,
   Select,
+  Badge,
 } from '@mantine/core';
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table';
 import { TableHelper } from '../helpers';
@@ -473,6 +474,41 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
             />
           </Tooltip>
         )}
+
+        {/* Add stream information badges */}
+        <Group gap="xs" mt="xs">
+          {channel.video_codec && (
+            <Badge size="sm" variant="light" color="blue">
+              {channel.video_codec.toUpperCase()}
+            </Badge>
+          )}
+          {channel.resolution && (
+            <Badge size="sm" variant="light" color="green">
+              {channel.resolution}
+            </Badge>
+          )}
+          {channel.source_fps && (
+            <Badge size="sm" variant="light" color="orange">
+              {channel.source_fps} FPS
+            </Badge>
+          )}
+          {channel.audio_codec && (
+            <Badge size="sm" variant="light" color="purple">
+              {channel.audio_codec.toUpperCase()}
+            </Badge>
+          )}
+          {channel.ffmpeg_speed && (
+            <Tooltip label={`Speed: ${channel.ffmpeg_speed}x realtime`}>
+              <Badge
+                size="sm"
+                variant="light"
+                color={parseFloat(channel.ffmpeg_speed) >= 1.0 ? "green" : "red"}
+              >
+                {channel.ffmpeg_speed}x
+              </Badge>
+            </Tooltip>
+          )}
+        </Group>
 
         <Group justify="space-between">
           <Group gap={4}>

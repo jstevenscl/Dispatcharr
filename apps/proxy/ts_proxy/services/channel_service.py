@@ -6,6 +6,7 @@ This separates business logic from HTTP handling in views.
 import logging
 import time
 import json
+import re
 from django.shortcuts import get_object_or_404
 from apps.channels.models import Channel, Stream
 from apps.proxy.config import TSConfig as Config
@@ -414,6 +415,143 @@ class ChannelService:
         except Exception as e:
             logger.error(f"Error validating channel state: {e}", exc_info=True)
             return False, None, None, {"error": f"Exception: {str(e)}"}
+
+    @staticmethod
+    def parse_and_store_stream_info(channel_id, stream_info_line, stream_type="video"):
+        """Parse FFmpeg stream info line and store in Redis metadata"""
+        try:
+            if stream_type == "video":
+                # Example line:
+                # Stream #0:0: Video: h264 (Main), yuv420p(tv, progressive), 1280x720 [SAR 1:1 DAR 16:9], q=2-31, 2000 kb/s, 29.97 fps, 90k tbn
+
+                # Extract video codec (e.g., "h264", "mpeg2video", etc.)
+                codec_match = re.search(r'Video:\s*([a-zA-Z0-9_]+)', stream_info_line)
+                video_codec = codec_match.group(1) if codec_match else None
+
+                # Extract resolution (e.g., "1280x720")
+                resolution_match = re.search(r'(\d+)x(\d+)', stream_info_line)
+                if resolution_match:
+                    width = int(resolution_match.group(1))
+                    height = int(resolution_match.group(2))
+                    resolution = f"{width}x{height}"
+                else:
+                    width = height = resolution = None
+
+                # Extract source FPS (e.g., "29.97 fps")
+                fps_match = re.search(r'(\d+(?:\.\d+)?)\s*fps', stream_info_line)
+                source_fps = float(fps_match.group(1)) if fps_match else None
+
+                # Extract pixel format (e.g., "yuv420p")
+                pixel_format_match = re.search(r'Video:\s*[^,]+,\s*([^,(]+)', stream_info_line)
+                pixel_format = None
+                if pixel_format_match:
+                    pf = pixel_format_match.group(1).strip()
+                    # Clean up pixel format (remove extra info in parentheses)
+                    if '(' in pf:
+                        pf = pf.split('(')[0].strip()
+                    pixel_format = pf
+
+                # Extract bitrate if present (e.g., "2000 kb/s")
+                video_bitrate = None
+                bitrate_match = re.search(r'(\d+(?:\.\d+)?)\s*kb/s', stream_info_line)
+                if bitrate_match:
+                    video_bitrate = float(bitrate_match.group(1))
+
+                # Store in Redis if we have valid data
+                if any(x is not None for x in [video_codec, resolution, source_fps, pixel_format, video_bitrate]):
+                    ChannelService._update_stream_info_in_redis(channel_id, video_codec, resolution, width, height, source_fps, pixel_format, video_bitrate, None, None, None, None)
+
+                logger.info(f"Video stream info - Codec: {video_codec}, Resolution: {resolution}, "
+                           f"Source FPS: {source_fps}, Pixel Format: {pixel_format}, "
+                           f"Video Bitrate: {video_bitrate} kb/s")
+
+            elif stream_type == "audio":
+                # Example line:
+                # Stream #0:1[0x101]: Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 64 kb/s
+
+                # Extract audio codec (e.g., "aac", "mp3", etc.)
+                codec_match = re.search(r'Audio:\s*([a-zA-Z0-9_]+)', stream_info_line)
+                audio_codec = codec_match.group(1) if codec_match else None
+
+                # Extract sample rate (e.g., "48000 Hz")
+                sample_rate_match = re.search(r'(\d+)\s*Hz', stream_info_line)
+                sample_rate = int(sample_rate_match.group(1)) if sample_rate_match else None
+
+                # Extract channel layout (e.g., "stereo", "5.1", "mono")
+                # Look for common channel layouts
+                channel_match = re.search(r'\b(mono|stereo|5\.1|7\.1|quad|2\.1)\b', stream_info_line, re.IGNORECASE)
+                channels = channel_match.group(1) if channel_match else None
+
+                # Extract audio bitrate if present (e.g., "64 kb/s")
+                audio_bitrate = None
+                bitrate_match = re.search(r'(\d+(?:\.\d+)?)\s*kb/s', stream_info_line)
+                if bitrate_match:
+                    audio_bitrate = float(bitrate_match.group(1))
+
+                # Store in Redis if we have valid data
+                if any(x is not None for x in [audio_codec, sample_rate, channels, audio_bitrate]):
+                    ChannelService._update_stream_info_in_redis(channel_id, None, None, None, None, None, None, None, audio_codec, sample_rate, channels, audio_bitrate)
+
+                logger.info(f"Audio stream info - Codec: {audio_codec}, Sample Rate: {sample_rate} Hz, "
+                           f"Channels: {channels}, Audio Bitrate: {audio_bitrate} kb/s")
+
+        except Exception as e:
+            logger.debug(f"Error parsing FFmpeg {stream_type} stream info: {e}")
+
+    @staticmethod
+    def _update_stream_info_in_redis(channel_id, codec, resolution, width, height, fps, pixel_format, video_bitrate, audio_codec=None, sample_rate=None, channels=None, audio_bitrate=None):
+        """Update stream info in Redis metadata"""
+        try:
+            proxy_server = ProxyServer.get_instance()
+            if not proxy_server.redis_client:
+                return False
+
+            metadata_key = RedisKeys.channel_metadata(channel_id)
+            update_data = {
+                ChannelMetadataField.STREAM_INFO_UPDATED: str(time.time())
+            }
+
+            # Video info
+            if codec is not None:
+                update_data[ChannelMetadataField.VIDEO_CODEC] = str(codec)
+
+            if resolution is not None:
+                update_data[ChannelMetadataField.RESOLUTION] = str(resolution)
+
+            if width is not None:
+                update_data[ChannelMetadataField.WIDTH] = str(width)
+
+            if height is not None:
+                update_data[ChannelMetadataField.HEIGHT] = str(height)
+
+            if fps is not None:
+                update_data[ChannelMetadataField.SOURCE_FPS] = str(round(fps, 2))
+
+            if pixel_format is not None:
+                update_data[ChannelMetadataField.PIXEL_FORMAT] = str(pixel_format)
+
+            if video_bitrate is not None:
+                update_data[ChannelMetadataField.VIDEO_BITRATE] = str(round(video_bitrate, 1))
+
+            # Audio info
+            if audio_codec is not None:
+                update_data[ChannelMetadataField.AUDIO_CODEC] = str(audio_codec)
+
+            if sample_rate is not None:
+                update_data[ChannelMetadataField.SAMPLE_RATE] = str(sample_rate)
+
+            if channels is not None:
+                update_data[ChannelMetadataField.AUDIO_CHANNELS] = str(channels)
+
+            if audio_bitrate is not None:
+                update_data[ChannelMetadataField.AUDIO_BITRATE] = str(round(audio_bitrate, 1))
+
+            proxy_server.redis_client.hset(metadata_key, mapping=update_data)
+            return True
+
+        except Exception as e:
+            logger.error(f"Error updating stream info in Redis: {e}")
+            return False
 
     # Helper methods for Redis operations
 

@@ -7,6 +7,7 @@ import socket
 import requests
 import subprocess
 import gevent  # Add this import
+import re  # Add this import at the top
 from typing import Optional, List
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
@@ -376,33 +377,212 @@ class StreamManager:
             logger.debug(f"Started stderr reader thread for channel {self.channel_id}")
 
     def _read_stderr(self):
-        """Read and log ffmpeg stderr output"""
+        """Read and log ffmpeg stderr output with real-time stats parsing"""
         try:
-            for error_line in iter(self.transcode_process.stderr.readline, b''):
-                if error_line:
-                    error_line = error_line.decode('utf-8', errors='replace').strip()
-                    try:
-                        # Wrap the logging call in a try-except to prevent crashes due to logging errors
-                        logger.debug(f"Transcode stderr [{self.channel_id}]: {error_line}")
-                    except OSError as e:
-                        # If logging fails, try a simplified log message
-                        if e.errno == 105:  # No buffer space available
-                            try:
-                                # Try a much shorter message without the error content
-                                logger.warning(f"Logging error (buffer full) in channel {self.channel_id}")
-                            except:
-                                # If even that fails, we have to silently continue
-                                pass
-                    except Exception:
-                        # Ignore other logging errors to prevent thread crashes
-                        pass
+            buffer = b""
+            last_stats_line = b""
+
+            # Read in small chunks
+            while self.transcode_process and self.transcode_process.stderr:
+                try:
+                    chunk = self.transcode_process.stderr.read(256)  # Smaller chunks for real-time processing
+                    if not chunk:
+                        break
+
+                    buffer += chunk
+
+                    # Look for stats updates (overwrite previous stats with \r)
+                    if b'\r' in buffer and b"frame=" in buffer:
+                        # Split on \r to handle overwriting stats
+                        parts = buffer.split(b'\r')
+
+                        # Process all parts except the last (which might be incomplete)
+                        for i, part in enumerate(parts[:-1]):
+                            if part.strip():
+                                if part.startswith(b"frame=") or b"frame=" in part:
+                                    # This is a stats line - keep it intact
+                                    try:
+                                        stats_text = part.decode('utf-8', errors='ignore').strip()
+                                        if stats_text and "frame=" in stats_text:
+                                            # Extract just the stats portion if there's other content
+                                            if "frame=" in stats_text:
+                                                frame_start = stats_text.find("frame=")
+                                                stats_text = stats_text[frame_start:]
+
+                                            self._parse_ffmpeg_stats(stats_text)
+                                            self._log_stderr_content(stats_text)
+                                            last_stats_line = part
+                                    except Exception as e:
+                                        logger.debug(f"Error parsing stats line: {e}")
+                                else:
+                                    # Regular content - process line by line
+                                    line_content = part
+                                    while b'\n' in line_content:
+                                        line, line_content = line_content.split(b'\n', 1)
+                                        if line.strip():
+                                            self._log_stderr_content(line.decode('utf-8', errors='ignore'))
+
+                                    # Handle remaining content without newline
+                                    if line_content.strip():
+                                        self._log_stderr_content(line_content.decode('utf-8', errors='ignore'))
+
+                        # Keep the last part as it might be incomplete
+                        buffer = parts[-1]
+
+                    # Handle regular line breaks for non-stats content
+                    elif b'\n' in buffer:
+                        while b'\n' in buffer:
+                            line, buffer = buffer.split(b'\n', 1)
+                            if line.strip():
+                                line_text = line.decode('utf-8', errors='ignore').strip()
+                                if line_text and not line_text.startswith("frame="):
+                                    self._log_stderr_content(line_text)
+
+                    # If we have a potential stats line in buffer without line breaks
+                    elif b"frame=" in buffer and (b"speed=" in buffer or len(buffer) > 200):
+                        # We likely have a complete or substantial stats line
+                        try:
+                            stats_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if "frame=" in stats_text:
+                                # Extract just the stats portion
+                                frame_start = stats_text.find("frame=")
+                                stats_text = stats_text[frame_start:]
+
+                                self._parse_ffmpeg_stats(stats_text)
+                                self._log_stderr_content(stats_text)
+                                buffer = b""  # Clear buffer after processing
+                        except Exception as e:
+                            logger.debug(f"Error parsing buffered stats: {e}")
+
+                    # Prevent buffer from growing too large
+                    if len(buffer) > 4096:
+                        # Try to preserve any potential stats line at the end
+                        if b"frame=" in buffer[-1024:]:
+                            buffer = buffer[-1024:]
+                        else:
+                            buffer = buffer[-512:]
+
+                except Exception as e:
+                    logger.error(f"Error reading stderr: {e}")
+                    break
+
         except Exception as e:
             # Catch any other exceptions in the thread to prevent crashes
             try:
-                logger.error(f"Error in stderr reader thread: {e}")
+                logger.error(f"Error in stderr reader thread for channel {self.channel_id}: {e}")
             except:
-                # Again, if logging fails, continue silently
                 pass
+
+    def _log_stderr_content(self, content):
+        """Log stderr content from FFmpeg with appropriate log levels"""
+        try:
+            content = content.strip()
+            if not content:
+                return
+
+            # Convert to lowercase for easier matching
+            content_lower = content.lower()
+
+            # Check for stream info lines first and delegate to ChannelService
+            if "stream #" in content_lower and ("video:" in content_lower or "audio:" in content_lower):
+                from .services.channel_service import ChannelService
+                if "video:" in content_lower:
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
+                elif "audio:" in content_lower:
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
+
+            # Determine log level based on content
+            if any(keyword in content_lower for keyword in ['error', 'failed', 'cannot', 'invalid', 'corrupt']):
+                logger.error(f"FFmpeg stderr: {content}")
+            elif any(keyword in content_lower for keyword in ['warning', 'deprecated', 'ignoring']):
+                logger.warning(f"FFmpeg stderr: {content}")
+            elif content.startswith('frame=') or 'fps=' in content or 'speed=' in content:
+                # Stats lines - log at trace level to avoid spam
+                logger.trace(f"FFmpeg stats: {content}")
+            elif any(keyword in content_lower for keyword in ['input', 'output', 'stream', 'video', 'audio']):
+                # Stream info - log at info level
+                logger.info(f"FFmpeg info: {content}")
+            else:
+                # Everything else at debug level
+                logger.debug(f"FFmpeg stderr: {content}")
+
+        except Exception as e:
+            logger.error(f"Error logging stderr content: {e}")
+
+    def _parse_ffmpeg_stats(self, stats_line):
+        """Parse FFmpeg stats line and extract speed, fps, and bitrate"""
+        try:
+            # Example FFmpeg stats line:
+            # frame= 1234 fps= 30 q=28.0 size=    2048kB time=00:00:41.33 bitrate= 406.1kbits/s speed=1.02x
+
+            # Extract speed (e.g., "speed=1.02x")
+            speed_match = re.search(r'speed=\s*([0-9.]+)x?', stats_line)
+            ffmpeg_speed = float(speed_match.group(1)) if speed_match else None
+
+            # Extract fps (e.g., "fps= 30")
+            fps_match = re.search(r'fps=\s*([0-9.]+)', stats_line)
+            ffmpeg_fps = float(fps_match.group(1)) if fps_match else None
+
+            # Extract bitrate (e.g., "bitrate= 406.1kbits/s")
+            bitrate_match = re.search(r'bitrate=\s*([0-9.]+(?:\.[0-9]+)?)\s*([kmg]?)bits/s', stats_line, re.IGNORECASE)
+            ffmpeg_bitrate = None
+            if bitrate_match:
+                bitrate_value = float(bitrate_match.group(1))
+                unit = bitrate_match.group(2).lower()
+                # Convert to kbps
+                if unit == 'm':
+                    bitrate_value *= 1000
+                elif unit == 'g':
+                    bitrate_value *= 1000000
+                # If no unit or 'k', it's already in kbps
+                ffmpeg_bitrate = bitrate_value
+
+            # Calculate actual FPS
+            actual_fps = None
+            if ffmpeg_fps is not None and ffmpeg_speed is not None and ffmpeg_speed > 0:
+                actual_fps = ffmpeg_fps / ffmpeg_speed
+
+            # Store in Redis if we have valid data
+            if any(x is not None for x in [ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_bitrate]):
+                self._update_ffmpeg_stats_in_redis(ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_bitrate)
+
+            # Fix the f-string formatting
+            actual_fps_str = f"{actual_fps:.1f}" if actual_fps is not None else "N/A"
+            ffmpeg_bitrate_str = f"{ffmpeg_bitrate:.1f}" if ffmpeg_bitrate is not None else "N/A"
+
+            logger.debug(f"FFmpeg stats - Speed: {ffmpeg_speed}x, FFmpeg FPS: {ffmpeg_fps}, "
+                        f"Actual FPS: {actual_fps_str}, "
+                        f"Bitrate: {ffmpeg_bitrate_str} kbps")
+
+        except Exception as e:
+            logger.debug(f"Error parsing FFmpeg stats: {e}")
+
+    def _update_ffmpeg_stats_in_redis(self, speed, fps, actual_fps, bitrate):
+        """Update FFmpeg performance stats in Redis metadata"""
+        try:
+            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                update_data = {
+                    ChannelMetadataField.FFMPEG_STATS_UPDATED: str(time.time())
+                }
+
+                if speed is not None:
+                    update_data[ChannelMetadataField.FFMPEG_SPEED] = str(round(speed, 3))
+
+                if fps is not None:
+                    update_data[ChannelMetadataField.FFMPEG_FPS] = str(round(fps, 1))
+
+                if actual_fps is not None:
+                    update_data[ChannelMetadataField.ACTUAL_FPS] = str(round(actual_fps, 1))
+
+                if bitrate is not None:
+                    update_data[ChannelMetadataField.FFMPEG_BITRATE] = str(round(bitrate, 1))
+
+                self.buffer.redis_client.hset(metadata_key, mapping=update_data)
+
+        except Exception as e:
+            logger.error(f"Error updating FFmpeg stats in Redis: {e}")
+
 
     def _establish_http_connection(self):
         """Establish a direct HTTP connection to the stream"""
