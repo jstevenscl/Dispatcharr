@@ -477,11 +477,6 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
 
         {/* Add stream information badges */}
         <Group gap="xs" mt="xs">
-          {channel.video_codec && (
-            <Badge size="sm" variant="light" color="blue">
-              {channel.video_codec.toUpperCase()}
-            </Badge>
-          )}
           {channel.resolution && (
             <Badge size="sm" variant="light" color="green">
               {channel.resolution}
@@ -490,6 +485,16 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
           {channel.source_fps && (
             <Badge size="sm" variant="light" color="orange">
               {channel.source_fps} FPS
+            </Badge>
+          )}
+          {channel.video_codec && (
+            <Badge size="sm" variant="light" color="blue">
+              {channel.video_codec.toUpperCase()}
+            </Badge>
+          )}
+          {channel.stream_type && (
+            <Badge size="sm" variant="light" color="blue">
+              {channel.stream_type.toUpperCase()}
             </Badge>
           )}
           {channel.audio_codec && (
