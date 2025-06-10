@@ -85,3 +85,11 @@ class ConfigHelper:
     def failover_grace_period():
         """Get extra time (in seconds) to allow for stream switching before disconnecting clients"""
         return ConfigHelper.get('FAILOVER_GRACE_PERIOD', 20)  # Default to 20 seconds
+    @staticmethod
+    def buffering_timeout():
+        """Get buffering timeout in seconds"""
+        return ConfigHelper.get('BUFFERING_TIMEOUT', 15)  # Default to 15 seconds
+    @staticmethod
+    def buffering_speed():
+        """Get buffering speed in bytes per second"""
+        return ConfigHelper.get('BUFFERING_SPEED',1) # Default to 1x
