@@ -420,7 +420,22 @@ class ChannelService:
     def parse_and_store_stream_info(channel_id, stream_info_line, stream_type="video"):
         """Parse FFmpeg stream info line and store in Redis metadata"""
         try:
-            if stream_type == "video":
+            if stream_type == "input":
+                # Example lines:
+                # Input #0, mpegts, from 'http://example.com/stream.ts':
+                # Input #0, hls, from 'http://example.com/stream.m3u8':
+
+                # Extract input format (e.g., "mpegts", "hls", "flv", etc.)
+                input_match = re.search(r'Input #\d+,\s*([^,]+)', stream_info_line)
+                input_format = input_match.group(1).strip() if input_match else None
+
+                # Store in Redis if we have valid data
+                if input_format:
+                    ChannelService._update_stream_info_in_redis(channel_id, None, None, None, None, None, None, None, None, None, None, None, input_format)
+
+                logger.debug(f"Input format info - Format: {input_format} for channel {channel_id}")
+
+            elif stream_type == "video":
                 # Example line:
                 # Stream #0:0: Video: h264 (Main), yuv420p(tv, progressive), 1280x720 [SAR 1:1 DAR 16:9], q=2-31, 2000 kb/s, 29.97 fps, 90k tbn
 
@@ -428,12 +443,17 @@ class ChannelService:
                 codec_match = re.search(r'Video:\s*([a-zA-Z0-9_]+)', stream_info_line)
                 video_codec = codec_match.group(1) if codec_match else None
 
-                # Extract resolution (e.g., "1280x720")
-                resolution_match = re.search(r'(\d+)x(\d+)', stream_info_line)
+                # Extract resolution (e.g., "1280x720") - be more specific to avoid hex values
+                # Look for resolution patterns that are realistic video dimensions
+                resolution_match = re.search(r'\b(\d{3,5})x(\d{3,5})\b', stream_info_line)
                 if resolution_match:
                     width = int(resolution_match.group(1))
                     height = int(resolution_match.group(2))
-                    resolution = f"{width}x{height}"
+                    # Validate that these look like reasonable video dimensions
+                    if 100 <= width <= 10000 and 100 <= height <= 10000:
+                        resolution = f"{width}x{height}"
+                    else:
+                        width = height = resolution = None
                 else:
                     width = height = resolution = None
 
@@ -459,7 +479,7 @@ class ChannelService:
 
                 # Store in Redis if we have valid data
                 if any(x is not None for x in [video_codec, resolution, source_fps, pixel_format, video_bitrate]):
-                    ChannelService._update_stream_info_in_redis(channel_id, video_codec, resolution, width, height, source_fps, pixel_format, video_bitrate, None, None, None, None)
+                    ChannelService._update_stream_info_in_redis(channel_id, video_codec, resolution, width, height, source_fps, pixel_format, video_bitrate, None, None, None, None, None)
 
                 logger.info(f"Video stream info - Codec: {video_codec}, Resolution: {resolution}, "
                            f"Source FPS: {source_fps}, Pixel Format: {pixel_format}, "
@@ -490,7 +510,7 @@ class ChannelService:
 
                 # Store in Redis if we have valid data
                 if any(x is not None for x in [audio_codec, sample_rate, channels, audio_bitrate]):
-                    ChannelService._update_stream_info_in_redis(channel_id, None, None, None, None, None, None, None, audio_codec, sample_rate, channels, audio_bitrate)
+                    ChannelService._update_stream_info_in_redis(channel_id, None, None, None, None, None, None, None, audio_codec, sample_rate, channels, audio_bitrate, None)
 
                 logger.info(f"Audio stream info - Codec: {audio_codec}, Sample Rate: {sample_rate} Hz, "
                            f"Channels: {channels}, Audio Bitrate: {audio_bitrate} kb/s")
@@ -499,7 +519,7 @@ class ChannelService:
             logger.debug(f"Error parsing FFmpeg {stream_type} stream info: {e}")
 
     @staticmethod
-    def _update_stream_info_in_redis(channel_id, codec, resolution, width, height, fps, pixel_format, video_bitrate, audio_codec=None, sample_rate=None, channels=None, audio_bitrate=None):
+    def _update_stream_info_in_redis(channel_id, codec, resolution, width, height, fps, pixel_format, video_bitrate, audio_codec=None, sample_rate=None, channels=None, audio_bitrate=None, input_format=None):
         """Update stream info in Redis metadata"""
         try:
             proxy_server = ProxyServer.get_instance()
@@ -545,6 +565,8 @@ class ChannelService:
 
             if audio_bitrate is not None:
                 update_data[ChannelMetadataField.AUDIO_BITRATE] = str(round(audio_bitrate, 1))
+            if input_format is not None:
+                update_data[ChannelMetadataField.STREAM_TYPE] = str(input_format)
 
             proxy_server.redis_client.hset(metadata_key, mapping=update_data)
             return True

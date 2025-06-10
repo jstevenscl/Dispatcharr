@@ -317,6 +317,9 @@ class ChannelStatus:
         ffmpeg_bitrate = metadata.get(ChannelMetadataField.FFMPEG_BITRATE.encode('utf-8'))
         if ffmpeg_bitrate:
             info['ffmpeg_bitrate'] = float(ffmpeg_bitrate.decode('utf-8'))
+        stream_type = metadata.get(ChannelMetadataField.STREAM_TYPE.encode('utf-8'))
+        if stream_type:
+            info['stream_type'] = stream_type.decode('utf-8')
 
         return info
 
@@ -494,6 +497,12 @@ class ChannelStatus:
             audio_codec = metadata.get(ChannelMetadataField.AUDIO_CODEC.encode('utf-8'))
             if audio_codec:
                 info['audio_codec'] = audio_codec.decode('utf-8')
+            audio_channels = metadata.get(ChannelMetadataField.AUDIO_CHANNELS.encode('utf-8'))
+            if audio_channels:
+                info['audio_channels'] = audio_channels.decode('utf-8')
+            stream_type = metadata.get(ChannelMetadataField.STREAM_TYPE.encode('utf-8'))
+            if stream_type:
+                info['stream_type'] = stream_type.decode('utf-8')
 
             return info
         except Exception as e:
