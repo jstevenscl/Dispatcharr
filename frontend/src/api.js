@@ -1085,6 +1085,21 @@ export default class API {
     }
   }
 
+  static async checkSetting(values) {
+    const { id, ...payload } = values;
+
+    try {
+      const response = await request(`${host}/api/core/settings/check/`, {
+        method: 'POST',
+        body: payload,
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update settings', e);
+    }
+  }
+
   static async updateSetting(values) {
     const { id, ...payload } = values;
 

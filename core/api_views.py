@@ -1,5 +1,7 @@
 # core/api_views.py
 
+import json
+import ipaddress
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -9,7 +11,7 @@ from .serializers import (
     StreamProfileSerializer,
     CoreSettingsSerializer,
 )
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from drf_yasg.utils import swagger_auto_schema
 import socket
 import requests
@@ -18,6 +20,7 @@ from core.tasks import rehash_streams
 from apps.accounts.permissions import (
     Authenticated,
 )
+from dispatcharr.utils import get_client_ip
 
 
 class UserAgentViewSet(viewsets.ModelViewSet):
@@ -55,6 +58,23 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
                 rehash_streams.delay(request.data["value"].split(","))
 
         return response
+
+    @action(detail=False, methods=["post"], url_path="check")
+    def check(self, request, *args, **kwargs):
+        data = request.data
+
+        client_ip = ipaddress.ip_address(get_client_ip(request))
+        in_network = []
+        key = data.get("key")
+        value = json.loads(data.get("value", "{}"))
+        for key, val in value.items():
+            cidrs = val.split(",")
+            for cidr in cidrs:
+                network = ipaddress.ip_network(cidr)
+                if client_ip not in network:
+                    in_network.append(cidr)
+
+        return Response(in_network, status=status.HTTP_200_OK)
 
 
 @swagger_auto_schema(

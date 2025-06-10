@@ -24,6 +24,7 @@ import StreamProfilesTable from '../components/tables/StreamProfilesTable';
 import useLocalStorage from '../hooks/useLocalStorage';
 import useAuthStore from '../store/auth';
 import { USER_LEVELS, NETWORK_ACCESS_OPTIONS } from '../constants';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
@@ -33,6 +34,10 @@ const SettingsPage = () => {
 
   const [accordianValue, setAccordianValue] = useState(null);
   const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
+  const [networkAccessConfirmOpen, setNetworkAccessConfirmOpen] =
+    useState(false);
+  const [netNetworkAccessConfirmCIDRs, setNetNetworkAccessConfirmCIDRs] =
+    useState([]);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -315,7 +320,6 @@ const SettingsPage = () => {
 
   useEffect(() => {
     if (settings) {
-      console.log(settings);
       const formValues = Object.entries(settings).reduce(
         (acc, [key, value]) => {
           // Modify each value based on its own properties
@@ -378,7 +382,21 @@ const SettingsPage = () => {
   };
 
   const onNetworkAccessSubmit = async () => {
-    let result = null;
+    setNetworkAccessSaved(false);
+    const check = await API.checkSetting({
+      ...settings['network-access'],
+      value: JSON.stringify(networkAccessForm.getValues()),
+    });
+
+    if (check.length == 0) {
+      return saveNetworkAccess();
+    }
+
+    setNetNetworkAccessConfirmCIDRs(check);
+    setNetworkAccessConfirmOpen(true);
+  };
+
+  const saveNetworkAccess = async () => {
     setNetworkAccessSaved(false);
     try {
       await API.updateSetting({
@@ -386,6 +404,7 @@ const SettingsPage = () => {
         value: JSON.stringify(networkAccessForm.getValues()),
       });
       setNetworkAccessSaved(true);
+      setNetworkAccessConfirmOpen(false);
     } catch (e) {
       const errors = {};
       for (const key in e.body.value) {
@@ -644,6 +663,30 @@ const SettingsPage = () => {
           )}
         </Accordion>
       </Box>
+
+      <ConfirmationDialog
+        opened={networkAccessConfirmOpen}
+        onClose={() => setNetworkAccessConfirmOpen(false)}
+        onConfirm={saveNetworkAccess}
+        title={`Confirm Network Access Blocks`}
+        message={
+          <>
+            <Text>
+              Your client is included in the following CIDRs and could block
+              access Are you sure you want to proceed?
+            </Text>
+
+            <ul>
+              {netNetworkAccessConfirmCIDRs.map((cidr) => (
+                <li>{cidr}</li>
+              ))}
+            </ul>
+          </>
+        }
+        confirmLabel="Save"
+        cancelLabel="Cancel"
+        size="md"
+      />
     </Center>
   );
 };
