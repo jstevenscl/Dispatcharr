@@ -497,6 +497,17 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
               {channel.audio_codec.toUpperCase()}
             </Badge>
           )}
+          {channel.ffmpeg_speed && (
+            <Tooltip label={`Speed: ${channel.ffmpeg_speed}x realtime`}>
+              <Badge
+                size="sm"
+                variant="light"
+                color={parseFloat(channel.ffmpeg_speed) >= 1.0 ? "green" : "red"}
+              >
+                {channel.ffmpeg_speed}x
+              </Badge>
+            </Tooltip>
+          )}
         </Group>
 
         <Group justify="space-between">
