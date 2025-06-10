@@ -428,12 +428,17 @@ class ChannelService:
                 codec_match = re.search(r'Video:\s*([a-zA-Z0-9_]+)', stream_info_line)
                 video_codec = codec_match.group(1) if codec_match else None
 
-                # Extract resolution (e.g., "1280x720")
-                resolution_match = re.search(r'(\d+)x(\d+)', stream_info_line)
+                # Extract resolution (e.g., "1280x720") - be more specific to avoid hex values
+                # Look for resolution patterns that are realistic video dimensions
+                resolution_match = re.search(r'\b(\d{3,5})x(\d{3,5})\b', stream_info_line)
                 if resolution_match:
                     width = int(resolution_match.group(1))
                     height = int(resolution_match.group(2))
-                    resolution = f"{width}x{height}"
+                    # Validate that these look like reasonable video dimensions
+                    if 100 <= width <= 10000 and 100 <= height <= 10000:
+                        resolution = f"{width}x{height}"
+                    else:
+                        width = height = resolution = None
                 else:
                     width = height = resolution = None
 
