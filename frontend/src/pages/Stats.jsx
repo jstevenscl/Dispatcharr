@@ -498,13 +498,6 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
               </Badge>
             </Tooltip>
           )}
-          {channel.stream_type && (
-            <Tooltip label="Stream type">
-              <Badge size="sm" variant="light" color="cyan">
-                {channel.stream_type.toUpperCase()}
-              </Badge>
-            </Tooltip>
-          )}
           {channel.audio_codec && (
             <Tooltip label="Audio codec">
               <Badge size="sm" variant="light" color="pink">
@@ -516,6 +509,13 @@ const ChannelCard = ({ channel, clients, stopClient, stopChannel, logos, channel
             <Tooltip label="Audio channel configuration">
               <Badge size="sm" variant="light" color="pink">
                 {channel.audio_channels}
+              </Badge>
+            </Tooltip>
+          )}
+          {channel.stream_type && (
+            <Tooltip label="Stream type">
+              <Badge size="sm" variant="light" color="cyan">
+                {channel.stream_type.toUpperCase()}
               </Badge>
             </Tooltip>
           )}
