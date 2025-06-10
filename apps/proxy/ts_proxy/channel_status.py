@@ -494,6 +494,9 @@ class ChannelStatus:
             audio_codec = metadata.get(ChannelMetadataField.AUDIO_CODEC.encode('utf-8'))
             if audio_codec:
                 info['audio_codec'] = audio_codec.decode('utf-8')
+            audio_channels = metadata.get(ChannelMetadataField.AUDIO_CHANNELS.encode('utf-8'))
+            if audio_channels:
+                info['audio_channels'] = audio_channels.decode('utf-8')
 
             return info
         except Exception as e:
