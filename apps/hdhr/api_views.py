@@ -91,8 +91,8 @@ class DiscoverAPIView(APIView):
             # Otherwise use the limited profile sum plus custom streams
             tuner_count = limited_tuners + custom_stream_count
 
-        # 5. Ensure minimum of 2 tuners
-        tuner_count = max(2, tuner_count)
+        # 5. Ensure minimum of 1 tuners
+        tuner_count = max(1, tuner_count)
 
         logger.debug(
             f"Calculated tuner count: {tuner_count} (limited profiles: {limited_tuners}, custom streams: {custom_stream_count}, unlimited: {has_unlimited})"
