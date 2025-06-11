@@ -32,8 +32,6 @@ def epg_endpoint(request, profile_name=None, user=None):
 
     return generate_epg(request, profile_name, user)
 
-def generate_m3u(request, profile_name=None, user=None):
-
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def generate_m3u(request, profile_name=None, user=None):
