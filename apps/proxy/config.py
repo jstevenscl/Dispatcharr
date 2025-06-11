@@ -11,6 +11,8 @@ class BaseConfig:
     BUFFER_CHUNK_SIZE = 188 * 1361  # ~256KB
     # Redis settings
     REDIS_CHUNK_TTL = 60  # Number in seconds - Chunks expire after 1 minute
+    BUFFERING_TIMEOUT = 15  # Seconds to wait for buffering before switching streams
+    BUFFER_SPEED = 1 # What speed to condsider the stream buffering, 1x is normal speed, 2x is double speed, etc.
 
 class HLSConfig(BaseConfig):
     MIN_SEGMENTS = 12
