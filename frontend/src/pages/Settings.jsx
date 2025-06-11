@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import API from '../api';
 import useSettingsStore from '../store/settings';
 import useUserAgentsStore from '../store/userAgents';
 import useStreamProfilesStore from '../store/streamProfiles';
 import {
   Accordion,
+  Alert,
   Box,
   Button,
   Center,
@@ -12,18 +13,32 @@ import {
   Group,
   MultiSelect,
   Select,
+  Stack,
   Switch,
   Text,
+  TextInput,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
 import UserAgentsTable from '../components/tables/UserAgentsTable';
 import StreamProfilesTable from '../components/tables/StreamProfilesTable';
 import useLocalStorage from '../hooks/useLocalStorage';
+import useAuthStore from '../store/auth';
+import { USER_LEVELS, NETWORK_ACCESS_OPTIONS } from '../constants';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
   const userAgents = useUserAgentsStore((s) => s.userAgents);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
+  const authUser = useAuthStore((s) => s.user);
+
+  const [accordianValue, setAccordianValue] = useState(null);
+  const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
+  const [networkAccessError, setNetworkAccessError] = useState(null);
+  const [networkAccessConfirmOpen, setNetworkAccessConfirmOpen] =
+    useState(false);
+  const [netNetworkAccessConfirmCIDRs, setNetNetworkAccessConfirmCIDRs] =
+    useState([]);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -296,9 +311,31 @@ const SettingsPage = () => {
     },
   });
 
+  const networkAccessForm = useForm({
+    mode: 'uncontrolled',
+    initialValues: Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
+      acc[key] = '0.0.0.0/0';
+      return acc;
+    }, {}),
+    validate: Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
+      acc[key] = (value) => {
+        const cidrs = value.split(',');
+        for (const cidr of cidrs) {
+          if (cidr.match(/^([0-9]{1,3}\.){3}[0-9]{1,3}\/\d+$/)) {
+            continue;
+          }
+
+          return 'Invalid CIDR range';
+        }
+
+        return null;
+      };
+      return acc;
+    }, {}),
+  });
+
   useEffect(() => {
     if (settings) {
-      console.log(settings);
       const formValues = Object.entries(settings).reduce(
         (acc, [key, value]) => {
           // Modify each value based on its own properties
@@ -326,8 +363,18 @@ const SettingsPage = () => {
         },
         {}
       );
-      console.log(formValues);
+
       form.setValues(formValues);
+
+      const networkAccessSettings = JSON.parse(
+        settings['network-access'].value || '{}'
+      );
+      networkAccessForm.setValues(
+        Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
+          acc[key] = networkAccessSettings[key];
+          return acc;
+        }, {})
+      );
     }
   }, [settings]);
 
@@ -350,6 +397,47 @@ const SettingsPage = () => {
     }
   };
 
+  const onNetworkAccessSubmit = async () => {
+    setNetworkAccessSaved(false);
+    setNetworkAccessError(null);
+    const check = await API.checkSetting({
+      ...settings['network-access'],
+      value: JSON.stringify(networkAccessForm.getValues()),
+    });
+
+    if (check.error && check.message) {
+      setNetworkAccessError(`${check.message}: ${check.data}`);
+      return;
+    }
+
+    // For now, only warn if we're blocking the UI
+    const blockedAccess = check.UI;
+    if (blockedAccess.length == 0) {
+      return saveNetworkAccess();
+    }
+
+    setNetNetworkAccessConfirmCIDRs(blockedAccess);
+    setNetworkAccessConfirmOpen(true);
+  };
+
+  const saveNetworkAccess = async () => {
+    setNetworkAccessSaved(false);
+    try {
+      await API.updateSetting({
+        ...settings['network-access'],
+        value: JSON.stringify(networkAccessForm.getValues()),
+      });
+      setNetworkAccessSaved(true);
+      setNetworkAccessConfirmOpen(false);
+    } catch (e) {
+      const errors = {};
+      for (const key in e.body.value) {
+        errors[key] = `Invalid CIDR(s): ${e.body.value[key]}`;
+      }
+      networkAccessForm.setErrors(errors);
+    }
+  };
+
   const onUISettingsChange = (name, value) => {
     switch (name) {
       case 'table-size':
@@ -365,140 +453,271 @@ const SettingsPage = () => {
       }}
     >
       <Box style={{ width: '100%', maxWidth: 800 }}>
-        <Accordion variant="separated" defaultValue="ui-settings">
-          <Accordion.Item value="ui-settings">
-            <Accordion.Control>UI Settings</Accordion.Control>
-            <Accordion.Panel>
-              <Select
-                label="Table Size"
-                value={tableSize}
-                onChange={(val) => onUISettingsChange('table-size', val)}
-                data={[
-                  {
-                    value: 'default',
-                    label: 'Default',
-                  },
-                  {
-                    value: 'compact',
-                    label: 'Compact',
-                  },
-                  {
-                    value: 'large',
-                    label: 'Large',
-                  },
-                ]}
-              />
-            </Accordion.Panel>
-          </Accordion.Item>
-
-          <Accordion.Item value="stream-settings">
-            <Accordion.Control>Stream Settings</Accordion.Control>
-            <Accordion.Panel>
-              <form onSubmit={form.onSubmit(onSubmit)}>
+        <Accordion
+          variant="separated"
+          defaultValue="ui-settings"
+          onChange={setAccordianValue}
+        >
+          {[
+            <Accordion.Item value="ui-settings">
+              <Accordion.Control>UI Settings</Accordion.Control>
+              <Accordion.Panel>
                 <Select
-                  searchable
-                  {...form.getInputProps('default-user-agent')}
-                  key={form.key('default-user-agent')}
-                  id={settings['default-user-agent']?.id || 'default-user-agent'}
-                  name={settings['default-user-agent']?.key || 'default-user-agent'}
-                  label={settings['default-user-agent']?.name || 'Default User Agent'}
-                  data={userAgents.map((option) => ({
-                    value: `${option.id}`,
-                    label: option.name,
-                  }))}
-                />
-
-                <Select
-                  searchable
-                  {...form.getInputProps('default-stream-profile')}
-                  key={form.key('default-stream-profile')}
-                  id={settings['default-stream-profile']?.id || 'default-stream-profile'}
-                  name={settings['default-stream-profile']?.key || 'default-stream-profile'}
-                  label={settings['default-stream-profile']?.name || 'Default Stream Profile'}
-                  data={streamProfiles.map((option) => ({
-                    value: `${option.id}`,
-                    label: option.name,
-                  }))}
-                />
-                <Select
-                  searchable
-                  {...form.getInputProps('preferred-region')}
-                  key={form.key('preferred-region')}
-                  id={settings['preferred-region']?.id || 'preferred-region'}
-                  name={settings['preferred-region']?.key || 'preferred-region'}
-                  label={settings['preferred-region']?.name || 'Preferred Region'}
-                  data={regionChoices.map((r) => ({
-                    label: r.label,
-                    value: `${r.value}`,
-                  }))}
-                />
-
-                <Group justify="space-between" style={{ paddingTop: 5 }}>
-                  <Text size="sm" fw={500}>
-                    Auto-Import Mapped Files
-                  </Text>
-                  <Switch
-                    {...form.getInputProps('auto-import-mapped-files', {
-                      type: 'checkbox',
-                    })}
-                    key={form.key('auto-import-mapped-files')}
-                    id={
-                      settings['auto-import-mapped-files']?.id ||
-                      'auto-import-mapped-files'
-                    }
-                  />
-                </Group>
-
-                <MultiSelect
-                  id="m3u-hash-key"
-                  name="m3u-hash-key"
-                  label="M3U Hash Key"
+                  label="Table Size"
+                  value={tableSize}
+                  onChange={(val) => onUISettingsChange('table-size', val)}
                   data={[
                     {
-                      value: 'name',
-                      label: 'Name',
+                      value: 'default',
+                      label: 'Default',
                     },
                     {
-                      value: 'url',
-                      label: 'URL',
+                      value: 'compact',
+                      label: 'Compact',
                     },
                     {
-                      value: 'tvg_id',
-                      label: 'TVG-ID',
+                      value: 'large',
+                      label: 'Large',
                     },
                   ]}
-                  {...form.getInputProps('m3u-hash-key')}
-                  key={form.key('m3u-hash-key')}
                 />
+              </Accordion.Panel>
+            </Accordion.Item>,
+          ].concat(
+            authUser.user_level == USER_LEVELS.ADMIN
+              ? [
+                  <Accordion.Item value="stream-settings">
+                    <Accordion.Control>Stream Settings</Accordion.Control>
+                    <Accordion.Panel>
+                      <form onSubmit={form.onSubmit(onSubmit)}>
+                        <Select
+                          searchable
+                          {...form.getInputProps('default-user-agent')}
+                          key={form.key('default-user-agent')}
+                          id={
+                            settings['default-user-agent']?.id ||
+                            'default-user-agent'
+                          }
+                          name={
+                            settings['default-user-agent']?.key ||
+                            'default-user-agent'
+                          }
+                          label={
+                            settings['default-user-agent']?.name ||
+                            'Default User Agent'
+                          }
+                          data={userAgents.map((option) => ({
+                            value: `${option.id}`,
+                            label: option.name,
+                          }))}
+                        />
 
-                <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-                  <Button
-                    type="submit"
-                    disabled={form.submitting}
-                    variant="default"
-                  >
-                    Save
-                  </Button>
-                </Flex>
-              </form>
-            </Accordion.Panel>
-          </Accordion.Item>
+                        <Select
+                          searchable
+                          {...form.getInputProps('default-stream-profile')}
+                          key={form.key('default-stream-profile')}
+                          id={
+                            settings['default-stream-profile']?.id ||
+                            'default-stream-profile'
+                          }
+                          name={
+                            settings['default-stream-profile']?.key ||
+                            'default-stream-profile'
+                          }
+                          label={
+                            settings['default-stream-profile']?.name ||
+                            'Default Stream Profile'
+                          }
+                          data={streamProfiles.map((option) => ({
+                            value: `${option.id}`,
+                            label: option.name,
+                          }))}
+                        />
+                        <Select
+                          searchable
+                          {...form.getInputProps('preferred-region')}
+                          key={form.key('preferred-region')}
+                          id={
+                            settings['preferred-region']?.id ||
+                            'preferred-region'
+                          }
+                          name={
+                            settings['preferred-region']?.key ||
+                            'preferred-region'
+                          }
+                          label={
+                            settings['preferred-region']?.name ||
+                            'Preferred Region'
+                          }
+                          data={regionChoices.map((r) => ({
+                            label: r.label,
+                            value: `${r.value}`,
+                          }))}
+                        />
 
-          <Accordion.Item value="user-agents">
-            <Accordion.Control>User-Agents</Accordion.Control>
-            <Accordion.Panel>
-              <UserAgentsTable />
-            </Accordion.Panel>
-          </Accordion.Item>
+                        <Group
+                          justify="space-between"
+                          style={{ paddingTop: 5 }}
+                        >
+                          <Text size="sm" fw={500}>
+                            Auto-Import Mapped Files
+                          </Text>
+                          <Switch
+                            {...form.getInputProps('auto-import-mapped-files', {
+                              type: 'checkbox',
+                            })}
+                            key={form.key('auto-import-mapped-files')}
+                            id={
+                              settings['auto-import-mapped-files']?.id ||
+                              'auto-import-mapped-files'
+                            }
+                          />
+                        </Group>
 
-          <Accordion.Item value="stream-profiles">
-            <Accordion.Control>Stream Profiles</Accordion.Control>
-            <Accordion.Panel>
-              <StreamProfilesTable />
-            </Accordion.Panel>
-          </Accordion.Item>
+                        <MultiSelect
+                          id="m3u-hash-key"
+                          name="m3u-hash-key"
+                          label="M3U Hash Key"
+                          data={[
+                            {
+                              value: 'name',
+                              label: 'Name',
+                            },
+                            {
+                              value: 'url',
+                              label: 'URL',
+                            },
+                            {
+                              value: 'tvg_id',
+                              label: 'TVG-ID',
+                            },
+                          ]}
+                          {...form.getInputProps('m3u-hash-key')}
+                          key={form.key('m3u-hash-key')}
+                        />
+
+                        <Flex
+                          mih={50}
+                          gap="xs"
+                          justify="flex-end"
+                          align="flex-end"
+                        >
+                          <Button
+                            type="submit"
+                            disabled={form.submitting}
+                            variant="default"
+                          >
+                            Save
+                          </Button>
+                        </Flex>
+                      </form>
+                    </Accordion.Panel>
+                  </Accordion.Item>,
+
+                  <Accordion.Item value="user-agents">
+                    <Accordion.Control>User-Agents</Accordion.Control>
+                    <Accordion.Panel>
+                      <UserAgentsTable />
+                    </Accordion.Panel>
+                  </Accordion.Item>,
+
+                  <Accordion.Item value="stream-profiles">
+                    <Accordion.Control>Stream Profiles</Accordion.Control>
+                    <Accordion.Panel>
+                      <StreamProfilesTable />
+                    </Accordion.Panel>
+                  </Accordion.Item>,
+
+                  <Accordion.Item value="network-access">
+                    <Accordion.Control>
+                      <Box>Network Access</Box>
+                      {accordianValue == 'network-access' && (
+                        <Box>
+                          <Text size="sm">Comma-Delimited CIDR ranges</Text>
+                        </Box>
+                      )}
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <form
+                        onSubmit={networkAccessForm.onSubmit(
+                          onNetworkAccessSubmit
+                        )}
+                      >
+                        <Stack gap="sm">
+                          {networkAccessSaved && (
+                            <Alert
+                              variant="light"
+                              color="green"
+                              title="Saved Successfully"
+                            ></Alert>
+                          )}
+                          {networkAccessError && (
+                            <Alert
+                              variant="light"
+                              color="red"
+                              title={networkAccessError}
+                            ></Alert>
+                          )}
+                          {Object.entries(NETWORK_ACCESS_OPTIONS).map(
+                            ([key, config]) => {
+                              return (
+                                <TextInput
+                                  label={config.label}
+                                  {...networkAccessForm.getInputProps(key)}
+                                  key={networkAccessForm.key(key)}
+                                  description={config.description}
+                                />
+                              );
+                            }
+                          )}
+
+                          <Flex
+                            mih={50}
+                            gap="xs"
+                            justify="flex-end"
+                            align="flex-end"
+                          >
+                            <Button
+                              type="submit"
+                              disabled={networkAccessForm.submitting}
+                              variant="default"
+                            >
+                              Save
+                            </Button>
+                          </Flex>
+                        </Stack>
+                      </form>
+                    </Accordion.Panel>
+                  </Accordion.Item>,
+                ]
+              : []
+          )}
         </Accordion>
       </Box>
+
+      <ConfirmationDialog
+        opened={networkAccessConfirmOpen}
+        onClose={() => setNetworkAccessConfirmOpen(false)}
+        onConfirm={saveNetworkAccess}
+        title={`Confirm Network Access Blocks`}
+        message={
+          <>
+            <Text>
+              Your client is not included in the allowed networks for the web
+              UI. Are you sure you want to proceed?
+            </Text>
+
+            <ul>
+              {netNetworkAccessConfirmCIDRs.map((cidr) => (
+                <li>{cidr}</li>
+              ))}
+            </ul>
+          </>
+        }
+        confirmLabel="Save"
+        cancelLabel="Cancel"
+        size="md"
+      />
     </Center>
   );
 };
