@@ -1,40 +1,62 @@
 # core/api_views.py
 
+import json
+import ipaddress
 import logging
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import UserAgent, StreamProfile, CoreSettings, STREAM_HASH_KEY
-from .serializers import UserAgentSerializer, StreamProfileSerializer, CoreSettingsSerializer
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
+from .models import (
+    UserAgent,
+    StreamProfile,
+    CoreSettings,
+    STREAM_HASH_KEY,
+    NETWORK_ACCESS,
+)
+from .serializers import (
+    UserAgentSerializer,
+    StreamProfileSerializer,
+    CoreSettingsSerializer,
+)
+from rest_framework.decorators import api_view, permission_classes, action
 from drf_yasg.utils import swagger_auto_schema
 import socket
 import requests
 import os
 from core.tasks import rehash_streams
+from apps.accounts.permissions import (
+    Authenticated,
+)
+from dispatcharr.utils import get_client_ip
+
 
 logger = logging.getLogger(__name__)
+
 
 class UserAgentViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows user agents to be viewed, created, edited, or deleted.
     """
+
     queryset = UserAgent.objects.all()
     serializer_class = UserAgentSerializer
+
 
 class StreamProfileViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows stream profiles to be viewed, created, edited, or deleted.
     """
+
     queryset = StreamProfile.objects.all()
     serializer_class = StreamProfileSerializer
+
 
 class CoreSettingsViewSet(viewsets.ModelViewSet):
     """
     API endpoint for editing core settings.
     This is treated as a singleton: only one instance should exist.
     """
+
     queryset = CoreSettings.objects.all()
     serializer_class = CoreSettingsSerializer
 
@@ -42,21 +64,60 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         response = super().update(request, *args, **kwargs)
         if instance.key == STREAM_HASH_KEY:
-            if instance.value != request.data['value']:
-                rehash_streams.delay(request.data['value'].split(','))
+            if instance.value != request.data["value"]:
+                rehash_streams.delay(request.data["value"].split(","))
 
         return response
 
+    @action(detail=False, methods=["post"], url_path="check")
+    def check(self, request, *args, **kwargs):
+        data = request.data
+
+        if data.get("key") == NETWORK_ACCESS:
+            client_ip = ipaddress.ip_address(get_client_ip(request))
+
+            in_network = {}
+            invalid = []
+
+            value = json.loads(data.get("value", "{}"))
+            for key, val in value.items():
+                in_network[key] = []
+                cidrs = val.split(",")
+                for cidr in cidrs:
+                    try:
+                        network = ipaddress.ip_network(cidr)
+
+                        if client_ip in network:
+                            in_network[key] = []
+                            break
+
+                        in_network[key].append(cidr)
+                    except:
+                        invalid.append(cidr)
+
+            if len(invalid) > 0:
+                return Response(
+                    {
+                        "error": True,
+                        "message": "Invalid CIDR(s)",
+                        "data": invalid,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            return Response(in_network, status=status.HTTP_200_OK)
+
+        return Response({}, status=status.HTTP_200_OK)
+
+
 @swagger_auto_schema(
-    method='get',
+    method="get",
     operation_description="Endpoint for environment details",
-    responses={200: "Environment variables"}
+    responses={200: "Environment variables"},
 )
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@api_view(["GET"])
+@permission_classes([Authenticated])
 def environment(request):
-
-
     public_ip = None
     local_ip = None
     country_code = None
@@ -88,8 +149,8 @@ def environment(request):
 
             if r.status_code == requests.codes.ok:
                 geo = r.json()
-                country_code = geo.get("country_code") # e.g. "US"
-                country_name = geo.get("country_name") # e.g. "United States"
+                country_code = geo.get("country_code")  # e.g. "US"
+                country_name = geo.get("country_name")  # e.g. "United States"
 
             else:
                 # If ipapi.co fails, fallback to ip-api.com
@@ -98,8 +159,8 @@ def environment(request):
 
                 if r.status_code == requests.codes.ok:
                     geo = r.json()
-                    country_code = geo.get("countryCode") # e.g. "US"
-                    country_name = geo.get("country") # e.g. "United States"
+                    country_code = geo.get("countryCode")  # e.g. "US"
+                    country_name = geo.get("country")  # e.g. "United States"
 
                 else:
                     raise Exception("Geo lookup failed with both services")
@@ -109,25 +170,31 @@ def environment(request):
             country_code = None
             country_name = None
 
-    return Response({
-        'authenticated': True,
-        'public_ip': public_ip,
-        'local_ip': local_ip,
-        'country_code': country_code,
-        'country_name': country_name,
-        'env_mode': "dev" if os.getenv('DISPATCHARR_ENV') == "dev" else "prod",
-    })
+    return Response(
+        {
+            "authenticated": True,
+            "public_ip": public_ip,
+            "local_ip": local_ip,
+            "country_code": country_code,
+            "country_name": country_name,
+            "env_mode": "dev" if os.getenv("DISPATCHARR_ENV") == "dev" else "prod",
+        }
+    )
+
 
 @swagger_auto_schema(
-    method='get',
+    method="get",
     operation_description="Get application version information",
-    responses={200: "Version information"}
+    responses={200: "Version information"},
 )
-@api_view(['GET'])
+@api_view(["GET"])
 def version(request):
     # Import version information
     from version import __version__, __timestamp__
-    return Response({
-        'version': __version__,
-        'timestamp': __timestamp__,
-    })
+
+    return Response(
+        {
+            "version": __version__,
+            "timestamp": __timestamp__,
+        }
+    )
