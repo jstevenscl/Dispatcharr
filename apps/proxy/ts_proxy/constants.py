@@ -18,6 +18,7 @@ class ChannelState:
     ERROR = "error"
     STOPPING = "stopping"
     STOPPED = "stopped"
+    BUFFERING = "buffering"
 
 # Event types
 class EventType:
@@ -85,6 +86,8 @@ class ChannelMetadataField:
     AUDIO_CHANNELS = "audio_channels"
     AUDIO_BITRATE = "audio_bitrate"
 
+    # Stream format info
+    STREAM_TYPE = "stream_type"
     # Stream info timestamp
     STREAM_INFO_UPDATED = "stream_info_updated"
 

@@ -2,6 +2,7 @@
 
 import json
 import ipaddress
+import logging
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -27,6 +28,9 @@ from apps.accounts.permissions import (
     Authenticated,
 )
 from dispatcharr.utils import get_client_ip
+
+
+logger = logging.getLogger(__name__)
 
 
 class UserAgentViewSet(viewsets.ModelViewSet):
@@ -137,14 +141,32 @@ def environment(request):
     except Exception as e:
         local_ip = f"Error: {e}"
 
-    # 3) If we got a valid public_ip, fetch geo info from ipapi.co
+    # 3) If we got a valid public_ip, fetch geo info from ipapi.co or ip-api.com
     if public_ip and "Error" not in public_ip:
         try:
-            geo = requests.get(f"https://ipapi.co/{public_ip}/json/", timeout=5).json()
-            # ipapi returns fields like country_code, country_name, etc.
-            country_code = geo.get("country_code", "")  # e.g. "US"
-            country_name = geo.get("country_name", "")  # e.g. "United States"
-        except requests.RequestException as e:
+            # Attempt to get geo information from ipapi.co first
+            r = requests.get(f"https://ipapi.co/{public_ip}/json/", timeout=5)
+
+            if r.status_code == requests.codes.ok:
+                geo = r.json()
+                country_code = geo.get("country_code")  # e.g. "US"
+                country_name = geo.get("country_name")  # e.g. "United States"
+
+            else:
+                # If ipapi.co fails, fallback to ip-api.com
+                # only supports http requests for free tier
+                r = requests.get("http://ip-api.com/json/", timeout=5)
+
+                if r.status_code == requests.codes.ok:
+                    geo = r.json()
+                    country_code = geo.get("countryCode")  # e.g. "US"
+                    country_name = geo.get("country")  # e.g. "United States"
+
+                else:
+                    raise Exception("Geo lookup failed with both services")
+
+        except Exception as e:
+            logger.error(f"Error during geo lookup: {e}")
             country_code = None
             country_name = None
 

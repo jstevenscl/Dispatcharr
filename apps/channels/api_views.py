@@ -432,9 +432,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
             "name": name,
             "tvg_id": stream.tvg_id,
             "tvc_guide_stationid": tvc_guide_stationid,
-            "channel_group_id": channel_group.id,
             "streams": [stream_id],
         }
+
+        # Only add channel_group_id if the stream has a channel group
+        if channel_group:
+            channel_data["channel_group_id"] = channel_group.id
 
         if stream.logo_url:
             logo, _ = Logo.objects.get_or_create(
@@ -584,8 +587,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 "name": name,
                 "tvc_guide_stationid": tvc_guide_stationid,
                 "tvg_id": stream.tvg_id,
-                "channel_group_id": channel_group.id,
             }
+
+            # Only add channel_group_id if the stream has a channel group
+            if channel_group:
+                channel_data["channel_group_id"] = channel_group.id
 
             # Attempt to find existing EPGs with the same tvg-id
             epgs = EPGData.objects.filter(tvg_id=stream.tvg_id)

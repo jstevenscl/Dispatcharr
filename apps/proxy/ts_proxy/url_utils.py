@@ -171,7 +171,7 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
         # Get transcode info from the channel's stream profile
         stream_profile = channel.get_stream_profile()
         transcode = not (stream_profile.is_proxy() or stream_profile is None)
-        profile_value = str(stream_profile)
+        profile_value = stream_profile.id
 
         return {
             'url': stream_url,

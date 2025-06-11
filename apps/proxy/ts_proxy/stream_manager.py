@@ -6,8 +6,8 @@ import time
 import socket
 import requests
 import subprocess
-import gevent  # Add this import
-import re  # Add this import at the top
+import gevent
+import re
 from typing import Optional, List
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
@@ -40,6 +40,10 @@ class StreamManager:
         self.url_switching = False
         self.url_switch_start_time = 0
         self.url_switch_timeout = ConfigHelper.url_switch_timeout()
+        self.buffering = False
+        self.buffering_timeout = ConfigHelper.buffering_timeout()
+        self.buffering_speed = ConfigHelper.buffering_speed()
+        self.buffering_start_time = None
         # Store worker_id for ownership checks
         self.worker_id = worker_id
 
@@ -502,6 +506,10 @@ class StreamManager:
             elif any(keyword in content_lower for keyword in ['input', 'output', 'stream', 'video', 'audio']):
                 # Stream info - log at info level
                 logger.info(f"FFmpeg info: {content}")
+                if content.startswith('Input #0'):
+                    # If it's input 0, parse stream info
+                    from .services.channel_service import ChannelService
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "input")
             else:
                 # Everything else at debug level
                 logger.debug(f"FFmpeg stderr: {content}")
@@ -541,7 +549,6 @@ class StreamManager:
             actual_fps = None
             if ffmpeg_fps is not None and ffmpeg_speed is not None and ffmpeg_speed > 0:
                 actual_fps = ffmpeg_fps / ffmpeg_speed
-
             # Store in Redis if we have valid data
             if any(x is not None for x in [ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_bitrate]):
                 self._update_ffmpeg_stats_in_redis(ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_bitrate)
@@ -549,10 +556,51 @@ class StreamManager:
             # Fix the f-string formatting
             actual_fps_str = f"{actual_fps:.1f}" if actual_fps is not None else "N/A"
             ffmpeg_bitrate_str = f"{ffmpeg_bitrate:.1f}" if ffmpeg_bitrate is not None else "N/A"
-
+            # Log the stats
             logger.debug(f"FFmpeg stats - Speed: {ffmpeg_speed}x, FFmpeg FPS: {ffmpeg_fps}, "
                         f"Actual FPS: {actual_fps_str}, "
                         f"Bitrate: {ffmpeg_bitrate_str} kbps")
+            # If we have a valid speed, check for buffering
+            if ffmpeg_speed is not None and ffmpeg_speed < self.buffering_speed:
+                if self.buffering:
+                    # Buffering is still ongoing, check for how long
+                    if self.buffering_start_time is None:
+                        self.buffering_start_time = time.time()
+                    else:
+                        buffering_duration = time.time() - self.buffering_start_time
+                        if buffering_duration > self.buffering_timeout:
+                            # Buffering timeout reached, log error and try next stream
+                            logger.error(f"Buffering timeout reached for channel {self.channel_id} after {buffering_duration:.1f} seconds")
+                            # Send next stream request
+                            if self._try_next_stream():
+                                logger.info(f"Switched to next stream for channel {self.channel_id} after buffering timeout")
+                                # Reset buffering state
+                                self.buffering = False
+                                self.buffering_start_time = None
+                            else:
+                                logger.error(f"Failed to switch to next stream for channel {self.channel_id} after buffering timeout")
+                else:
+                    # Buffering just started, set the flag and start timer
+                    self.buffering = True
+                    self.buffering_start_time = time.time()
+                    logger.warning(f"Buffering started for channel {self.channel_id} - speed: {ffmpeg_speed}x")
+                # Log buffering warning
+                logger.debug(f"FFmpeg speed on channel {self.channel_id} is below {self.buffering_speed} ({ffmpeg_speed}x) - buffering detected")
+                # Set channel state to buffering
+                if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                    metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                    self.buffer.redis_client.hset(metadata_key, ChannelMetadataField.STATE, ChannelState.BUFFERING)
+            elif ffmpeg_speed is not None and ffmpeg_speed >= self.buffering_speed:
+                # Speed is good, check if we were buffering
+                if self.buffering:
+                    # Reset buffering state
+                    logger.info(f"Buffering ended for channel {self.channel_id} - speed: {ffmpeg_speed}x")
+                    self.buffering = False
+                    self.buffering_start_time = None
+                    # Set channel state to active if speed is good
+                    if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                        metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                        self.buffer.redis_client.hset(metadata_key, ChannelMetadataField.STATE, ChannelState.ACTIVE)
 
         except Exception as e:
             logger.debug(f"Error parsing FFmpeg stats: {e}")
