@@ -497,13 +497,18 @@ class StreamManager:
             content_lower = content.lower()
 
             # Check for stream info lines first and delegate to ChannelService
+            # Only parse INPUT streams (which have hex identifiers like [0x100]) not output streams
             if "stream #" in content_lower and ("video:" in content_lower or "audio:" in content_lower):
-                from .services.channel_service import ChannelService
-                if "video:" in content_lower:
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
-                elif "audio:" in content_lower:
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
-
+                # Check if this is an input stream by looking for the hex identifier pattern [0x...]
+                if "stream #0:" in content_lower and "[0x" in content_lower:
+                    from .services.channel_service import ChannelService
+                    if "video:" in content_lower:
+                        ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
+                    elif "audio:" in content_lower:
+                        ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
+                else:
+                    # This is likely an output stream (no hex identifier), don't parse it
+                    logger.debug(f"Skipping output stream info: {content}")
             # Determine log level based on content
             if any(keyword in content_lower for keyword in ['error', 'failed', 'cannot', 'invalid', 'corrupt']):
                 logger.error(f"FFmpeg stderr: {content}")
