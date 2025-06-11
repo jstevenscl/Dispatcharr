@@ -34,6 +34,7 @@ const SettingsPage = () => {
 
   const [accordianValue, setAccordianValue] = useState(null);
   const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
+  const [networkAccessError, setNetworkAccessError] = useState(null);
   const [networkAccessConfirmOpen, setNetworkAccessConfirmOpen] =
     useState(false);
   const [netNetworkAccessConfirmCIDRs, setNetNetworkAccessConfirmCIDRs] =
@@ -316,6 +317,21 @@ const SettingsPage = () => {
       acc[key] = '0.0.0.0/0';
       return acc;
     }, {}),
+    validate: Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
+      acc[key] = (value) => {
+        const cidrs = value.split(',');
+        for (const cidr of cidrs) {
+          if (cidr.match(/^([0-9]{1,3}\.){3}[0-9]{1,3}\/\d+$/)) {
+            continue;
+          }
+
+          return 'Invalid CIDR range';
+        }
+
+        return null;
+      };
+      return acc;
+    }, {}),
   });
 
   useEffect(() => {
@@ -383,16 +399,24 @@ const SettingsPage = () => {
 
   const onNetworkAccessSubmit = async () => {
     setNetworkAccessSaved(false);
+    setNetworkAccessError(null);
     const check = await API.checkSetting({
       ...settings['network-access'],
       value: JSON.stringify(networkAccessForm.getValues()),
     });
 
-    if (check.length == 0) {
+    if (check.error && check.message) {
+      setNetworkAccessError(`${check.message}: ${check.data}`);
+      return;
+    }
+
+    // For now, only warn if we're blocking the UI
+    const blockedAccess = check.UI;
+    if (blockedAccess.length == 0) {
       return saveNetworkAccess();
     }
 
-    setNetNetworkAccessConfirmCIDRs(check);
+    setNetNetworkAccessConfirmCIDRs(blockedAccess);
     setNetworkAccessConfirmOpen(true);
   };
 
@@ -627,6 +651,13 @@ const SettingsPage = () => {
                               title="Saved Successfully"
                             ></Alert>
                           )}
+                          {networkAccessError && (
+                            <Alert
+                              variant="light"
+                              color="red"
+                              title={networkAccessError}
+                            ></Alert>
+                          )}
                           {Object.entries(NETWORK_ACCESS_OPTIONS).map(
                             ([key, config]) => {
                               return (
@@ -672,8 +703,8 @@ const SettingsPage = () => {
         message={
           <>
             <Text>
-              Your client is included in the following CIDRs and could block
-              access Are you sure you want to proceed?
+              Your client is not included in the allowed networks for the web
+              UI. Are you sure you want to proceed?
             </Text>
 
             <ul>

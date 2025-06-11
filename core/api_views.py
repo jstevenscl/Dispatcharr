@@ -5,7 +5,13 @@ import ipaddress
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import UserAgent, StreamProfile, CoreSettings, STREAM_HASH_KEY
+from .models import (
+    UserAgent,
+    StreamProfile,
+    CoreSettings,
+    STREAM_HASH_KEY,
+    NETWORK_ACCESS,
+)
 from .serializers import (
     UserAgentSerializer,
     StreamProfileSerializer,
@@ -63,18 +69,41 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
     def check(self, request, *args, **kwargs):
         data = request.data
 
-        client_ip = ipaddress.ip_address(get_client_ip(request))
-        in_network = []
-        key = data.get("key")
-        value = json.loads(data.get("value", "{}"))
-        for key, val in value.items():
-            cidrs = val.split(",")
-            for cidr in cidrs:
-                network = ipaddress.ip_network(cidr)
-                if client_ip not in network:
-                    in_network.append(cidr)
+        if data.get("key") == NETWORK_ACCESS:
+            client_ip = ipaddress.ip_address(get_client_ip(request))
 
-        return Response(in_network, status=status.HTTP_200_OK)
+            in_network = {}
+            invalid = []
+
+            value = json.loads(data.get("value", "{}"))
+            for key, val in value.items():
+                in_network[key] = []
+                cidrs = val.split(",")
+                for cidr in cidrs:
+                    try:
+                        network = ipaddress.ip_network(cidr)
+
+                        if client_ip in network:
+                            in_network[key] = []
+                            break
+
+                        in_network[key].append(cidr)
+                    except:
+                        invalid.append(cidr)
+
+            if len(invalid) > 0:
+                return Response(
+                    {
+                        "error": True,
+                        "message": "Invalid CIDR(s)",
+                        "data": invalid,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            return Response(in_network, status=status.HTTP_200_OK)
+
+        return Response({}, status=status.HTTP_200_OK)
 
 
 @swagger_auto_schema(
