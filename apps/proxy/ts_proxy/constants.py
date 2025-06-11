@@ -18,6 +18,7 @@ class ChannelState:
     ERROR = "error"
     STOPPING = "stopping"
     STOPPED = "stopped"
+    BUFFERING = "buffering"
 
 # Event types
 class EventType:
