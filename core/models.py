@@ -183,3 +183,41 @@ class CoreSettings(models.Model):
             return cls.objects.get(key=AUTO_IMPORT_MAPPED_FILES).value
         except cls.DoesNotExist:
             return None
+
+class ProxySettings(models.Model):
+    """Proxy configuration settings"""
+
+    buffering_timeout = models.IntegerField(
+        default=15,
+        help_text="Seconds to wait for buffering before switching streams"
+    )
+
+    buffering_speed = models.FloatField(
+        default=1.0,
+        help_text="Speed threshold to consider stream buffering (1.0 = normal speed)"
+    )
+
+    redis_chunk_ttl = models.IntegerField(
+        default=60,
+        help_text="Time in seconds before Redis chunks expire"
+    )
+
+    channel_shutdown_delay = models.IntegerField(
+        default=0,
+        help_text="Seconds to wait after last client before shutting down channel"
+    )
+
+    channel_init_grace_period = models.IntegerField(
+        default=5,
+        help_text="Seconds to wait for first client after channel initialization"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Proxy Settings"
+        verbose_name_plural = "Proxy Settings"
+
+    def __str__(self):
+        return "Proxy Settings"

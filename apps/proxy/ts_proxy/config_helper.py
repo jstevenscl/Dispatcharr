@@ -34,6 +34,13 @@ class ConfigHelper:
     @staticmethod
     def channel_shutdown_delay():
         """Get channel shutdown delay in seconds"""
+        try:
+            from core.models import ProxySettings
+            settings = ProxySettings.objects.first()
+            if settings:
+                return settings.channel_shutdown_delay
+        except:
+            pass
         return ConfigHelper.get('CHANNEL_SHUTDOWN_DELAY', 0)
 
     @staticmethod
@@ -54,6 +61,13 @@ class ConfigHelper:
     @staticmethod
     def redis_chunk_ttl():
         """Get Redis chunk TTL in seconds"""
+        try:
+            from core.models import ProxySettings
+            settings = ProxySettings.objects.first()
+            if settings:
+                return settings.redis_chunk_ttl
+        except:
+            pass
         return ConfigHelper.get('REDIS_CHUNK_TTL', 60)
 
     @staticmethod
@@ -85,11 +99,39 @@ class ConfigHelper:
     def failover_grace_period():
         """Get extra time (in seconds) to allow for stream switching before disconnecting clients"""
         return ConfigHelper.get('FAILOVER_GRACE_PERIOD', 20)  # Default to 20 seconds
+
     @staticmethod
     def buffering_timeout():
         """Get buffering timeout in seconds"""
+        try:
+            from core.models import ProxySettings
+            settings = ProxySettings.objects.first()
+            if settings:
+                return settings.buffering_timeout
+        except:
+            pass
         return ConfigHelper.get('BUFFERING_TIMEOUT', 15)  # Default to 15 seconds
+
     @staticmethod
     def buffering_speed():
-        """Get buffering speed in bytes per second"""
-        return ConfigHelper.get('BUFFERING_SPEED',1) # Default to 1x
+        """Get buffering speed threshold"""
+        try:
+            from core.models import ProxySettings
+            settings = ProxySettings.objects.first()
+            if settings:
+                return settings.buffering_speed
+        except:
+            pass
+        return ConfigHelper.get('BUFFERING_SPEED', 1)  # Default to 1x
+
+    @staticmethod
+    def channel_init_grace_period():
+        """Get channel initialization grace period in seconds"""
+        try:
+            from core.models import ProxySettings
+            settings = ProxySettings.objects.first()
+            if settings:
+                return settings.channel_init_grace_period
+        except:
+            pass
+        return ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 5)  # Default to 5 seconds

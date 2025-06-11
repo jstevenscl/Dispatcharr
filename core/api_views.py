@@ -1,10 +1,11 @@
 # core/api_views.py
 
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import UserAgent, StreamProfile, CoreSettings, STREAM_HASH_KEY
-from .serializers import UserAgentSerializer, StreamProfileSerializer, CoreSettingsSerializer
+from .models import UserAgent, StreamProfile, CoreSettings, ProxySettings, STREAM_HASH_KEY
+from .serializers import UserAgentSerializer, StreamProfileSerializer, CoreSettingsSerializer, ProxySettingsSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from drf_yasg.utils import swagger_auto_schema
@@ -43,6 +44,63 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
                 rehash_streams.delay(request.data['value'].split(','))
 
         return response
+
+class ProxySettingsViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for proxy settings.
+    This is treated as a singleton: only one instance should exist.
+    """
+    serializer_class = ProxySettingsSerializer
+
+    def get_queryset(self):
+        # Always return the singleton settings
+        return ProxySettings.objects.all()
+
+    def get_object(self):
+        # Always return the singleton settings (create if doesn't exist)
+        return ProxySettings.get_settings()
+
+    def list(self, request, *args, **kwargs):
+        # Return the singleton settings as a single object
+        settings = self.get_object()
+        serializer = self.get_serializer(settings)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        # Always return the singleton settings regardless of ID
+        settings = self.get_object()
+        serializer = self.get_serializer(settings)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        # Update the singleton settings
+        settings = self.get_object()
+        serializer = self.get_serializer(settings, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get', 'patch'])
+    def settings(self, request):
+        """
+        Get or update the proxy settings.
+        """
+        settings = self.get_object()
+
+        if request.method == 'GET':
+            # Return current settings
+            serializer = self.get_serializer(settings)
+            return Response(serializer.data)
+
+        elif request.method == 'PATCH':
+            # Update settings
+            serializer = self.get_serializer(settings, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
 
 @swagger_auto_schema(
     method='get',
