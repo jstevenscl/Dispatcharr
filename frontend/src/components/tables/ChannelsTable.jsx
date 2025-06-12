@@ -3,6 +3,7 @@ import useChannelsStore from '../../store/channels';
 import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
+import ChannelBatchForm from '../forms/ChannelBatch';
 import RecordingForm from '../forms/Recording';
 import { useDebounce, copyToClipboard } from '../../utils';
 import logo from '../../images/logo.png';
@@ -51,6 +52,8 @@ import ChannelsTableOnboarding from './ChannelsTable/ChannelsTableOnboarding';
 import ChannelTableHeader from './ChannelsTable/ChannelTableHeader';
 import useWarningsStore from '../../store/warnings';
 import ConfirmationDialog from '../ConfirmationDialog';
+import useAuthStore from '../../store/auth';
+import { USER_LEVELS } from '../../constants';
 
 const m3uUrlBase = `${window.location.protocol}//${window.location.host}/output/m3u`;
 const epgUrlBase = `${window.location.protocol}//${window.location.host}/output/epg`;
@@ -108,6 +111,8 @@ const ChannelRowActions = React.memo(
     const channelUuid = row.original.uuid;
     const [tableSize, _] = useLocalStorage('table-size', 'default');
 
+    const authUser = useAuthStore((s) => s.user);
+
     const onEdit = useCallback(() => {
       // Use the ID directly to avoid issues with filtered tables
       console.log(`Editing channel ID: ${channelId}`);
@@ -141,6 +146,7 @@ const ChannelRowActions = React.memo(
             variant="transparent"
             color={theme.tailwind.yellow[3]}
             onClick={onEdit}
+            disabled={authUser.user_level != USER_LEVELS.ADMIN}
           >
             <SquarePen size="18" />
           </ActionIcon>
@@ -150,6 +156,7 @@ const ChannelRowActions = React.memo(
             variant="transparent"
             color={theme.tailwind.red[6]}
             onClick={onDelete}
+            disabled={authUser.user_level != USER_LEVELS.ADMIN}
           >
             <SquareMinus size="18" />
           </ActionIcon>
@@ -181,6 +188,7 @@ const ChannelRowActions = React.memo(
               </Menu.Item>
               <Menu.Item
                 onClick={onRecord}
+                disabled={authUser.user_level != USER_LEVELS.ADMIN}
                 leftSection={
                   <div
                     style={{
@@ -203,7 +211,7 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = ({ }) => {
+const ChannelsTable = ({}) => {
   const theme = useMantineTheme();
 
   /**
@@ -261,6 +269,7 @@ const ChannelsTable = ({ }) => {
    */
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [channelBatchModalOpen, setChannelBatchModalOpen] = useState(false);
   const [recordingModalOpen, setRecordingModalOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState(
     profiles[selectedProfileId]
@@ -291,7 +300,12 @@ const ChannelsTable = ({ }) => {
   const groupOptions = Object.values(channelGroups)
     .filter((group) => activeGroupIds.has(group.id))
     .map((group) => group.name);
-  const debouncedFilters = useDebounce(filters, 500);
+  const debouncedFilters = useDebounce(filters, 500, () => {
+    setPagination({
+      ...pagination,
+      pageIndex: 0,
+    });
+  });
 
   /**
    * Functions
@@ -329,14 +343,8 @@ const ChannelsTable = ({ }) => {
     e.stopPropagation();
   }, []);
 
-  // Remove useCallback to ensure we're using the latest setPagination function
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    // First reset pagination to page 0
-    setPagination({
-      ...pagination,
-      pageIndex: 0,
-    });
     // Then update filters
     setFilters((prev) => ({
       ...prev,
@@ -345,11 +353,6 @@ const ChannelsTable = ({ }) => {
   };
 
   const handleGroupChange = (value) => {
-    // First reset pagination to page 0
-    setPagination({
-      ...pagination,
-      pageIndex: 0,
-    });
     // Then update filters
     setFilters((prev) => ({
       ...prev,
@@ -358,8 +361,12 @@ const ChannelsTable = ({ }) => {
   };
 
   const editChannel = async (ch = null) => {
-    setChannel(ch);
-    setChannelModalOpen(true);
+    if (selectedChannelIds.length > 0) {
+      setChannelBatchModalOpen(true);
+    } else {
+      setChannel(ch);
+      setChannelModalOpen(true);
+    }
   };
 
   const deleteChannel = async (id) => {
@@ -471,6 +478,10 @@ const ChannelsTable = ({ }) => {
       ...pagination,
       pageIndex: pageIndex - 1,
     });
+  };
+
+  const closeChannelBatchForm = () => {
+    setChannelBatchModalOpen(false);
   };
 
   const closeChannelForm = () => {
@@ -596,8 +607,12 @@ const ChannelsTable = ({ }) => {
         cell: ({ getValue }) => {
           const value = getValue();
           // Format as integer if no decimal component
-          const formattedValue = value !== null && value !== undefined ?
-            (value === Math.floor(value) ? Math.floor(value) : value) : '';
+          const formattedValue =
+            value !== null && value !== undefined
+              ? value === Math.floor(value)
+                ? Math.floor(value)
+                : value
+              : '';
 
           return (
             <Flex justify="flex-end" style={{ width: '100%' }}>
@@ -797,8 +812,8 @@ const ChannelsTable = ({ }) => {
       return hasStreams
         ? {} // Default style for channels with streams
         : {
-          className: 'no-streams-row', // Add a class instead of background color
-        };
+            className: 'no-streams-row', // Add a class instead of background color
+          };
     },
   });
 
@@ -1028,6 +1043,12 @@ const ChannelsTable = ({ }) => {
           channel={channel}
           isOpen={channelModalOpen}
           onClose={closeChannelForm}
+        />
+
+        <ChannelBatchForm
+          channelIds={selectedChannelIds}
+          isOpen={channelBatchModalOpen}
+          onClose={closeChannelBatchForm}
         />
 
         <RecordingForm

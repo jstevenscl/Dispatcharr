@@ -386,89 +386,98 @@ class StreamManager:
             buffer = b""
             last_stats_line = b""
 
-            # Read in small chunks
+            # Read byte by byte for immediate detection
             while self.transcode_process and self.transcode_process.stderr:
                 try:
-                    chunk = self.transcode_process.stderr.read(256)  # Smaller chunks for real-time processing
-                    if not chunk:
+                    # Read one byte at a time for immediate processing
+                    byte = self.transcode_process.stderr.read(1)
+                    if not byte:
                         break
 
-                    buffer += chunk
+                    buffer += byte
 
-                    # Look for stats updates (overwrite previous stats with \r)
-                    if b'\r' in buffer and b"frame=" in buffer:
-                        # Split on \r to handle overwriting stats
-                        parts = buffer.split(b'\r')
+                    # Check for frame= at the start of buffer (new stats line)
+                    if buffer == b"frame=":
+                        # We detected the start of a stats line, read until we get a complete line
+                        # or hit a carriage return (which overwrites the previous stats)
+                        while True:
+                            next_byte = self.transcode_process.stderr.read(1)
+                            if not next_byte:
+                                break
 
-                        # Process all parts except the last (which might be incomplete)
-                        for i, part in enumerate(parts[:-1]):
-                            if part.strip():
-                                if part.startswith(b"frame=") or b"frame=" in part:
-                                    # This is a stats line - keep it intact
-                                    try:
-                                        stats_text = part.decode('utf-8', errors='ignore').strip()
-                                        if stats_text and "frame=" in stats_text:
-                                            # Extract just the stats portion if there's other content
-                                            if "frame=" in stats_text:
-                                                frame_start = stats_text.find("frame=")
-                                                stats_text = stats_text[frame_start:]
+                            buffer += next_byte
 
-                                            self._parse_ffmpeg_stats(stats_text)
-                                            self._log_stderr_content(stats_text)
-                                            last_stats_line = part
-                                    except Exception as e:
-                                        logger.debug(f"Error parsing stats line: {e}")
-                                else:
-                                    # Regular content - process line by line
-                                    line_content = part
-                                    while b'\n' in line_content:
-                                        line, line_content = line_content.split(b'\n', 1)
-                                        if line.strip():
-                                            self._log_stderr_content(line.decode('utf-8', errors='ignore'))
+                            # Break on carriage return (stats overwrite) or newline
+                            if next_byte in (b'\r', b'\n'):
+                                break
 
-                                    # Handle remaining content without newline
-                                    if line_content.strip():
-                                        self._log_stderr_content(line_content.decode('utf-8', errors='ignore'))
+                            # Also break if we have enough data for a typical stats line
+                            if len(buffer) > 200:  # Typical stats line length
+                                break
 
-                        # Keep the last part as it might be incomplete
-                        buffer = parts[-1]
+                        # Process the stats line immediately
+                        if buffer.strip():
+                            try:
+                                stats_text = buffer.decode('utf-8', errors='ignore').strip()
+                                if stats_text and "frame=" in stats_text:
+                                    self._parse_ffmpeg_stats(stats_text)
+                                    self._log_stderr_content(stats_text)
+                            except Exception as e:
+                                logger.debug(f"Error parsing immediate stats line: {e}")
+
+                        # Clear buffer after processing
+                        buffer = b""
+                        continue
 
                     # Handle regular line breaks for non-stats content
-                    elif b'\n' in buffer:
-                        while b'\n' in buffer:
-                            line, buffer = buffer.split(b'\n', 1)
-                            if line.strip():
-                                line_text = line.decode('utf-8', errors='ignore').strip()
-                                if line_text and not line_text.startswith("frame="):
-                                    self._log_stderr_content(line_text)
+                    elif byte == b'\n':
+                        if buffer.strip():
+                            line_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if line_text and not line_text.startswith("frame="):
+                                self._log_stderr_content(line_text)
+                        buffer = b""
 
-                    # If we have a potential stats line in buffer without line breaks
-                    elif b"frame=" in buffer and (b"speed=" in buffer or len(buffer) > 200):
-                        # We likely have a complete or substantial stats line
-                        try:
-                            stats_text = buffer.decode('utf-8', errors='ignore').strip()
-                            if "frame=" in stats_text:
-                                # Extract just the stats portion
-                                frame_start = stats_text.find("frame=")
-                                stats_text = stats_text[frame_start:]
+                    # Handle carriage returns (potential stats overwrite)
+                    elif byte == b'\r':
+                        # Check if this might be a stats line
+                        if b"frame=" in buffer:
+                            try:
+                                stats_text = buffer.decode('utf-8', errors='ignore').strip()
+                                if stats_text and "frame=" in stats_text:
+                                    self._parse_ffmpeg_stats(stats_text)
+                                    self._log_stderr_content(stats_text)
+                            except Exception as e:
+                                logger.debug(f"Error parsing stats on carriage return: {e}")
+                        elif buffer.strip():
+                            # Regular content with carriage return
+                            line_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if line_text:
+                                self._log_stderr_content(line_text)
+                        buffer = b""
 
-                                self._parse_ffmpeg_stats(stats_text)
-                                self._log_stderr_content(stats_text)
-                                buffer = b""  # Clear buffer after processing
-                        except Exception as e:
-                            logger.debug(f"Error parsing buffered stats: {e}")
-
-                    # Prevent buffer from growing too large
-                    if len(buffer) > 4096:
-                        # Try to preserve any potential stats line at the end
-                        if b"frame=" in buffer[-1024:]:
-                            buffer = buffer[-1024:]
-                        else:
-                            buffer = buffer[-512:]
+                    # Prevent buffer from growing too large for non-stats content
+                    elif len(buffer) > 1024 and b"frame=" not in buffer:
+                        # Process whatever we have if it's not a stats line
+                        if buffer.strip():
+                            line_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if line_text:
+                                self._log_stderr_content(line_text)
+                        buffer = b""
 
                 except Exception as e:
-                    logger.error(f"Error reading stderr: {e}")
+                    logger.error(f"Error reading stderr byte: {e}")
                     break
+
+            # Process any remaining buffer content
+            if buffer.strip():
+                try:
+                    remaining_text = buffer.decode('utf-8', errors='ignore').strip()
+                    if remaining_text:
+                        if "frame=" in remaining_text:
+                            self._parse_ffmpeg_stats(remaining_text)
+                        self._log_stderr_content(remaining_text)
+                except Exception as e:
+                    logger.debug(f"Error processing remaining buffer: {e}")
 
         except Exception as e:
             # Catch any other exceptions in the thread to prevent crashes
@@ -488,13 +497,18 @@ class StreamManager:
             content_lower = content.lower()
 
             # Check for stream info lines first and delegate to ChannelService
+            # Only parse INPUT streams (which have hex identifiers like [0x100]) not output streams
             if "stream #" in content_lower and ("video:" in content_lower or "audio:" in content_lower):
-                from .services.channel_service import ChannelService
-                if "video:" in content_lower:
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
-                elif "audio:" in content_lower:
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
-
+                # Check if this is an input stream by looking for the hex identifier pattern [0x...]
+                if "stream #0:" in content_lower and "[0x" in content_lower:
+                    from .services.channel_service import ChannelService
+                    if "video:" in content_lower:
+                        ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
+                    elif "audio:" in content_lower:
+                        ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
+                else:
+                    # This is likely an output stream (no hex identifier), don't parse it
+                    logger.debug(f"Skipping output stream info: {content}")
             # Determine log level based on content
             if any(keyword in content_lower for keyword in ['error', 'failed', 'cannot', 'invalid', 'corrupt']):
                 logger.error(f"FFmpeg stderr: {content}")
