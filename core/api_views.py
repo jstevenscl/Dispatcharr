@@ -4,13 +4,11 @@ import json
 import ipaddress
 import logging
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-<<<<<<< HEAD
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
-=======
+from rest_framework.decorators import api_view, permission_classes, action
+from drf_yasg.utils import swagger_auto_schema
 from .models import (
     UserAgent,
     StreamProfile,
@@ -25,9 +23,7 @@ from .serializers import (
     CoreSettingsSerializer,
     ProxySettingsSerializer,
 )
-from rest_framework.decorators import api_view, permission_classes, action
->>>>>>> 59e4a28b311d00d073f238e01e735d68a821c3f3
-from drf_yasg.utils import swagger_auto_schema
+
 import socket
 import requests
 import os
@@ -116,7 +112,6 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
 
         return Response({}, status=status.HTTP_200_OK)
 
-<<<<<<< HEAD
 class ProxySettingsViewSet(viewsets.ModelViewSet):
     """
     API endpoint for proxy settings.
@@ -173,10 +168,8 @@ class ProxySettingsViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             serializer.save()
             return Response(serializer.data)
-=======
 
 
->>>>>>> 59e4a28b311d00d073f238e01e735d68a821c3f3
 
 @swagger_auto_schema(
     method="get",
