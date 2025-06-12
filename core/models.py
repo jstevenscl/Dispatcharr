@@ -232,3 +232,18 @@ class ProxySettings(models.Model):
 
     def __str__(self):
         return "Proxy Settings"
+
+    @classmethod
+    def get_settings(cls):
+        """Get or create the singleton proxy settings instance"""
+        settings, created = cls.objects.get_or_create(
+            pk=1,  # Force single instance
+            defaults={
+                'buffering_timeout': 15,
+                'buffering_speed': 1.0,
+                'redis_chunk_ttl': 60,
+                'channel_shutdown_delay': 0,
+                'channel_init_grace_period': 20,
+            }
+        )
+        return settings

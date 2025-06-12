@@ -9,10 +9,27 @@ class BaseConfig:
     CONNECTION_TIMEOUT = 10  # seconds to wait for initial connection
     MAX_STREAM_SWITCHES = 10  # Maximum number of stream switch attempts before giving up
     BUFFER_CHUNK_SIZE = 188 * 1361  # ~256KB
-    # Redis settings
-    REDIS_CHUNK_TTL = 60  # Number in seconds - Chunks expire after 1 minute
     BUFFERING_TIMEOUT = 15  # Seconds to wait for buffering before switching streams
     BUFFER_SPEED = 1 # What speed to condsider the stream buffering, 1x is normal speed, 2x is double speed, etc.
+
+    @classmethod
+    def get_proxy_settings(cls):
+        """Get ProxySettings from database with fallback to defaults"""
+        try:
+            from core.models import ProxySettings
+            return ProxySettings.objects.first()
+        except Exception:
+            return None
+
+    @classmethod
+    def get_redis_chunk_ttl(cls):
+        """Get Redis chunk TTL from database or default"""
+        settings = cls.get_proxy_settings()
+        return settings.redis_chunk_ttl if settings else 60
+
+    @property
+    def REDIS_CHUNK_TTL(self):
+        return self.get_redis_chunk_ttl()
 
 class HLSConfig(BaseConfig):
     MIN_SEGMENTS = 12
@@ -42,20 +59,13 @@ class TSConfig(BaseConfig):
 
     # Resource management
     CLEANUP_INTERVAL = 60  # Check for inactive channels every 60 seconds
-    CHANNEL_SHUTDOWN_DELAY = 0  # How long to wait after last client before shutdown (seconds)
 
     # Client tracking settings
     CLIENT_RECORD_TTL = 5  # How long client records persist in Redis (seconds). Client will be considered MIA after this time.
     CLEANUP_CHECK_INTERVAL = 1  # How often to check for disconnected clients (seconds)
-    CHANNEL_INIT_GRACE_PERIOD = 5  # How long to wait for first client after initialization (seconds)
     CLIENT_HEARTBEAT_INTERVAL = 1  # How often to send client heartbeats (seconds)
     GHOST_CLIENT_MULTIPLIER = 5.0  # How many heartbeat intervals before client considered ghost (5 would mean 5 secondsif heartbeat interval is 1)
     CLIENT_WAIT_TIMEOUT = 30  # Seconds to wait for client to connect
-
-
-    # TS packets are 188 bytes
-    # Make chunk size a multiple of TS packet size for perfect alignment
-    # ~1MB is ideal for streaming (matches typical media buffer sizes)
 
     # Stream health and recovery settings
     MAX_HEALTH_RECOVERY_ATTEMPTS = 2     # Maximum times to attempt recovery for a single stream
@@ -63,6 +73,48 @@ class TSConfig(BaseConfig):
     MIN_STABLE_TIME_BEFORE_RECONNECT = 30  # Minimum seconds a stream must be stable to try reconnect
     FAILOVER_GRACE_PERIOD = 20           # Extra time (seconds) to allow for stream switching before disconnecting clients
     URL_SWITCH_TIMEOUT = 20   # Max time allowed for a stream switch operation
+
+    # Database-dependent settings with fallbacks
+    @classmethod
+    def get_channel_shutdown_delay(cls):
+        """Get channel shutdown delay from database or default"""
+        settings = cls.get_proxy_settings()
+        return settings.channel_shutdown_delay if settings else 0
+
+    @classmethod
+    def get_buffering_timeout(cls):
+        """Get buffering timeout from database or default"""
+        settings = cls.get_proxy_settings()
+        return settings.buffering_timeout if settings else 15
+
+    @classmethod
+    def get_buffering_speed(cls):
+        """Get buffering speed threshold from database or default"""
+        settings = cls.get_proxy_settings()
+        return settings.buffering_speed if settings else 1.0
+
+    @classmethod
+    def get_channel_init_grace_period(cls):
+        """Get channel init grace period from database or default"""
+        settings = cls.get_proxy_settings()
+        return settings.channel_init_grace_period if settings else 5
+
+    # Dynamic property access for these settings
+    @property
+    def CHANNEL_SHUTDOWN_DELAY(self):
+        return self.get_channel_shutdown_delay()
+
+    @property
+    def BUFFERING_TIMEOUT(self):
+        return self.get_buffering_timeout()
+
+    @property
+    def BUFFERING_SPEED(self):
+        return self.get_buffering_speed()
+
+    @property
+    def CHANNEL_INIT_GRACE_PERIOD(self):
+        return self.get_channel_init_grace_period()
 
 
 
