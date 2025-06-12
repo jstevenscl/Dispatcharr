@@ -3,6 +3,19 @@
 from django.db import migrations, models
 
 
+def create_default_proxy_settings(apps, schema_editor):
+    """Create the default ProxySettings instance"""
+    ProxySettings = apps.get_model("core", "ProxySettings")
+    ProxySettings.objects.create(
+        id=1,  # Force singleton ID
+        buffering_timeout=15,
+        buffering_speed=1.0,
+        redis_chunk_ttl=60,
+        channel_shutdown_delay=0,
+        channel_init_grace_period=5,
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -27,4 +40,5 @@ class Migration(migrations.Migration):
                 'verbose_name_plural': 'Proxy Settings',
             },
         ),
+        migrations.RunPython(create_default_proxy_settings),
     ]
