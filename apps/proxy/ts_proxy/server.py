@@ -941,7 +941,7 @@ class ProxyServer:
 
                                 # If waiting for clients, check grace period
                                 if connection_ready_time:
-                                    grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
+                                    grace_period = ConfigHelper.channel_init_grace_period()
                                     time_since_ready = time.time() - connection_ready_time
 
                                     # Add this debug log
