@@ -15,7 +15,7 @@ from .models import (
     CoreSettings,
     STREAM_HASH_KEY,
     NETWORK_ACCESS,
-    ProxySettings,
+    PROXY_SETTINGS_KEY,
 )
 from .serializers import (
     UserAgentSerializer,
@@ -112,62 +112,85 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
 
         return Response({}, status=status.HTTP_200_OK)
 
-class ProxySettingsViewSet(viewsets.ModelViewSet):
+class ProxySettingsViewSet(viewsets.ViewSet):
     """
-    API endpoint for proxy settings.
-    This is treated as a singleton: only one instance should exist.
+    API endpoint for proxy settings stored as JSON in CoreSettings.
     """
     serializer_class = ProxySettingsSerializer
 
-    def get_queryset(self):
-        # Always return the singleton settings
-        return ProxySettings.objects.all()
+    def _get_or_create_settings(self):
+        """Get or create the proxy settings CoreSettings entry"""
+        try:
+            settings_obj = CoreSettings.objects.get(key=PROXY_SETTINGS_KEY)
+            settings_data = json.loads(settings_obj.value)
+        except (CoreSettings.DoesNotExist, json.JSONDecodeError):
+            # Create default settings
+            settings_data = {
+                "buffering_timeout": 15,
+                "buffering_speed": 1.0,
+                "redis_chunk_ttl": 60,
+                "channel_shutdown_delay": 0,
+                "channel_init_grace_period": 5,
+            }
+            settings_obj, created = CoreSettings.objects.get_or_create(
+                key=PROXY_SETTINGS_KEY,
+                defaults={
+                    "name": "Proxy Settings",
+                    "value": json.dumps(settings_data)
+                }
+            )
+        return settings_obj, settings_data
 
-    def get_object(self):
-        # Always return the singleton settings (create if doesn't exist)
-        return ProxySettings.get_settings()
-
-    def list(self, request, *args, **kwargs):
-        # Return the singleton settings as a single object
-        settings = self.get_object()
-        serializer = self.get_serializer(settings)
+    def list(self, request):
+        """Return proxy settings"""
+        settings_obj, settings_data = self._get_or_create_settings()
+        serializer = ProxySettingsSerializer(data=settings_data)
+        serializer.is_valid()
         return Response(serializer.data)
 
-    def retrieve(self, request, *args, **kwargs):
-        # Always return the singleton settings regardless of ID
-        settings = self.get_object()
-        serializer = self.get_serializer(settings)
+    def retrieve(self, request, pk=None):
+        """Return proxy settings regardless of ID"""
+        settings_obj, settings_data = self._get_or_create_settings()
+        serializer = ProxySettingsSerializer(data=settings_data)
+        serializer.is_valid()
         return Response(serializer.data)
 
-    def update(self, request, *args, **kwargs):
-        # Update the singleton settings
-        settings = self.get_object()
-        serializer = self.get_serializer(settings, data=request.data, partial=True)
+    def update(self, request, pk=None):
+        """Update proxy settings"""
+        settings_obj, current_data = self._get_or_create_settings()
+
+        serializer = ProxySettingsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+
+        # Update the JSON data
+        settings_obj.value = json.dumps(serializer.validated_data)
+        settings_obj.save()
+
         return Response(serializer.data)
 
-    def partial_update(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
+    def partial_update(self, request, pk=None):
+        """Partially update proxy settings"""
+        settings_obj, current_data = self._get_or_create_settings()
+
+        # Merge current data with new data
+        updated_data = {**current_data, **request.data}
+
+        serializer = ProxySettingsSerializer(data=updated_data)
+        serializer.is_valid(raise_exception=True)
+
+        # Update the JSON data
+        settings_obj.value = json.dumps(serializer.validated_data)
+        settings_obj.save()
+
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get', 'patch'])
     def settings(self, request):
-        """
-        Get or update the proxy settings.
-        """
-        settings = self.get_object()
-
+        """Get or update the proxy settings."""
         if request.method == 'GET':
-            # Return current settings
-            serializer = self.get_serializer(settings)
-            return Response(serializer.data)
-
+            return self.list(request)
         elif request.method == 'PATCH':
-            # Update settings
-            serializer = self.get_serializer(settings, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
+            return self.partial_update(request)
 
 
 

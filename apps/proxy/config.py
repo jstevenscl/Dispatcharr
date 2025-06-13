@@ -14,18 +14,24 @@ class BaseConfig:
 
     @classmethod
     def get_proxy_settings(cls):
-        """Get ProxySettings from database with fallback to defaults"""
+        """Get proxy settings from CoreSettings JSON data with fallback to defaults"""
         try:
-            from core.models import ProxySettings
-            return ProxySettings.objects.first()
+            from core.models import CoreSettings
+            return CoreSettings.get_proxy_settings()
         except Exception:
-            return None
+            return {
+                "buffering_timeout": 15,
+                "buffering_speed": 1.0,
+                "redis_chunk_ttl": 60,
+                "channel_shutdown_delay": 0,
+                "channel_init_grace_period": 5,
+            }
 
     @classmethod
     def get_redis_chunk_ttl(cls):
         """Get Redis chunk TTL from database or default"""
         settings = cls.get_proxy_settings()
-        return settings.redis_chunk_ttl if settings else 60
+        return settings.get("redis_chunk_ttl", 60)
 
     @property
     def REDIS_CHUNK_TTL(self):
@@ -79,25 +85,25 @@ class TSConfig(BaseConfig):
     def get_channel_shutdown_delay(cls):
         """Get channel shutdown delay from database or default"""
         settings = cls.get_proxy_settings()
-        return settings.channel_shutdown_delay if settings else 0
+        return settings.get("channel_shutdown_delay", 0)
 
     @classmethod
     def get_buffering_timeout(cls):
         """Get buffering timeout from database or default"""
         settings = cls.get_proxy_settings()
-        return settings.buffering_timeout if settings else 15
+        return settings.get("buffering_timeout", 15)
 
     @classmethod
     def get_buffering_speed(cls):
         """Get buffering speed threshold from database or default"""
         settings = cls.get_proxy_settings()
-        return settings.buffering_speed if settings else 1.0
+        return settings.get("buffering_speed", 1.0)
 
     @classmethod
     def get_channel_init_grace_period(cls):
         """Get channel init grace period from database or default"""
         settings = cls.get_proxy_settings()
-        return settings.channel_init_grace_period if settings else 5
+        return settings.get("channel_init_grace_period", 5)
 
     # Dynamic property access for these settings
     @property

@@ -149,6 +149,7 @@ STREAM_HASH_KEY = slugify("M3U Hash Key")
 PREFERRED_REGION_KEY = slugify("Preferred Region")
 AUTO_IMPORT_MAPPED_FILES = slugify("Auto-Import Mapped Files")
 NETWORK_ACCESS = slugify("Network Access")
+PROXY_SETTINGS_KEY = slugify("Proxy Settings")
 
 
 class CoreSettings(models.Model):
@@ -195,55 +196,19 @@ class CoreSettings(models.Model):
         except cls.DoesNotExist:
             return None
 
-class ProxySettings(models.Model):
-    """Proxy configuration settings"""
-
-    buffering_timeout = models.IntegerField(
-        default=15,
-        help_text="Seconds to wait for buffering before switching streams"
-    )
-
-    buffering_speed = models.FloatField(
-        default=1.0,
-        help_text="Speed threshold to consider stream buffering (1.0 = normal speed)"
-    )
-
-    redis_chunk_ttl = models.IntegerField(
-        default=60,
-        help_text="Time in seconds before Redis chunks expire"
-    )
-
-    channel_shutdown_delay = models.IntegerField(
-        default=0,
-        help_text="Seconds to wait after last client before shutting down channel"
-    )
-
-    channel_init_grace_period = models.IntegerField(
-        default=5,
-        help_text="Seconds to wait for first client after channel initialization"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = "Proxy Settings"
-        verbose_name_plural = "Proxy Settings"
-
-    def __str__(self):
-        return "Proxy Settings"
-
     @classmethod
-    def get_settings(cls):
-        """Get or create the singleton proxy settings instance"""
-        settings, created = cls.objects.get_or_create(
-            pk=1,  # Force single instance
-            defaults={
-                'buffering_timeout': 15,
-                'buffering_speed': 1.0,
-                'redis_chunk_ttl': 60,
-                'channel_shutdown_delay': 0,
-                'channel_init_grace_period': 20,
+    def get_proxy_settings(cls):
+        """Retrieve proxy settings as dict (or return defaults if not found)."""
+        try:
+            import json
+            settings_json = cls.objects.get(key=PROXY_SETTINGS_KEY).value
+            return json.loads(settings_json)
+        except (cls.DoesNotExist, json.JSONDecodeError):
+            # Return defaults if not found or invalid JSON
+            return {
+                "buffering_timeout": 15,
+                "buffering_speed": 1.0,
+                "redis_chunk_ttl": 60,
+                "channel_shutdown_delay": 0,
+                "channel_init_grace_period": 5,
             }
-        )
-        return settings

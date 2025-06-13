@@ -3,7 +3,7 @@ import json
 import ipaddress
 
 from rest_framework import serializers
-from .models import CoreSettings, UserAgent, StreamProfile, ProxySettings, NETWORK_ACCESS
+from .models import CoreSettings, UserAgent, StreamProfile, NETWORK_ACCESS
 
 
 class UserAgentSerializer(serializers.ModelSerializer):
@@ -66,24 +66,17 @@ class CoreSettingsSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 
-class ProxySettingsSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProxySettings
-        fields = [
-            'id',
-            'buffering_timeout',
-            'buffering_speed',
-            'redis_chunk_ttl',
-            'channel_shutdown_delay',
-            'channel_init_grace_period',
-            'created_at',
-            'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+class ProxySettingsSerializer(serializers.Serializer):
+    """Serializer for proxy settings stored as JSON in CoreSettings"""
+    buffering_timeout = serializers.IntegerField(min_value=0, max_value=300)
+    buffering_speed = serializers.FloatField(min_value=0.1, max_value=10.0)
+    redis_chunk_ttl = serializers.IntegerField(min_value=10, max_value=3600)
+    channel_shutdown_delay = serializers.IntegerField(min_value=0, max_value=300)
+    channel_init_grace_period = serializers.IntegerField(min_value=0, max_value=60)
 
     def validate_buffering_timeout(self, value):
-        if value < 1 or value > 300:
-            raise serializers.ValidationError("Buffering timeout must be between 1 and 300 seconds")
+        if value < 0 or value > 300:
+            raise serializers.ValidationError("Buffering timeout must be between 0 and 300 seconds")
         return value
 
     def validate_buffering_speed(self, value):
@@ -102,6 +95,6 @@ class ProxySettingsSerializer(serializers.ModelSerializer):
         return value
 
     def validate_channel_init_grace_period(self, value):
-        if value < 1 or value > 60:
-            raise serializers.ValidationError("Channel init grace period must be between 1 and 60 seconds")
+        if value < 0 or value > 60:
+            raise serializers.ValidationError("Channel init grace period must be between 0 and 60 seconds")
         return value
