@@ -206,7 +206,7 @@ class ProxyServer:
                                                 self.redis_client.setex(disconnect_key, 60, str(time.time()))
 
                                                 # Get configured shutdown delay or default
-                                                shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 0)
+                                                shutdown_delay = ConfigHelper.channel_shutdown_delay()
 
                                                 if shutdown_delay > 0:
                                                     logger.info(f"Waiting {shutdown_delay}s before stopping channel...")
