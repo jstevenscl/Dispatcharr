@@ -220,8 +220,8 @@ const StreamProfiles = () => {
         return (
           <RowActions
             row={row}
-            editUserAgent={editStreamProfile}
-            deleteUserAgent={deleteStreamProfile}
+            editStreamProfile={editStreamProfile}
+            deleteStreamProfile={deleteStreamProfile}
           />
         );
     }
