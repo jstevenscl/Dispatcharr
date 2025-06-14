@@ -144,16 +144,12 @@ class ProxySettingsViewSet(viewsets.ViewSet):
     def list(self, request):
         """Return proxy settings"""
         settings_obj, settings_data = self._get_or_create_settings()
-        serializer = ProxySettingsSerializer(data=settings_data)
-        serializer.is_valid()
-        return Response(serializer.data)
+        return Response(settings_data)
 
     def retrieve(self, request, pk=None):
         """Return proxy settings regardless of ID"""
         settings_obj, settings_data = self._get_or_create_settings()
-        serializer = ProxySettingsSerializer(data=settings_data)
-        serializer.is_valid()
-        return Response(serializer.data)
+        return Response(settings_data)
 
     def update(self, request, pk=None):
         """Update proxy settings"""
@@ -166,7 +162,7 @@ class ProxySettingsViewSet(viewsets.ViewSet):
         settings_obj.value = json.dumps(serializer.validated_data)
         settings_obj.save()
 
-        return Response(serializer.data)
+        return Response(serializer.validated_data)
 
     def partial_update(self, request, pk=None):
         """Partially update proxy settings"""
@@ -182,7 +178,7 @@ class ProxySettingsViewSet(viewsets.ViewSet):
         settings_obj.value = json.dumps(serializer.validated_data)
         settings_obj.save()
 
-        return Response(serializer.data)
+        return Response(serializer.validated_data)
 
     @action(detail=False, methods=['get', 'patch'])
     def settings(self, request):
@@ -271,6 +267,7 @@ def environment(request):
     operation_description="Get application version information",
     responses={200: "Version information"},
 )
+
 @api_view(["GET"])
 def version(request):
     # Import version information
