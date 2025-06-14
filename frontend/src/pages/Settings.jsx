@@ -23,7 +23,11 @@ import UserAgentsTable from '../components/tables/UserAgentsTable';
 import StreamProfilesTable from '../components/tables/StreamProfilesTable';
 import useLocalStorage from '../hooks/useLocalStorage';
 import useAuthStore from '../store/auth';
-import { USER_LEVELS, NETWORK_ACCESS_OPTIONS } from '../constants';
+import {
+  USER_LEVELS,
+  NETWORK_ACCESS_OPTIONS,
+  PROXY_SETTINGS_OPTIONS,
+} from '../constants';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 
 const SettingsPage = () => {
@@ -39,6 +43,8 @@ const SettingsPage = () => {
     useState(false);
   const [netNetworkAccessConfirmCIDRs, setNetNetworkAccessConfirmCIDRs] =
     useState([]);
+
+  const [proxySettingsSaved, setProxySettingsSaved] = useState(false);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -334,6 +340,14 @@ const SettingsPage = () => {
     }, {}),
   });
 
+  const proxySettingsForm = useForm({
+    mode: 'uncontrolled',
+    initialValues: Object.keys(PROXY_SETTINGS_OPTIONS).reduce((acc, key) => {
+      acc[key] = '';
+      return acc;
+    }, {}),
+  });
+
   useEffect(() => {
     if (settings) {
       const formValues = Object.entries(settings).reduce(
@@ -371,7 +385,17 @@ const SettingsPage = () => {
       );
       networkAccessForm.setValues(
         Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
-          acc[key] = networkAccessSettings[key];
+          acc[key] = networkAccessSettings[key] || '0.0.0.0/0';
+          return acc;
+        }, {})
+      );
+
+      const proxySettings = JSON.parse(
+        settings['proxy-settings'].value || '{}'
+      );
+      proxySettingsForm.setValues(
+        Object.keys(PROXY_SETTINGS_OPTIONS).reduce((acc, key) => {
+          acc[key] = proxySettings[key] || '';
           return acc;
         }, {})
       );
@@ -418,6 +442,17 @@ const SettingsPage = () => {
 
     setNetNetworkAccessConfirmCIDRs(blockedAccess);
     setNetworkAccessConfirmOpen(true);
+  };
+
+  const onProxySettingsSubmit = async () => {
+    setProxySettingsSaved(false);
+
+    await API.updateSetting({
+      ...settings['proxy-settings'],
+      value: JSON.stringify(proxySettingsForm.getValues()),
+    });
+
+    setProxySettingsSaved(true);
   };
 
   const saveNetworkAccess = async () => {
@@ -666,6 +701,56 @@ const SettingsPage = () => {
                                   {...networkAccessForm.getInputProps(key)}
                                   key={networkAccessForm.key(key)}
                                   description={config.description}
+                                />
+                              );
+                            }
+                          )}
+
+                          <Flex
+                            mih={50}
+                            gap="xs"
+                            justify="flex-end"
+                            align="flex-end"
+                          >
+                            <Button
+                              type="submit"
+                              disabled={networkAccessForm.submitting}
+                              variant="default"
+                            >
+                              Save
+                            </Button>
+                          </Flex>
+                        </Stack>
+                      </form>
+                    </Accordion.Panel>
+                  </Accordion.Item>,
+
+                  <Accordion.Item value="proxy-settings">
+                    <Accordion.Control>
+                      <Box>Proxy Settings</Box>
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <form
+                        onSubmit={proxySettingsForm.onSubmit(
+                          onProxySettingsSubmit
+                        )}
+                      >
+                        <Stack gap="sm">
+                          {proxySettingsSaved && (
+                            <Alert
+                              variant="light"
+                              color="green"
+                              title="Saved Successfully"
+                            ></Alert>
+                          )}
+                          {Object.entries(PROXY_SETTINGS_OPTIONS).map(
+                            ([key, config]) => {
+                              return (
+                                <TextInput
+                                  label={config.label}
+                                  {...proxySettingsForm.getInputProps(key)}
+                                  key={proxySettingsForm.key(key)}
+                                  description={config.description || null}
                                 />
                               );
                             }

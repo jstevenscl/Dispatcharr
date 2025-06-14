@@ -29,3 +29,26 @@ export const NETWORK_ACCESS_OPTIONS = {
     description: 'Limit access to the Dispatcharr UI',
   },
 };
+
+export const PROXY_SETTINGS_OPTIONS = {
+  buffering_timeout: {
+    label: 'Buffering Timeout',
+    description: '',
+  },
+  buffering_speed: {
+    label: 'Buffering Speed',
+    description: '',
+  },
+  redis_chunk_ttl: {
+    label: 'Redis Chunk TTL',
+    description: '',
+  },
+  channel_shutdown_delay: {
+    label: 'Channel Shutdown Delay',
+    description: '',
+  },
+  channel_init_grace_period: {
+    label: 'Channel Init Grace Period',
+    description: '',
+  },
+};
