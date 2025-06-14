@@ -33,22 +33,22 @@ export const NETWORK_ACCESS_OPTIONS = {
 export const PROXY_SETTINGS_OPTIONS = {
   buffering_timeout: {
     label: 'Buffering Timeout',
-    description: '',
+    description: 'Maximum time (in seconds) to wait for buffering before switching streams',
   },
   buffering_speed: {
     label: 'Buffering Speed',
-    description: '',
+    description: 'Speed threshold below which buffering is detected (1.0 = normal speed)',
   },
   redis_chunk_ttl: {
     label: 'Redis Chunk TTL',
-    description: '',
+    description: 'Time-to-live for Redis chunks in seconds (how long stream data is cached)',
   },
   channel_shutdown_delay: {
     label: 'Channel Shutdown Delay',
-    description: '',
+    description: 'Delay in seconds before shutting down a channel after last client disconnects',
   },
   channel_init_grace_period: {
     label: 'Channel Init Grace Period',
-    description: '',
+    description: 'Grace period in seconds during channel initialization',
   },
 };
