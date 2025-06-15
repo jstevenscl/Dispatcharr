@@ -203,7 +203,7 @@ def environment(request):
     country_code = None
     country_name = None
 
-    # 1) Get the public IP
+    # 1) Get the public IP from ipify.org API
     try:
         r = requests.get("https://api64.ipify.org?format=json", timeout=5)
         r.raise_for_status()
@@ -211,17 +211,17 @@ def environment(request):
     except requests.RequestException as e:
         public_ip = f"Error: {e}"
 
-    # 2) Get the local IP
+    # 2) Get the local IP by connecting to a public DNS server
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # connect to a “public” address so the OS can determine our local interface
+        # connect to a "public" address so the OS can determine our local interface
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
     except Exception as e:
         local_ip = f"Error: {e}"
 
-    # 3) If we got a valid public_ip, fetch geo info from ipapi.co or ip-api.com
+    # 3) Get geolocation data from ipapi.co or ip-api.com
     if public_ip and "Error" not in public_ip:
         try:
             # Attempt to get geo information from ipapi.co first
@@ -250,6 +250,7 @@ def environment(request):
             country_code = None
             country_name = None
 
+    # 4) Get environment mode from system environment variable
     return Response(
         {
             "authenticated": True,
