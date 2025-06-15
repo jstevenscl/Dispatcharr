@@ -40,15 +40,15 @@ export const PROXY_SETTINGS_OPTIONS = {
     description: 'Speed threshold below which buffering is detected (1.0 = normal speed)',
   },
   redis_chunk_ttl: {
-    label: 'Redis Chunk TTL',
-    description: 'Time-to-live for Redis chunks in seconds (how long stream data is cached)',
+    label: 'Buffer Chunk TTL',
+    description: 'Time-to-live for buffer chunks in seconds (how long stream data is cached)',
   },
   channel_shutdown_delay: {
     label: 'Channel Shutdown Delay',
     description: 'Delay in seconds before shutting down a channel after last client disconnects',
   },
   channel_init_grace_period: {
-    label: 'Channel Init Grace Period',
+    label: 'Channel Initialization Grace Period',
     description: 'Grace period in seconds during channel initialization',
   },
 };
