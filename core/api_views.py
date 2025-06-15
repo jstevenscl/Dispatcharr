@@ -6,20 +6,24 @@ import logging
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes, action
+from drf_yasg.utils import swagger_auto_schema
 from .models import (
     UserAgent,
     StreamProfile,
     CoreSettings,
     STREAM_HASH_KEY,
     NETWORK_ACCESS,
+    PROXY_SETTINGS_KEY,
 )
 from .serializers import (
     UserAgentSerializer,
     StreamProfileSerializer,
     CoreSettingsSerializer,
+    ProxySettingsSerializer,
 )
-from rest_framework.decorators import api_view, permission_classes, action
-from drf_yasg.utils import swagger_auto_schema
+
 import socket
 import requests
 import os
@@ -68,7 +72,6 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
                 rehash_streams.delay(request.data["value"].split(","))
 
         return response
-
     @action(detail=False, methods=["post"], url_path="check")
     def check(self, request, *args, **kwargs):
         data = request.data
@@ -109,6 +112,83 @@ class CoreSettingsViewSet(viewsets.ModelViewSet):
 
         return Response({}, status=status.HTTP_200_OK)
 
+class ProxySettingsViewSet(viewsets.ViewSet):
+    """
+    API endpoint for proxy settings stored as JSON in CoreSettings.
+    """
+    serializer_class = ProxySettingsSerializer
+
+    def _get_or_create_settings(self):
+        """Get or create the proxy settings CoreSettings entry"""
+        try:
+            settings_obj = CoreSettings.objects.get(key=PROXY_SETTINGS_KEY)
+            settings_data = json.loads(settings_obj.value)
+        except (CoreSettings.DoesNotExist, json.JSONDecodeError):
+            # Create default settings
+            settings_data = {
+                "buffering_timeout": 15,
+                "buffering_speed": 1.0,
+                "redis_chunk_ttl": 60,
+                "channel_shutdown_delay": 0,
+                "channel_init_grace_period": 5,
+            }
+            settings_obj, created = CoreSettings.objects.get_or_create(
+                key=PROXY_SETTINGS_KEY,
+                defaults={
+                    "name": "Proxy Settings",
+                    "value": json.dumps(settings_data)
+                }
+            )
+        return settings_obj, settings_data
+
+    def list(self, request):
+        """Return proxy settings"""
+        settings_obj, settings_data = self._get_or_create_settings()
+        return Response(settings_data)
+
+    def retrieve(self, request, pk=None):
+        """Return proxy settings regardless of ID"""
+        settings_obj, settings_data = self._get_or_create_settings()
+        return Response(settings_data)
+
+    def update(self, request, pk=None):
+        """Update proxy settings"""
+        settings_obj, current_data = self._get_or_create_settings()
+
+        serializer = ProxySettingsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Update the JSON data
+        settings_obj.value = json.dumps(serializer.validated_data)
+        settings_obj.save()
+
+        return Response(serializer.validated_data)
+
+    def partial_update(self, request, pk=None):
+        """Partially update proxy settings"""
+        settings_obj, current_data = self._get_or_create_settings()
+
+        # Merge current data with new data
+        updated_data = {**current_data, **request.data}
+
+        serializer = ProxySettingsSerializer(data=updated_data)
+        serializer.is_valid(raise_exception=True)
+
+        # Update the JSON data
+        settings_obj.value = json.dumps(serializer.validated_data)
+        settings_obj.save()
+
+        return Response(serializer.validated_data)
+
+    @action(detail=False, methods=['get', 'patch'])
+    def settings(self, request):
+        """Get or update the proxy settings."""
+        if request.method == 'GET':
+            return self.list(request)
+        elif request.method == 'PATCH':
+            return self.partial_update(request)
+
+
 
 @swagger_auto_schema(
     method="get",
@@ -123,7 +203,7 @@ def environment(request):
     country_code = None
     country_name = None
 
-    # 1) Get the public IP
+    # 1) Get the public IP from ipify.org API
     try:
         r = requests.get("https://api64.ipify.org?format=json", timeout=5)
         r.raise_for_status()
@@ -131,17 +211,17 @@ def environment(request):
     except requests.RequestException as e:
         public_ip = f"Error: {e}"
 
-    # 2) Get the local IP
+    # 2) Get the local IP by connecting to a public DNS server
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # connect to a “public” address so the OS can determine our local interface
+        # connect to a "public" address so the OS can determine our local interface
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
     except Exception as e:
         local_ip = f"Error: {e}"
 
-    # 3) If we got a valid public_ip, fetch geo info from ipapi.co or ip-api.com
+    # 3) Get geolocation data from ipapi.co or ip-api.com
     if public_ip and "Error" not in public_ip:
         try:
             # Attempt to get geo information from ipapi.co first
@@ -170,6 +250,7 @@ def environment(request):
             country_code = None
             country_name = None
 
+    # 4) Get environment mode from system environment variable
     return Response(
         {
             "authenticated": True,
@@ -187,6 +268,7 @@ def environment(request):
     operation_description="Get application version information",
     responses={200: "Version information"},
 )
+
 @api_view(["GET"])
 def version(request):
     # Import version information

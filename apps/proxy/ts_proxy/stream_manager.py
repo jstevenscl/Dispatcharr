@@ -1240,7 +1240,7 @@ class StreamManager:
                         redis_client.hset(metadata_key, mapping=update_data)
 
                         # Get configured grace period or default
-                        grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
+                        grace_period = ConfigHelper.channel_init_grace_period()
                         logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} -> {ChannelState.WAITING_FOR_CLIENTS} with {current_buffer_index} buffer chunks")
                         logger.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
                     else:

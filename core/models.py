@@ -1,6 +1,7 @@
 # core/models.py
 from django.db import models
 from django.utils.text import slugify
+from django.core.exceptions import ValidationError
 
 
 class UserAgent(models.Model):
@@ -149,6 +150,7 @@ STREAM_HASH_KEY = slugify("M3U Hash Key")
 PREFERRED_REGION_KEY = slugify("Preferred Region")
 AUTO_IMPORT_MAPPED_FILES = slugify("Auto-Import Mapped Files")
 NETWORK_ACCESS = slugify("Network Access")
+PROXY_SETTINGS_KEY = slugify("Proxy Settings")
 
 
 class CoreSettings(models.Model):
@@ -194,3 +196,20 @@ class CoreSettings(models.Model):
             return cls.objects.get(key=AUTO_IMPORT_MAPPED_FILES).value
         except cls.DoesNotExist:
             return None
+
+    @classmethod
+    def get_proxy_settings(cls):
+        """Retrieve proxy settings as dict (or return defaults if not found)."""
+        try:
+            import json
+            settings_json = cls.objects.get(key=PROXY_SETTINGS_KEY).value
+            return json.loads(settings_json)
+        except (cls.DoesNotExist, json.JSONDecodeError):
+            # Return defaults if not found or invalid JSON
+            return {
+                "buffering_timeout": 15,
+                "buffering_speed": 1.0,
+                "redis_chunk_ttl": 60,
+                "channel_shutdown_delay": 0,
+                "channel_init_grace_period": 5,
+            }

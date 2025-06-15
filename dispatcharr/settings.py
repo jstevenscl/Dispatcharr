@@ -254,7 +254,6 @@ PROXY_SETTINGS = {
         "BUFFER_SIZE": 1000,
         "RECONNECT_DELAY": 5,
         "USER_AGENT": "VLC/3.0.20 LibVLC/3.0.20",
-        "REDIS_CHUNK_TTL": 60,  # How long to keep chunks in Redis (seconds)
     },
 }
 
