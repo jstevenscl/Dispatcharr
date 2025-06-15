@@ -54,7 +54,7 @@ const SettingsPage = () => {
   const regionChoices = REGION_CHOICES;
 
   const form = useForm({
-    mode: 'uncontrolled',
+    mode: 'controlled',
     initialValues: {
       'default-user-agent': '',
       'default-stream-profile': '',
@@ -71,7 +71,7 @@ const SettingsPage = () => {
   });
 
   const networkAccessForm = useForm({
-    mode: 'uncontrolled',
+    mode: 'controlled',
     initialValues: Object.keys(NETWORK_ACCESS_OPTIONS).reduce((acc, key) => {
       acc[key] = '0.0.0.0/0';
       return acc;
@@ -94,7 +94,7 @@ const SettingsPage = () => {
   });
 
   const proxySettingsForm = useForm({
-    mode: 'uncontrolled',
+    mode: 'controlled',
     initialValues: Object.keys(PROXY_SETTINGS_OPTIONS).reduce((acc, key) => {
       acc[key] = '';
       return acc;
