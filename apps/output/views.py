@@ -733,7 +733,7 @@ def xc_get_live_categories(user):
     for group in channel_groups:
         response.append(
             {
-                "category_id": group.id,
+                "category_id": str(group.id),
                 "category_name": group.name,
                 "parent_id": 0,
             }
@@ -785,7 +785,7 @@ def xc_get_live_streams(request, user, category_id=None):
                 "epg_channel_id": int(channel.channel_number) if channel.channel_number.is_integer() else channel.channel_number,
                 "added": int(time.time()),  # @TODO: make this the actual created date
                 "is_adult": 0,
-                "category_id": channel.channel_group.id,
+                "category_id": str(channel.channel_group.id),
                 "category_ids": [channel.channel_group.id],
                 "custom_sid": None,
                 "tv_archive": 0,
