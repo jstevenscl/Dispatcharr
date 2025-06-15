@@ -759,14 +759,14 @@ def xc_get_live_streams(request, user, category_id=None):
         if category_id is not None:
             filters["channel_group__id"] = category_id
 
-        channels = Channel.objects.filter(**filters)
+        channels = Channel.objects.filter(**filters).order_by("channel_number")
     else:
         if not category_id:
-            channels = Channel.objects.filter(user_level__lte=user.user_level)
+            channels = Channel.objects.filter(user_level__lte=user.user_level).order_by("channel_number")
         else:
             channels = Channel.objects.filter(
                 channel_group__id=category_id, user_level__lte=user.user_level
-            )
+            ).order_by("channel_number")
 
     for channel in channels:
         streams.append(
