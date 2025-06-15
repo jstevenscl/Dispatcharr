@@ -207,6 +207,18 @@ const SettingsPage = () => {
     setProxySettingsSaved(true);
   };
 
+  const resetProxySettingsToDefaults = () => {
+    const defaultValues = {
+      buffering_timeout: 15,
+      buffering_speed: 1.0,
+      redis_chunk_ttl: 60,
+      channel_shutdown_delay: 0,
+      channel_init_grace_period: 5,
+    };
+
+    proxySettingsForm.setValues(defaultValues);
+  };
+
   const saveNetworkAccess = async () => {
     setNetworkAccessSaved(false);
     try {
@@ -548,9 +560,16 @@ const SettingsPage = () => {
                       <Flex
                         mih={50}
                         gap="xs"
-                        justify="flex-end"
+                        justify="space-between"
                         align="flex-end"
                       >
+                        <Button
+                          variant="subtle"
+                          color="gray"
+                          onClick={resetProxySettingsToDefaults}
+                        >
+                          Reset to Defaults
+                        </Button>
                         <Button
                           type="submit"
                           disabled={networkAccessForm.submitting}
