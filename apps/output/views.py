@@ -782,7 +782,7 @@ def xc_get_live_streams(request, user, category_id=None):
                         reverse("api:channels:logo-cache", args=[channel.logo.id])
                     )
                 ),
-                "epg_channel_id": int(channel.channel_number) if channel.channel_number.is_integer() else channel.channel_number,
+                "epg_channel_id": str(int(channel.channel_number)) if channel.channel_number.is_integer() else str(channel.channel_number),
                 "added": int(time.time()),  # @TODO: make this the actual created date
                 "is_adult": 0,
                 "category_id": str(channel.channel_group.id),
