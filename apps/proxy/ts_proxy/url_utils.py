@@ -163,13 +163,27 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
                     profile_connections_key = f"profile_connections:{profile.id}"
                     current_connections = int(redis_client.get(profile_connections_key) or 0)
 
-                    # Check if profile has available slots (or unlimited connections)
-                    if profile.max_streams == 0 or current_connections < profile.max_streams:
+                    # Check if this channel is already using this profile
+                    channel_using_profile = False
+                    existing_stream_id = redis_client.get(f"channel_stream:{channel.id}")
+                    if existing_stream_id:
+                        # Decode bytes to string/int for proper Redis key lookup
+                        existing_stream_id = existing_stream_id.decode('utf-8')
+                        existing_profile_id = redis_client.get(f"stream_profile:{existing_stream_id}")
+                        if existing_profile_id and int(existing_profile_id.decode('utf-8')) == profile.id:
+                            channel_using_profile = True
+                            logger.debug(f"Channel {channel.id} already using profile {profile.id}")
+
+                    # Calculate effective connections (subtract 1 if channel already using this profile)
+                    effective_connections = current_connections - (1 if channel_using_profile else 0)
+
+                    # Check if profile has available slots
+                    if profile.max_streams == 0 or effective_connections < profile.max_streams:
                         selected_profile = profile
-                        logger.debug(f"Selected profile {profile.id} with {current_connections}/{profile.max_streams} connections")
+                        logger.debug(f"Selected profile {profile.id} with {effective_connections}/{profile.max_streams} effective connections (current: {current_connections}, already using: {channel_using_profile})")
                         break
                     else:
-                        logger.debug(f"Profile {profile.id} at max connections: {current_connections}/{profile.max_streams}")
+                        logger.debug(f"Profile {profile.id} at max connections: {effective_connections}/{profile.max_streams} (current: {current_connections}, already using: {channel_using_profile})")
                 else:
                     # No Redis available, assume first active profile is okay
                     selected_profile = profile
@@ -190,11 +204,11 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
 
         # Check connections left
         m3u_account = M3UAccount.objects.get(id=profile.m3u_account.id)
-        connections_left = get_connections_left(m3u_profile_id)
+        #connections_left = get_connections_left(m3u_profile_id)
 
-        if connections_left <= 0:
-            logger.warning(f"No connections left for M3U account {m3u_account.id}")
-            return {'error': 'No connections left'}
+        #if connections_left <= 0:
+            #logger.warning(f"No connections left for M3U account {m3u_account.id}")
+            #return {'error': 'No connections left'}
 
         # Get the user agent from the M3U account
         user_agent = m3u_account.get_user_agent().user_agent
@@ -290,13 +304,27 @@ def get_alternate_streams(channel_id: str, current_stream_id: Optional[int] = No
                         profile_connections_key = f"profile_connections:{profile.id}"
                         current_connections = int(redis_client.get(profile_connections_key) or 0)
 
+                        # Check if this channel is already using this profile
+                        channel_using_profile = False
+                        existing_stream_id = redis_client.get(f"channel_stream:{channel.id}")
+                        if existing_stream_id:
+                            # Decode bytes to string/int for proper Redis key lookup
+                            existing_stream_id = existing_stream_id.decode('utf-8')
+                            existing_profile_id = redis_client.get(f"stream_profile:{existing_stream_id}")
+                            if existing_profile_id and int(existing_profile_id.decode('utf-8')) == profile.id:
+                                channel_using_profile = True
+                                logger.debug(f"Channel {channel.id} already using profile {profile.id}")
+
+                        # Calculate effective connections (subtract 1 if channel already using this profile)
+                        effective_connections = current_connections - (1 if channel_using_profile else 0)
+
                         # Check if profile has available slots
-                        if profile.max_streams == 0 or current_connections < profile.max_streams:
+                        if profile.max_streams == 0 or effective_connections < profile.max_streams:
                             selected_profile = profile
-                            logger.debug(f"Found available profile {profile.id} for stream {stream.id}: {current_connections}/{profile.max_streams}")
+                            logger.debug(f"Found available profile {profile.id} for stream {stream.id}: {effective_connections}/{profile.max_streams} effective (current: {current_connections}, already using: {channel_using_profile})")
                             break
                         else:
-                            logger.debug(f"Profile {profile.id} at max connections: {current_connections}/{profile.max_streams}")
+                            logger.debug(f"Profile {profile.id} at max connections: {effective_connections}/{profile.max_streams} (current: {current_connections}, already using: {channel_using_profile})")
                     else:
                         # No Redis available, assume first active profile is okay
                         selected_profile = profile
