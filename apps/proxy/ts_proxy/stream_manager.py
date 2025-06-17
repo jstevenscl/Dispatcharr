@@ -1073,7 +1073,6 @@ class StreamManager:
         # First try to use _close_connection for HTTP resources
         if self.current_response or self.current_session:
             self._close_connection()
-            return
 
         # Otherwise handle socket and transcode resources
         if self.socket:
@@ -1082,9 +1081,6 @@ class StreamManager:
             except Exception as e:
                 logger.debug(f"Error closing socket: {e}")
                 pass
-
-            self.socket = None
-            self.connected = False
 
         # Enhanced transcode process cleanup with more aggressive termination
         if self.transcode_process:
@@ -1125,7 +1121,8 @@ class StreamManager:
                     logger.debug(f"Cleared transcode active flag for channel {self.channel_id}")
                 except Exception as e:
                     logger.debug(f"Error clearing transcode flag: {e}")
-
+        self.socket = None
+        self.connected = False
         # Cancel any remaining buffer check timers
         for timer in list(self._buffer_check_timers):
             try:
