@@ -89,6 +89,7 @@ def stream_ts(request, channel_id):
                         ChannelState.CONNECTING,
                         ChannelState.WAITING_FOR_CLIENTS,
                         ChannelState.ACTIVE,
+                        ChannelState.BUFFERING,
                     ]
                     if channel_state in active_states:
                         # Channel is being initialized or already active - no need for reinitialization
