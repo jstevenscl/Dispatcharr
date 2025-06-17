@@ -182,7 +182,7 @@ class ChannelService:
             old_url = manager.url
 
             # Update the stream
-            success = manager.update_url(new_url, stream_id)
+            success = manager.update_url(new_url, stream_id, m3u_profile_id)
             logger.info(f"Stream URL changed from {old_url} to {new_url}, result: {success}")
 
             result.update({

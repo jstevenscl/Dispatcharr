@@ -833,7 +833,7 @@ class StreamManager:
         # Set running to false to ensure thread exits
         self.running = False
 
-    def update_url(self, new_url, stream_id=None):
+    def update_url(self, new_url, stream_id=None, m3u_profile_id=None):
         """Update stream URL and reconnect with proper cleanup for both HTTP and transcode sessions"""
         if new_url == self.url:
             logger.info(f"URL unchanged: {new_url}")
@@ -851,13 +851,13 @@ class StreamManager:
                 channel = Channel.objects.get(uuid=self.channel_id)
 
                 # Get stream to find its profile
-                new_stream = Stream.objects.get(pk=stream_id)
+                #new_stream = Stream.objects.get(pk=stream_id)
 
                 # Use the new method to update the profile and manage connection counts
-                if new_stream.m3u_account_id:
-                    success = channel.update_stream_profile(new_stream.m3u_account_id)
+                if m3u_profile_id:
+                    success = channel.update_stream_profile(m3u_profile_id)
                     if success:
-                        logger.debug(f"Updated stream profile for channel {self.channel_id} to use profile from stream {stream_id}")
+                        logger.debug(f"Updated m3u profile for channel {self.channel_id} to use profile from stream {stream_id}")
                     else:
                         logger.warning(f"Failed to update stream profile for channel {self.channel_id}")
             except Exception as e:
@@ -1315,12 +1315,13 @@ class StreamManager:
             # Get the next stream to try
             next_stream = untried_streams[0]
             stream_id = next_stream['stream_id']
+            profile_id = next_stream['profile_id']  # This is the M3U profile ID we need
 
             # Add to tried streams
             self.tried_stream_ids.add(stream_id)
 
-            # Get stream info including URL
-            logger.info(f"Trying next stream ID {stream_id} for channel {self.channel_id}")
+            # Get stream info including URL using the profile_id we already have
+            logger.info(f"Trying next stream ID {stream_id} with profile ID {profile_id} for channel {self.channel_id}")
             stream_info = get_stream_info_for_switch(self.channel_id, stream_id)
 
             if 'error' in stream_info or not stream_info.get('url'):
@@ -1341,24 +1342,24 @@ class StreamManager:
             self.user_agent = new_user_agent
             self.transcode = new_transcode
 
-            # Update stream metadata in Redis
+            # Update stream metadata in Redis - use the profile_id we got from get_alternate_streams
             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                 metadata_key = RedisKeys.channel_metadata(self.channel_id)
                 self.buffer.redis_client.hset(metadata_key, mapping={
                     ChannelMetadataField.URL: new_url,
                     ChannelMetadataField.USER_AGENT: new_user_agent,
                     ChannelMetadataField.STREAM_PROFILE: stream_info['stream_profile'],
-                    ChannelMetadataField.M3U_PROFILE: stream_info['m3u_profile_id'],
+                    ChannelMetadataField.M3U_PROFILE: str(profile_id),  # Use the profile_id from get_alternate_streams
                     ChannelMetadataField.STREAM_ID: str(stream_id),
                     ChannelMetadataField.STREAM_SWITCH_TIME: str(time.time()),
                     ChannelMetadataField.STREAM_SWITCH_REASON: "max_retries_exceeded"
                 })
 
                 # Log the switch
-                logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id}")
+                logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id} with M3U profile {profile_id}")
 
             # IMPORTANT: Just update the URL, don't stop the channel or release resources
-            switch_result = self.update_url(new_url, stream_id)
+            switch_result = self.update_url(new_url, stream_id, profile_id)
             if not switch_result:
                 logger.error(f"Failed to update URL for stream ID {stream_id}")
                 return False
