@@ -1335,6 +1335,12 @@ class StreamManager:
 
             logger.info(f"Switching from URL {self.url} to {new_url} for channel {self.channel_id}")
 
+            # IMPORTANT: Just update the URL, don't stop the channel or release resources
+            switch_result = self.update_url(new_url, stream_id, profile_id)
+            if not switch_result:
+                logger.error(f"Failed to update URL for stream ID {stream_id}")
+                return False
+
             # Update stream ID tracking
             self.current_stream_id = stream_id
 
@@ -1357,12 +1363,6 @@ class StreamManager:
 
                 # Log the switch
                 logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id} with M3U profile {profile_id}")
-
-            # IMPORTANT: Just update the URL, don't stop the channel or release resources
-            switch_result = self.update_url(new_url, stream_id, profile_id)
-            if not switch_result:
-                logger.error(f"Failed to update URL for stream ID {stream_id}")
-                return False
 
             logger.info(f"Successfully switched to stream ID {stream_id} with URL {new_url}")
             return True
