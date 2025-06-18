@@ -109,6 +109,7 @@ class StreamManager:
 
         # Add stderr reader thread property
         self.stderr_reader_thread = None
+        self.ffmpeg_input_phase = True  # Track if we're still reading input info
 
     def _create_session(self):
         """Create and configure requests session with optimal settings"""
@@ -495,22 +496,24 @@ class StreamManager:
 
             # Convert to lowercase for easier matching
             content_lower = content.lower()
+            # Check if we are still in the input phase
+            if content_lower.startswith('input #') or 'decoder' in content_lower:
+                self.ffmpeg_input_phase = True
+            # Track FFmpeg phases - once we see output info, we're past input phase
+            if content_lower.startswith('output #') or 'encoder' in content_lower:
+                self.ffmpeg_input_phase = False
 
-            # Check for stream info lines first and delegate to ChannelService
-            # Look for input streams using the decimal pattern ([num][num][num][num]) instead of hex
-            if "stream #" in content_lower and ("video:" in content_lower or "audio:" in content_lower):
-                # Check if this is an input stream by looking for the decimal pattern ([27][0][0][0] / 0x...)
-                # This pattern contains decimal values in square brackets, not hexadecimal
-                decimal_pattern = r'\(\[[0-9]+\]\[[0-9]+\]\[[0-9]+\]\[[0-9]+\]'
-                if "stream #0:" in content_lower and re.search(decimal_pattern, content_lower):
-                    from .services.channel_service import ChannelService
-                    if "video:" in content_lower:
-                        ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
-                    elif "audio:" in content_lower:
-                        ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
-                else:
-                    # This is likely an output stream (no decimal pattern), don't parse it
-                    logger.debug(f"Skipping output stream info: {content}")
+            # Only parse stream info if we're still in the input phase
+            if ("stream #" in content_lower and
+                ("video:" in content_lower or "audio:" in content_lower) and
+                self.ffmpeg_input_phase):
+
+                from .services.channel_service import ChannelService
+                if "video:" in content_lower:
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
+                elif "audio:" in content_lower:
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
+
             # Determine log level based on content
             if any(keyword in content_lower for keyword in ['error', 'failed', 'cannot', 'invalid', 'corrupt']):
                 logger.error(f"FFmpeg stderr: {content}")
@@ -1167,7 +1170,6 @@ class StreamManager:
 
             # Add directly to buffer without TS-specific processing
             success = self.buffer.add_chunk(chunk)
-
             # Update last data timestamp in Redis if successful
             if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                 last_data_key = RedisKeys.last_data(self.buffer.channel_id)
