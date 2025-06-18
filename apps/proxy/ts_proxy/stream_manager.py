@@ -552,7 +552,7 @@ class StreamManager:
 
             # Extract bitrate (e.g., "bitrate= 406.1kbits/s")
             bitrate_match = re.search(r'bitrate=\s*([0-9.]+(?:\.[0-9]+)?)\s*([kmg]?)bits/s', stats_line, re.IGNORECASE)
-            ffmpeg_bitrate = None
+            ffmpeg_output_bitrate = None
             if bitrate_match:
                 bitrate_value = float(bitrate_match.group(1))
                 unit = bitrate_match.group(2).lower()
@@ -562,23 +562,23 @@ class StreamManager:
                 elif unit == 'g':
                     bitrate_value *= 1000000
                 # If no unit or 'k', it's already in kbps
-                ffmpeg_bitrate = bitrate_value
+                ffmpeg_output_bitrate = bitrate_value
 
             # Calculate actual FPS
             actual_fps = None
             if ffmpeg_fps is not None and ffmpeg_speed is not None and ffmpeg_speed > 0:
                 actual_fps = ffmpeg_fps / ffmpeg_speed
             # Store in Redis if we have valid data
-            if any(x is not None for x in [ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_bitrate]):
-                self._update_ffmpeg_stats_in_redis(ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_bitrate)
+            if any(x is not None for x in [ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_output_bitrate]):
+                self._update_ffmpeg_stats_in_redis(ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_output_bitrate)
 
             # Fix the f-string formatting
             actual_fps_str = f"{actual_fps:.1f}" if actual_fps is not None else "N/A"
-            ffmpeg_bitrate_str = f"{ffmpeg_bitrate:.1f}" if ffmpeg_bitrate is not None else "N/A"
+            ffmpeg_output_bitrate_str = f"{ffmpeg_output_bitrate:.1f}" if ffmpeg_output_bitrate is not None else "N/A"
             # Log the stats
             logger.debug(f"FFmpeg stats - Speed: {ffmpeg_speed}x, FFmpeg FPS: {ffmpeg_fps}, "
                         f"Actual FPS: {actual_fps_str}, "
-                        f"Bitrate: {ffmpeg_bitrate_str} kbps")
+                        f"Output Bitrate: {ffmpeg_output_bitrate_str} kbps")
             # If we have a valid speed, check for buffering
             if ffmpeg_speed is not None and ffmpeg_speed < self.buffering_speed:
                 if self.buffering:
@@ -624,7 +624,7 @@ class StreamManager:
         except Exception as e:
             logger.debug(f"Error parsing FFmpeg stats: {e}")
 
-    def _update_ffmpeg_stats_in_redis(self, speed, fps, actual_fps, bitrate):
+    def _update_ffmpeg_stats_in_redis(self, speed, fps, actual_fps, output_bitrate):
         """Update FFmpeg performance stats in Redis metadata"""
         try:
             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
@@ -642,8 +642,8 @@ class StreamManager:
                 if actual_fps is not None:
                     update_data[ChannelMetadataField.ACTUAL_FPS] = str(round(actual_fps, 1))
 
-                if bitrate is not None:
-                    update_data[ChannelMetadataField.FFMPEG_BITRATE] = str(round(bitrate, 1))
+                if output_bitrate is not None:
+                    update_data[ChannelMetadataField.FFMPEG_OUTPUT_BITRATE] = str(round(output_bitrate, 1))
 
                 self.buffer.redis_client.hset(metadata_key, mapping=update_data)
 
