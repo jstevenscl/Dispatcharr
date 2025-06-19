@@ -206,7 +206,7 @@ class ProxyServer:
                                                 self.redis_client.setex(disconnect_key, 60, str(time.time()))
 
                                                 # Get configured shutdown delay or default
-                                                shutdown_delay = getattr(Config, 'CHANNEL_SHUTDOWN_DELAY', 0)
+                                                shutdown_delay = ConfigHelper.channel_shutdown_delay()
 
                                                 if shutdown_delay > 0:
                                                     logger.info(f"Waiting {shutdown_delay}s before stopping channel...")
@@ -941,7 +941,7 @@ class ProxyServer:
 
                                 # If waiting for clients, check grace period
                                 if connection_ready_time:
-                                    grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
+                                    grace_period = ConfigHelper.channel_init_grace_period()
                                     time_since_ready = time.time() - connection_ready_time
 
                                     # Add this debug log

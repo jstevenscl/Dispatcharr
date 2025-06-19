@@ -5,12 +5,14 @@ import {
   Button,
   Flex,
   Group,
+  Menu,
   NumberInput,
   Popover,
   Select,
   Text,
   TextInput,
   Tooltip,
+  UnstyledButton,
   useMantineTheme,
 } from '@mantine/core';
 import {
@@ -18,17 +20,25 @@ import {
   Binary,
   Check,
   CircleCheck,
+  Ellipsis,
+  EllipsisVertical,
   SquareMinus,
+  SquarePen,
   SquarePlus,
 } from 'lucide-react';
 import API from '../../../api';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from '../../../store/channels';
+import useAuthStore from '../../../store/auth';
+import { USER_LEVELS } from '../../../constants';
+import AssignChannelNumbersForm from '../../forms/AssignChannelNumbers';
 
 const CreateProfilePopover = React.memo(() => {
   const [opened, setOpened] = useState(false);
   const [name, setName] = useState('');
   const theme = useMantineTheme();
+
+  const authUser = useAuthStore((s) => s.user);
 
   const setOpen = () => {
     setName('');
@@ -54,6 +64,7 @@ const CreateProfilePopover = React.memo(() => {
           variant="transparent"
           color={theme.tailwind.green[5]}
           onClick={setOpen}
+          disabled={authUser.user_level != USER_LEVELS.ADMIN}
         >
           <SquarePlus />
         </ActionIcon>
@@ -91,10 +102,16 @@ const ChannelTableHeader = ({
   const theme = useMantineTheme();
 
   const [channelNumAssignmentStart, setChannelNumAssignmentStart] = useState(1);
+  const [assignNumbersModalOpen, setAssignNumbersModalOpen] = useState(false);
 
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
   const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
+  const authUser = useAuthStore((s) => s.user);
+
+  const closeAssignChannelNumbersModal = () => {
+    setAssignNumbersModalOpen(false);
+  };
 
   const deleteProfile = async (id) => {
     await API.deleteChannelProfile(id);
@@ -152,6 +169,7 @@ const ChannelTableHeader = ({
               e.stopPropagation();
               deleteProfile(option.value);
             }}
+            disabled={authUser.user_level != USER_LEVELS.ADMIN}
           >
             <SquareMinus />
           </ActionIcon>
@@ -189,79 +207,91 @@ const ChannelTableHeader = ({
       >
         <Flex gap={6}>
           <Button
+            leftSection={<SquarePen size={18} />}
+            variant="default"
+            size="xs"
+            onClick={editChannel}
+            disabled={
+              selectedTableIds.length == 0 ||
+              authUser.user_level != USER_LEVELS.ADMIN
+            }
+          >
+            Edit
+          </Button>
+
+          <Button
             leftSection={<SquareMinus size={18} />}
             variant="default"
             size="xs"
             onClick={deleteChannels}
-            disabled={selectedTableIds.length == 0}
+            disabled={
+              selectedTableIds.length == 0 ||
+              authUser.user_level != USER_LEVELS.ADMIN
+            }
           >
-            Remove
+            Delete
           </Button>
-
-          <Tooltip label="Assign Channel #s">
-            <Popover withArrow shadow="md">
-              <Popover.Target>
-                <Button
-                  leftSection={<ArrowDown01 size={18} />}
-                  variant="default"
-                  size="xs"
-                  p={5}
-                  disabled={selectedTableIds.length == 0}
-                >
-                  Assign
-                </Button>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Group>
-                  <Text>Start #</Text>
-                  <NumberInput
-                    value={channelNumAssignmentStart}
-                    onChange={setChannelNumAssignmentStart}
-                    size="small"
-                    style={{ width: 50 }}
-                  />
-                  <ActionIcon
-                    size="xs"
-                    color={theme.tailwind.green[5]}
-                    variant="transparent"
-                    onClick={assignChannels}
-                  >
-                    <Check />
-                  </ActionIcon>
-                </Group>
-              </Popover.Dropdown>
-            </Popover>
-          </Tooltip>
-
-          <Tooltip label="Auto-Match EPG">
-            <Button
-              leftSection={<Binary size={18} />}
-              variant="default"
-              size="xs"
-              onClick={matchEpg}
-              p={5}
-            >
-              Auto-Match
-            </Button>
-          </Tooltip>
 
           <Button
             leftSection={<SquarePlus size={18} />}
             variant="light"
             size="xs"
             onClick={() => editChannel()}
+            disabled={authUser.user_level != USER_LEVELS.ADMIN}
             p={5}
             color={theme.tailwind.green[5]}
             style={{
-              borderWidth: '1px',
-              borderColor: theme.tailwind.green[5],
-              color: 'white',
+              ...(authUser.user_level == USER_LEVELS.ADMIN && {
+                borderWidth: '1px',
+                borderColor: theme.tailwind.green[5],
+                color: 'white',
+              }),
             }}
           >
             Add
           </Button>
+
+          <Menu>
+            <Menu.Target>
+              <ActionIcon variant="default" size={30}>
+                <EllipsisVertical size={18} />
+              </ActionIcon>
+            </Menu.Target>
+
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<ArrowDown01 size={18} />}
+                disabled={
+                  selectedTableIds.length == 0 ||
+                  authUser.user_level != USER_LEVELS.ADMIN
+                }
+              >
+                <UnstyledButton
+                  size="xs"
+                  onClick={() => setAssignNumbersModalOpen(true)}
+                >
+                  <Text size="xs">Assign #s</Text>
+                </UnstyledButton>
+              </Menu.Item>
+
+              <Menu.Item
+                leftSection={<Binary size={18} />}
+                disabled={authUser.user_level != USER_LEVELS.ADMIN}
+              >
+                <UnstyledButton size="xs" onClick={matchEpg}>
+                  <Text size="xs">Auto-Match</Text>
+                </UnstyledButton>
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Flex>
       </Box>
+
+      <AssignChannelNumbersForm
+        channelIds={selectedTableIds}
+        isOpen={assignNumbersModalOpen}
+        onClose={closeAssignChannelNumbersModal}
+      />
     </Group>
   );
 };

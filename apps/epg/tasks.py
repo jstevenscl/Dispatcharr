@@ -1634,6 +1634,9 @@ def extract_custom_properties(prog):
         elif system == 'onscreen' and ep_num.text:
             # Just store the raw onscreen format
             custom_props['onscreen_episode'] = ep_num.text.strip()
+        elif system == 'dd_progid' and ep_num.text:
+            # Store the dd_progid format
+            custom_props['dd_progid'] = ep_num.text.strip()
 
     # Extract ratings more efficiently
     rating_elem = prog.find('rating')
@@ -1669,7 +1672,7 @@ def extract_custom_properties(prog):
         custom_props['icon'] = icon_elem.get('src')
 
     # Simpler approach for boolean flags
-    for kw in ['previously-shown', 'premiere', 'new']:
+    for kw in ['previously-shown', 'premiere', 'new', 'live']:
         if prog.find(kw) is not None:
             custom_props[kw.replace('-', '_')] = True
 

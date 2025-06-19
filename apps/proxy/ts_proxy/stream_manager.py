@@ -6,7 +6,8 @@ import time
 import socket
 import requests
 import subprocess
-import gevent  # Add this import
+import gevent
+import re
 from typing import Optional, List
 from django.shortcuts import get_object_or_404
 from apps.proxy.config import TSConfig as Config
@@ -39,6 +40,10 @@ class StreamManager:
         self.url_switching = False
         self.url_switch_start_time = 0
         self.url_switch_timeout = ConfigHelper.url_switch_timeout()
+        self.buffering = False
+        self.buffering_timeout = ConfigHelper.buffering_timeout()
+        self.buffering_speed = ConfigHelper.buffering_speed()
+        self.buffering_start_time = None
         # Store worker_id for ownership checks
         self.worker_id = worker_id
 
@@ -104,6 +109,7 @@ class StreamManager:
 
         # Add stderr reader thread property
         self.stderr_reader_thread = None
+        self.ffmpeg_input_phase = True  # Track if we're still reading input info
 
     def _create_session(self):
         """Create and configure requests session with optimal settings"""
@@ -376,33 +382,274 @@ class StreamManager:
             logger.debug(f"Started stderr reader thread for channel {self.channel_id}")
 
     def _read_stderr(self):
-        """Read and log ffmpeg stderr output"""
+        """Read and log ffmpeg stderr output with real-time stats parsing"""
         try:
-            for error_line in iter(self.transcode_process.stderr.readline, b''):
-                if error_line:
-                    error_line = error_line.decode('utf-8', errors='replace').strip()
-                    try:
-                        # Wrap the logging call in a try-except to prevent crashes due to logging errors
-                        logger.debug(f"Transcode stderr [{self.channel_id}]: {error_line}")
-                    except OSError as e:
-                        # If logging fails, try a simplified log message
-                        if e.errno == 105:  # No buffer space available
+            buffer = b""
+            last_stats_line = b""
+
+            # Read byte by byte for immediate detection
+            while self.transcode_process and self.transcode_process.stderr:
+                try:
+                    # Read one byte at a time for immediate processing
+                    byte = self.transcode_process.stderr.read(1)
+                    if not byte:
+                        break
+
+                    buffer += byte
+
+                    # Check for frame= at the start of buffer (new stats line)
+                    if buffer == b"frame=":
+                        # We detected the start of a stats line, read until we get a complete line
+                        # or hit a carriage return (which overwrites the previous stats)
+                        while True:
+                            next_byte = self.transcode_process.stderr.read(1)
+                            if not next_byte:
+                                break
+
+                            buffer += next_byte
+
+                            # Break on carriage return (stats overwrite) or newline
+                            if next_byte in (b'\r', b'\n'):
+                                break
+
+                            # Also break if we have enough data for a typical stats line
+                            if len(buffer) > 200:  # Typical stats line length
+                                break
+
+                        # Process the stats line immediately
+                        if buffer.strip():
                             try:
-                                # Try a much shorter message without the error content
-                                logger.warning(f"Logging error (buffer full) in channel {self.channel_id}")
-                            except:
-                                # If even that fails, we have to silently continue
-                                pass
-                    except Exception:
-                        # Ignore other logging errors to prevent thread crashes
-                        pass
+                                stats_text = buffer.decode('utf-8', errors='ignore').strip()
+                                if stats_text and "frame=" in stats_text:
+                                    self._parse_ffmpeg_stats(stats_text)
+                                    self._log_stderr_content(stats_text)
+                            except Exception as e:
+                                logger.debug(f"Error parsing immediate stats line: {e}")
+
+                        # Clear buffer after processing
+                        buffer = b""
+                        continue
+
+                    # Handle regular line breaks for non-stats content
+                    elif byte == b'\n':
+                        if buffer.strip():
+                            line_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if line_text and not line_text.startswith("frame="):
+                                self._log_stderr_content(line_text)
+                        buffer = b""
+
+                    # Handle carriage returns (potential stats overwrite)
+                    elif byte == b'\r':
+                        # Check if this might be a stats line
+                        if b"frame=" in buffer:
+                            try:
+                                stats_text = buffer.decode('utf-8', errors='ignore').strip()
+                                if stats_text and "frame=" in stats_text:
+                                    self._parse_ffmpeg_stats(stats_text)
+                                    self._log_stderr_content(stats_text)
+                            except Exception as e:
+                                logger.debug(f"Error parsing stats on carriage return: {e}")
+                        elif buffer.strip():
+                            # Regular content with carriage return
+                            line_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if line_text:
+                                self._log_stderr_content(line_text)
+                        buffer = b""
+
+                    # Prevent buffer from growing too large for non-stats content
+                    elif len(buffer) > 1024 and b"frame=" not in buffer:
+                        # Process whatever we have if it's not a stats line
+                        if buffer.strip():
+                            line_text = buffer.decode('utf-8', errors='ignore').strip()
+                            if line_text:
+                                self._log_stderr_content(line_text)
+                        buffer = b""
+
+                except Exception as e:
+                    logger.error(f"Error reading stderr byte: {e}")
+                    break
+
+            # Process any remaining buffer content
+            if buffer.strip():
+                try:
+                    remaining_text = buffer.decode('utf-8', errors='ignore').strip()
+                    if remaining_text:
+                        if "frame=" in remaining_text:
+                            self._parse_ffmpeg_stats(remaining_text)
+                        self._log_stderr_content(remaining_text)
+                except Exception as e:
+                    logger.debug(f"Error processing remaining buffer: {e}")
+
         except Exception as e:
             # Catch any other exceptions in the thread to prevent crashes
             try:
-                logger.error(f"Error in stderr reader thread: {e}")
+                logger.error(f"Error in stderr reader thread for channel {self.channel_id}: {e}")
             except:
-                # Again, if logging fails, continue silently
                 pass
+
+    def _log_stderr_content(self, content):
+        """Log stderr content from FFmpeg with appropriate log levels"""
+        try:
+            content = content.strip()
+            if not content:
+                return
+
+            # Convert to lowercase for easier matching
+            content_lower = content.lower()
+            # Check if we are still in the input phase
+            if content_lower.startswith('input #') or 'decoder' in content_lower:
+                self.ffmpeg_input_phase = True
+            # Track FFmpeg phases - once we see output info, we're past input phase
+            if content_lower.startswith('output #') or 'encoder' in content_lower:
+                self.ffmpeg_input_phase = False
+
+            # Only parse stream info if we're still in the input phase
+            if ("stream #" in content_lower and
+                ("video:" in content_lower or "audio:" in content_lower) and
+                self.ffmpeg_input_phase):
+
+                from .services.channel_service import ChannelService
+                if "video:" in content_lower:
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
+                elif "audio:" in content_lower:
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
+
+            # Determine log level based on content
+            if any(keyword in content_lower for keyword in ['error', 'failed', 'cannot', 'invalid', 'corrupt']):
+                logger.error(f"FFmpeg stderr: {content}")
+            elif any(keyword in content_lower for keyword in ['warning', 'deprecated', 'ignoring']):
+                logger.warning(f"FFmpeg stderr: {content}")
+            elif content.startswith('frame=') or 'fps=' in content or 'speed=' in content:
+                # Stats lines - log at trace level to avoid spam
+                logger.trace(f"FFmpeg stats: {content}")
+            elif any(keyword in content_lower for keyword in ['input', 'output', 'stream', 'video', 'audio']):
+                # Stream info - log at info level
+                logger.info(f"FFmpeg info: {content}")
+                if content.startswith('Input #0'):
+                    # If it's input 0, parse stream info
+                    from .services.channel_service import ChannelService
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "input")
+            else:
+                # Everything else at debug level
+                logger.debug(f"FFmpeg stderr: {content}")
+
+        except Exception as e:
+            logger.error(f"Error logging stderr content: {e}")
+
+    def _parse_ffmpeg_stats(self, stats_line):
+        """Parse FFmpeg stats line and extract speed, fps, and bitrate"""
+        try:
+            # Example FFmpeg stats line:
+            # frame= 1234 fps= 30 q=28.0 size=    2048kB time=00:00:41.33 bitrate= 406.1kbits/s speed=1.02x
+
+            # Extract speed (e.g., "speed=1.02x")
+            speed_match = re.search(r'speed=\s*([0-9.]+)x?', stats_line)
+            ffmpeg_speed = float(speed_match.group(1)) if speed_match else None
+
+            # Extract fps (e.g., "fps= 30")
+            fps_match = re.search(r'fps=\s*([0-9.]+)', stats_line)
+            ffmpeg_fps = float(fps_match.group(1)) if fps_match else None
+
+            # Extract bitrate (e.g., "bitrate= 406.1kbits/s")
+            bitrate_match = re.search(r'bitrate=\s*([0-9.]+(?:\.[0-9]+)?)\s*([kmg]?)bits/s', stats_line, re.IGNORECASE)
+            ffmpeg_output_bitrate = None
+            if bitrate_match:
+                bitrate_value = float(bitrate_match.group(1))
+                unit = bitrate_match.group(2).lower()
+                # Convert to kbps
+                if unit == 'm':
+                    bitrate_value *= 1000
+                elif unit == 'g':
+                    bitrate_value *= 1000000
+                # If no unit or 'k', it's already in kbps
+                ffmpeg_output_bitrate = bitrate_value
+
+            # Calculate actual FPS
+            actual_fps = None
+            if ffmpeg_fps is not None and ffmpeg_speed is not None and ffmpeg_speed > 0:
+                actual_fps = ffmpeg_fps / ffmpeg_speed
+            # Store in Redis if we have valid data
+            if any(x is not None for x in [ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_output_bitrate]):
+                self._update_ffmpeg_stats_in_redis(ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_output_bitrate)
+
+            # Fix the f-string formatting
+            actual_fps_str = f"{actual_fps:.1f}" if actual_fps is not None else "N/A"
+            ffmpeg_output_bitrate_str = f"{ffmpeg_output_bitrate:.1f}" if ffmpeg_output_bitrate is not None else "N/A"
+            # Log the stats
+            logger.debug(f"FFmpeg stats - Speed: {ffmpeg_speed}x, FFmpeg FPS: {ffmpeg_fps}, "
+                        f"Actual FPS: {actual_fps_str}, "
+                        f"Output Bitrate: {ffmpeg_output_bitrate_str} kbps")
+            # If we have a valid speed, check for buffering
+            if ffmpeg_speed is not None and ffmpeg_speed < self.buffering_speed:
+                if self.buffering:
+                    # Buffering is still ongoing, check for how long
+                    if self.buffering_start_time is None:
+                        self.buffering_start_time = time.time()
+                    else:
+                        buffering_duration = time.time() - self.buffering_start_time
+                        if buffering_duration > self.buffering_timeout:
+                            # Buffering timeout reached, log error and try next stream
+                            logger.error(f"Buffering timeout reached for channel {self.channel_id} after {buffering_duration:.1f} seconds")
+                            # Send next stream request
+                            if self._try_next_stream():
+                                logger.info(f"Switched to next stream for channel {self.channel_id} after buffering timeout")
+                                # Reset buffering state
+                                self.buffering = False
+                                self.buffering_start_time = None
+                            else:
+                                logger.error(f"Failed to switch to next stream for channel {self.channel_id} after buffering timeout")
+                else:
+                    # Buffering just started, set the flag and start timer
+                    self.buffering = True
+                    self.buffering_start_time = time.time()
+                    logger.warning(f"Buffering started for channel {self.channel_id} - speed: {ffmpeg_speed}x")
+                # Log buffering warning
+                logger.debug(f"FFmpeg speed on channel {self.channel_id} is below {self.buffering_speed} ({ffmpeg_speed}x) - buffering detected")
+                # Set channel state to buffering
+                if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                    metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                    self.buffer.redis_client.hset(metadata_key, ChannelMetadataField.STATE, ChannelState.BUFFERING)
+            elif ffmpeg_speed is not None and ffmpeg_speed >= self.buffering_speed:
+                # Speed is good, check if we were buffering
+                if self.buffering:
+                    # Reset buffering state
+                    logger.info(f"Buffering ended for channel {self.channel_id} - speed: {ffmpeg_speed}x")
+                    self.buffering = False
+                    self.buffering_start_time = None
+                    # Set channel state to active if speed is good
+                    if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                        metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                        self.buffer.redis_client.hset(metadata_key, ChannelMetadataField.STATE, ChannelState.ACTIVE)
+
+        except Exception as e:
+            logger.debug(f"Error parsing FFmpeg stats: {e}")
+
+    def _update_ffmpeg_stats_in_redis(self, speed, fps, actual_fps, output_bitrate):
+        """Update FFmpeg performance stats in Redis metadata"""
+        try:
+            if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
+                metadata_key = RedisKeys.channel_metadata(self.channel_id)
+                update_data = {
+                    ChannelMetadataField.FFMPEG_STATS_UPDATED: str(time.time())
+                }
+
+                if speed is not None:
+                    update_data[ChannelMetadataField.FFMPEG_SPEED] = str(round(speed, 3))
+
+                if fps is not None:
+                    update_data[ChannelMetadataField.FFMPEG_FPS] = str(round(fps, 1))
+
+                if actual_fps is not None:
+                    update_data[ChannelMetadataField.ACTUAL_FPS] = str(round(actual_fps, 1))
+
+                if output_bitrate is not None:
+                    update_data[ChannelMetadataField.FFMPEG_OUTPUT_BITRATE] = str(round(output_bitrate, 1))
+
+                self.buffer.redis_client.hset(metadata_key, mapping=update_data)
+
+        except Exception as e:
+            logger.error(f"Error updating FFmpeg stats in Redis: {e}")
+
 
     def _establish_http_connection(self):
         """Establish a direct HTTP connection to the stream"""
@@ -591,7 +838,7 @@ class StreamManager:
         # Set running to false to ensure thread exits
         self.running = False
 
-    def update_url(self, new_url, stream_id=None):
+    def update_url(self, new_url, stream_id=None, m3u_profile_id=None):
         """Update stream URL and reconnect with proper cleanup for both HTTP and transcode sessions"""
         if new_url == self.url:
             logger.info(f"URL unchanged: {new_url}")
@@ -609,13 +856,13 @@ class StreamManager:
                 channel = Channel.objects.get(uuid=self.channel_id)
 
                 # Get stream to find its profile
-                new_stream = Stream.objects.get(pk=stream_id)
+                #new_stream = Stream.objects.get(pk=stream_id)
 
                 # Use the new method to update the profile and manage connection counts
-                if new_stream.m3u_account_id:
-                    success = channel.update_stream_profile(new_stream.m3u_account_id)
+                if m3u_profile_id:
+                    success = channel.update_stream_profile(m3u_profile_id)
                     if success:
-                        logger.debug(f"Updated stream profile for channel {self.channel_id} to use profile from stream {stream_id}")
+                        logger.debug(f"Updated m3u profile for channel {self.channel_id} to use profile from stream {stream_id}")
                     else:
                         logger.warning(f"Failed to update stream profile for channel {self.channel_id}")
             except Exception as e:
@@ -831,7 +1078,6 @@ class StreamManager:
         # First try to use _close_connection for HTTP resources
         if self.current_response or self.current_session:
             self._close_connection()
-            return
 
         # Otherwise handle socket and transcode resources
         if self.socket:
@@ -840,9 +1086,6 @@ class StreamManager:
             except Exception as e:
                 logger.debug(f"Error closing socket: {e}")
                 pass
-
-            self.socket = None
-            self.connected = False
 
         # Enhanced transcode process cleanup with more aggressive termination
         if self.transcode_process:
@@ -883,7 +1126,8 @@ class StreamManager:
                     logger.debug(f"Cleared transcode active flag for channel {self.channel_id}")
                 except Exception as e:
                     logger.debug(f"Error clearing transcode flag: {e}")
-
+        self.socket = None
+        self.connected = False
         # Cancel any remaining buffer check timers
         for timer in list(self._buffer_check_timers):
             try:
@@ -926,7 +1170,6 @@ class StreamManager:
 
             # Add directly to buffer without TS-specific processing
             success = self.buffer.add_chunk(chunk)
-
             # Update last data timestamp in Redis if successful
             if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                 last_data_key = RedisKeys.last_data(self.buffer.channel_id)
@@ -998,7 +1241,7 @@ class StreamManager:
                         redis_client.hset(metadata_key, mapping=update_data)
 
                         # Get configured grace period or default
-                        grace_period = ConfigHelper.get('CHANNEL_INIT_GRACE_PERIOD', 20)
+                        grace_period = ConfigHelper.channel_init_grace_period()
                         logger.info(f"STREAM MANAGER: Updated channel {channel_id} state: {current_state or 'None'} -> {ChannelState.WAITING_FOR_CLIENTS} with {current_buffer_index} buffer chunks")
                         logger.info(f"Started initial connection grace period ({grace_period}s) for channel {channel_id}")
                     else:
@@ -1073,12 +1316,13 @@ class StreamManager:
             # Get the next stream to try
             next_stream = untried_streams[0]
             stream_id = next_stream['stream_id']
+            profile_id = next_stream['profile_id']  # This is the M3U profile ID we need
 
             # Add to tried streams
             self.tried_stream_ids.add(stream_id)
 
-            # Get stream info including URL
-            logger.info(f"Trying next stream ID {stream_id} for channel {self.channel_id}")
+            # Get stream info including URL using the profile_id we already have
+            logger.info(f"Trying next stream ID {stream_id} with profile ID {profile_id} for channel {self.channel_id}")
             stream_info = get_stream_info_for_switch(self.channel_id, stream_id)
 
             if 'error' in stream_info or not stream_info.get('url'):
@@ -1092,6 +1336,12 @@ class StreamManager:
 
             logger.info(f"Switching from URL {self.url} to {new_url} for channel {self.channel_id}")
 
+            # IMPORTANT: Just update the URL, don't stop the channel or release resources
+            switch_result = self.update_url(new_url, stream_id, profile_id)
+            if not switch_result:
+                logger.error(f"Failed to update URL for stream ID {stream_id}")
+                return False
+
             # Update stream ID tracking
             self.current_stream_id = stream_id
 
@@ -1099,27 +1349,21 @@ class StreamManager:
             self.user_agent = new_user_agent
             self.transcode = new_transcode
 
-            # Update stream metadata in Redis
+            # Update stream metadata in Redis - use the profile_id we got from get_alternate_streams
             if hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                 metadata_key = RedisKeys.channel_metadata(self.channel_id)
                 self.buffer.redis_client.hset(metadata_key, mapping={
                     ChannelMetadataField.URL: new_url,
                     ChannelMetadataField.USER_AGENT: new_user_agent,
                     ChannelMetadataField.STREAM_PROFILE: stream_info['stream_profile'],
-                    ChannelMetadataField.M3U_PROFILE: stream_info['m3u_profile_id'],
+                    ChannelMetadataField.M3U_PROFILE: str(profile_id),  # Use the profile_id from get_alternate_streams
                     ChannelMetadataField.STREAM_ID: str(stream_id),
                     ChannelMetadataField.STREAM_SWITCH_TIME: str(time.time()),
                     ChannelMetadataField.STREAM_SWITCH_REASON: "max_retries_exceeded"
                 })
 
                 # Log the switch
-                logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id}")
-
-            # IMPORTANT: Just update the URL, don't stop the channel or release resources
-            switch_result = self.update_url(new_url, stream_id)
-            if not switch_result:
-                logger.error(f"Failed to update URL for stream ID {stream_id}")
-                return False
+                logger.info(f"Stream metadata updated for channel {self.channel_id} to stream ID {stream_id} with M3U profile {profile_id}")
 
             logger.info(f"Successfully switched to stream ID {stream_id} with URL {new_url}")
             return True
