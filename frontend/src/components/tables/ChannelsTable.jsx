@@ -41,6 +41,9 @@ import {
   Pagination,
   NativeSelect,
   UnstyledButton,
+  Stack,
+  Select,
+  NumberInput,
 } from '@mantine/core';
 import { getCoreRowModel, flexRender } from '@tanstack/react-table';
 import './table.css';
@@ -211,7 +214,7 @@ const ChannelRowActions = React.memo(
   }
 );
 
-const ChannelsTable = ({}) => {
+const ChannelsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -283,13 +286,24 @@ const ChannelsTable = ({}) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
-  const [epgUrl, setEPGUrl] = useState(epgUrlBase);
-  const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
+  const [epgUrl, setEPGUrl] = useState(epgUrlBase); const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isBulkDelete, setIsBulkDelete] = useState(false);
   const [channelToDelete, setChannelToDelete] = useState(null);
+
+  // M3U and EPG URL configuration state
+  const [m3uParams, setM3uParams] = useState({
+    cachedlogos: true,
+    direct: false,
+    tvg_id_source: 'channel_number'
+  });
+  const [epgParams, setEpgParams] = useState({
+    cachedlogos: true,
+    tvg_id_source: 'channel_number',
+    days: 0
+  });
 
   /**
    * Dereived variables
@@ -514,16 +528,47 @@ const ChannelsTable = ({}) => {
       }
     }
   };
+  // Build URLs with parameters
+  const buildM3UUrl = () => {
+    const params = new URLSearchParams();
+    if (!m3uParams.cachedlogos) params.append('cachedlogos', 'false');
+    if (m3uParams.direct) params.append('direct', 'true');
+    if (m3uParams.tvg_id_source !== 'channel_number') params.append('tvg_id_source', m3uParams.tvg_id_source);
 
+    const baseUrl = m3uUrl;
+    return params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
+  };
+
+  const buildEPGUrl = () => {
+    const params = new URLSearchParams();
+    if (!epgParams.cachedlogos) params.append('cachedlogos', 'false');
+    if (epgParams.tvg_id_source !== 'channel_number') params.append('tvg_id_source', epgParams.tvg_id_source);
+    if (epgParams.days > 0) params.append('days', epgParams.days.toString());
+
+    const baseUrl = epgUrl;
+    return params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
+  };
   // Example copy URLs
   const copyM3UUrl = () => {
-    copyToClipboard(m3uUrl);
+    copyToClipboard(buildM3UUrl());
+    notifications.show({
+      title: 'M3U URL Copied!',
+      message: 'The M3U URL has been copied to your clipboard.',
+    });
   };
   const copyEPGUrl = () => {
-    copyToClipboard(epgUrl);
+    copyToClipboard(buildEPGUrl());
+    notifications.show({
+      title: 'EPG URL Copied!',
+      message: 'The EPG URL has been copied to your clipboard.',
+    });
   };
   const copyHDHRUrl = () => {
     copyToClipboard(hdhrUrl);
+    notifications.show({
+      title: 'HDHR URL Copied!',
+      message: 'The HDHR URL has been copied to your clipboard.',
+    });
   };
 
   const onSortingChange = (column) => {
@@ -812,8 +857,8 @@ const ChannelsTable = ({}) => {
       return hasStreams
         ? {} // Default style for channels with streams
         : {
-            className: 'no-streams-row', // Add a class instead of background color
-          };
+          className: 'no-streams-row', // Add a class instead of background color
+        };
     },
   });
 
@@ -891,9 +936,7 @@ const ChannelsTable = ({}) => {
                     </ActionIcon>
                   </Group>
                 </Popover.Dropdown>
-              </Popover>
-
-              <Popover withArrow shadow="md">
+              </Popover>              <Popover withArrow shadow="md" withinPortal={false}>
                 <Popover.Target>
                   <Button
                     leftSection={<ScreenShare size={18} />}
@@ -909,21 +952,67 @@ const ChannelsTable = ({}) => {
                   </Button>
                 </Popover.Target>
                 <Popover.Dropdown>
-                  <Group>
-                    <TextInput value={m3uUrl} size="small" readOnly />
-                    <ActionIcon
-                      onClick={copyM3UUrl}
-                      size="sm"
-                      variant="transparent"
-                      color="gray.5"
-                    >
-                      <Copy size="18" fontSize="small" />
-                    </ActionIcon>
-                  </Group>
-                </Popover.Dropdown>
-              </Popover>
+                  <Stack
+                    gap="sm"
+                    style={{ minWidth: 400 }}
+                    onClick={stopPropagation}
+                    onMouseDown={stopPropagation}
+                  >
+                    <TextInput
+                      value={buildM3UUrl()}
+                      size="xs"
+                      readOnly
+                      label="Generated URL"
+                      rightSection={
+                        <ActionIcon
+                          onClick={copyM3UUrl}
+                          size="sm"
+                          variant="transparent"
+                          color="gray.5"
+                        >
+                          <Copy size="16" />
+                        </ActionIcon>
+                      }
+                    />                    <Group justify="space-between">
+                      <Text size="sm">Use cached logos</Text>
+                      <Switch
+                        size="sm"
+                        checked={m3uParams.cachedlogos}
+                        onChange={(event) => setM3uParams(prev => ({
+                          ...prev,
+                          cachedlogos: event.target.checked
+                        }))}
+                      />
+                    </Group>
 
-              <Popover withArrow shadow="md">
+                    <Group justify="space-between">
+                      <Text size="sm">Direct stream URLs</Text>
+                      <Switch
+                        size="sm"
+                        checked={m3uParams.direct}
+                        onChange={(event) => setM3uParams(prev => ({
+                          ...prev,
+                          direct: event.target.checked
+                        }))}
+                      />
+                    </Group>                    <Select
+                      label="TVG-ID Source"
+                      size="xs"
+                      value={m3uParams.tvg_id_source}
+                      onChange={(value) => setM3uParams(prev => ({
+                        ...prev,
+                        tvg_id_source: value
+                      }))}
+                      comboboxProps={{ withinPortal: false }}
+                      data={[
+                        { value: 'channel_number', label: 'Channel Number' },
+                        { value: 'tvg_id', label: 'TVG-ID' },
+                        { value: 'gracenote', label: 'Gracenote Station ID' }
+                      ]}
+                    />
+                  </Stack>
+                </Popover.Dropdown>
+              </Popover>              <Popover withArrow shadow="md" withinPortal={false}>
                 <Popover.Target>
                   <Button
                     leftSection={<Scroll size={18} />}
@@ -938,19 +1027,64 @@ const ChannelsTable = ({}) => {
                   >
                     EPG
                   </Button>
-                </Popover.Target>
-                <Popover.Dropdown>
-                  <Group>
-                    <TextInput value={epgUrl} size="small" readOnly />
-                    <ActionIcon
-                      onClick={copyEPGUrl}
-                      size="sm"
-                      variant="transparent"
-                      color="gray.5"
-                    >
-                      <Copy size="18" fontSize="small" />
-                    </ActionIcon>
-                  </Group>
+                </Popover.Target>                <Popover.Dropdown>
+                  <Stack
+                    gap="sm"
+                    style={{ minWidth: 400 }}
+                    onClick={stopPropagation}
+                    onMouseDown={stopPropagation}
+                  >
+                    <TextInput
+                      value={buildEPGUrl()}
+                      size="xs"
+                      readOnly
+                      label="Generated URL"
+                      rightSection={
+                        <ActionIcon
+                          onClick={copyEPGUrl}
+                          size="sm"
+                          variant="transparent"
+                          color="gray.5"
+                        >
+                          <Copy size="16" />
+                        </ActionIcon>
+                      }
+                    />                    <Group justify="space-between">
+                      <Text size="sm">Use cached logos</Text>
+                      <Switch
+                        size="sm"
+                        checked={epgParams.cachedlogos}
+                        onChange={(event) => setEpgParams(prev => ({
+                          ...prev,
+                          cachedlogos: event.target.checked
+                        }))}
+                      />
+                    </Group>                    <Select
+                      label="TVG-ID Source"
+                      size="xs"
+                      value={epgParams.tvg_id_source}
+                      onChange={(value) => setEpgParams(prev => ({
+                        ...prev,
+                        tvg_id_source: value
+                      }))}
+                      comboboxProps={{ withinPortal: false }}
+                      data={[
+                        { value: 'channel_number', label: 'Channel Number' },
+                        { value: 'tvg_id', label: 'TVG-ID' },
+                        { value: 'gracenote', label: 'Gracenote Station ID' }
+                      ]}
+                    />                    <NumberInput
+                      label="Days (0 = all data)"
+                      size="xs"
+                      min={0}
+                      max={365}
+                      value={epgParams.days}
+                      onChange={(value) => setEpgParams(prev => ({
+                        ...prev,
+                        days: value || 0
+                      }))}
+                    />
+                  </Stack>
                 </Popover.Dropdown>
               </Popover>
             </Group>
