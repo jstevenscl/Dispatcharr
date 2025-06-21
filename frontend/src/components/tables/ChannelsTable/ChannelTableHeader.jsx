@@ -32,6 +32,8 @@ import useChannelsStore from '../../../store/channels';
 import useAuthStore from '../../../store/auth';
 import { USER_LEVELS } from '../../../constants';
 import AssignChannelNumbersForm from '../../forms/AssignChannelNumbers';
+import ConfirmationDialog from '../../ConfirmationDialog';
+import useWarningsStore from '../../../store/warnings';
 
 const CreateProfilePopover = React.memo(() => {
   const [opened, setOpened] = useState(false);
@@ -103,18 +105,35 @@ const ChannelTableHeader = ({
 
   const [channelNumAssignmentStart, setChannelNumAssignmentStart] = useState(1);
   const [assignNumbersModalOpen, setAssignNumbersModalOpen] = useState(false);
+  const [confirmDeleteProfileOpen, setConfirmDeleteProfileOpen] = useState(false);
+  const [profileToDelete, setProfileToDelete] = useState(null);
 
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
   const setSelectedProfileId = useChannelsStore((s) => s.setSelectedProfileId);
   const authUser = useAuthStore((s) => s.user);
-
+  const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
+  const suppressWarning = useWarningsStore((s) => s.suppressWarning);
   const closeAssignChannelNumbersModal = () => {
     setAssignNumbersModalOpen(false);
   };
 
   const deleteProfile = async (id) => {
+    // Get profile details for the confirmation dialog
+    const profileObj = profiles[id];
+    setProfileToDelete(profileObj);
+
+    // Skip warning if it's been suppressed
+    if (isWarningSuppressed('delete-profile')) {
+      return executeDeleteProfile(id);
+    }
+
+    setConfirmDeleteProfileOpen(true);
+  };
+
+  const executeDeleteProfile = async (id) => {
     await API.deleteChannelProfile(id);
+    setConfirmDeleteProfileOpen(false);
   };
 
   const matchEpg = async () => {
@@ -291,6 +310,31 @@ const ChannelTableHeader = ({
         channelIds={selectedTableIds}
         isOpen={assignNumbersModalOpen}
         onClose={closeAssignChannelNumbersModal}
+      />
+
+      <ConfirmationDialog
+        opened={confirmDeleteProfileOpen}
+        onClose={() => setConfirmDeleteProfileOpen(false)}
+        onConfirm={() => executeDeleteProfile(profileToDelete?.id)}
+        title="Confirm Profile Deletion"
+        message={
+          profileToDelete ? (
+            <div style={{ whiteSpace: 'pre-line' }}>
+              {`Are you sure you want to delete the following profile?
+
+Name: ${profileToDelete.name}
+
+This action cannot be undone.`}
+            </div>
+          ) : (
+            'Are you sure you want to delete this profile? This action cannot be undone.'
+          )
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        actionKey="delete-profile"
+        onSuppressChange={suppressWarning}
+        size="md"
       />
     </Group>
   );
