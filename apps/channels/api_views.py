@@ -401,6 +401,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
             channel_number = float(stream_custom_props["tvg-chno"])
         elif "channel-number" in stream_custom_props:
             channel_number = float(stream_custom_props["channel-number"])
+        elif "num" in stream_custom_props:
+            channel_number = float(stream_custom_props["num"])
 
         if channel_number is None:
             provided_number = request.data.get("channel_number")
@@ -546,6 +548,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 channel_number = float(stream_custom_props["tvg-chno"])
             elif "channel-number" in stream_custom_props:
                 channel_number = float(stream_custom_props["channel-number"])
+            elif "num" in stream_custom_props:
+                channel_number = float(stream_custom_props["num"])
             # Get the tvc_guide_stationid from custom properties if it exists
             tvc_guide_stationid = None
             if "tvc-guide-stationid" in stream_custom_props:
