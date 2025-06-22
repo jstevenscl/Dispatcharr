@@ -613,13 +613,13 @@ const ChannelCard = ({
             </Tooltip>
           )}
           {channel.ffmpeg_speed && (
-            <Tooltip label={`Current Speed: ${channel.ffmpeg_speed}x`}>
+            <Tooltip label={`Current Speed: ${parseFloat(channel.ffmpeg_speed).toFixed(2)}x`}>
               <Badge
                 size="sm"
                 variant="light"
                 color={parseFloat(channel.ffmpeg_speed) >= 1.0 ? "green" : "red"}
               >
-                {channel.ffmpeg_speed}x
+                {parseFloat(channel.ffmpeg_speed).toFixed(2)}x
               </Badge>
             </Tooltip>
           )}
