@@ -854,18 +854,15 @@ const ChannelsPage = () => {
     }, []);
     setClients(clientStats);
   }, [channelStats, channels, channelsByUUID, streamProfiles]);
-
   return (
     <Box style={{ overflowX: 'auto' }}>
-      <SimpleGrid
-        cols={{ base: 1, sm: 1, md: 2, lg: 3, xl: 3 }}
-        spacing="md"
-        style={{ padding: 10 }}
-        breakpoints={[
-          { maxWidth: '72rem', cols: 2, spacing: 'md' },
-          { maxWidth: '48rem', cols: 1, spacing: 'md' },
-        ]}
-        verticalSpacing="lg"
+      <div
+        style={{
+          display: 'grid',
+          gap: '1rem',
+          padding: '10px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
+        }}
       >
         {Object.keys(activeChannels).length === 0 ? (
           <Box
@@ -879,24 +876,18 @@ const ChannelsPage = () => {
               No active channels currently streaming
             </Text>
           </Box>
-        ) : (
-          Object.values(activeChannels).map((channel) => (
-            <Box
-              key={channel.channel_id}
-              style={{ minWidth: '420px', width: '100%' }}
-            >
-              <ChannelCard
-                channel={channel}
-                clients={clients}
-                stopClient={stopClient}
-                stopChannel={stopChannel}
-                logos={logos}
-                channelsByUUID={channelsByUUID}
-              />
-            </Box>
-          ))
+        ) : (Object.values(activeChannels).map((channel) => (
+          <ChannelCard
+            key={channel.channel_id}
+            channel={channel}
+            clients={clients}
+            stopClient={stopClient}
+            stopChannel={stopChannel}
+            logos={logos}
+            channelsByUUID={channelsByUUID}
+          />))
         )}
-      </SimpleGrid>
+      </div>
     </Box>
   );
 };
