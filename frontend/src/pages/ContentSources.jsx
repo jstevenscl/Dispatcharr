@@ -12,10 +12,10 @@ const M3UPage = () => {
     <Stack
       style={{
         padding: 10,
-        height: 'calc(100vh - 60px)', // Set a specific height to ensure proper display
+        height: '100%', // Set a specific height to ensure proper display
         minWidth: '1100px', // Prevent tables from becoming too cramped
         overflowX: 'auto', // Enable horizontal scrolling when needed
-        overflowY: 'hidden', // Prevent vertical scrolling on the container
+        overflowY: 'auto', // Enable vertical scrolling on the container
       }}
       spacing="xs" // Reduce spacing to give tables more room
     >

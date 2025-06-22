@@ -563,7 +563,7 @@ const EPGsTable = () => {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(40vh - 10px)',
+          //height: '50%',
         }}
       >
         <Box
