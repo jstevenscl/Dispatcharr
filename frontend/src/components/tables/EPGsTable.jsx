@@ -533,7 +533,7 @@ const EPGsTable = () => {
             // alignItems: 'center',
             // backgroundColor: theme.palette.background.paper,
             justifyContent: 'flex-end',
-            padding: 10,
+            padding: 0,
             // gap: 1,
           }}
         >
@@ -563,7 +563,7 @@ const EPGsTable = () => {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          //height: '50%',
+          height: 'calc(40vh - 15px)',
         }}
       >
         <Box

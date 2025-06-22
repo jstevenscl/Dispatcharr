@@ -835,7 +835,7 @@ const M3UTable = () => {
             // alignItems: 'center',
             // backgroundColor: theme.palette.background.paper,
             justifyContent: 'flex-end',
-            padding: 10,
+            padding: 0,
             // gap: 1,
           }}
         >
@@ -865,7 +865,7 @@ const M3UTable = () => {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(40vh - 10px)',
+          height: 'calc(40vh - 15px)',
         }}
       >
         <Box
