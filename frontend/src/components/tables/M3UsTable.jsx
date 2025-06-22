@@ -803,7 +803,7 @@ const M3UTable = () => {
   return (
     <Box>
       <Flex
-        style={{ display: 'flex', alignItems: 'center', paddingBottom: 10 }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 }}
         gap={15}
       >
         <Text
@@ -820,6 +820,21 @@ const M3UTable = () => {
         >
           M3U Accounts
         </Text>
+        <Button
+          leftSection={<SquarePlus size={14} />}
+          variant="light"
+          size="xs"
+          onClick={() => editPlaylist()}
+          p={5}
+          color="green"
+          style={{
+            borderWidth: '1px',
+            borderColor: 'green',
+            color: 'white',
+          }}
+        >
+          Add M3U
+        </Button>
       </Flex>
 
       <Paper
@@ -839,25 +854,6 @@ const M3UTable = () => {
             // gap: 1,
           }}
         >
-          <Flex gap={6}>
-            <Tooltip label="Assign">
-              <Button
-                leftSection={<SquarePlus size={14} />}
-                variant="light"
-                size="xs"
-                onClick={() => editPlaylist()}
-                p={5}
-                color="green"
-                style={{
-                  borderWidth: '1px',
-                  borderColor: 'green',
-                  color: 'white',
-                }}
-              >
-                Add M3U
-              </Button>
-            </Tooltip>
-          </Flex>
         </Box>
       </Paper>
 

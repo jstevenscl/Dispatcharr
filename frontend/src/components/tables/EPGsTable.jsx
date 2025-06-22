@@ -500,6 +500,7 @@ const EPGsTable = () => {
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           paddingBottom: 10,
         }}
         gap={15}
@@ -518,6 +519,21 @@ const EPGsTable = () => {
         >
           EPGs
         </Text>
+        <Button
+          leftSection={<SquarePlus size={18} />}
+          variant="light"
+          size="xs"
+          onClick={() => editEPG()}
+          p={5}
+          color="green"
+          style={{
+            borderWidth: '1px',
+            borderColor: 'green',
+            color: 'white',
+          }}
+        >
+          Add EPG
+        </Button>
       </Flex>
 
       <Paper
@@ -537,25 +553,6 @@ const EPGsTable = () => {
             // gap: 1,
           }}
         >
-          <Flex gap={6}>
-            <Tooltip label="Assign">
-              <Button
-                leftSection={<SquarePlus size={18} />}
-                variant="light"
-                size="xs"
-                onClick={() => editEPG()}
-                p={5}
-                color="green"
-                style={{
-                  borderWidth: '1px',
-                  borderColor: 'green',
-                  color: 'white',
-                }}
-              >
-                Add EPG
-              </Button>
-            </Tooltip>
-          </Flex>
         </Box>
       </Paper>
 
