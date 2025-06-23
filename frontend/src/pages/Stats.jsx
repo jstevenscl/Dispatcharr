@@ -480,6 +480,8 @@ const ChannelCard = ({
       style={{
         color: '#fff',
         backgroundColor: '#27272A',
+        maxWidth: '700px',
+        width: '100%',
       }}
     >
       <Stack style={{ position: 'relative' }}>
@@ -861,7 +863,7 @@ const ChannelsPage = () => {
           display: 'grid',
           gap: '1rem',
           padding: '10px',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))',
         }}
       >
         {Object.keys(activeChannels).length === 0 ? (
