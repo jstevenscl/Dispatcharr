@@ -20,19 +20,23 @@ const ChannelsPage = () => {
       </Box>
     );
   }
-
   return (
     <div style={{ height: '100vh', width: '100%', display: 'flex' }}>
       <Allotment
         defaultSizes={[50, 50]}
         style={{ height: '100%', width: '100%' }}
         className="custom-allotment"
+        minSize={300}
       >
-        <div style={{ padding: 10 }}>
-          <ChannelsTable />
+        <div style={{ padding: 10, overflowX: 'auto', minWidth: '300px' }}>
+          <div style={{ minWidth: '600px' }}>
+            <ChannelsTable />
+          </div>
         </div>
-        <div style={{ padding: 10 }}>
-          <StreamsTable />
+        <div style={{ padding: 10, overflowX: 'auto', minWidth: '300px' }}>
+          <div style={{ minWidth: '600px' }}>
+            <StreamsTable />
+          </div>
         </div>
       </Allotment>
     </div>

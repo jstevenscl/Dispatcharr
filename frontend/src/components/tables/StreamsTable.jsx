@@ -170,7 +170,7 @@ const StreamRowActions = ({
   );
 };
 
-const StreamsTable = ({}) => {
+const StreamsTable = ({ }) => {
   const theme = useMantineTheme();
 
   /**
@@ -653,7 +653,7 @@ const StreamsTable = ({}) => {
 
       <Paper
         style={{
-          height: 'calc(100vh - 75px)',
+          height: 'calc(100vh - 100px)',
           backgroundColor: '#27272A',
         }}
       >
@@ -678,10 +678,10 @@ const StreamsTable = ({}) => {
               style={
                 selectedStreamIds.length > 0 && selectedChannelIds.length === 1
                   ? {
-                      borderWidth: '1px',
-                      borderColor: theme.tailwind.green[5],
-                      color: 'white',
-                    }
+                    borderWidth: '1px',
+                    borderColor: theme.tailwind.green[5],
+                    color: 'white',
+                  }
                   : undefined
               }
               disabled={
@@ -801,7 +801,7 @@ const StreamsTable = ({}) => {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              height: 'calc(100vh - 110px)',
+              height: 'calc(100vh - 152px)',
             }}
           >
             <Box

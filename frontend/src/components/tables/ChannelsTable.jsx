@@ -1096,7 +1096,7 @@ const ChannelsTable = ({ }) => {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            height: 'calc(100vh - 58px)',
+            height: 'calc(100vh - 100px)',
             backgroundColor: '#27272A',
           }}
         >
@@ -1119,7 +1119,7 @@ const ChannelsTable = ({ }) => {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                height: 'calc(100vh - 110px)',
+                height: 'calc(100vh - 152px)',
               }}
             >
               <Box
