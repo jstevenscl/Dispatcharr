@@ -12,7 +12,6 @@ const ChannelsPage = () => {
   if (!authUser.id) {
     return <></>;
   }
-
   if (authUser.user_level <= USER_LEVELS.STANDARD) {
     return (
       <Box style={{ padding: 10 }}>
@@ -20,20 +19,21 @@ const ChannelsPage = () => {
       </Box>
     );
   }
+
   return (
-    <div style={{ height: '100vh', width: '100%', display: 'flex' }}>
+    <div style={{ height: '100vh', width: '100%', display: 'flex', overflowX: 'auto' }}>
       <Allotment
         defaultSizes={[50, 50]}
-        style={{ height: '100%', width: '100%' }}
+        style={{ height: '100%', width: '100%', minWidth: '600px' }}
         className="custom-allotment"
-        minSize={300}
+        minSize={100}
       >
-        <div style={{ padding: 10, overflowX: 'auto', minWidth: '300px' }}>
+        <div style={{ padding: 10, overflowX: 'auto', minWidth: '100px' }}>
           <div style={{ minWidth: '600px' }}>
             <ChannelsTable />
           </div>
         </div>
-        <div style={{ padding: 10, overflowX: 'auto', minWidth: '300px' }}>
+        <div style={{ padding: 10, overflowX: 'auto', minWidth: '100px' }}>
           <div style={{ minWidth: '600px' }}>
             <StreamsTable />
           </div>
