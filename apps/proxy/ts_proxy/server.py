@@ -472,7 +472,7 @@ class ProxyServer:
                     if b'state' in metadata:
                         state = metadata[b'state'].decode('utf-8')
                         active_states = [ChannelState.INITIALIZING, ChannelState.CONNECTING,
-                                        ChannelState.WAITING_FOR_CLIENTS, ChannelState.ACTIVE]
+                                        ChannelState.WAITING_FOR_CLIENTS, ChannelState.ACTIVE, ChannelState.BUFFERING]
                         if state in active_states:
                             logger.info(f"Channel {channel_id} already being initialized with state {state}")
                             # Create buffer and client manager only if we don't have them
@@ -689,7 +689,8 @@ class ProxyServer:
                 owner = metadata.get(b'owner', b'').decode('utf-8')
 
                 # States that indicate the channel is running properly
-                valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS, ChannelState.CONNECTING]
+                valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS,
+                                ChannelState.CONNECTING, ChannelState.BUFFERING, ChannelState.INITIALIZING]
 
                 # If the channel is in a valid state, check if the owner is still active
                 if state in valid_states:
