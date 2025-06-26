@@ -377,10 +377,20 @@ const ChannelsTable = ({ }) => {
   const editChannel = async (ch = null) => {
     // Use table's selected state instead of store state to avoid stale selections
     const currentSelection = table ? table.getState().selectedTableIds : [];
+    console.log('editChannel called with:', { ch, currentSelection, tableExists: !!table });
+
     if (currentSelection.length > 1) {
       setChannelBatchModalOpen(true);
     } else {
-      setChannel(ch);
+      // If no channel object is passed but we have a selection, get the selected channel
+      let channelToEdit = ch;
+      if (!channelToEdit && currentSelection.length === 1) {
+        const selectedId = currentSelection[0];
+
+        // Use table data since that's what's currently displayed
+        channelToEdit = data.find(d => d.id === selectedId);
+      }
+      setChannel(channelToEdit);
       setChannelModalOpen(true);
     }
   };
@@ -1119,6 +1129,7 @@ const ChannelsTable = ({ }) => {
             editChannel={editChannel}
             deleteChannels={deleteChannels}
             selectedTableIds={table.selectedTableIds}
+            table={table}
           />
 
           {/* Table or ghost empty state inside Paper */}

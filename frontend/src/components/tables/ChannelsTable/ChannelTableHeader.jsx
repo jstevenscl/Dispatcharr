@@ -229,7 +229,7 @@ const ChannelTableHeader = ({
             leftSection={<SquarePen size={18} />}
             variant="default"
             size="xs"
-            onClick={editChannel}
+            onClick={() => editChannel()}
             disabled={
               selectedTableIds.length == 0 ||
               authUser.user_level != USER_LEVELS.ADMIN
