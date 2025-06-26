@@ -46,7 +46,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
     mode: 'uncontrolled',
     initialValues: {
       channel_group: '',
-      stream_profile_id: '0',
+      stream_profile_id: '-1',
       user_level: '-1',
     },
   });
@@ -56,17 +56,13 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
 
     const values = {
       ...form.getValues(),
-    };
-
-    // Handle channel group ID - convert to integer if it exists
-    if (selectedChannelGroup) {
+    };    // Handle channel group ID - convert to integer if it exists
+    if (selectedChannelGroup && selectedChannelGroup !== '-1') {
       values.channel_group_id = parseInt(selectedChannelGroup);
     } else {
       delete values.channel_group_id;
-    }
-
-    if (!values.stream_profile_id || values.stream_profile_id === '0') {
-      values.stream_profile_id = null;
+    } if (!values.stream_profile_id || values.stream_profile_id === '-1') {
+      delete values.stream_profile_id;
     }
 
     if (values.user_level == '-1') {
@@ -124,10 +120,12 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
       });
     }
   };
-
-  const filteredGroups = groupOptions.filter((group) =>
-    group.name.toLowerCase().includes(groupFilter.toLowerCase())
-  );
+  const filteredGroups = [
+    { id: '-1', name: '(no change)' },
+    ...groupOptions.filter((group) =>
+      group.name.toLowerCase().includes(groupFilter.toLowerCase())
+    )
+  ];
 
   if (!isOpen) {
     return <></>;
@@ -276,7 +274,10 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                 name="stream_profile_id"
                 {...form.getInputProps('stream_profile_id')}
                 key={form.key('stream_profile_id')}
-                data={[{ value: '0', label: '(use default)' }].concat(
+                data={[
+                  { value: '-1', label: '(no change)' },
+                  { value: '0', label: '(use default)' }
+                ].concat(
                   streamProfiles.map((option) => ({
                     value: `${option.id}`,
                     label: option.name,
