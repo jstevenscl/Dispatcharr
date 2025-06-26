@@ -35,7 +35,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
-  const [selectedChannelGroup, setSelectedChannelGroup] = useState('');
+  const [selectedChannelGroup, setSelectedChannelGroup] = useState('-1');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
@@ -45,7 +45,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
   const form = useForm({
     mode: 'uncontrolled',
     initialValues: {
-      channel_group: '',
+      channel_group: '(no change)',
       stream_profile_id: '-1',
       user_level: '-1',
     },
@@ -165,16 +165,15 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                       key={form.key('channel_group')}
                       onClick={() => setGroupPopoverOpened(true)}
                       size="xs"
-                      style={{ flex: 1 }}
-                      rightSection={
-                        form.getValues().channel_group && (
+                      style={{ flex: 1 }} rightSection={
+                        form.getValues().channel_group && form.getValues().channel_group !== '(no change)' && (
                           <ActionIcon
                             size="xs"
                             variant="subtle"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedChannelGroup('');
-                              form.setValues({ channel_group: '' });
+                              setSelectedChannelGroup('-1');
+                              form.setValues({ channel_group: '(no change)' });
                             }}
                           >
                             <X size={12} />
