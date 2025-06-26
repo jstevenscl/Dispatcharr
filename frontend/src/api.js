@@ -406,10 +406,7 @@ export default class API {
         }
       );
 
-      // Pass the channels array from the response, not the entire response
-      if (response.channels) {
-        useChannelsStore.getState().updateChannels(response.channels);
-      }
+      // Don't automatically update the store here - let the caller handle it
       return response;
     } catch (e) {
       errorNotification('Failed to update channels', e);

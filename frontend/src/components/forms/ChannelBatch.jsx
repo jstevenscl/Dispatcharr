@@ -78,6 +78,11 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
 
     try {
       await API.updateChannels(channelIds, values);
+      // Refresh both the channels table data and the main channels store
+      await Promise.all([
+        API.requeryChannels(),
+        useChannelsStore.getState().fetchChannels()
+      ]);
       onClose();
     } catch (error) {
       console.error('Failed to update channels:', error);
