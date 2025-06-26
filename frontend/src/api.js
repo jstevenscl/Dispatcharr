@@ -390,9 +390,9 @@ export default class API {
 
   static async updateChannels(ids, values) {
     const body = [];
-    for (const id in ids) {
+    for (const id of ids) {
       body.push({
-        id,
+        id: id,
         ...values,
       });
     }
@@ -406,7 +406,10 @@ export default class API {
         }
       );
 
-      useChannelsStore.getState().updateChannels(response);
+      // Pass the channels array from the response, not the entire response
+      if (response.channels) {
+        useChannelsStore.getState().updateChannels(response.channels);
+      }
       return response;
     } catch (e) {
       errorNotification('Failed to update channels', e);

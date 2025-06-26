@@ -36,6 +36,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
 
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
   const [selectedChannelGroup, setSelectedChannelGroup] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
@@ -51,27 +52,38 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
   });
 
   const onSubmit = async () => {
+    setIsSubmitting(true);
+
     const values = {
       ...form.getValues(),
-      channel_group_id: selectedChannelGroup,
     };
+
+    // Handle channel group ID - convert to integer if it exists
+    if (selectedChannelGroup) {
+      values.channel_group_id = parseInt(selectedChannelGroup);
+    } else {
+      delete values.channel_group_id;
+    }
 
     if (!values.stream_profile_id || values.stream_profile_id === '0') {
       values.stream_profile_id = null;
-    }
-
-    if (!values.channel_group_id) {
-      delete values.channel_group_id;
     }
 
     if (values.user_level == '-1') {
       delete values.user_level;
     }
 
-    await API.batchUpdateChannels({
-      ids: channelIds,
-      values,
-    });
+    // Remove the channel_group field from form values as we use channel_group_id
+    delete values.channel_group;
+
+    try {
+      await API.updateChannels(channelIds, values);
+      onClose();
+    } catch (error) {
+      console.error('Failed to update channels:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // useEffect(() => {
@@ -151,6 +163,21 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                       onClick={() => setGroupPopoverOpened(true)}
                       size="xs"
                       style={{ flex: 1 }}
+                      rightSection={
+                        form.getValues().channel_group && (
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedChannelGroup('');
+                              form.setValues({ channel_group: '' });
+                            }}
+                          >
+                            <X size={12} />
+                          </ActionIcon>
+                        )
+                      }
                     />
 
                     <ActionIcon
@@ -264,7 +291,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                     label: '(no change)',
                   },
                 ].concat(
-                  Object.entries(USER_LEVELS).map(([label, value]) => {
+                  Object.entries(USER_LEVELS).map(([, value]) => {
                     return {
                       label: USER_LEVEL_LABELS[value],
                       value: `${value}`,
@@ -274,9 +301,8 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
               />
             </Stack>
           </Group>
-
           <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-            <Button type="submit" variant="default" disabled={form.submitting}>
+            <Button type="submit" variant="default" disabled={isSubmitting}>
               Submit
             </Button>
           </Flex>
