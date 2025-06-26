@@ -375,7 +375,9 @@ const ChannelsTable = ({ }) => {
   };
 
   const editChannel = async (ch = null) => {
-    if (selectedChannelIds.length > 0) {
+    // Use table's selected state instead of store state to avoid stale selections
+    const currentSelection = table ? table.getState().selectedTableIds : [];
+    if (currentSelection.length > 1) {
       setChannelBatchModalOpen(true);
     } else {
       setChannel(ch);
@@ -611,7 +613,7 @@ const ChannelsTable = ({ }) => {
     setHDHRUrl(`${hdhrUrlBase}${profileString}`);
     setEPGUrl(`${epgUrlBase}${profileString}`);
     setM3UUrl(`${m3uUrlBase}${profileString}`);
-  }, [selectedProfileId]);
+  }, [selectedProfileId, profiles]);
 
   useEffect(() => {
     const startItem = pagination.pageIndex * pagination.pageSize + 1; // +1 to start from 1, not 0
@@ -620,7 +622,19 @@ const ChannelsTable = ({ }) => {
       totalCount
     );
     setPaginationString(`${startItem} to ${endItem} of ${totalCount}`);
-  }, [data]);
+  }, [pagination.pageIndex, pagination.pageSize, totalCount]);
+
+  // Clear selection when data changes (e.g., when navigating back to the page)
+  useEffect(() => {
+    setSelectedChannelIds([]);
+  }, [data, setSelectedChannelIds]);
+
+  // Clear selection when component unmounts
+  useEffect(() => {
+    return () => {
+      setSelectedChannelIds([]);
+    };
+  }, [setSelectedChannelIds]);
 
   const columns = useMemo(
     () => [
