@@ -256,6 +256,7 @@ const SettingsPage = () => {
           variant="separated"
           defaultValue="ui-settings"
           onChange={setAccordianValue}
+          style={{ minWidth: 400 }}
         >
           <Accordion.Item value="ui-settings">
             <Accordion.Control>UI Settings</Accordion.Control>
