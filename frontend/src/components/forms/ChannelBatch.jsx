@@ -61,8 +61,13 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
       values.channel_group_id = parseInt(selectedChannelGroup);
     } else {
       delete values.channel_group_id;
-    } if (!values.stream_profile_id || values.stream_profile_id === '-1') {
+    }
+
+    // Handle stream profile ID - convert special values
+    if (!values.stream_profile_id || values.stream_profile_id === '-1') {
       delete values.stream_profile_id;
+    } else if (values.stream_profile_id === '0' || values.stream_profile_id === 0) {
+      values.stream_profile_id = null; // Convert "use default" to null
     }
 
     if (values.user_level == '-1') {
