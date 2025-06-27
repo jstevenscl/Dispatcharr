@@ -35,7 +35,8 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);
-  const [selectedChannelGroup, setSelectedChannelGroup] = useState('');
+  const [selectedChannelGroup, setSelectedChannelGroup] = useState('-1');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
@@ -44,34 +45,51 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
   const form = useForm({
     mode: 'uncontrolled',
     initialValues: {
-      channel_group: '',
-      stream_profile_id: '0',
+      channel_group: '(no change)',
+      stream_profile_id: '-1',
       user_level: '-1',
     },
   });
 
   const onSubmit = async () => {
+    setIsSubmitting(true);
+
     const values = {
       ...form.getValues(),
-      channel_group_id: selectedChannelGroup,
-    };
-
-    if (!values.stream_profile_id || values.stream_profile_id === '0') {
-      values.stream_profile_id = null;
+    };    // Handle channel group ID - convert to integer if it exists
+    if (selectedChannelGroup && selectedChannelGroup !== '-1') {
+      values.channel_group_id = parseInt(selectedChannelGroup);
+    } else {
+      delete values.channel_group_id;
     }
 
-    if (!values.channel_group_id) {
-      delete values.channel_group_id;
+    // Handle stream profile ID - convert special values
+    if (!values.stream_profile_id || values.stream_profile_id === '-1') {
+      delete values.stream_profile_id;
+    } else if (values.stream_profile_id === '0' || values.stream_profile_id === 0) {
+      values.stream_profile_id = null; // Convert "use default" to null
     }
 
     if (values.user_level == '-1') {
       delete values.user_level;
     }
 
-    await API.batchUpdateChannels({
-      ids: channelIds,
-      values,
-    });
+    // Remove the channel_group field from form values as we use channel_group_id
+    delete values.channel_group;
+
+    try {
+      await API.updateChannels(channelIds, values);
+      // Refresh both the channels table data and the main channels store
+      await Promise.all([
+        API.requeryChannels(),
+        useChannelsStore.getState().fetchChannels()
+      ]);
+      onClose();
+    } catch (error) {
+      console.error('Failed to update channels:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // useEffect(() => {
@@ -107,10 +125,12 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
       });
     }
   };
-
-  const filteredGroups = groupOptions.filter((group) =>
-    group.name.toLowerCase().includes(groupFilter.toLowerCase())
-  );
+  const filteredGroups = [
+    { id: '-1', name: '(no change)' },
+    ...groupOptions.filter((group) =>
+      group.name.toLowerCase().includes(groupFilter.toLowerCase())
+    )
+  ];
 
   if (!isOpen) {
     return <></>;
@@ -150,7 +170,21 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                       key={form.key('channel_group')}
                       onClick={() => setGroupPopoverOpened(true)}
                       size="xs"
-                      style={{ flex: 1 }}
+                      style={{ flex: 1 }} rightSection={
+                        form.getValues().channel_group && form.getValues().channel_group !== '(no change)' && (
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedChannelGroup('-1');
+                              form.setValues({ channel_group: '(no change)' });
+                            }}
+                          >
+                            <X size={12} />
+                          </ActionIcon>
+                        )
+                      }
                     />
 
                     <ActionIcon
@@ -244,7 +278,10 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                 name="stream_profile_id"
                 {...form.getInputProps('stream_profile_id')}
                 key={form.key('stream_profile_id')}
-                data={[{ value: '0', label: '(use default)' }].concat(
+                data={[
+                  { value: '-1', label: '(no change)' },
+                  { value: '0', label: '(use default)' }
+                ].concat(
                   streamProfiles.map((option) => ({
                     value: `${option.id}`,
                     label: option.name,
@@ -264,7 +301,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                     label: '(no change)',
                   },
                 ].concat(
-                  Object.entries(USER_LEVELS).map(([label, value]) => {
+                  Object.entries(USER_LEVELS).map(([, value]) => {
                     return {
                       label: USER_LEVEL_LABELS[value],
                       value: `${value}`,
@@ -274,9 +311,8 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
               />
             </Stack>
           </Group>
-
           <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-            <Button type="submit" variant="default" disabled={form.submitting}>
+            <Button type="submit" variant="default" disabled={isSubmitting}>
               Submit
             </Button>
           </Flex>

@@ -8,7 +8,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404, get_list_or_404
 from django.db import transaction
-import os, json, requests
+import os, json, requests, logging
 from apps.accounts.permissions import (
     Authenticated,
     IsAdmin,
@@ -46,6 +46,9 @@ from django.http import StreamingHttpResponse, FileResponse, Http404
 import mimetypes
 
 from rest_framework.pagination import PageNumberPagination
+
+
+logger = logging.getLogger(__name__)
 
 
 class OrInFilter(django_filters.Filter):
@@ -275,30 +278,76 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["patch"], url_path="edit/bulk")
     def edit_bulk(self, request):
-        data_list = request.data
-        if not isinstance(data_list, list):
+        """
+        Bulk edit channels.
+        Expects a list of channels with their updates.
+        """
+        data = request.data
+        if not isinstance(data, list):
             return Response(
-                {"error": "Expected a list of channel objects objects"},
+                {"error": "Expected a list of channel updates"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         updated_channels = []
-        try:
-            with transaction.atomic():
-                for item in data_list:
-                    channel = Channel.objects.id(id=item.pop("id"))
-                    for key, value in item.items():
-                        setattr(channel, key, value)
+        errors = []
 
-                    channel.save(update_fields=item.keys())
-                    updated_channels.append(channel)
-        except Exception as e:
-            logger.error("Error during bulk channel edit", e)
-            return Response({"error": e}, status=500)
+        for channel_data in data:
+            channel_id = channel_data.get("id")
+            if not channel_id:
+                errors.append({"error": "Channel ID is required"})
+                continue
 
-        response_data = ChannelSerializer(updated_channels, many=True).data
+            try:
+                channel = Channel.objects.get(id=channel_id)
 
-        return Response(response_data, status=status.HTTP_200_OK)
+                # Handle channel_group_id properly - convert string to integer if needed
+                if 'channel_group_id' in channel_data:
+                    group_id = channel_data['channel_group_id']
+                    if group_id is not None:
+                        try:
+                            channel_data['channel_group_id'] = int(group_id)
+                        except (ValueError, TypeError):
+                            channel_data['channel_group_id'] = None
+
+                # Use the serializer to validate and update
+                serializer = ChannelSerializer(
+                    channel, data=channel_data, partial=True
+                )
+
+                if serializer.is_valid():
+                    updated_channel = serializer.save()
+                    updated_channels.append(updated_channel)
+                else:
+                    errors.append({
+                        "channel_id": channel_id,
+                        "errors": serializer.errors
+                    })
+
+            except Channel.DoesNotExist:
+                errors.append({
+                    "channel_id": channel_id,
+                    "error": "Channel not found"
+                })
+            except Exception as e:
+                errors.append({
+                    "channel_id": channel_id,
+                    "error": str(e)
+                })
+
+        if errors:
+            return Response(
+                {"errors": errors, "updated_count": len(updated_channels)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Serialize the updated channels for response
+        serialized_channels = ChannelSerializer(updated_channels, many=True).data
+
+        return Response({
+            "message": f"Successfully updated {len(updated_channels)} channels",
+            "channels": serialized_channels
+        })
 
     @action(detail=False, methods=["get"], url_path="ids")
     def get_ids(self, request, *args, **kwargs):
@@ -401,6 +450,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
             channel_number = float(stream_custom_props["tvg-chno"])
         elif "channel-number" in stream_custom_props:
             channel_number = float(stream_custom_props["channel-number"])
+        elif "num" in stream_custom_props:
+            channel_number = float(stream_custom_props["num"])
 
         if channel_number is None:
             provided_number = request.data.get("channel_number")
@@ -546,6 +597,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 channel_number = float(stream_custom_props["tvg-chno"])
             elif "channel-number" in stream_custom_props:
                 channel_number = float(stream_custom_props["channel-number"])
+            elif "num" in stream_custom_props:
+                channel_number = float(stream_custom_props["num"])
             # Get the tvc_guide_stationid from custom properties if it exists
             tvc_guide_stationid = None
             if "tvc-guide-stationid" in stream_custom_props:

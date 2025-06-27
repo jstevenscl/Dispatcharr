@@ -500,6 +500,7 @@ const EPGsTable = () => {
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           paddingBottom: 10,
         }}
         gap={15}
@@ -518,6 +519,21 @@ const EPGsTable = () => {
         >
           EPGs
         </Text>
+        <Button
+          leftSection={<SquarePlus size={18} />}
+          variant="light"
+          size="xs"
+          onClick={() => editEPG()}
+          p={5}
+          color="green"
+          style={{
+            borderWidth: '1px',
+            borderColor: 'green',
+            color: 'white',
+          }}
+        >
+          Add EPG
+        </Button>
       </Flex>
 
       <Paper
@@ -533,29 +549,10 @@ const EPGsTable = () => {
             // alignItems: 'center',
             // backgroundColor: theme.palette.background.paper,
             justifyContent: 'flex-end',
-            padding: 10,
+            padding: 0,
             // gap: 1,
           }}
         >
-          <Flex gap={6}>
-            <Tooltip label="Assign">
-              <Button
-                leftSection={<SquarePlus size={18} />}
-                variant="light"
-                size="xs"
-                onClick={() => editEPG()}
-                p={5}
-                color="green"
-                style={{
-                  borderWidth: '1px',
-                  borderColor: 'green',
-                  color: 'white',
-                }}
-              >
-                Add EPG
-              </Button>
-            </Tooltip>
-          </Flex>
         </Box>
       </Paper>
 
@@ -563,14 +560,14 @@ const EPGsTable = () => {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(40vh - 10px)',
+          height: 'calc(40vh - 15px)',
         }}
       >
         <Box
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'hidden',
+            overflowX: 'auto',
             border: 'solid 1px rgb(68,68,68)',
             borderRadius: 'var(--mantine-radius-default)',
           }}
@@ -593,15 +590,14 @@ const EPGsTable = () => {
 
 Name: ${epgToDelete.name}
 Source Type: ${epgToDelete.source_type}
-${
-  epgToDelete.url
-    ? `URL: ${epgToDelete.url}`
-    : epgToDelete.api_key
-      ? `API Key: ${epgToDelete.api_key}`
-      : epgToDelete.file_path
-        ? `File Path: ${epgToDelete.file_path}`
-        : ''
-}
+${epgToDelete.url
+                  ? `URL: ${epgToDelete.url}`
+                  : epgToDelete.api_key
+                    ? `API Key: ${epgToDelete.api_key}`
+                    : epgToDelete.file_path
+                      ? `File Path: ${epgToDelete.file_path}`
+                      : ''
+                }
 
 This will remove all related program information and channel associations.
 This action cannot be undone.`}

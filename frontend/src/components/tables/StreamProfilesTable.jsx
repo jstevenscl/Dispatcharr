@@ -122,7 +122,7 @@ const StreamProfiles = () => {
       {
         header: 'Active',
         accessorKey: 'is_active',
-        size: 50,
+        size: 60,
         cell: ({ row, cell }) => (
           <Center>
             <Switch
@@ -137,7 +137,7 @@ const StreamProfiles = () => {
       {
         id: 'actions',
         header: 'Actions',
-        size: tableSize == 'compact' ? 75 : 100,
+        size: tableSize == 'compact' ? 50 : 75,
       },
     ],
     []
@@ -310,12 +310,14 @@ const StreamProfiles = () => {
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'hidden',
+            overflowX: 'auto',
             border: 'solid 1px rgb(68,68,68)',
             borderRadius: 'var(--mantine-radius-default)',
           }}
         >
-          <CustomTable table={table} />
+          <div style={{ minWidth: 600 }}>
+            <CustomTable table={table} />
+          </div>
         </Box>
       </Box>
 

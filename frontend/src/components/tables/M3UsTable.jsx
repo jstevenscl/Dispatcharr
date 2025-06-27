@@ -803,7 +803,7 @@ const M3UTable = () => {
   return (
     <Box>
       <Flex
-        style={{ display: 'flex', alignItems: 'center', paddingBottom: 10 }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 }}
         gap={15}
       >
         <Text
@@ -820,6 +820,21 @@ const M3UTable = () => {
         >
           M3U Accounts
         </Text>
+        <Button
+          leftSection={<SquarePlus size={14} />}
+          variant="light"
+          size="xs"
+          onClick={() => editPlaylist()}
+          p={5}
+          color="green"
+          style={{
+            borderWidth: '1px',
+            borderColor: 'green',
+            color: 'white',
+          }}
+        >
+          Add M3U
+        </Button>
       </Flex>
 
       <Paper
@@ -835,29 +850,10 @@ const M3UTable = () => {
             // alignItems: 'center',
             // backgroundColor: theme.palette.background.paper,
             justifyContent: 'flex-end',
-            padding: 10,
+            padding: 0,
             // gap: 1,
           }}
         >
-          <Flex gap={6}>
-            <Tooltip label="Assign">
-              <Button
-                leftSection={<SquarePlus size={14} />}
-                variant="light"
-                size="xs"
-                onClick={() => editPlaylist()}
-                p={5}
-                color="green"
-                style={{
-                  borderWidth: '1px',
-                  borderColor: 'green',
-                  color: 'white',
-                }}
-              >
-                Add M3U
-              </Button>
-            </Tooltip>
-          </Flex>
         </Box>
       </Paper>
 
@@ -865,14 +861,14 @@ const M3UTable = () => {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(40vh - 10px)',
+          height: 'calc(40vh - 15px)',
         }}
       >
         <Box
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'hidden',
+            overflowX: 'auto',
             border: 'solid 1px rgb(68,68,68)',
             borderRadius: 'var(--mantine-radius-default)',
           }}

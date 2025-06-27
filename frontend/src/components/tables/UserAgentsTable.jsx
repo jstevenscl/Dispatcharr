@@ -99,6 +99,7 @@ const UserAgentsTable = () => {
         accessorKey: 'is_active',
         sortingFn: 'basic',
         enableSorting: false,
+        size: 60,
         cell: ({ cell }) => (
           <Center>
             {cell.getValue() ? <Check color="green" /> : <X color="red" />}
@@ -108,7 +109,7 @@ const UserAgentsTable = () => {
       {
         id: 'actions',
         header: 'Actions',
-        size: tableSize == 'compact' ? 75 : 100,
+        size: tableSize == 'compact' ? 50 : 75,
       },
     ],
     []
@@ -234,18 +235,22 @@ const UserAgentsTable = () => {
           display: 'flex',
           flexDirection: 'column',
           maxHeight: 300,
+          width: '100%',
+          overflow: 'hidden',
         }}
       >
         <Box
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'hidden',
+            overflowX: 'auto',
             border: 'solid 1px rgb(68,68,68)',
             borderRadius: 'var(--mantine-radius-default)',
           }}
         >
-          <CustomTable table={table} />
+          <div style={{ minWidth: 500 }}>
+            <CustomTable table={table} />
+          </div>
         </Box>
       </Box>
 
