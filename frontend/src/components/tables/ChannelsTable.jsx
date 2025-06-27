@@ -929,9 +929,8 @@ const ChannelsTable = ({ }) => {
             >
               Links:
             </Text>
-
             <Group gap={5} style={{ paddingLeft: 10 }}>
-              <Popover withArrow shadow="md">
+              <Popover withArrow shadow="md" zIndex={1000}>
                 <Popover.Target>
                   <Button
                     leftSection={<Tv2 size={18} />}
@@ -960,7 +959,8 @@ const ChannelsTable = ({ }) => {
                     </ActionIcon>
                   </Group>
                 </Popover.Dropdown>
-              </Popover>              <Popover withArrow shadow="md" withinPortal={false}>
+              </Popover>
+              <Popover withArrow shadow="md" zIndex={1000}>
                 <Popover.Target>
                   <Button
                     leftSection={<ScreenShare size={18} />}
@@ -997,7 +997,7 @@ const ChannelsTable = ({ }) => {
                           <Copy size="16" />
                         </ActionIcon>
                       }
-                    />                    <Group justify="space-between">
+                    /><Group justify="space-between">
                       <Text size="sm">Use cached logos</Text>
                       <Switch
                         size="sm"
@@ -1036,7 +1036,8 @@ const ChannelsTable = ({ }) => {
                     />
                   </Stack>
                 </Popover.Dropdown>
-              </Popover>              <Popover withArrow shadow="md" withinPortal={false}>
+              </Popover>
+              <Popover withArrow shadow="md" zIndex={1000}>
                 <Popover.Target>
                   <Button
                     leftSection={<Scroll size={18} />}
@@ -1051,7 +1052,8 @@ const ChannelsTable = ({ }) => {
                   >
                     EPG
                   </Button>
-                </Popover.Target>                <Popover.Dropdown>
+                </Popover.Target>
+                <Popover.Dropdown>
                   <Stack
                     gap="sm"
                     style={{ minWidth: 400 }}
@@ -1073,7 +1075,8 @@ const ChannelsTable = ({ }) => {
                           <Copy size="16" />
                         </ActionIcon>
                       }
-                    />                    <Group justify="space-between">
+                    />
+                    <Group justify="space-between">
                       <Text size="sm">Use cached logos</Text>
                       <Switch
                         size="sm"
@@ -1083,7 +1086,8 @@ const ChannelsTable = ({ }) => {
                           cachedlogos: event.target.checked
                         }))}
                       />
-                    </Group>                    <Select
+                    </Group>
+                    <Select
                       label="TVG-ID Source"
                       size="xs"
                       value={epgParams.tvg_id_source}
@@ -1097,7 +1101,8 @@ const ChannelsTable = ({ }) => {
                         { value: 'tvg_id', label: 'TVG-ID' },
                         { value: 'gracenote', label: 'Gracenote Station ID' }
                       ]}
-                    />                    <NumberInput
+                    />
+                    <NumberInput
                       label="Days (0 = all data)"
                       size="xs"
                       min={0}
