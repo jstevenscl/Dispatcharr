@@ -693,11 +693,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
       // Get unique channel group IDs from the channels that have program data
       const usedGroupIds = new Set();
       guideChannels.forEach((channel) => {
-        if (channel.channel_group?.id) {
-          usedGroupIds.add(channel.channel_group.id);
+        if (channel.channel_group_id) {
+          usedGroupIds.add(channel.channel_group_id);
         }
       });
-
       // Only add groups that are actually used by channels in the guide
       Object.values(channelGroups)
         .filter((group) => usedGroupIds.has(group.id))
@@ -709,7 +708,6 @@ export default function TVChannelGuide({ startDate, endDate }) {
           });
         });
     }
-
     return options;
   }, [channelGroups, guideChannels]);
 
