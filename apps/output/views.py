@@ -1,5 +1,5 @@
 import ipaddress
-from django.http import HttpResponse, JsonResponse, Http404, HttpResponseForbidden
+from django.http import HttpResponse, JsonResponse, Http404, HttpResponseForbidden, StreamingHttpResponse
 from rest_framework.response import Response
 from django.urls import reverse
 from apps.channels.models import Channel, ChannelProfile, ChannelGroup
@@ -12,11 +12,10 @@ from dispatcharr.utils import network_access_allowed
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timedelta
-import re
 import html  # Add this import for XML escaping
+import json  # Add this import for JSON parsing
+import time  # Add this import for keep-alive delays
 from tzlocal import get_localzone
-import time
-import json
 from urllib.parse import urlparse
 import base64
 
@@ -278,118 +277,76 @@ def generate_dummy_epg(
 
 def generate_epg(request, profile_name=None, user=None):
     """
-    Dynamically generate an XMLTV (EPG) file using the new EPGData/ProgramData models.
+    Dynamically generate an XMLTV (EPG) file using streaming response to handle keep-alives.
     Since the EPG data is stored independently of Channels, we group programmes
     by their associated EPGData record.
-    This version filters data based on the 'days' parameter.
+    This version filters data based on the 'days' parameter and sends keep-alives during processing.
     """
-    xml_lines = []
-    xml_lines.append('<?xml version="1.0" encoding="UTF-8"?>')
-    xml_lines.append(
-        '<tv generator-info-name="Dispatcharr" generator-info-url="https://github.com/Dispatcharr/Dispatcharr">'
-    )
+    def epg_generator():
+        """Generator function that yields EPG data with keep-alives during processing"""        # Send initial HTTP headers as comments (these will be ignored by XML parsers but keep connection alive)
 
-    if user is not None:
-        if user.user_level == 0:
-            filters = {
-                "channelprofilemembership__enabled": True,
-                "user_level__lte": user.user_level,
-            }
+        xml_lines = []
+        xml_lines.append('<?xml version="1.0" encoding="UTF-8"?>')
+        xml_lines.append(
+            '<tv generator-info-name="Dispatcharr" generator-info-url="https://github.com/Dispatcharr/Dispatcharr">'
+        )
 
-            if user.channel_profiles.count() != 0:
-                channel_profiles = user.channel_profiles.all()
-                filters["channelprofilemembership__channel_profile__in"] = (
-                    channel_profiles
+        # Get channels based on user/profile
+        if user is not None:
+            if user.user_level == 0:
+                filters = {
+                    "channelprofilemembership__enabled": True,
+                    "user_level__lte": user.user_level,
+                }
+
+                if user.channel_profiles.count() != 0:
+                    channel_profiles = user.channel_profiles.all()
+                    filters["channelprofilemembership__channel_profile__in"] = (
+                        channel_profiles
+                    )
+
+                channels = Channel.objects.filter(**filters).order_by("channel_number")
+            else:
+                channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
+                    "channel_number"
                 )
-
-            channels = Channel.objects.filter(**filters).order_by("channel_number")
         else:
-            channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
-                "channel_number"
-            )
-    else:
-        if profile_name is not None:
-            channel_profile = ChannelProfile.objects.get(name=profile_name)
-            channels = Channel.objects.filter(
-                channelprofilemembership__channel_profile=channel_profile,
-                channelprofilemembership__enabled=True,
-            )
-        else:
-            channels = Channel.objects.all()
-
-    # Check if the request wants to use direct logo URLs instead of cache
-    use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
-
-    # Get the source to use for tvg-id value
-    # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
-    tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
-
-    # Get the number of days for EPG data
-    try:
-        # Default to 0 days (everything) for real EPG if not specified
-        days_param = request.GET.get('days', '0')
-        num_days = int(days_param)
-        # Set reasonable limits
-        num_days = max(0, min(num_days, 365))  # Between 0 and 365 days
-    except ValueError:
-        num_days = 0  # Default to all data if invalid value
-
-    # For dummy EPG, use either the specified value or default to 3 days
-    dummy_days = num_days if num_days > 0 else 3
-
-    # Calculate cutoff date for EPG data filtering (only if days > 0)
-    now = timezone.now()
-    cutoff_date = now + timedelta(days=num_days) if num_days > 0 else None
-
-    # Retrieve all active channels
-    for channel in channels:
-        # Format channel number as integer if it has no decimal component - same as M3U generation
-        if channel.channel_number is not None:
-            if channel.channel_number == int(channel.channel_number):
-                formatted_channel_number = int(channel.channel_number)
+            if profile_name is not None:
+                channel_profile = ChannelProfile.objects.get(name=profile_name)
+                channels = Channel.objects.filter(
+                    channelprofilemembership__channel_profile=channel_profile,
+                    channelprofilemembership__enabled=True,
+                )
             else:
-                formatted_channel_number = channel.channel_number
-        else:
-            formatted_channel_number = ""
+                channels = Channel.objects.all()
 
-        # Determine the channel ID based on the selected source
-        if tvg_id_source == 'tvg_id' and channel.tvg_id:
-            channel_id = channel.tvg_id
-        elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
-            channel_id = channel.tvc_guide_stationid
-        else:
-            # Default to channel number (original behavior)
-            channel_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
+        # Check if the request wants to use direct logo URLs instead of cache
+        use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
 
-        # Add channel logo if available
-        tvg_logo = ""
-        if channel.logo:
-            if use_cached_logos:
-                # Use cached logo as before
-                tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
-            else:
-                # Try to find direct logo URL from channel's streams
-                direct_logo = channel.logo.url if channel.logo.url.startswith(('http://', 'https://')) else None
-                # If direct logo found, use it; otherwise fall back to cached version
-                if direct_logo:
-                    tvg_logo = direct_logo
-                else:
-                    tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
-        display_name = channel.epg_data.name if channel.epg_data else channel.name
-        xml_lines.append(f'  <channel id="{channel_id}">')
-        xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
-        xml_lines.append(f'    <icon src="{html.escape(tvg_logo)}" />')
+        # Get the source to use for tvg-id value
+        # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
+        tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
 
-        xml_lines.append("  </channel>")
+        # Get the number of days for EPG data
+        try:
+            # Default to 0 days (everything) for real EPG if not specified
+            days_param = request.GET.get('days', '0')
+            num_days = int(days_param)
+            # Set reasonable limits
+            num_days = max(0, min(num_days, 365))  # Between 0 and 365 days
+        except ValueError:
+            num_days = 0  # Default to all data if invalid value
 
-    for channel in channels:
-        # Use the same channel ID determination for program entries
-        if tvg_id_source == 'tvg_id' and channel.tvg_id:
-            channel_id = channel.tvg_id
-        elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
-            channel_id = channel.tvc_guide_stationid
-        else:
-            # Get formatted channel number
+        # For dummy EPG, use either the specified value or default to 3 days
+        dummy_days = num_days if num_days > 0 else 3
+
+        # Calculate cutoff date for EPG data filtering (only if days > 0)
+        now = timezone.now()
+        cutoff_date = now + timedelta(days=num_days) if num_days > 0 else None
+
+        # Process channels for the <channel> section
+        for channel in channels:
+            # Format channel number as integer if it has no decimal component - same as M3U generation
             if channel.channel_number is not None:
                 if channel.channel_number == int(channel.channel_number):
                     formatted_channel_number = int(channel.channel_number)
@@ -397,167 +354,214 @@ def generate_epg(request, profile_name=None, user=None):
                     formatted_channel_number = channel.channel_number
             else:
                 formatted_channel_number = ""
-            # Default to channel number
-            channel_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
 
-        display_name = channel.epg_data.name if channel.epg_data else channel.name
-        if not channel.epg_data:
-            # Use the enhanced dummy EPG generation function with defaults
-            program_length_hours = 4  # Default to 4-hour program blocks
-            generate_dummy_epg(
-                channel_id,
-                display_name,
-                xml_lines,
-                num_days=dummy_days,  # Use dummy_days (3 days by default)
-                program_length_hours=program_length_hours
-            )
-        else:
-            # For real EPG data - filter only if days parameter was specified
-            if num_days > 0:
-                programs = channel.epg_data.programs.filter(
-                    start_time__gte=now,
-                    start_time__lt=cutoff_date
-                )
+            # Determine the channel ID based on the selected source
+            if tvg_id_source == 'tvg_id' and channel.tvg_id:
+                channel_id = channel.tvg_id
+            elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
+                channel_id = channel.tvc_guide_stationid
             else:
-                # Return all programs if days=0 or not specified
-                programs = channel.epg_data.programs.all()
+                # Default to channel number (original behavior)
+                channel_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
 
-            for prog in programs:
-                start_str = prog.start_time.strftime("%Y%m%d%H%M%S %z")
-                stop_str = prog.end_time.strftime("%Y%m%d%H%M%S %z")
-                xml_lines.append(f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">')
-                xml_lines.append(f'    <title>{html.escape(prog.title)}</title>')
+            # Add channel logo if available
+            tvg_logo = ""
+            if channel.logo:
+                if use_cached_logos:
+                    # Use cached logo as before
+                    tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+                else:
+                    # Try to find direct logo URL from channel's streams
+                    direct_logo = channel.logo.url if channel.logo.url.startswith(('http://', 'https://')) else None
+                    # If direct logo found, use it; otherwise fall back to cached version
+                    if direct_logo:
+                        tvg_logo = direct_logo
+                    else:
+                        tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
 
-                # Add subtitle if available
-                if prog.sub_title:
-                    xml_lines.append(
-                        f"    <sub-title>{html.escape(prog.sub_title)}</sub-title>"
+            display_name = channel.epg_data.name if channel.epg_data else channel.name
+            xml_lines.append(f'  <channel id="{channel_id}">')
+            xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
+            xml_lines.append(f'    <icon src="{html.escape(tvg_logo)}" />')
+            xml_lines.append("  </channel>")
+
+        # Send all channel definitions
+        yield '\n'.join(xml_lines) + '\n'
+        xml_lines = []  # Clear to save memory
+
+        # Process programs for each channel
+        for channel in channels:
+
+            # Use the same channel ID determination for program entries
+            if tvg_id_source == 'tvg_id' and channel.tvg_id:
+                channel_id = channel.tvg_id
+            elif tvg_id_source == 'gracenote' and channel.tvc_guide_stationid:
+                channel_id = channel.tvc_guide_stationid
+            else:
+                # Get formatted channel number
+                if channel.channel_number is not None:
+                    if channel.channel_number == int(channel.channel_number):
+                        formatted_channel_number = int(channel.channel_number)
+                    else:
+                        formatted_channel_number = channel.channel_number
+                else:
+                    formatted_channel_number = ""
+                # Default to channel number
+                channel_id = str(formatted_channel_number) if formatted_channel_number != "" else str(channel.id)
+
+            display_name = channel.epg_data.name if channel.epg_data else channel.name
+
+            if not channel.epg_data:
+                # Use the enhanced dummy EPG generation function with defaults
+                program_length_hours = 4  # Default to 4-hour program blocks
+                dummy_programs = generate_dummy_programs(channel_id, display_name, num_days=dummy_days, program_length_hours=program_length_hours)
+
+                for program in dummy_programs:
+                    # Format times in XMLTV format
+                    start_str = program['start_time'].strftime("%Y%m%d%H%M%S %z")
+                    stop_str = program['end_time'].strftime("%Y%m%d%H%M%S %z")
+
+                    # Create program entry with escaped channel name
+                    yield f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">\n'
+                    yield f"    <title>{html.escape(program['title'])}</title>\n"
+                    yield f"    <desc>{html.escape(program['description'])}</desc>\n"
+                    yield f"  </programme>\n"
+
+            else:
+                # For real EPG data - filter only if days parameter was specified
+                if num_days > 0:
+                    programs = channel.epg_data.programs.filter(
+                        start_time__gte=now,
+                        start_time__lt=cutoff_date
                     )
+                else:
+                    # Return all programs if days=0 or not specified
+                    programs = channel.epg_data.programs.all()
 
-                # Add description if available
-                if prog.description:
-                    xml_lines.append(
-                        f"    <desc>{html.escape(prog.description)}</desc>"
-                    )
+                # Process programs in chunks to avoid memory issues
+                program_batch = []
+                batch_size = 100
 
-                # Process custom properties if available
-                if prog.custom_properties:
-                    try:
-                        import json
+                for prog in programs.iterator():  # Use iterator to avoid loading all at once
+                    start_str = prog.start_time.strftime("%Y%m%d%H%M%S %z")
+                    stop_str = prog.end_time.strftime("%Y%m%d%H%M%S %z")
 
-                        custom_data = json.loads(prog.custom_properties)
+                    program_xml = [f'  <programme start="{start_str}" stop="{stop_str}" channel="{channel_id}">']
+                    program_xml.append(f'    <title>{html.escape(prog.title)}</title>')
 
-                        # Add categories if available
-                        if "categories" in custom_data and custom_data["categories"]:
-                            for category in custom_data["categories"]:
-                                xml_lines.append(
-                                    f"    <category>{html.escape(category)}</category>"
+                    # Add subtitle if available
+                    if prog.sub_title:
+                        program_xml.append(f"    <sub-title>{html.escape(prog.sub_title)}</sub-title>")
+
+                    # Add description if available
+                    if prog.description:
+                        program_xml.append(f"    <desc>{html.escape(prog.description)}</desc>")
+
+                    # Process custom properties if available
+                    if prog.custom_properties:
+                        try:
+                            custom_data = json.loads(prog.custom_properties)
+
+                            # Add categories if available
+                            if "categories" in custom_data and custom_data["categories"]:
+                                for category in custom_data["categories"]:
+                                    program_xml.append(f"    <category>{html.escape(category)}</category>")
+
+                            # Handle episode numbering - multiple formats supported
+                            # Standard episode number if available
+                            if "episode" in custom_data:
+                                program_xml.append(f'    <episode-num system="onscreen">E{custom_data["episode"]}</episode-num>')
+
+                            # Handle onscreen episode format (like S06E128)
+                            if "onscreen_episode" in custom_data:
+                                program_xml.append(f'    <episode-num system="onscreen">{html.escape(custom_data["onscreen_episode"])}</episode-num>')
+
+                            # Handle dd_progid format
+                            if 'dd_progid' in custom_data:
+                                program_xml.append(f'    <episode-num system="dd_progid">{html.escape(custom_data["dd_progid"])}</episode-num>')
+
+                            # Add season and episode numbers in xmltv_ns format if available
+                            if "season" in custom_data and "episode" in custom_data:
+                                season = (
+                                    int(custom_data["season"]) - 1
+                                    if str(custom_data["season"]).isdigit()
+                                    else 0
                                 )
+                                episode = (
+                                    int(custom_data["episode"]) - 1
+                                    if str(custom_data["episode"]).isdigit()
+                                    else 0
+                                )
+                                program_xml.append(f'    <episode-num system="xmltv_ns">{season}.{episode}.</episode-num>')
 
-                        # Handle episode numbering - multiple formats supported
-                        # Standard episode number if available
-                        if "episode" in custom_data:
-                            xml_lines.append(
-                                f'    <episode-num system="onscreen">E{custom_data["episode"]}</episode-num>'
-                            )
+                            # Add rating if available
+                            if "rating" in custom_data:
+                                rating_system = custom_data.get("rating_system", "TV Parental Guidelines")
+                                program_xml.append(f'    <rating system="{html.escape(rating_system)}">')
+                                program_xml.append(f'      <value>{html.escape(custom_data["rating"])}</value>')
+                                program_xml.append(f"    </rating>")
 
-                        # Handle onscreen episode format (like S06E128)
-                        if "onscreen_episode" in custom_data:
-                            xml_lines.append(
-                                f'    <episode-num system="onscreen">{html.escape(custom_data["onscreen_episode"])}</episode-num>'
-                            )
+                            # Add actors/directors/writers if available
+                            if "credits" in custom_data:
+                                program_xml.append(f"    <credits>")
+                                for role, people in custom_data["credits"].items():
+                                    if isinstance(people, list):
+                                        for person in people:
+                                            program_xml.append(f"      <{role}>{html.escape(person)}</{role}>")
+                                    else:
+                                        program_xml.append(f"      <{role}>{html.escape(people)}</{role}>")
+                                program_xml.append(f"    </credits>")
 
-                        # Handle dd_progid format
-                        if 'dd_progid' in custom_data:
-                            xml_lines.append(f'    <episode-num system="dd_progid">{html.escape(custom_data["dd_progid"])}</episode-num>')
+                            # Add program date/year if available
+                            if "year" in custom_data:
+                                program_xml.append(f'    <date>{html.escape(custom_data["year"])}</date>')
 
-                        # Add season and episode numbers in xmltv_ns format if available
-                        if "season" in custom_data and "episode" in custom_data:
-                            season = (
-                                int(custom_data["season"]) - 1
-                                if str(custom_data["season"]).isdigit()
-                                else 0
-                            )
-                            episode = (
-                                int(custom_data["episode"]) - 1
-                                if str(custom_data["episode"]).isdigit()
-                                else 0
-                            )
-                            xml_lines.append(
-                                f'    <episode-num system="xmltv_ns">{season}.{episode}.</episode-num>'
-                            )
+                            # Add country if available
+                            if "country" in custom_data:
+                                program_xml.append(f'    <country>{html.escape(custom_data["country"])}</country>')
 
-                        # Add rating if available
-                        if "rating" in custom_data:
-                            rating_system = custom_data.get(
-                                "rating_system", "TV Parental Guidelines"
-                            )
-                            xml_lines.append(
-                                f'    <rating system="{html.escape(rating_system)}">'
-                            )
-                            xml_lines.append(
-                                f'      <value>{html.escape(custom_data["rating"])}</value>'
-                            )
-                            xml_lines.append(f"    </rating>")
+                            # Add icon if available
+                            if "icon" in custom_data:
+                                program_xml.append(f'    <icon src="{html.escape(custom_data["icon"])}" />')
 
-                        # Add actors/directors/writers if available
-                        if "credits" in custom_data:
-                            xml_lines.append(f"    <credits>")
-                            for role, people in custom_data["credits"].items():
-                                if isinstance(people, list):
-                                    for person in people:
-                                        xml_lines.append(
-                                            f"      <{role}>{html.escape(person)}</{role}>"
-                                        )
-                                else:
-                                    xml_lines.append(
-                                        f"      <{role}>{html.escape(people)}</{role}>"
-                                    )
-                            xml_lines.append(f"    </credits>")
+                            # Add special flags as proper tags
+                            if custom_data.get("previously_shown", False):
+                                program_xml.append(f"    <previously-shown />")
 
-                        # Add program date/year if available
-                        if "year" in custom_data:
-                            xml_lines.append(
-                                f'    <date>{html.escape(custom_data["year"])}</date>'
-                            )
+                            if custom_data.get("premiere", False):
+                                program_xml.append(f"    <premiere />")
 
-                        # Add country if available
-                        if "country" in custom_data:
-                            xml_lines.append(
-                                f'    <country>{html.escape(custom_data["country"])}</country>'
-                            )
+                            if custom_data.get("new", False):
+                                program_xml.append(f"    <new />")
 
-                        # Add icon if available
-                        if "icon" in custom_data:
-                            xml_lines.append(
-                                f'    <icon src="{html.escape(custom_data["icon"])}" />'
-                            )
+                            if custom_data.get('live', False):
+                                program_xml.append(f'    <live />')
 
-                        # Add special flags as proper tags
-                        if custom_data.get("previously_shown", False):
-                            xml_lines.append(f"    <previously-shown />")
+                        except Exception as e:
+                            program_xml.append(f"    <!-- Error parsing custom properties: {html.escape(str(e))} -->")
 
-                        if custom_data.get("premiere", False):
-                            xml_lines.append(f"    <premiere />")
+                    program_xml.append("  </programme>")
 
-                        if custom_data.get("new", False):
-                            xml_lines.append(f"    <new />")
+                    # Add to batch
+                    program_batch.extend(program_xml)
 
-                        if custom_data.get('live', False):
-                            xml_lines.append(f'    <live />')
+                    # Send batch when full or send keep-alive
+                    if len(program_batch) >= batch_size:
+                        yield '\n'.join(program_batch) + '\n'
+                        program_batch = []                        # Send keep-alive every batch
 
-                    except Exception as e:
-                        xml_lines.append(
-                            f"    <!-- Error parsing custom properties: {html.escape(str(e))} -->"
-                        )
+                # Send remaining programs in batch
+                if program_batch:
+                    yield '\n'.join(program_batch) + '\n'
 
-                xml_lines.append("  </programme>")
-
-    xml_lines.append("</tv>")
-    xml_content = "\n".join(xml_lines)
-
-    response = HttpResponse(xml_content, content_type="application/xml")
-    response["Content-Disposition"] = 'attachment; filename="epg.xml"'
+        # Send final closing tag and completion message
+        yield "</tv>\n"    # Return streaming response
+    response = StreamingHttpResponse(
+        streaming_content=epg_generator(),
+        content_type="application/xml"
+    )
+    response["Content-Disposition"] = 'attachment; filename="Dispatcharr.xml"'
+    response["Cache-Control"] = "no-cache"
     return response
 
 
