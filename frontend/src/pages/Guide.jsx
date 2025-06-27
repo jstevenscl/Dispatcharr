@@ -836,7 +836,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
           {(searchQuery !== '' ||
             selectedGroupId !== 'all' ||
             selectedProfileId !== 'all') && (
-              <Button variant="subtle" onClick={clearFilters} size="sm" compact>
+              <Button variant="subtle" onClick={clearFilters} size="sm">
                 Clear Filters
               </Button>
             )}
@@ -1085,7 +1085,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         borderRight: '1px solid #27272A', // Increased border width for visibility
                         borderBottom: '1px solid #27272A', // Match the row border
                         boxShadow: '2px 0 5px rgba(0,0,0,0.2)', // Added shadow for depth
-                        position: 'sticky',
+                        //position: 'sticky',
                         left: 0,
                         zIndex: 30, // Higher than expanded programs to prevent overlap
                         height: rowHeight,
