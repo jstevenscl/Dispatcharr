@@ -110,7 +110,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
     // Apply channel group filter
     if (selectedGroupId !== 'all') {
       result = result.filter(
-        (channel) => channel.channel_group?.id === parseInt(selectedGroupId)
+        (channel) => channel.channel_group_id === parseInt(selectedGroupId)
       );
     }
 
