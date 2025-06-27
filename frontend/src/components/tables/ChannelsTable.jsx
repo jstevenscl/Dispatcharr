@@ -930,7 +930,7 @@ const ChannelsTable = ({ }) => {
               Links:
             </Text>
             <Group gap={5} style={{ paddingLeft: 10 }}>
-              <Popover withArrow shadow="md" zIndex={1000}>
+              <Popover withArrow shadow="md" zIndex={1000} position="bottom-start" withinPortal>
                 <Popover.Target>
                   <Button
                     leftSection={<Tv2 size={18} />}
@@ -947,7 +947,14 @@ const ChannelsTable = ({ }) => {
                   </Button>
                 </Popover.Target>
                 <Popover.Dropdown>
-                  <Group>
+                  <Group
+                    gap="sm"
+                    style={{
+                      minWidth: 250,
+                      maxWidth: 'min(400px, 80vw)',
+                      width: 'max-content'
+                    }}
+                  >
                     <TextInput value={hdhrUrl} size="small" readOnly />
                     <ActionIcon
                       onClick={copyHDHRUrl}
@@ -960,7 +967,7 @@ const ChannelsTable = ({ }) => {
                   </Group>
                 </Popover.Dropdown>
               </Popover>
-              <Popover withArrow shadow="md" zIndex={1000}>
+              <Popover withArrow shadow="md" zIndex={1000} position="bottom-start" withinPortal>
                 <Popover.Target>
                   <Button
                     leftSection={<ScreenShare size={18} />}
@@ -978,7 +985,11 @@ const ChannelsTable = ({ }) => {
                 <Popover.Dropdown>
                   <Stack
                     gap="sm"
-                    style={{ minWidth: 400 }}
+                    style={{
+                      minWidth: 300,
+                      maxWidth: 'min(500px, 90vw)',
+                      width: 'max-content'
+                    }}
                     onClick={stopPropagation}
                     onMouseDown={stopPropagation}
                   >
@@ -1037,7 +1048,7 @@ const ChannelsTable = ({ }) => {
                   </Stack>
                 </Popover.Dropdown>
               </Popover>
-              <Popover withArrow shadow="md" zIndex={1000}>
+              <Popover withArrow shadow="md" zIndex={1000} position="bottom-start" withinPortal>
                 <Popover.Target>
                   <Button
                     leftSection={<Scroll size={18} />}
@@ -1056,7 +1067,11 @@ const ChannelsTable = ({ }) => {
                 <Popover.Dropdown>
                   <Stack
                     gap="sm"
-                    style={{ minWidth: 400 }}
+                    style={{
+                      minWidth: 300,
+                      maxWidth: 'min(450px, 85vw)',
+                      width: 'max-content'
+                    }}
                     onClick={stopPropagation}
                     onMouseDown={stopPropagation}
                   >
