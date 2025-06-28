@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import API from '../../api';
 import UserForm from '../forms/User';
 import useUsersStore from '../../store/users';
@@ -147,6 +147,7 @@ const UsersTable = () => {
             {
                 header: 'Username',
                 accessorKey: 'username',
+                size: 150,
                 cell: ({ getValue }) => (
                     <Box
                         style={{
@@ -193,7 +194,7 @@ const UsersTable = () => {
             {
                 header: 'Date Joined',
                 accessorKey: 'date_joined',
-                size: 120,
+                size: 125,
                 cell: ({ getValue }) => {
                     const date = getValue();
                     return (
@@ -219,7 +220,7 @@ const UsersTable = () => {
             {
                 header: 'XC Password',
                 accessorKey: 'custom_properties',
-                size: 120,
+                size: 125,
                 enableSorting: false,
                 cell: ({ getValue, row }) => {
                     const userId = row.original.id;
@@ -317,7 +318,7 @@ const UsersTable = () => {
                 style={{
                     display: 'flex',
                     justifyContent: 'center',
-                    padding: '20px',
+                    padding: '0px',
                     minHeight: '100vh',
                 }}
             >

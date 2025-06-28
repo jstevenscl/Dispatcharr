@@ -1,30 +1,20 @@
 // Modal.js
 import React, { useState, useEffect } from 'react';
 import API from '../../api';
-import useEPGsStore from '../../store/epgs';
 import {
-  LoadingOverlay,
   TextInput,
   Button,
-  Checkbox,
   Modal,
   Flex,
-  NativeSelect,
-  NumberInput,
-  Space,
   Select,
   PasswordInput,
-  Box,
   Group,
   Stack,
   MultiSelect,
-  Switch,
-  Text,
-  Center,
   ActionIcon,
 } from '@mantine/core';
 import { RotateCcwKey, X } from 'lucide-react';
-import { isNotEmpty, useForm } from '@mantine/form';
+import { useForm } from '@mantine/form';
 import useChannelsStore from '../../store/channels';
 import { USER_LEVELS, USER_LEVEL_LABELS } from '../../constants';
 import useAuthStore from '../../store/auth';
@@ -34,7 +24,7 @@ const User = ({ user = null, isOpen, onClose }) => {
   const authUser = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
 
-  const [enableXC, setEnableXC] = useState(false);
+  const [, setEnableXC] = useState(false);
   const [selectedProfiles, setSelectedProfiles] = useState(new Set());
 
   const form = useForm({
@@ -84,7 +74,7 @@ const User = ({ user = null, isOpen, onClose }) => {
   const onSubmit = async () => {
     const values = form.getValues();
 
-    const { xc_password, ...customProps } = JSON.parse(
+    const { ...customProps } = JSON.parse(
       user?.custom_properties || '{}'
     );
 
@@ -193,7 +183,7 @@ const User = ({ user = null, isOpen, onClose }) => {
             {showPermissions && (
               <Select
                 label="User Level"
-                data={Object.entries(USER_LEVELS).map(([label, value]) => {
+                data={Object.entries(USER_LEVELS).map(([, value]) => {
                   return {
                     label: USER_LEVEL_LABELS[value],
                     value: `${value}`,
