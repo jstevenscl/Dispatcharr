@@ -45,6 +45,8 @@ class UserSerializer(serializers.ModelSerializer):
             "is_superuser",
             "last_login",
             "date_joined",
+            "first_name",
+            "last_name",
         ]
 
     def create(self, validated_data):

@@ -135,6 +135,16 @@ const UsersTable = () => {
     const columns = useMemo(
         () => [
             {
+                header: 'User Level',
+                accessorKey: 'user_level',
+                size: 120,
+                cell: ({ getValue }) => (
+                    <Text size="sm">
+                        {USER_LEVEL_LABELS[getValue()]}
+                    </Text>
+                ),
+            },
+            {
                 header: 'Username',
                 accessorKey: 'username',
                 cell: ({ getValue }) => (
@@ -195,14 +205,17 @@ const UsersTable = () => {
                 ),
             },
             {
-                header: 'User Level',
-                accessorKey: 'user_level',
-                size: 120,
-                cell: ({ getValue }) => (
-                    <Text size="sm">
-                        {USER_LEVEL_LABELS[getValue()]}
-                    </Text>
-                ),
+                header: 'Date Joined',
+                accessorKey: 'date_joined',
+                size: 140,
+                cell: ({ getValue }) => {
+                    const date = getValue();
+                    return (
+                        <Text size="sm">
+                            {date ? new Date(date).toLocaleDateString() : '-'}
+                        </Text>
+                    );
+                },
             },
             {
                 header: 'Last Login',
@@ -218,22 +231,10 @@ const UsersTable = () => {
                 },
             },
             {
-                header: 'Date Joined',
-                accessorKey: 'date_joined',
-                size: 140,
-                cell: ({ getValue }) => {
-                    const date = getValue();
-                    return (
-                        <Text size="sm">
-                            {date ? new Date(date).toLocaleDateString() : '-'}
-                        </Text>
-                    );
-                },
-            },
-            {
                 header: 'XC Password',
                 accessorKey: 'custom_properties',
                 size: 120,
+                enableSorting: false,
                 cell: ({ getValue, row }) => {
                     const userId = row.original.id;
                     const isVisible = visiblePasswords[userId];
@@ -270,6 +271,7 @@ const UsersTable = () => {
                 id: 'actions',
                 size: 80,
                 header: 'Actions',
+                enableSorting: false,
                 cell: ({ row }) => (
                     <UserRowActions
                         theme={theme}
