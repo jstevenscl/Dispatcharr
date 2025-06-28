@@ -376,12 +376,14 @@ const UsersTable = () => {
                         <Box
                             style={{
                                 position: 'relative',
-                                overflow: 'hidden',
+                                overflow: 'auto',
                                 borderRadius: '0 0 var(--mantine-radius-md) var(--mantine-radius-md)',
                             }}
                         >
-                            <LoadingOverlay visible={isLoading} />
-                            <CustomTable table={table} />
+                            <div style={{ minWidth: '900px' }}>
+                                <LoadingOverlay visible={isLoading} />
+                                <CustomTable table={table} />
+                            </div>
                         </Box>
                     </Paper>
                 </Stack>
