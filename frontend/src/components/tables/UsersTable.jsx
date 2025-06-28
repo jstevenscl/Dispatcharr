@@ -160,23 +160,9 @@ const UsersTable = () => {
                 ),
             },
             {
-                header: 'First Name',
-                accessorKey: 'first_name',
-                cell: ({ getValue }) => (
-                    <Box
-                        style={{
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                        }}
-                    >
-                        {getValue() || '-'}
-                    </Box>
-                ),
-            },
-            {
-                header: 'Last Name',
-                accessorKey: 'last_name',
+                id: 'name',
+                header: 'Name',
+                accessorFn: (row) => `${row.first_name || ''} ${row.last_name || ''}`.trim(),
                 cell: ({ getValue }) => (
                     <Box
                         style={{
@@ -207,7 +193,7 @@ const UsersTable = () => {
             {
                 header: 'Date Joined',
                 accessorKey: 'date_joined',
-                size: 140,
+                size: 120,
                 cell: ({ getValue }) => {
                     const date = getValue();
                     return (
@@ -220,12 +206,12 @@ const UsersTable = () => {
             {
                 header: 'Last Login',
                 accessorKey: 'last_login',
-                size: 140,
+                size: 175,
                 cell: ({ getValue }) => {
                     const date = getValue();
                     return (
                         <Text size="sm">
-                            {date ? new Date(date).toLocaleDateString() : 'Never'}
+                            {date ? new Date(date).toLocaleString() : 'Never'}
                         </Text>
                     );
                 },
@@ -316,8 +302,7 @@ const UsersTable = () => {
         headerCellRenderFns: {
             actions: renderHeaderCell,
             username: renderHeaderCell,
-            first_name: renderHeaderCell,
-            last_name: renderHeaderCell,
+            name: renderHeaderCell,
             email: renderHeaderCell,
             user_level: renderHeaderCell,
             last_login: renderHeaderCell,
