@@ -78,9 +78,8 @@ const User = ({ user = null, isOpen, onClose }) => {
       user?.custom_properties || '{}'
     );
 
-    if (values.xc_password) {
-      customProps.xc_password = values.xc_password;
-    }
+    // Always save xc_password, even if it's empty (to allow clearing)
+    customProps.xc_password = values.xc_password || '';
     delete values.xc_password;
 
     values.custom_properties = JSON.stringify(customProps);
