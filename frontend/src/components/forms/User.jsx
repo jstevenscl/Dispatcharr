@@ -41,6 +41,8 @@ const User = ({ user = null, isOpen, onClose }) => {
     mode: 'uncontrolled',
     initialValues: {
       username: '',
+      first_name: '',
+      last_name: '',
       email: '',
       user_level: '0',
       password: '',
@@ -52,7 +54,7 @@ const User = ({ user = null, isOpen, onClose }) => {
       username: !values.username
         ? 'Username is required'
         : values.user_level == USER_LEVELS.STREAMER &&
-            !values.username.match(/^[a-z0-9]+$/i)
+          !values.username.match(/^[a-z0-9]+$/i)
           ? 'Streamer username must be alphanumeric'
           : null,
       password:
@@ -127,6 +129,8 @@ const User = ({ user = null, isOpen, onClose }) => {
 
       form.setValues({
         username: user.username,
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
         email: user.email,
         user_level: `${user.user_level}`,
         channel_profiles:
@@ -170,6 +174,14 @@ const User = ({ user = null, isOpen, onClose }) => {
               key={form.key('username')}
             />
 
+            <TextInput
+              id="first_name"
+              name="first_name"
+              label="First Name"
+              {...form.getInputProps('first_name')}
+              key={form.key('first_name')}
+            />
+
             <PasswordInput
               label="Password"
               description="Used for UI authentication"
@@ -200,6 +212,14 @@ const User = ({ user = null, isOpen, onClose }) => {
               label="E-Mail"
               {...form.getInputProps('email')}
               key={form.key('email')}
+            />
+
+            <TextInput
+              id="last_name"
+              name="last_name"
+              label="Last Name"
+              {...form.getInputProps('last_name')}
+              key={form.key('last_name')}
             />
 
             <Group align="flex-end">
