@@ -90,45 +90,45 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   const navItems =
     authUser && authUser.user_level == USER_LEVELS.ADMIN
       ? [
-          {
-            label: 'Channels',
-            icon: <ListOrdered size={20} />,
-            path: '/channels',
-            badge: `(${Object.keys(channels).length})`,
-          },
-          {
-            label: 'M3U & EPG Manager',
-            icon: <Play size={20} />,
-            path: '/sources',
-          },
-          { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
-          { label: 'DVR', icon: <Video size={20} />, path: '/dvr' },
-          { label: 'Stats', icon: <ChartLine size={20} />, path: '/stats' },
-          {
-            label: 'Users',
-            icon: <User size={20} />,
-            path: '/users',
-          },
-          {
-            label: 'Settings',
-            icon: <LucideSettings size={20} />,
-            path: '/settings',
-          },
-        ]
+        {
+          label: 'Channels',
+          icon: <ListOrdered size={20} />,
+          path: '/channels',
+          badge: `(${Object.keys(channels).length})`,
+        },
+        {
+          label: 'M3U & EPG Manager',
+          icon: <Play size={20} />,
+          path: '/sources',
+        },
+        { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
+        { label: 'DVR', icon: <Video size={20} />, path: '/dvr' },
+        { label: 'Stats', icon: <ChartLine size={20} />, path: '/stats' },
+        {
+          label: 'Users',
+          icon: <User size={20} />,
+          path: '/users',
+        },
+        {
+          label: 'Settings',
+          icon: <LucideSettings size={20} />,
+          path: '/settings',
+        },
+      ]
       : [
-          {
-            label: 'Channels',
-            icon: <ListOrdered size={20} />,
-            path: '/channels',
-            badge: `(${Object.keys(channels).length})`,
-          },
-          { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
-          {
-            label: 'Settings',
-            icon: <LucideSettings size={20} />,
-            path: '/settings',
-          },
-        ];
+        {
+          label: 'Channels',
+          icon: <ListOrdered size={20} />,
+          path: '/channels',
+          badge: `(${Object.keys(channels).length})`,
+        },
+        { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
+        {
+          label: 'Settings',
+          icon: <LucideSettings size={20} />,
+          path: '/settings',
+        },
+      ];
 
   // Fetch environment settings including version on component mount
   useEffect(() => {
@@ -290,7 +290,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
               />
             )}
 
-            <Avatar src="https://via.placeholder.com/40" radius="xl" />
+            <Avatar src="" radius="xl" />
             {!collapsed && authUser && (
               <Group
                 style={{
@@ -300,7 +300,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                 }}
               >
                 <UnstyledButton onClick={() => setUserFormOpen(true)}>
-                  {authUser.username}
+                  {authUser.first_name || authUser.username}
                 </UnstyledButton>
 
                 <ActionIcon variant="transparent" color="white" size="sm">
