@@ -314,8 +314,13 @@ const UsersTable = () => {
         headerCellRenderFns: {
             actions: renderHeaderCell,
             username: renderHeaderCell,
+            first_name: renderHeaderCell,
+            last_name: renderHeaderCell,
             email: renderHeaderCell,
             user_level: renderHeaderCell,
+            last_login: renderHeaderCell,
+            date_joined: renderHeaderCell,
+            custom_properties: renderHeaderCell,
         },
     });
 
