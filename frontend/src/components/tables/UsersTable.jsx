@@ -10,6 +10,8 @@ import {
     SquareMinus,
     SquarePen,
     EllipsisVertical,
+    Eye,
+    EyeOff,
 } from 'lucide-react';
 import {
     ActionIcon,
@@ -91,10 +93,18 @@ const UsersTable = () => {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [userToDelete, setUserToDelete] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [visiblePasswords, setVisiblePasswords] = useState({});
 
     /**
      * Functions
      */
+    const togglePasswordVisibility = useCallback((userId) => {
+        setVisiblePasswords(prev => ({
+            ...prev,
+            [userId]: !prev[userId]
+        }));
+    }, []);
+
     const executeDeleteUser = useCallback(async (id) => {
         setIsLoading(true);
         await API.deleteUser(id);
@@ -140,6 +150,36 @@ const UsersTable = () => {
                 ),
             },
             {
+                header: 'First Name',
+                accessorKey: 'first_name',
+                cell: ({ getValue }) => (
+                    <Box
+                        style={{
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                        }}
+                    >
+                        {getValue() || '-'}
+                    </Box>
+                ),
+            },
+            {
+                header: 'Last Name',
+                accessorKey: 'last_name',
+                cell: ({ getValue }) => (
+                    <Box
+                        style={{
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                        }}
+                    >
+                        {getValue() || '-'}
+                    </Box>
+                ),
+            },
+            {
                 header: 'Email',
                 accessorKey: 'email',
                 cell: ({ getValue }) => (
@@ -165,6 +205,68 @@ const UsersTable = () => {
                 ),
             },
             {
+                header: 'Last Login',
+                accessorKey: 'last_login',
+                size: 140,
+                cell: ({ getValue }) => {
+                    const date = getValue();
+                    return (
+                        <Text size="sm">
+                            {date ? new Date(date).toLocaleDateString() : 'Never'}
+                        </Text>
+                    );
+                },
+            },
+            {
+                header: 'Date Joined',
+                accessorKey: 'date_joined',
+                size: 140,
+                cell: ({ getValue }) => {
+                    const date = getValue();
+                    return (
+                        <Text size="sm">
+                            {date ? new Date(date).toLocaleDateString() : '-'}
+                        </Text>
+                    );
+                },
+            },
+            {
+                header: 'XC Password',
+                accessorKey: 'custom_properties',
+                size: 120,
+                cell: ({ getValue, row }) => {
+                    const userId = row.original.id;
+                    const isVisible = visiblePasswords[userId];
+
+                    // Parse custom_properties and extract xc_password
+                    let password = 'N/A';
+                    try {
+                        const customProps = JSON.parse(getValue() || '{}');
+                        password = customProps.xc_password || 'N/A';
+                    } catch {
+                        password = 'N/A';
+                    }
+
+                    return (
+                        <Group gap={4} style={{ alignItems: 'center' }}>
+                            <Text size="sm" style={{ fontFamily: 'monospace', minWidth: '60px' }}>
+                                {password === 'N/A' ? 'N/A' : (isVisible ? password : '••••••••')}
+                            </Text>
+                            {password !== 'N/A' && (
+                                <ActionIcon
+                                    size="xs"
+                                    variant="transparent"
+                                    color="gray"
+                                    onClick={() => togglePasswordVisibility(userId)}
+                                >
+                                    {isVisible ? <EyeOff size={12} /> : <Eye size={12} />}
+                                </ActionIcon>
+                            )}
+                        </Group>
+                    );
+                },
+            },
+            {
                 id: 'actions',
                 size: 80,
                 header: 'Actions',
@@ -178,7 +280,7 @@ const UsersTable = () => {
                 ),
             },
         ],
-        [theme, editUser, deleteUser]
+        [theme, editUser, deleteUser, visiblePasswords, togglePasswordVisibility]
     );
 
     const closeUserForm = () => {
@@ -219,32 +321,47 @@ const UsersTable = () => {
 
     return (
         <>
-            <Stack gap={0} style={{ padding: 0 }}>
-                <Flex style={{ alignItems: 'center', paddingBottom: 10 }} gap={15}>
-                    <Text
-                        style={{
-                            fontFamily: 'Inter, sans-serif',
-                            fontWeight: 500,
-                            fontSize: '20px',
-                            lineHeight: 1,
-                            letterSpacing: '-0.3px',
-                            color: 'gray.6',
-                            marginBottom: 0,
-                        }}
-                    >
-                        Users
-                    </Text>
-                </Flex>
+            <Box
+                style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    minHeight: '100vh',
+                }}
+            >
+                <Stack gap="md" style={{ maxWidth: '1200px', width: '100%' }}>
+                    <Flex style={{ alignItems: 'center', paddingBottom: 10 }} gap={15}>
+                        <Text
+                            style={{
+                                fontFamily: 'Inter, sans-serif',
+                                fontWeight: 500,
+                                fontSize: '20px',
+                                lineHeight: 1,
+                                letterSpacing: '-0.3px',
+                                color: 'gray.6',
+                                marginBottom: 0,
+                            }}
+                        >
+                            Users
+                        </Text>
+                    </Flex>
 
-                <Paper>
-                    <Box
+                    <Paper
                         style={{
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            padding: 10,
+                            backgroundColor: '#27272A',
+                            border: '1px solid #3f3f46',
+                            borderRadius: 'var(--mantine-radius-md)',
                         }}
                     >
-                        <Flex gap={6}>
+                        {/* Top toolbar */}
+                        <Box
+                            style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                padding: '16px',
+                                borderBottom: '1px solid #3f3f46',
+                            }}
+                        >
                             <Button
                                 leftSection={<SquarePlus size={18} />}
                                 variant="light"
@@ -261,35 +378,22 @@ const UsersTable = () => {
                             >
                                 Add User
                             </Button>
-                        </Flex>
-                    </Box>
-                </Paper>
+                        </Box>
 
-                <Box
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        maxHeight: 600,
-                        width: '100%',
-                        overflow: 'hidden',
-                    }}
-                >
-                    <Box
-                        style={{
-                            flex: 1,
-                            overflowY: 'auto',
-                            overflowX: 'auto',
-                            border: 'solid 1px rgb(68,68,68)',
-                            borderRadius: 'var(--mantine-radius-default)',
-                        }}
-                    >
-                        <div style={{ minWidth: 700 }}>
+                        {/* Table container */}
+                        <Box
+                            style={{
+                                position: 'relative',
+                                overflow: 'hidden',
+                                borderRadius: '0 0 var(--mantine-radius-md) var(--mantine-radius-md)',
+                            }}
+                        >
                             <LoadingOverlay visible={isLoading} />
                             <CustomTable table={table} />
-                        </div>
-                    </Box>
-                </Box>
-            </Stack>
+                        </Box>
+                    </Paper>
+                </Stack>
+            </Box>
 
             <UserForm
                 user={selectedUser}
