@@ -185,7 +185,12 @@ export default function FloatingVideo() {
   }, [isVisible, streamUrl]);
 
   // Modified hideVideo handler to clean up player first
-  const handleClose = () => {
+  const handleClose = (e) => {
+    // Prevent event propagation to avoid triggering drag events
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     safeDestroyPlayer();
     // Small delay before hiding the video component to ensure cleanup is complete
     setTimeout(() => {
@@ -215,8 +220,24 @@ export default function FloatingVideo() {
         }}
       >
         {/* Simple header row with a close button */}
-        <Flex justify="flex-end" style={{ padding: 3 }}>
-          <CloseButton onClick={handleClose} />
+        <Flex
+          justify="flex-end"
+          style={{
+            padding: 3
+          }}
+        >
+          <CloseButton
+            onClick={handleClose}
+            onTouchEnd={handleClose}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            style={{
+              minHeight: '32px',
+              minWidth: '32px',
+              cursor: 'pointer',
+              touchAction: 'manipulation'
+            }}
+          />
         </Flex>
 
         {/* Video container with relative positioning for the overlay */}
