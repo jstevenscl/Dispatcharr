@@ -708,7 +708,7 @@ class ProxyServer:
                 elif state in [ChannelState.STOPPING, ChannelState.STOPPED, ChannelState.ERROR]:
                     # These states indicate the channel should be reinitialized
                     logger.info(f"Channel {channel_id} exists but in terminal state: {state}")
-                    return False
+                    return True
                 else:
                     # Unknown or initializing state, check how long it's been in this state
                     if b'state_changed_at' in metadata:

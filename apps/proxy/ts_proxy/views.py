@@ -83,15 +83,7 @@ def stream_ts(request, channel_id):
                 if state_field in metadata:
                     channel_state = metadata[state_field].decode("utf-8")
 
-                    # IMPROVED: Check for *any* state that indicates initialization is in progress
-                    active_states = [
-                        ChannelState.INITIALIZING,
-                        ChannelState.CONNECTING,
-                        ChannelState.WAITING_FOR_CLIENTS,
-                        ChannelState.ACTIVE,
-                        ChannelState.BUFFERING,
-                    ]
-                    if channel_state in active_states:
+                    if channel_state:
                         # Channel is being initialized or already active - no need for reinitialization
                         needs_initialization = False
                         logger.debug(
@@ -132,7 +124,7 @@ def stream_ts(request, channel_id):
                 logger.warning(
                     f"[{client_id}] Channel {channel_id} in state {channel_state}, forcing cleanup"
                 )
-                proxy_server.stop_channel(channel_id)
+                ChannelService.stop_channel(channel_id)
 
             # Use max retry attempts and connection timeout from config
             max_retries = ConfigHelper.max_retries()
