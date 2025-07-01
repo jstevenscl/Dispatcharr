@@ -768,7 +768,7 @@ class StreamManager:
 
     def _close_all_connections(self):
         """Close all connection resources"""
-        if self.socket:
+        if self.socket or self.transcode_process:
             try:
                 self._close_socket()
             except Exception as e:
