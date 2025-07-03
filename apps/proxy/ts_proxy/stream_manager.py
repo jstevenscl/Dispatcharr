@@ -784,7 +784,7 @@ class StreamManager:
         try:
             if self.transcode:
                 # Handle transcoded stream data
-                while self.running and self.connected:
+                while self.running and self.connected and not self.stop_requested:
                     if self.fetch_chunk():
                         self.last_data_time = time.time()
                     else:
