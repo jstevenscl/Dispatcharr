@@ -193,6 +193,32 @@ class StreamManager:
                                  f"Resetting switching state.")
                     self._reset_url_switching_state()
 
+                # NEW: Check for health monitor recovery requests
+                if hasattr(self, 'needs_reconnect') and self.needs_reconnect and not self.url_switching:
+                    logger.info(f"Health monitor requested reconnect for channel {self.channel_id}")
+                    self.needs_reconnect = False
+
+                    # Attempt reconnect without changing streams
+                    if self._attempt_reconnect():
+                        logger.info(f"Health-requested reconnect successful")
+                        continue  # Go back to main loop
+                    else:
+                        logger.warning(f"Health-requested reconnect failed, will try stream switch")
+                        self.needs_stream_switch = True
+
+                if hasattr(self, 'needs_stream_switch') and self.needs_stream_switch and not self.url_switching:
+                    logger.info(f"Health monitor requested stream switch for channel {self.channel_id}")
+                    self.needs_stream_switch = False
+
+                    if self._try_next_stream():
+                        logger.info(f"Health-requested stream switch successful")
+                        stream_switch_attempts += 1
+                        self.retry_count = 0  # Reset retries for new stream
+                        continue  # Go back to main loop with new stream
+                    else:
+                        logger.error(f"Health-requested stream switch failed")
+                        # Continue with normal flow
+
                 # Check stream type before connecting
                 stream_type = detect_stream_type(self.url)
                 if self.transcode == False and stream_type == StreamType.HLS:
@@ -981,13 +1007,15 @@ class StreamManager:
         return self.retry_count < self.max_retries
 
     def _monitor_health(self):
-        """Monitor stream health and attempt recovery if needed"""
+        """Monitor stream health and set flags for the main loop to handle recovery"""
         consecutive_unhealthy_checks = 0
-        health_recovery_attempts = 0
-        reconnect_attempts = 0
-        max_health_recovery_attempts = ConfigHelper.get('MAX_HEALTH_RECOVERY_ATTEMPTS', 2)
-        max_reconnect_attempts = ConfigHelper.get('MAX_RECONNECT_ATTEMPTS', 3)
-        min_stable_time = ConfigHelper.get('MIN_STABLE_TIME_BEFORE_RECONNECT', 30)  # seconds
+        max_unhealthy_checks = 3
+
+        # Add flags for the main loop to check
+        self.needs_reconnect = False
+        self.needs_stream_switch = False
+        self.last_health_action_time = 0
+        action_cooldown = 30  # Prevent rapid recovery attempts
 
         while self.running:
             try:
@@ -996,48 +1024,43 @@ class StreamManager:
                 timeout_threshold = getattr(Config, 'CONNECTION_TIMEOUT', 10)
 
                 if inactivity_duration > timeout_threshold and self.connected:
-                    # Mark unhealthy if no data for too long
                     if self.healthy:
                         logger.warning(f"Stream unhealthy - no data for {inactivity_duration:.1f}s")
                         self.healthy = False
 
-                    # Track consecutive unhealthy checks
                     consecutive_unhealthy_checks += 1
 
-                    # After several unhealthy checks in a row, try recovery
-                    if consecutive_unhealthy_checks >= 3 and health_recovery_attempts < max_health_recovery_attempts:
-                        # Calculate how long the stream was stable before failing
+                    # Only set flags if enough time has passed since last action
+                    if (consecutive_unhealthy_checks >= max_unhealthy_checks and
+                        now - self.last_health_action_time > action_cooldown):
+
+                        # Calculate stability to decide on action type
                         connection_start_time = getattr(self, 'connection_start_time', 0)
                         stable_time = self.last_data_time - connection_start_time if connection_start_time > 0 else 0
 
-                        if stable_time >= min_stable_time and reconnect_attempts < max_reconnect_attempts:
-                            # Stream was stable for a while, try reconnecting first
-                            logger.warning(f"Stream was stable for {stable_time:.1f}s before failing. "
-                                          f"Attempting reconnect {reconnect_attempts + 1}/{max_reconnect_attempts}")
-                            reconnect_attempts += 1
-                            threading.Thread(target=self._attempt_reconnect, daemon=True).start()
+                        if stable_time >= 30:  # Stream was stable, try reconnect first
+                            if not self.needs_reconnect:
+                                logger.info(f"Setting reconnect flag for stable stream (stable for {stable_time:.1f}s)")
+                                self.needs_reconnect = True
+                                self.last_health_action_time = now
                         else:
-                            # Stream was not stable long enough, or reconnects failed too many times
-                            # Try switching to another stream
-                            if reconnect_attempts > 0:
-                                logger.warning(f"Reconnect attempts exhausted ({reconnect_attempts}/{max_reconnect_attempts}). "
-                                             f"Attempting stream switch recovery")
-                            else:
-                                logger.warning(f"Stream was only stable for {stable_time:.1f}s (<{min_stable_time}s). "
-                                             f"Skipping reconnect, attempting stream switch")
+                            # Stream wasn't stable, suggest stream switch
+                            if not self.needs_stream_switch:
+                                logger.info(f"Setting stream switch flag for unstable stream (stable for {stable_time:.1f}s)")
+                                self.needs_stream_switch = True
+                                self.last_health_action_time = now
 
-                            health_recovery_attempts += 1
-                            reconnect_attempts = 0  # Reset for next time
-                            threading.Thread(target=self._attempt_health_recovery, daemon=True).start()
+                        consecutive_unhealthy_checks = 0 # Reset after setting flag
+
                 elif self.connected and not self.healthy:
                     # Auto-recover health when data resumes
                     logger.info(f"Stream health restored")
                     self.healthy = True
                     consecutive_unhealthy_checks = 0
-                    health_recovery_attempts = 0
-                    reconnect_attempts = 0
+                    # Clear recovery flags when healthy again
+                    self.needs_reconnect = False
+                    self.needs_stream_switch = False
 
-                # If healthy, reset unhealthy counter (but keep other state)
                 if self.healthy:
                     consecutive_unhealthy_checks = 0
 
@@ -1053,51 +1076,52 @@ class StreamManager:
 
             # Don't try to reconnect if we're already switching URLs
             if self.url_switching:
-                # Add timeout check to prevent permanent deadlock
-                if time.time() - self.url_switch_start_time > self.url_switch_timeout:
-                    logger.warning(f"URL switching has been in progress too long ({time.time() - self.url_switch_start_time:.1f}s), "
-                                 f"resetting switching state and allowing reconnect")
-                    self._reset_url_switching_state()
-                else:
-                    logger.info("URL switching already in progress, skipping reconnect")
-                    return False
+                logger.info("URL switching already in progress, skipping reconnect")
+                return False
 
-            # Close existing connection and wait for it to fully terminate
-            if self.transcode or self.socket:
-                logger.debug("Closing transcode process before reconnect")
-                self._close_socket()
-            else:
-                logger.debug("Closing HTTP connection before reconnect")
-                self._close_connection()
+            # Set a flag to prevent concurrent operations
+            if hasattr(self, 'reconnecting') and self.reconnecting:
+                logger.info("Reconnect already in progress, skipping")
+                return False
 
-            # Wait for all processes to fully close before attempting reconnect
-            if not self._wait_for_existing_processes_to_close():
-                logger.warning(f"Some processes may still be running during reconnect for channel {self.channel_id}")
+            self.reconnecting = True
 
-            self.connected = False
-
-            # Attempt to establish a new connection using the same URL
-            connection_result = False
             try:
+                # Close existing connection and wait for it to fully terminate
+                if self.transcode or self.socket:
+                    logger.debug("Closing transcode process before reconnect")
+                    self._close_socket()
+                else:
+                    logger.debug("Closing HTTP connection before reconnect")
+                    self._close_connection()
+
+                # Wait for all processes to fully close before attempting reconnect
+                if not self._wait_for_existing_processes_to_close():
+                    logger.warning(f"Some processes may still be running during reconnect for channel {self.channel_id}")
+
+                self.connected = False
+
+                # Attempt to establish a new connection using the same URL
+                connection_result = False
                 if self.transcode:
                     connection_result = self._establish_transcode_connection()
                 else:
                     connection_result = self._establish_http_connection()
 
                 if connection_result:
-                    # Store connection start time to measure stability
                     self.connection_start_time = time.time()
                     logger.info(f"Reconnect successful for channel {self.channel_id}")
                     return True
                 else:
                     logger.warning(f"Reconnect failed for channel {self.channel_id}")
                     return False
-            except Exception as e:
-                logger.error(f"Error during reconnect: {e}", exc_info=True)
-                return False
+
+            finally:
+                self.reconnecting = False
 
         except Exception as e:
             logger.error(f"Error in reconnect attempt: {e}", exc_info=True)
+            self.reconnecting = False
             return False
 
     def _attempt_health_recovery(self):
