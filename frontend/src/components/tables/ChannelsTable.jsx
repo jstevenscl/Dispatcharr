@@ -376,7 +376,7 @@ const ChannelsTable = ({ }) => {
 
   const editChannel = async (ch = null) => {
     // Use table's selected state instead of store state to avoid stale selections
-    const currentSelection = table ? table.getState().selectedTableIds : [];
+    const currentSelection = table ? table.selectedTableIds : [];
     console.log('editChannel called with:', { ch, currentSelection, tableExists: !!table });
 
     if (currentSelection.length > 1) {
@@ -633,18 +633,6 @@ const ChannelsTable = ({ }) => {
     );
     setPaginationString(`${startItem} to ${endItem} of ${totalCount}`);
   }, [pagination.pageIndex, pagination.pageSize, totalCount]);
-
-  // Clear selection when data changes (e.g., when navigating back to the page)
-  useEffect(() => {
-    setSelectedChannelIds([]);
-  }, [data, setSelectedChannelIds]);
-
-  // Clear selection when component unmounts
-  useEffect(() => {
-    return () => {
-      setSelectedChannelIds([]);
-    };
-  }, [setSelectedChannelIds]);
 
   const columns = useMemo(
     () => [
