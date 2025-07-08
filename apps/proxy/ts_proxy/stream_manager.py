@@ -1232,22 +1232,38 @@ class StreamManager:
         self._buffer_check_timers = []
 
     def fetch_chunk(self):
-        """Fetch data from socket with direct pass-through to buffer"""
+        """Fetch data from socket with timeout handling"""
         if not self.connected or not self.socket:
             return False
 
         try:
-            # Read data chunk - no need to align with TS packet size anymore
-            try:
-                # Try to read data chunk
-                if hasattr(self.socket, 'recv'):
-                    chunk = self.socket.recv(Config.CHUNK_SIZE)  # Standard socket
-                else:
-                    chunk = self.socket.read(Config.CHUNK_SIZE)  # SocketIO object
+            # Set timeout for chunk reads
+            chunk_timeout = ConfigHelper.get('CHUNK_TIMEOUT', 10)  # Default 10 seconds
 
-            except AttributeError:
-                # Fall back to read() if recv() isn't available
-                chunk = self.socket.read(Config.CHUNK_SIZE)
+            try:
+                # Handle different socket types with timeout
+                if hasattr(self.socket, 'recv'):
+                    # Standard socket - set timeout
+                    original_timeout = self.socket.gettimeout()
+                    self.socket.settimeout(chunk_timeout)
+                    chunk = self.socket.recv(Config.CHUNK_SIZE)
+                    self.socket.settimeout(original_timeout)  # Restore original timeout
+                else:
+                    # SocketIO object (transcode process stdout) - use select for timeout
+                    import select
+                    ready, _, _ = select.select([self.socket], [], [], chunk_timeout)
+
+                    if not ready:
+                        # Timeout occurred
+                        logger.warning(f"Chunk read timeout ({chunk_timeout}s) for channel {self.channel_id}")
+                        return False
+
+                    chunk = self.socket.read(Config.CHUNK_SIZE)
+
+            except socket.timeout:
+                # Socket timeout occurred
+                logger.warning(f"Socket timeout ({chunk_timeout}s) for channel {self.channel_id}")
+                return False
 
             if not chunk:
                 # Connection closed by server
@@ -1262,6 +1278,7 @@ class StreamManager:
 
             # Add directly to buffer without TS-specific processing
             success = self.buffer.add_chunk(chunk)
+
             # Update last data timestamp in Redis if successful
             if success and hasattr(self.buffer, 'redis_client') and self.buffer.redis_client:
                 last_data_key = RedisKeys.last_data(self.buffer.channel_id)

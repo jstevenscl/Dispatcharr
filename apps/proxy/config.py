@@ -57,6 +57,8 @@ class TSConfig(BaseConfig):
     INITIAL_BEHIND_CHUNKS = 4  # How many chunks behind to start a client (4 chunks = ~1MB)
     CHUNK_BATCH_SIZE = 5       # How many chunks to fetch in one batch
     KEEPALIVE_INTERVAL = 0.5   # Seconds between keepalive packets when at buffer head
+    # Chunk read timeout
+    CHUNK_TIMEOUT = 10        # Seconds to wait for each chunk read
 
     # Streaming settings
     TARGET_BITRATE = 8000000   # Target bitrate (8 Mbps)
@@ -79,6 +81,8 @@ class TSConfig(BaseConfig):
     MIN_STABLE_TIME_BEFORE_RECONNECT = 30  # Minimum seconds a stream must be stable to try reconnect
     FAILOVER_GRACE_PERIOD = 20           # Extra time (seconds) to allow for stream switching before disconnecting clients
     URL_SWITCH_TIMEOUT = 20   # Max time allowed for a stream switch operation
+
+
 
     # Database-dependent settings with fallbacks
     @classmethod
