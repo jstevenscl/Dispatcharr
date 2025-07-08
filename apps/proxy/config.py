@@ -58,7 +58,7 @@ class TSConfig(BaseConfig):
     CHUNK_BATCH_SIZE = 5       # How many chunks to fetch in one batch
     KEEPALIVE_INTERVAL = 0.5   # Seconds between keepalive packets when at buffer head
     # Chunk read timeout
-    CHUNK_TIMEOUT = 10        # Seconds to wait for each chunk read
+    CHUNK_TIMEOUT = 5        # Seconds to wait for each chunk read
 
     # Streaming settings
     TARGET_BITRATE = 8000000   # Target bitrate (8 Mbps)

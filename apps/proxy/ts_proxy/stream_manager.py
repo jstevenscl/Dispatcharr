@@ -236,7 +236,7 @@ class StreamManager:
                     gevent.sleep(0.1)  # REPLACE time.sleep(0.1)
                     continue
                 # Connection retry loop for current URL
-                while self.running and self.retry_count < self.max_retries and not url_failed:
+                while self.running and self.retry_count < self.max_retries and not url_failed and not self.needs_stream_switch:
 
                     logger.info(f"Connection attempt {self.retry_count + 1}/{self.max_retries} for URL: {self.url}")
 
@@ -260,6 +260,10 @@ class StreamManager:
                             # This indicates we had a stable connection for a while before failing
                             connection_duration = time.time() - connection_start_time
                             stable_connection_threshold = 30  # 30 seconds threshold
+
+                            if self.needs_stream_switch:
+                                logger.info(f"Stream needs to switch after {connection_duration:.1f} seconds")
+                                break  # Exit to switch streams
                             if connection_duration > stable_connection_threshold:
                                 logger.info(f"Stream was stable for {connection_duration:.1f} seconds, resetting switch attempts counter")
                                 stream_switch_attempts = 0
@@ -810,7 +814,7 @@ class StreamManager:
         try:
             if self.transcode:
                 # Handle transcoded stream data
-                while self.running and self.connected and not self.stop_requested:
+                while self.running and self.connected and not self.stop_requested and not self.needs_stream_switch:
                     if self.fetch_chunk():
                         self.last_data_time = time.time()
                     else:
@@ -823,7 +827,7 @@ class StreamManager:
                 try:
                     for chunk in self.current_response.iter_content(chunk_size=self.chunk_size):
                         # Check if we've been asked to stop
-                        if self.stop_requested or self.url_switching:
+                        if self.stop_requested or self.url_switching or self.needs_stream_switch:
                             break
 
                         if chunk:
