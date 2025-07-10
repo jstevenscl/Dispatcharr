@@ -467,18 +467,26 @@ def generate_epg(request, profile_name=None, user=None):
                                 for category in custom_data["categories"]:
                                     program_xml.append(f"    <category>{html.escape(category)}</category>")
 
-                            # Handle episode numbering - multiple formats supported
-                            # Standard episode number if available
-                            if "episode" in custom_data:
-                                program_xml.append(f'    <episode-num system="onscreen">E{custom_data["episode"]}</episode-num>')
+                            # Add keywords if available
+                            if "keywords" in custom_data and custom_data["keywords"]:
+                                for keyword in custom_data["keywords"]:
+                                    program_xml.append(f"    <keyword>{html.escape(keyword)}</keyword>")
 
-                            # Handle onscreen episode format (like S06E128)
+                            # Handle episode numbering - multiple formats supported
+                            # Prioritize onscreen_episode over standalone episode for onscreen system
                             if "onscreen_episode" in custom_data:
                                 program_xml.append(f'    <episode-num system="onscreen">{html.escape(custom_data["onscreen_episode"])}</episode-num>')
+                            elif "episode" in custom_data:
+                                program_xml.append(f'    <episode-num system="onscreen">E{custom_data["episode"]}</episode-num>')
 
                             # Handle dd_progid format
                             if 'dd_progid' in custom_data:
                                 program_xml.append(f'    <episode-num system="dd_progid">{html.escape(custom_data["dd_progid"])}</episode-num>')
+
+                            # Handle external database IDs
+                            for system in ['thetvdb.com', 'themoviedb.org', 'imdb.com']:
+                                if f'{system}_id' in custom_data:
+                                    program_xml.append(f'    <episode-num system="{system}">{html.escape(custom_data[f"{system}_id"])}</episode-num>')
 
                             # Add season and episode numbers in xmltv_ns format if available
                             if "season" in custom_data and "episode" in custom_data:
@@ -494,6 +502,46 @@ def generate_epg(request, profile_name=None, user=None):
                                 )
                                 program_xml.append(f'    <episode-num system="xmltv_ns">{season}.{episode}.</episode-num>')
 
+                            # Add language information
+                            if "language" in custom_data:
+                                program_xml.append(f'    <language>{html.escape(custom_data["language"])}</language>')
+
+                            if "original_language" in custom_data:
+                                program_xml.append(f'    <orig-language>{html.escape(custom_data["original_language"])}</orig-language>')
+
+                            # Add length information
+                            if "length" in custom_data and isinstance(custom_data["length"], dict):
+                                length_value = custom_data["length"].get("value", "")
+                                length_units = custom_data["length"].get("units", "minutes")
+                                program_xml.append(f'    <length units="{html.escape(length_units)}">{html.escape(str(length_value))}</length>')
+
+                            # Add video information
+                            if "video" in custom_data and isinstance(custom_data["video"], dict):
+                                program_xml.append("    <video>")
+                                for attr in ['present', 'colour', 'aspect', 'quality']:
+                                    if attr in custom_data["video"]:
+                                        program_xml.append(f"      <{attr}>{html.escape(custom_data['video'][attr])}</{attr}>")
+                                program_xml.append("    </video>")
+
+                            # Add audio information
+                            if "audio" in custom_data and isinstance(custom_data["audio"], dict):
+                                program_xml.append("    <audio>")
+                                for attr in ['present', 'stereo']:
+                                    if attr in custom_data["audio"]:
+                                        program_xml.append(f"      <{attr}>{html.escape(custom_data['audio'][attr])}</{attr}>")
+                                program_xml.append("    </audio>")
+
+                            # Add subtitles information
+                            if "subtitles" in custom_data and isinstance(custom_data["subtitles"], list):
+                                for subtitle in custom_data["subtitles"]:
+                                    if isinstance(subtitle, dict):
+                                        subtitle_type = subtitle.get("type", "")
+                                        type_attr = f' type="{html.escape(subtitle_type)}"' if subtitle_type else ""
+                                        program_xml.append(f"    <subtitles{type_attr}>")
+                                        if "language" in subtitle:
+                                            program_xml.append(f"      <language>{html.escape(subtitle['language'])}</language>")
+                                        program_xml.append("    </subtitles>")
+
                             # Add rating if available
                             if "rating" in custom_data:
                                 rating_system = custom_data.get("rating_system", "TV Parental Guidelines")
@@ -501,20 +549,74 @@ def generate_epg(request, profile_name=None, user=None):
                                 program_xml.append(f'      <value>{html.escape(custom_data["rating"])}</value>')
                                 program_xml.append(f"    </rating>")
 
-                            # Add actors/directors/writers if available
-                            if "credits" in custom_data:
-                                program_xml.append(f"    <credits>")
-                                for role, people in custom_data["credits"].items():
-                                    if isinstance(people, list):
-                                        for person in people:
-                                            program_xml.append(f"      <{role}>{html.escape(person)}</{role}>")
-                                    else:
-                                        program_xml.append(f"      <{role}>{html.escape(people)}</{role}>")
-                                program_xml.append(f"    </credits>")
+                            # Add star ratings
+                            if "star_ratings" in custom_data and isinstance(custom_data["star_ratings"], list):
+                                for star_rating in custom_data["star_ratings"]:
+                                    if isinstance(star_rating, dict) and "value" in star_rating:
+                                        system_attr = f' system="{html.escape(star_rating["system"])}"' if "system" in star_rating else ""
+                                        program_xml.append(f"    <star-rating{system_attr}>")
+                                        program_xml.append(f"      <value>{html.escape(star_rating['value'])}</value>")
+                                        program_xml.append("    </star-rating>")
 
-                            # Add program date/year if available
-                            if "year" in custom_data:
-                                program_xml.append(f'    <date>{html.escape(custom_data["year"])}</date>')
+                            # Add reviews
+                            if "reviews" in custom_data and isinstance(custom_data["reviews"], list):
+                                for review in custom_data["reviews"]:
+                                    if isinstance(review, dict) and "content" in review:
+                                        review_type = review.get("type", "text")
+                                        attrs = [f'type="{html.escape(review_type)}"']
+                                        if "source" in review:
+                                            attrs.append(f'source="{html.escape(review["source"])}"')
+                                        if "reviewer" in review:
+                                            attrs.append(f'reviewer="{html.escape(review["reviewer"])}"')
+                                        attr_str = " ".join(attrs)
+                                        program_xml.append(f'    <review {attr_str}>{html.escape(review["content"])}</review>')
+
+                            # Add images
+                            if "images" in custom_data and isinstance(custom_data["images"], list):
+                                for image in custom_data["images"]:
+                                    if isinstance(image, dict) and "url" in image:
+                                        attrs = []
+                                        for attr in ['type', 'size', 'orient', 'system']:
+                                            if attr in image:
+                                                attrs.append(f'{attr}="{html.escape(image[attr])}"')
+                                        attr_str = " " + " ".join(attrs) if attrs else ""
+                                        program_xml.append(f'    <image{attr_str}>{html.escape(image["url"])}</image>')
+
+                            # Add enhanced credits handling
+                            if "credits" in custom_data:
+                                program_xml.append("    <credits>")
+                                credits = custom_data["credits"]
+
+                                # Handle different credit types
+                                for role in ['director', 'writer', 'adapter', 'producer', 'composer', 'editor', 'presenter', 'commentator', 'guest']:
+                                    if role in credits:
+                                        people = credits[role]
+                                        if isinstance(people, list):
+                                            for person in people:
+                                                program_xml.append(f"      <{role}>{html.escape(person)}</{role}>")
+                                        else:
+                                            program_xml.append(f"      <{role}>{html.escape(people)}</{role}>")
+
+                                # Handle actors separately to include role and guest attributes
+                                if "actor" in credits:
+                                    actors = credits["actor"]
+                                    if isinstance(actors, list):
+                                        for actor in actors:
+                                            if isinstance(actor, dict):
+                                                name = actor.get("name", "")
+                                                role_attr = f' role="{html.escape(actor["role"])}"' if "role" in actor else ""
+                                                guest_attr = ' guest="yes"' if actor.get("guest") else ""
+                                                program_xml.append(f"      <actor{role_attr}{guest_attr}>{html.escape(name)}</actor>")
+                                            else:
+                                                program_xml.append(f"      <actor>{html.escape(actor)}</actor>")
+                                    else:
+                                        program_xml.append(f"      <actor>{html.escape(actors)}</actor>")
+
+                                program_xml.append("    </credits>")
+
+                            # Add program date if available (full date, not just year)
+                            if "date" in custom_data:
+                                program_xml.append(f'    <date>{html.escape(custom_data["date"])}</date>')
 
                             # Add country if available
                             if "country" in custom_data:
@@ -524,18 +626,36 @@ def generate_epg(request, profile_name=None, user=None):
                             if "icon" in custom_data:
                                 program_xml.append(f'    <icon src="{html.escape(custom_data["icon"])}" />')
 
-                            # Add special flags as proper tags
+                            # Add special flags as proper tags with enhanced handling
                             if custom_data.get("previously_shown", False):
-                                program_xml.append(f"    <previously-shown />")
+                                prev_shown_details = custom_data.get("previously_shown_details", {})
+                                attrs = []
+                                if "start" in prev_shown_details:
+                                    attrs.append(f'start="{html.escape(prev_shown_details["start"])}"')
+                                if "channel" in prev_shown_details:
+                                    attrs.append(f'channel="{html.escape(prev_shown_details["channel"])}"')
+                                attr_str = " " + " ".join(attrs) if attrs else ""
+                                program_xml.append(f"    <previously-shown{attr_str} />")
 
                             if custom_data.get("premiere", False):
-                                program_xml.append(f"    <premiere />")
+                                premiere_text = custom_data.get("premiere_text", "")
+                                if premiere_text:
+                                    program_xml.append(f"    <premiere>{html.escape(premiere_text)}</premiere>")
+                                else:
+                                    program_xml.append("    <premiere />")
+
+                            if custom_data.get("last_chance", False):
+                                last_chance_text = custom_data.get("last_chance_text", "")
+                                if last_chance_text:
+                                    program_xml.append(f"    <last-chance>{html.escape(last_chance_text)}</last-chance>")
+                                else:
+                                    program_xml.append("    <last-chance />")
 
                             if custom_data.get("new", False):
-                                program_xml.append(f"    <new />")
+                                program_xml.append("    <new />")
 
                             if custom_data.get('live', False):
-                                program_xml.append(f'    <live />')
+                                program_xml.append('    <live />')
 
                         except Exception as e:
                             program_xml.append(f"    <!-- Error parsing custom properties: {html.escape(str(e))} -->")

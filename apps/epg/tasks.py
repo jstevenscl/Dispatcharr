@@ -1612,6 +1612,11 @@ def extract_custom_properties(prog):
     if categories:
         custom_props['categories'] = categories
 
+    # Extract keywords (new)
+    keywords = [kw.text.strip() for kw in prog.findall('keyword') if kw.text and kw.text.strip()]
+    if keywords:
+        custom_props['keywords'] = keywords
+
     # Extract episode numbers
     for ep_num in prog.findall('episode-num'):
         system = ep_num.get('system', '')
@@ -1637,6 +1642,9 @@ def extract_custom_properties(prog):
         elif system == 'dd_progid' and ep_num.text:
             # Store the dd_progid format
             custom_props['dd_progid'] = ep_num.text.strip()
+        # Add support for other systems like thetvdb.com, themoviedb.org, imdb.com
+        elif system in ['thetvdb.com', 'themoviedb.org', 'imdb.com'] and ep_num.text:
+            custom_props[f'{system}_id'] = ep_num.text.strip()
 
     # Extract ratings more efficiently
     rating_elem = prog.find('rating')
@@ -1647,36 +1655,171 @@ def extract_custom_properties(prog):
             if rating_elem.get('system'):
                 custom_props['rating_system'] = rating_elem.get('system')
 
+    # Extract star ratings (new)
+    star_ratings = []
+    for star_rating in prog.findall('star-rating'):
+        value_elem = star_rating.find('value')
+        if value_elem is not None and value_elem.text:
+            rating_data = {'value': value_elem.text.strip()}
+            if star_rating.get('system'):
+                rating_data['system'] = star_rating.get('system')
+            star_ratings.append(rating_data)
+    if star_ratings:
+        custom_props['star_ratings'] = star_ratings
+
     # Extract credits more efficiently
     credits_elem = prog.find('credits')
     if credits_elem is not None:
         credits = {}
-        for credit_type in ['director', 'actor', 'writer', 'presenter', 'producer']:
-            names = [e.text.strip() for e in credits_elem.findall(credit_type) if e.text and e.text.strip()]
-            if names:
-                credits[credit_type] = names
+        for credit_type in ['director', 'actor', 'writer', 'adapter', 'producer', 'composer', 'editor', 'presenter', 'commentator', 'guest']:
+            if credit_type == 'actor':
+                # Handle actors with roles and guest status
+                actors = []
+                for actor_elem in credits_elem.findall('actor'):
+                    if actor_elem.text and actor_elem.text.strip():
+                        actor_data = {'name': actor_elem.text.strip()}
+                        if actor_elem.get('role'):
+                            actor_data['role'] = actor_elem.get('role')
+                        if actor_elem.get('guest') == 'yes':
+                            actor_data['guest'] = True
+                        actors.append(actor_data)
+                if actors:
+                    credits['actor'] = actors
+            else:
+                names = [e.text.strip() for e in credits_elem.findall(credit_type) if e.text and e.text.strip()]
+                if names:
+                    credits[credit_type] = names
         if credits:
             custom_props['credits'] = credits
 
     # Extract other common program metadata
     date_elem = prog.find('date')
     if date_elem is not None and date_elem.text:
-        custom_props['year'] = date_elem.text.strip()[:4]  # Just the year part
+        custom_props['date'] = date_elem.text.strip()
 
     country_elem = prog.find('country')
     if country_elem is not None and country_elem.text:
         custom_props['country'] = country_elem.text.strip()
 
+    # Extract language information (new)
+    language_elem = prog.find('language')
+    if language_elem is not None and language_elem.text:
+        custom_props['language'] = language_elem.text.strip()
+
+    orig_language_elem = prog.find('orig-language')
+    if orig_language_elem is not None and orig_language_elem.text:
+        custom_props['original_language'] = orig_language_elem.text.strip()
+
+    # Extract length (new)
+    length_elem = prog.find('length')
+    if length_elem is not None and length_elem.text:
+        try:
+            length_value = int(length_elem.text.strip())
+            length_units = length_elem.get('units', 'minutes')
+            custom_props['length'] = {'value': length_value, 'units': length_units}
+        except ValueError:
+            pass
+
+    # Extract video information (new)
+    video_elem = prog.find('video')
+    if video_elem is not None:
+        video_info = {}
+        for video_attr in ['present', 'colour', 'aspect', 'quality']:
+            attr_elem = video_elem.find(video_attr)
+            if attr_elem is not None and attr_elem.text:
+                video_info[video_attr] = attr_elem.text.strip()
+        if video_info:
+            custom_props['video'] = video_info
+
+    # Extract audio information (new)
+    audio_elem = prog.find('audio')
+    if audio_elem is not None:
+        audio_info = {}
+        for audio_attr in ['present', 'stereo']:
+            attr_elem = audio_elem.find(audio_attr)
+            if attr_elem is not None and attr_elem.text:
+                audio_info[audio_attr] = attr_elem.text.strip()
+        if audio_info:
+            custom_props['audio'] = audio_info
+
+    # Extract subtitles information (new)
+    subtitles = []
+    for subtitle_elem in prog.findall('subtitles'):
+        subtitle_data = {}
+        if subtitle_elem.get('type'):
+            subtitle_data['type'] = subtitle_elem.get('type')
+        lang_elem = subtitle_elem.find('language')
+        if lang_elem is not None and lang_elem.text:
+            subtitle_data['language'] = lang_elem.text.strip()
+        if subtitle_data:
+            subtitles.append(subtitle_data)
+
+    if subtitles:
+        custom_props['subtitles'] = subtitles
+
+    # Extract reviews (new)
+    reviews = []
+    for review_elem in prog.findall('review'):
+        if review_elem.text and review_elem.text.strip():
+            review_data = {'content': review_elem.text.strip()}
+            if review_elem.get('type'):
+                review_data['type'] = review_elem.get('type')
+            if review_elem.get('source'):
+                review_data['source'] = review_elem.get('source')
+            if review_elem.get('reviewer'):
+                review_data['reviewer'] = review_elem.get('reviewer')
+            reviews.append(review_data)
+    if reviews:
+        custom_props['reviews'] = reviews
+
+    # Extract images (new)
+    images = []
+    for image_elem in prog.findall('image'):
+        if image_elem.text and image_elem.text.strip():
+            image_data = {'url': image_elem.text.strip()}
+            for attr in ['type', 'size', 'orient', 'system']:
+                if image_elem.get(attr):
+                    image_data[attr] = image_elem.get(attr)
+            images.append(image_data)
+    if images:
+        custom_props['images'] = images
+
     icon_elem = prog.find('icon')
     if icon_elem is not None and icon_elem.get('src'):
         custom_props['icon'] = icon_elem.get('src')
 
-    # Simpler approach for boolean flags
-    for kw in ['previously-shown', 'premiere', 'new', 'live']:
+    # Simpler approach for boolean flags - expanded list
+    for kw in ['previously-shown', 'premiere', 'new', 'live', 'last-chance']:
         if prog.find(kw) is not None:
             custom_props[kw.replace('-', '_')] = True
 
+    # Extract premiere and last-chance text content if available
+    premiere_elem = prog.find('premiere')
+    if premiere_elem is not None:
+        custom_props['premiere'] = True
+        if premiere_elem.text and premiere_elem.text.strip():
+            custom_props['premiere_text'] = premiere_elem.text.strip()
+
+    last_chance_elem = prog.find('last-chance')
+    if last_chance_elem is not None:
+        custom_props['last_chance'] = True
+        if last_chance_elem.text and last_chance_elem.text.strip():
+            custom_props['last_chance_text'] = last_chance_elem.text.strip()
+
+    # Extract previously-shown details
+    prev_shown_elem = prog.find('previously-shown')
+    if prev_shown_elem is not None:
+        custom_props['previously_shown'] = True
+        prev_shown_data = {}
+        if prev_shown_elem.get('start'):
+            prev_shown_data['start'] = prev_shown_elem.get('start')
+        if prev_shown_elem.get('channel'):
+            prev_shown_data['channel'] = prev_shown_elem.get('channel')
+        if prev_shown_data:
+            custom_props['previously_shown_details'] = prev_shown_data
+
     return custom_props
+
 
 def clear_element(elem):
     """Clear an XML element and its parent to free memory."""
