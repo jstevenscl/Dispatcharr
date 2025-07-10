@@ -62,12 +62,25 @@ class Client:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
+            # Check for common blocking responses before trying to parse JSON
+            response_text = response.text.strip()
+            if response_text.lower() in ['blocked', 'forbidden', 'access denied', 'unauthorized']:
+                error_msg = f"XC API request blocked by server from {url}. Response: {response_text}"
+                logger.error(error_msg)
+                logger.error(f"This may indicate IP blocking, User-Agent filtering, or rate limiting")
+                raise ValueError(error_msg)
+
             try:
                 data = response.json()
             except requests.exceptions.JSONDecodeError as json_err:
                 error_msg = f"XC API returned invalid JSON from {url}. Response: {response.text[:1000]}"
                 logger.error(error_msg)
                 logger.error(f"JSON decode error: {str(json_err)}")
+
+                # Check if it looks like an HTML error page
+                if response_text.startswith('<'):
+                    logger.error("Response appears to be HTML - server may be returning an error page")
+
                 raise ValueError(error_msg)
 
             # Check for XC-specific error responses
