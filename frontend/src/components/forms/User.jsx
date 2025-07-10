@@ -1,30 +1,20 @@
 // Modal.js
 import React, { useState, useEffect } from 'react';
 import API from '../../api';
-import useEPGsStore from '../../store/epgs';
 import {
-  LoadingOverlay,
   TextInput,
   Button,
-  Checkbox,
   Modal,
   Flex,
-  NativeSelect,
-  NumberInput,
-  Space,
   Select,
   PasswordInput,
-  Box,
   Group,
   Stack,
   MultiSelect,
-  Switch,
-  Text,
-  Center,
   ActionIcon,
 } from '@mantine/core';
 import { RotateCcwKey, X } from 'lucide-react';
-import { isNotEmpty, useForm } from '@mantine/form';
+import { useForm } from '@mantine/form';
 import useChannelsStore from '../../store/channels';
 import { USER_LEVELS, USER_LEVEL_LABELS } from '../../constants';
 import useAuthStore from '../../store/auth';
@@ -34,13 +24,15 @@ const User = ({ user = null, isOpen, onClose }) => {
   const authUser = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
 
-  const [enableXC, setEnableXC] = useState(false);
+  const [, setEnableXC] = useState(false);
   const [selectedProfiles, setSelectedProfiles] = useState(new Set());
 
   const form = useForm({
     mode: 'uncontrolled',
     initialValues: {
       username: '',
+      first_name: '',
+      last_name: '',
       email: '',
       user_level: '0',
       password: '',
@@ -52,7 +44,7 @@ const User = ({ user = null, isOpen, onClose }) => {
       username: !values.username
         ? 'Username is required'
         : values.user_level == USER_LEVELS.STREAMER &&
-            !values.username.match(/^[a-z0-9]+$/i)
+          !values.username.match(/^[a-z0-9]+$/i)
           ? 'Streamer username must be alphanumeric'
           : null,
       password:
@@ -82,13 +74,12 @@ const User = ({ user = null, isOpen, onClose }) => {
   const onSubmit = async () => {
     const values = form.getValues();
 
-    const { xc_password, ...customProps } = JSON.parse(
+    const { ...customProps } = JSON.parse(
       user?.custom_properties || '{}'
     );
 
-    if (values.xc_password) {
-      customProps.xc_password = values.xc_password;
-    }
+    // Always save xc_password, even if it's empty (to allow clearing)
+    customProps.xc_password = values.xc_password || '';
     delete values.xc_password;
 
     values.custom_properties = JSON.stringify(customProps);
@@ -127,6 +118,8 @@ const User = ({ user = null, isOpen, onClose }) => {
 
       form.setValues({
         username: user.username,
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
         email: user.email,
         user_level: `${user.user_level}`,
         channel_profiles:
@@ -170,6 +163,14 @@ const User = ({ user = null, isOpen, onClose }) => {
               key={form.key('username')}
             />
 
+            <TextInput
+              id="first_name"
+              name="first_name"
+              label="First Name"
+              {...form.getInputProps('first_name')}
+              key={form.key('first_name')}
+            />
+
             <PasswordInput
               label="Password"
               description="Used for UI authentication"
@@ -181,7 +182,7 @@ const User = ({ user = null, isOpen, onClose }) => {
             {showPermissions && (
               <Select
                 label="User Level"
-                data={Object.entries(USER_LEVELS).map(([label, value]) => {
+                data={Object.entries(USER_LEVELS).map(([, value]) => {
                   return {
                     label: USER_LEVEL_LABELS[value],
                     value: `${value}`,
@@ -200,6 +201,14 @@ const User = ({ user = null, isOpen, onClose }) => {
               label="E-Mail"
               {...form.getInputProps('email')}
               key={form.key('email')}
+            />
+
+            <TextInput
+              id="last_name"
+              name="last_name"
+              label="Last Name"
+              {...form.getInputProps('last_name')}
+              key={form.key('last_name')}
             />
 
             <Group align="flex-end">

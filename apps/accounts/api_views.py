@@ -22,7 +22,22 @@ class TokenObtainPairView(TokenObtainPairView):
         if not network_access_allowed(request, "UI"):
             return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-        return super().post(request, *args, **kwargs)
+        # Get the response from the parent class first
+        response = super().post(request, *args, **kwargs)
+
+        # If login was successful, update last_login
+        if response.status_code == 200:
+            username = request.data.get("username")
+            if username:
+                from django.utils import timezone
+                try:
+                    user = User.objects.get(username=username)
+                    user.last_login = timezone.now()
+                    user.save(update_fields=['last_login'])
+                except User.DoesNotExist:
+                    pass  # User doesn't exist, but login somehow succeeded
+
+        return response
 
 
 class TokenRefreshView(TokenRefreshView):
@@ -87,6 +102,11 @@ class AuthViewSet(viewsets.ViewSet):
 
         if user:
             login(request, user)
+            # Update last_login timestamp
+            from django.utils import timezone
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login'])
+
             return Response(
                 {
                     "message": "Login successful",
