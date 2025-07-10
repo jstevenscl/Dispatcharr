@@ -56,8 +56,19 @@ class Client:
             response = requests.get(url, params=params, headers=self.headers, timeout=30)
             response.raise_for_status()
 
-            data = response.json()
-            logger.debug(f"XC API Response: {url} status code: {response.status_code}")
+            # Check if response is empty
+            if not response.content:
+                error_msg = f"XC API returned empty response from {url}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            try:
+                data = response.json()
+            except requests.exceptions.JSONDecodeError as json_err:
+                error_msg = f"XC API returned invalid JSON from {url}. Response: {response.text[:1000]}"
+                logger.error(error_msg)
+                logger.error(f"JSON decode error: {str(json_err)}")
+                raise ValueError(error_msg)
 
             # Check for XC-specific error responses
             if isinstance(data, dict) and data.get('user_info') is None and 'error' in data:
