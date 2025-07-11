@@ -164,12 +164,12 @@ const SettingsPage = () => {
     const values = form.getValues();
     const changedSettings = {};
     let m3uHashKeyChanged = false;
-    
+
     for (const settingKey in values) {
       // If the user changed the setting's value from what's in the DB:
       if (String(values[settingKey]) !== String(settings[settingKey].value)) {
         changedSettings[settingKey] = `${values[settingKey]}`;
-        
+
         // Check if M3U hash key was changed
         if (settingKey === 'm3u-hash-key') {
           m3uHashKeyChanged = true;
@@ -292,11 +292,11 @@ const SettingsPage = () => {
 
   const executeSettingsSaveAndRehash = async () => {
     setRehashConfirmOpen(false);
-    
+
     // First save the settings
     const values = form.getValues();
     const changedSettings = {};
-    
+
     for (const settingKey in values) {
       if (String(values[settingKey]) !== String(settings[settingKey].value)) {
         changedSettings[settingKey] = `${values[settingKey]}`;
@@ -310,9 +310,6 @@ const SettingsPage = () => {
         value: changedSettings[updatedKey],
       });
     }
-
-    // Then execute the rehash
-    await executeRehashStreams();
   };
 
   return (
