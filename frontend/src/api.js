@@ -1463,4 +1463,16 @@ export default class API {
       errorNotification('Failed to delete user', e);
     }
   }
+
+  static async rehashStreams() {
+    try {
+      const response = await request(`${host}/api/core/rehash-streams/`, {
+        method: 'POST',
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to trigger stream rehash', e);
+    }
+  }
 }

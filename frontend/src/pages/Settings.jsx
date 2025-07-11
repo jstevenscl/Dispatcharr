@@ -250,9 +250,9 @@ const SettingsPage = () => {
   const onRehashStreams = async () => {
     setRehashingStreams(true);
     setRehashSuccess(false);
-    
+
     try {
-      await API.post('/core/rehash-streams/');
+      await API.rehashStreams();
       setRehashSuccess(true);
       setTimeout(() => setRehashSuccess(false), 5000); // Clear success message after 5 seconds
     } catch (error) {
