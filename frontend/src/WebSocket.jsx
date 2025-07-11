@@ -372,6 +372,43 @@ export const WebsocketProvider = ({ children }) => {
               }
               break;
 
+            case 'stream_rehash':
+              // Handle stream rehash progress updates
+              if (parsedEvent.data.action === 'starting') {
+                notifications.show({
+                  id: 'stream-rehash-progress', // Persistent ID
+                  title: 'Stream Rehash Started',
+                  message: parsedEvent.data.message,
+                  color: 'blue.5',
+                  autoClose: false, // Don't auto-close
+                  withCloseButton: false, // No close button during processing
+                  loading: true, // Show loading indicator
+                });
+              } else if (parsedEvent.data.action === 'processing') {
+                // Update the existing notification
+                notifications.update({
+                  id: 'stream-rehash-progress',
+                  title: 'Stream Rehash in Progress',
+                  message: `${parsedEvent.data.progress}% complete - ${parsedEvent.data.processed} streams processed, ${parsedEvent.data.duplicates_merged} duplicates merged`,
+                  color: 'blue.5',
+                  autoClose: false,
+                  withCloseButton: false,
+                  loading: true,
+                });
+              } else if (parsedEvent.data.action === 'completed') {
+                // Update to completion state
+                notifications.update({
+                  id: 'stream-rehash-progress',
+                  title: 'Stream Rehash Complete',
+                  message: `Processed ${parsedEvent.data.total_processed} streams, merged ${parsedEvent.data.duplicates_merged} duplicates. Final count: ${parsedEvent.data.final_count}`,
+                  color: 'green.5',
+                  autoClose: 8000, // Auto-close after completion
+                  withCloseButton: true, // Allow manual close
+                  loading: false, // Remove loading indicator
+                });
+              }
+              break;
+
             default:
               console.error(
                 `Unknown websocket event type: ${parsedEvent.data?.type}`

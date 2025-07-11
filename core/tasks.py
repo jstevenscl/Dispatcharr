@@ -326,6 +326,20 @@ def rehash_streams(keys):
     total_records = queryset.count()
     logger.info(f"Starting rehash of {total_records} streams with keys: {keys}")
 
+    # Send initial WebSocket update
+    send_websocket_update(
+        'updates',
+        'update',
+        {
+            "success": True,
+            "type": "stream_rehash",
+            "action": "starting",
+            "progress": 0,
+            "total_records": total_records,
+            "message": f"Starting rehash of {total_records} streams"
+        }
+    )
+
     for start in range(0, total_records, batch_size):
         batch_processed = 0
         batch_duplicates = 0
@@ -398,11 +412,50 @@ def rehash_streams(keys):
         total_processed += batch_processed
         duplicates_merged += batch_duplicates
 
-        logger.info(f"Rehashed batch {start//batch_size + 1}/{(total_records//batch_size) + 1}: "
+        # Calculate progress percentage
+        progress_percent = int((total_processed / total_records) * 100)
+        current_batch = start // batch_size + 1
+        total_batches = (total_records // batch_size) + 1
+
+        # Send progress update via WebSocket
+        send_websocket_update(
+            'updates',
+            'update',
+            {
+                "success": True,
+                "type": "stream_rehash",
+                "action": "processing",
+                "progress": progress_percent,
+                "batch": current_batch,
+                "total_batches": total_batches,
+                "processed": total_processed,
+                "duplicates_merged": duplicates_merged,
+                "message": f"Processed batch {current_batch}/{total_batches}: {batch_processed} streams, {batch_duplicates} duplicates merged"
+            }
+        )
+
+        logger.info(f"Rehashed batch {current_batch}/{total_batches}: "
                    f"{batch_processed} processed, {batch_duplicates} duplicates merged")
 
     logger.info(f"Rehashing complete: {total_processed} streams processed, "
                f"{duplicates_merged} duplicates merged")
+
+    # Send completion update via WebSocket
+    send_websocket_update(
+        'updates',
+        'update',
+        {
+            "success": True,
+            "type": "stream_rehash",
+            "action": "completed",
+            "progress": 100,
+            "total_processed": total_processed,
+            "duplicates_merged": duplicates_merged,
+            "final_count": total_processed - duplicates_merged,
+            "message": f"Rehashing complete: {total_processed} streams processed, {duplicates_merged} duplicates merged"
+        },
+        collect_garbage=True  # Force garbage collection after completion
+    )
 
     return {
         'total_processed': total_processed,
