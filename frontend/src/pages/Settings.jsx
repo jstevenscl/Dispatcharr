@@ -54,6 +54,9 @@ const SettingsPage = () => {
   const [rehashSuccess, setRehashSuccess] = useState(false);
   const [rehashConfirmOpen, setRehashConfirmOpen] = useState(false);
 
+  // Add a new state to track the dialog type
+  const [rehashDialogType, setRehashDialogType] = useState(null); // 'save' or 'rehash'
+
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
 
@@ -179,6 +182,7 @@ const SettingsPage = () => {
 
     // If M3U hash key changed, show warning (unless suppressed)
     if (m3uHashKeyChanged && !isWarningSuppressed('rehash-streams')) {
+      setRehashDialogType('save'); // Set dialog type to save
       setRehashConfirmOpen(true);
       return;
     }
@@ -264,32 +268,6 @@ const SettingsPage = () => {
     }
   };
 
-  const onRehashStreams = async () => {
-    // Skip warning if it's been suppressed
-    if (isWarningSuppressed('rehash-streams')) {
-      return executeRehashStreams();
-    }
-
-    setRehashConfirmOpen(true);
-  };
-
-  const executeRehashStreams = async () => {
-    setRehashingStreams(true);
-    setRehashSuccess(false);
-    setRehashConfirmOpen(false);
-
-    try {
-      await API.rehashStreams();
-      setRehashSuccess(true);
-      setTimeout(() => setRehashSuccess(false), 5000); // Clear success message after 5 seconds
-    } catch (error) {
-      console.error('Error rehashing streams:', error);
-      // You might want to add error state handling here
-    } finally {
-      setRehashingStreams(false);
-    }
-  };
-
   const executeSettingsSaveAndRehash = async () => {
     setRehashConfirmOpen(false);
 
@@ -309,6 +287,41 @@ const SettingsPage = () => {
         ...settings[updatedKey],
         value: changedSettings[updatedKey],
       });
+    }
+  };
+
+  const executeRehashStreamsOnly = async () => {
+    setRehashingStreams(true);
+    setRehashSuccess(false);
+    setRehashConfirmOpen(false);
+
+    try {
+      await API.rehashStreams();
+      setRehashSuccess(true);
+      setTimeout(() => setRehashSuccess(false), 5000);
+    } catch (error) {
+      console.error('Error rehashing streams:', error);
+    } finally {
+      setRehashingStreams(false);
+    }
+  };
+
+  const onRehashStreams = async () => {
+    // Skip warning if it's been suppressed
+    if (isWarningSuppressed('rehash-streams')) {
+      return executeRehashStreamsOnly();
+    }
+
+    setRehashDialogType('rehash'); // Set dialog type to rehash
+    setRehashConfirmOpen(true);
+  };
+
+  // Create a function to handle the confirmation based on dialog type
+  const handleRehashConfirm = () => {
+    if (rehashDialogType === 'save') {
+      executeSettingsSaveAndRehash();
+    } else {
+      executeRehashStreamsOnly();
     }
   };
 
@@ -673,9 +686,12 @@ const SettingsPage = () => {
 
       <ConfirmationDialog
         opened={rehashConfirmOpen}
-        onClose={() => setRehashConfirmOpen(false)}
-        onConfirm={executeSettingsSaveAndRehash}
-        title="Confirm Stream Rehash"
+        onClose={() => {
+          setRehashConfirmOpen(false);
+          setRehashDialogType(null);
+        }}
+        onConfirm={handleRehashConfirm}
+        title={rehashDialogType === 'save' ? 'Save Settings and Rehash Streams' : 'Confirm Stream Rehash'}
         message={
           <div style={{ whiteSpace: 'pre-line' }}>
             {`Are you sure you want to rehash all streams?
@@ -687,7 +703,7 @@ M3U refreshes will be blocked until this process finishes.
 Please ensure you have time to let this complete before proceeding.`}
           </div>
         }
-        confirmLabel="Save & Start Rehash"
+        confirmLabel={rehashDialogType === 'save' ? 'Save and Rehash' : 'Start Rehash'}
         cancelLabel="Cancel"
         actionKey="rehash-streams"
         onSuppressChange={suppressWarning}
