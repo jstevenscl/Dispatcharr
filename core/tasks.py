@@ -311,7 +311,7 @@ def fetch_channel_stats():
         return
 
 @shared_task
-def rehash_streams():
+def rehash_streams(keys):
     """
     Regenerate stream hashes for all streams based on current hash key configuration.
     This task checks for and blocks M3U refresh tasks to prevent conflicts.
@@ -327,7 +327,7 @@ def rehash_streams():
     # Check if any M3U refresh tasks are currently running
     blocked_accounts = []
     for account_id in m3u_account_ids:
-        if not acquire_task_lock('refresh_single_m3u_account', account_id, timeout=0):
+        if not acquire_task_lock('refresh_single_m3u_account', account_id):
             blocked_accounts.append(account_id)
 
     if blocked_accounts:
@@ -337,6 +337,21 @@ def rehash_streams():
                 release_task_lock('refresh_single_m3u_account', account_id)
 
         logger.warning(f"Rehash blocked: M3U refresh tasks running for accounts: {blocked_accounts}")
+
+        # Send WebSocket notification to inform user
+        send_websocket_update(
+            'updates',
+            'update',
+            {
+                "success": False,
+                "type": "stream_rehash",
+                "action": "blocked",
+                "blocked_accounts": len(blocked_accounts),
+                "total_accounts": len(m3u_account_ids),
+                "message": f"Stream rehash blocked: M3U refresh tasks are currently running for {len(blocked_accounts)} accounts. Please try again later."
+            }
+        )
+
         return f"Rehash blocked: M3U refresh tasks running for {len(blocked_accounts)} accounts"
 
     acquired_locks = m3u_account_ids.copy()
@@ -351,7 +366,7 @@ def rehash_streams():
         hash_keys = {}
 
         total_records = queryset.count()
-        logger.info(f"Starting rehash of {total_records} streams")
+        logger.info(f"Starting rehash of {total_records} streams with keys: {keys}")
 
         # Send initial WebSocket update
         send_websocket_update(

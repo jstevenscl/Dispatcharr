@@ -406,6 +406,14 @@ export const WebsocketProvider = ({ children }) => {
                   withCloseButton: true, // Allow manual close
                   loading: false, // Remove loading indicator
                 });
+              } else if (parsedEvent.data.action === 'blocked') {
+                // Handle blocked rehash attempt
+                notifications.show({
+                  title: 'Stream Rehash Blocked',
+                  message: parsedEvent.data.message,
+                  color: 'orange.5',
+                  autoClose: 8000,
+                });
               }
               break;
 
