@@ -47,6 +47,8 @@ const SettingsPage = () => {
     useState([]);
 
   const [proxySettingsSaved, setProxySettingsSaved] = useState(false);
+  const [rehashingStreams, setRehashingStreams] = useState(false);
+  const [rehashSuccess, setRehashSuccess] = useState(false);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -245,6 +247,22 @@ const SettingsPage = () => {
     }
   };
 
+  const onRehashStreams = async () => {
+    setRehashingStreams(true);
+    setRehashSuccess(false);
+    
+    try {
+      await API.post('/core/rehash-streams/');
+      setRehashSuccess(true);
+      setTimeout(() => setRehashSuccess(false), 5000); // Clear success message after 5 seconds
+    } catch (error) {
+      console.error('Error rehashing streams:', error);
+      // You might want to add error state handling here
+    } finally {
+      setRehashingStreams(false);
+    }
+  };
+
   return (
     <Center
       style={{
@@ -395,12 +413,28 @@ const SettingsPage = () => {
                       key={form.key('m3u-hash-key')}
                     />
 
+                    {rehashSuccess && (
+                      <Alert
+                        variant="light"
+                        color="green"
+                        title="Rehash task queued successfully"
+                      />
+                    )}
+
                     <Flex
                       mih={50}
                       gap="xs"
-                      justify="flex-end"
+                      justify="space-between"
                       align="flex-end"
                     >
+                      <Button
+                        onClick={onRehashStreams}
+                        loading={rehashingStreams}
+                        variant="outline"
+                        color="blue"
+                      >
+                        Rehash Streams
+                      </Button>
                       <Button
                         type="submit"
                         disabled={form.submitting}
