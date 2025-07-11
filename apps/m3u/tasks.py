@@ -1162,11 +1162,7 @@ def send_m3u_update(account_id, action, progress, **kwargs):
 
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)
-
-    # Use the standardized function with memory management
-    # Enable garbage collection for certain operations
-    collect_garbage = action == "parsing" and progress % 25 == 0
-    send_websocket_update('updates', 'update', data, collect_garbage=collect_garbage)
+    send_websocket_update('updates', 'update', data, collect_garbage=False)
 
     # Explicitly clear data reference to help garbage collection
     data = None
