@@ -277,6 +277,22 @@ export default class API {
     }
   }
 
+  static async deleteChannelGroup(id) {
+    try {
+      await request(`${host}/api/channels/groups/${id}/`, {
+        method: 'DELETE',
+      });
+
+      // Remove from store after successful deletion
+      useChannelsStore.getState().removeChannelGroup(id);
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete channel group', e);
+      throw e;
+    }
+  }
+
   static async addChannel(channel) {
     try {
       let body = null;

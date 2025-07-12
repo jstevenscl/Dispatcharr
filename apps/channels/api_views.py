@@ -187,6 +187,26 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         except KeyError:
             return [Authenticated()]
 
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to check for associations before deletion"""
+        instance = self.get_object()
+        
+        # Check if group has associated channels
+        if instance.channels.exists():
+            return Response(
+                {"error": "Cannot delete group with associated channels"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if group has M3U account associations
+        if hasattr(instance, 'm3u_account') and instance.m3u_account.exists():
+            return Response(
+                {"error": "Cannot delete group with M3U account associations"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().destroy(request, *args, **kwargs)
+
 
 # ─────────────────────────────────────────────────────────
 # 3) Channel Management (CRUD)

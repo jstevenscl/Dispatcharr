@@ -25,6 +25,7 @@ import {
   SquareMinus,
   SquarePen,
   SquarePlus,
+  Settings,
 } from 'lucide-react';
 import API from '../../../api';
 import { notifications } from '@mantine/notifications';
@@ -32,6 +33,7 @@ import useChannelsStore from '../../../store/channels';
 import useAuthStore from '../../../store/auth';
 import { USER_LEVELS } from '../../../constants';
 import AssignChannelNumbersForm from '../../forms/AssignChannelNumbers';
+import GroupManager from '../../forms/GroupManager';
 import ConfirmationDialog from '../../ConfirmationDialog';
 import useWarningsStore from '../../../store/warnings';
 
@@ -105,6 +107,7 @@ const ChannelTableHeader = ({
 
   const [channelNumAssignmentStart, setChannelNumAssignmentStart] = useState(1);
   const [assignNumbersModalOpen, setAssignNumbersModalOpen] = useState(false);
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
   const [confirmDeleteProfileOpen, setConfirmDeleteProfileOpen] = useState(false);
   const [profileToDelete, setProfileToDelete] = useState(null);
 
@@ -301,6 +304,15 @@ const ChannelTableHeader = ({
                   <Text size="xs">Auto-Match</Text>
                 </UnstyledButton>
               </Menu.Item>
+
+              <Menu.Item
+                leftSection={<Settings size={18} />}
+                disabled={authUser.user_level != USER_LEVELS.ADMIN}
+              >
+                <UnstyledButton size="xs" onClick={() => setGroupManagerOpen(true)}>
+                  <Text size="xs">Edit Groups</Text>
+                </UnstyledButton>
+              </Menu.Item>
             </Menu.Dropdown>
           </Menu>
         </Flex>
@@ -310,6 +322,11 @@ const ChannelTableHeader = ({
         channelIds={selectedTableIds}
         isOpen={assignNumbersModalOpen}
         onClose={closeAssignChannelNumbersModal}
+      />
+
+      <GroupManager
+        isOpen={groupManagerOpen}
+        onClose={() => setGroupManagerOpen(false)}
       />
 
       <ConfirmationDialog

@@ -204,9 +204,17 @@ const useChannelsStore = create((set, get) => ({
 
   updateChannelGroup: (channelGroup) =>
     set((state) => ({
-      ...state.channelGroups,
-      [channelGroup.id]: channelGroup,
+      channelGroups: {
+        ...state.channelGroups,
+        [channelGroup.id]: channelGroup,
+      },
     })),
+
+  removeChannelGroup: (groupId) =>
+    set((state) => {
+      const { [groupId]: removed, ...remainingGroups } = state.channelGroups;
+      return { channelGroups: remainingGroups };
+    }),
 
   fetchLogos: async () => {
     set({ isLoading: true, error: null });
