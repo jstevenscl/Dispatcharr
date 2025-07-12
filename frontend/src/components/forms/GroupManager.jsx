@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Modal,
     Stack,
@@ -27,7 +27,114 @@ import { notifications } from '@mantine/notifications';
 import useChannelsStore from '../../store/channels';
 import API from '../../api';
 
-const GroupManager = ({ isOpen, onClose }) => {
+// Move GroupItem outside to prevent recreation on every render
+const GroupItem = React.memo(({
+    group,
+    editingGroup,
+    editName,
+    onEditNameChange,
+    onSaveEdit,
+    onCancelEdit,
+    onEdit,
+    onDelete,
+    groupUsage
+}) => {
+    const getGroupBadges = (group) => {
+        const usage = groupUsage[group.id];
+        const badges = [];
+
+        if (usage?.hasChannels) {
+            badges.push(
+                <Badge key="channels" size="xs" color="blue" leftSection={<Tv size={10} />}>
+                    Channels
+                </Badge>
+            );
+        }
+
+        if (usage?.hasM3UAccounts) {
+            badges.push(
+                <Badge key="m3u" size="xs" color="purple" leftSection={<Database size={10} />}>
+                    M3U
+                </Badge>
+            );
+        }
+
+        return badges;
+    };
+
+    const canEditGroup = (group) => {
+        const usage = groupUsage[group.id];
+        return usage?.canEdit !== false;
+    };
+
+    const canDeleteGroup = (group) => {
+        const usage = groupUsage[group.id];
+        return usage?.canDelete !== false && !usage?.hasChannels && !usage?.hasM3UAccounts;
+    };
+
+    return (
+        <Group justify="space-between" p="sm" style={{
+            border: '1px solid #e0e0e0',
+            borderRadius: '4px',
+            backgroundColor: editingGroup === group.id ? '#f8f9fa' : 'transparent'
+        }}>
+            <Stack gap={4} style={{ flex: 1 }}>
+                {editingGroup === group.id ? (
+                    <TextInput
+                        value={editName}
+                        onChange={onEditNameChange}
+                        size="sm"
+                        onKeyPress={(e) => e.key === 'Enter' && onSaveEdit()}
+                        autoFocus
+                    />
+                ) : (
+                    <>
+                        <Text size="sm" fw={500}>{group.name}</Text>
+                        <Group gap={4}>
+                            {getGroupBadges(group)}
+                        </Group>
+                    </>
+                )}
+            </Stack>
+
+            <Group gap="xs">
+                {editingGroup === group.id ? (
+                    <>
+                        <ActionIcon color="green" size="sm" onClick={onSaveEdit}>
+                            <Check size={14} />
+                        </ActionIcon>
+                        <ActionIcon color="gray" size="sm" onClick={onCancelEdit}>
+                            <X size={14} />
+                        </ActionIcon>
+                    </>
+                ) : (
+                    <>
+                        <ActionIcon
+                            color="blue"
+                            size="sm"
+                            onClick={() => onEdit(group)}
+                            disabled={!canEditGroup(group)}
+                        >
+                            <SquarePen size={14} />
+                        </ActionIcon>
+                        <ActionIcon
+                            color="red"
+                            size="sm"
+                            onClick={() => onDelete(group)}
+                            disabled={!canDeleteGroup(group)}
+                        >
+                            <Trash2 size={14} />
+                        </ActionIcon>
+                    </>
+                )}
+            </Group>
+        </Group>
+    );
+});
+
+const GroupManager = React.memo(({ isOpen, onClose }) => {
+    // Use a more specific selector to avoid unnecessary re-renders
+    const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
     const channelGroups = useChannelsStore((s) => s.channelGroups);
     const [editingGroup, setEditingGroup] = useState(null);
     const [editName, setEditName] = useState('');
@@ -35,6 +142,18 @@ const GroupManager = ({ isOpen, onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [groupUsage, setGroupUsage] = useState({});
     const [loading, setLoading] = useState(false);
+
+    // Memoize the channel groups array to prevent unnecessary re-renders
+    const channelGroupsArray = useMemo(() =>
+        Object.values(channelGroups),
+        [channelGroups]
+    );
+
+    // Memoize sorted groups to prevent re-sorting on every render
+    const sortedGroups = useMemo(() =>
+        channelGroupsArray.sort((a, b) => a.name.localeCompare(b.name)),
+        [channelGroupsArray]
+    );
 
     // Fetch group usage information when modal opens
     useEffect(() => {
@@ -69,12 +188,12 @@ const GroupManager = ({ isOpen, onClose }) => {
         }
     };
 
-    const handleEdit = (group) => {
+    const handleEdit = useCallback((group) => {
         setEditingGroup(group.id);
         setEditName(group.name);
-    };
+    }, []);
 
-    const handleSaveEdit = async () => {
+    const handleSaveEdit = useCallback(async () => {
         if (!editName.trim()) {
             notifications.show({
                 title: 'Error',
@@ -105,14 +224,14 @@ const GroupManager = ({ isOpen, onClose }) => {
                 color: 'red',
             });
         }
-    };
+    }, [editName, editingGroup]);
 
-    const handleCancelEdit = () => {
+    const handleCancelEdit = useCallback(() => {
         setEditingGroup(null);
         setEditName('');
-    };
+    }, []);
 
-    const handleCreate = async () => {
+    const handleCreate = useCallback(async () => {
         if (!newGroupName.trim()) {
             notifications.show({
                 title: 'Error',
@@ -143,9 +262,9 @@ const GroupManager = ({ isOpen, onClose }) => {
                 color: 'red',
             });
         }
-    };
+    }, [newGroupName]);
 
-    const handleDelete = async (group) => {
+    const handleDelete = useCallback(async (group) => {
         const usage = groupUsage[group.id];
 
         if (usage && (!usage.canDelete || usage.hasChannels || usage.hasM3UAccounts)) {
@@ -174,40 +293,15 @@ const GroupManager = ({ isOpen, onClose }) => {
                 color: 'red',
             });
         }
-    };
+    }, [groupUsage]);
 
-    const getGroupBadges = (group) => {
-        const usage = groupUsage[group.id];
-        const badges = [];
+    const handleNewGroupNameChange = useCallback((e) => {
+        setNewGroupName(e.target.value);
+    }, []);
 
-        if (usage?.hasChannels) {
-            badges.push(
-                <Badge key="channels" size="xs" color="blue" leftSection={<Tv size={10} />}>
-                    Channels
-                </Badge>
-            );
-        }
-
-        if (usage?.hasM3UAccounts) {
-            badges.push(
-                <Badge key="m3u" size="xs" color="purple" leftSection={<Database size={10} />}>
-                    M3U
-                </Badge>
-            );
-        }
-
-        return badges;
-    };
-
-    const canEditGroup = (group) => {
-        const usage = groupUsage[group.id];
-        return usage?.canEdit !== false; // Default to true if no usage data
-    };
-
-    const canDeleteGroup = (group) => {
-        const usage = groupUsage[group.id];
-        return usage?.canDelete !== false && !usage?.hasChannels && !usage?.hasM3UAccounts;
-    };
+    const handleEditNameChange = useCallback((e) => {
+        setEditName(e.target.value);
+    }, []);
 
     if (!isOpen) return null;
 
@@ -233,9 +327,10 @@ const GroupManager = ({ isOpen, onClose }) => {
                                 <TextInput
                                     placeholder="Enter group name"
                                     value={newGroupName}
-                                    onChange={(e) => setNewGroupName(e.target.value)}
+                                    onChange={handleNewGroupNameChange}
                                     style={{ flex: 1 }}
                                     onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
+                                    autoFocus
                                 />
                                 <ActionIcon color="green" onClick={handleCreate}>
                                     <Check size={16} />
@@ -264,73 +359,28 @@ const GroupManager = ({ isOpen, onClose }) => {
 
                 {/* Existing groups */}
                 <Stack>
-                    <Text size="sm" fw={600}>Existing Groups ({Object.keys(channelGroups).length})</Text>
+                    <Text size="sm" fw={600}>Existing Groups ({channelGroupsArray.length})</Text>
 
                     {loading ? (
                         <Text size="sm" c="dimmed">Loading group information...</Text>
-                    ) : Object.keys(channelGroups).length === 0 ? (
+                    ) : sortedGroups.length === 0 ? (
                         <Text size="sm" c="dimmed">No groups found</Text>
                     ) : (
                         <Stack gap="xs">
-                            {Object.values(channelGroups)
-                                .sort((a, b) => a.name.localeCompare(b.name))
-                                .map((group) => (
-                                    <Group key={group.id} justify="space-between" p="sm" style={{
-                                        border: '1px solid #e0e0e0',
-                                        borderRadius: '4px',
-                                        backgroundColor: editingGroup === group.id ? '#f8f9fa' : 'transparent'
-                                    }}>
-                                        <Stack gap={4} style={{ flex: 1 }}>
-                                            {editingGroup === group.id ? (
-                                                <TextInput
-                                                    value={editName}
-                                                    onChange={(e) => setEditName(e.target.value)}
-                                                    size="sm"
-                                                    onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit()}
-                                                />
-                                            ) : (
-                                                <>
-                                                    <Text size="sm" fw={500}>{group.name}</Text>
-                                                    <Group gap={4}>
-                                                        {getGroupBadges(group)}
-                                                    </Group>
-                                                </>
-                                            )}
-                                        </Stack>
-
-                                        <Group gap="xs">
-                                            {editingGroup === group.id ? (
-                                                <>
-                                                    <ActionIcon color="green" size="sm" onClick={handleSaveEdit}>
-                                                        <Check size={14} />
-                                                    </ActionIcon>
-                                                    <ActionIcon color="gray" size="sm" onClick={handleCancelEdit}>
-                                                        <X size={14} />
-                                                    </ActionIcon>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <ActionIcon
-                                                        color="blue"
-                                                        size="sm"
-                                                        onClick={() => handleEdit(group)}
-                                                        disabled={!canEditGroup(group)}
-                                                    >
-                                                        <SquarePen size={14} />
-                                                    </ActionIcon>
-                                                    <ActionIcon
-                                                        color="red"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(group)}
-                                                        disabled={!canDeleteGroup(group)}
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </ActionIcon>
-                                                </>
-                                            )}
-                                        </Group>
-                                    </Group>
-                                ))}
+                            {sortedGroups.map((group) => (
+                                <GroupItem
+                                    key={group.id}
+                                    group={group}
+                                    editingGroup={editingGroup}
+                                    editName={editName}
+                                    onEditNameChange={handleEditNameChange}
+                                    onSaveEdit={handleSaveEdit}
+                                    onCancelEdit={handleCancelEdit}
+                                    onEdit={handleEdit}
+                                    onDelete={handleDelete}
+                                    groupUsage={groupUsage}
+                                />
+                            ))}
                         </Stack>
                     )}
                 </Stack>
@@ -345,6 +395,6 @@ const GroupManager = ({ isOpen, onClose }) => {
             </Stack>
         </Modal>
     );
-};
+});
 
 export default GroupManager;
