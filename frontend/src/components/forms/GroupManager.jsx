@@ -13,6 +13,7 @@ import {
     Divider,
     ScrollArea,
     useMantineTheme,
+    Chip,
 } from '@mantine/core';
 import {
     SquarePlus,
@@ -23,7 +24,8 @@ import {
     AlertCircle,
     Database,
     Tv,
-    Trash
+    Trash,
+    Filter
 } from 'lucide-react';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from '../../store/channels';
@@ -142,6 +144,9 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isCleaningUp, setIsCleaningUp] = useState(false);
+    const [showChannelGroups, setShowChannelGroups] = useState(true);
+    const [showM3UGroups, setShowM3UGroups] = useState(true);
+    const [showUnusedGroups, setShowUnusedGroups] = useState(true);
 
     // Memoize the channel groups array to prevent unnecessary re-renders
     const channelGroupsArray = useMemo(() =>
@@ -155,13 +160,75 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         [channelGroupsArray]
     );
 
-    // Filter groups based on search term
+    // Filter groups based on search term and chip filters
     const filteredGroups = useMemo(() => {
-        if (!searchTerm.trim()) return sortedGroups;
-        return sortedGroups.filter(group =>
-            group.name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [sortedGroups, searchTerm]);
+        let filtered = sortedGroups;
+
+        // Apply search filter
+        if (searchTerm.trim()) {
+            filtered = filtered.filter(group =>
+                group.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+
+        // Apply chip filters
+        filtered = filtered.filter(group => {
+            const usage = groupUsage[group.id];
+            if (!usage) return false;
+
+            const hasChannels = usage.hasChannels;
+            const hasM3U = usage.hasM3UAccounts;
+            const isUnused = !hasChannels && !hasM3U;
+
+            // If group is unused, only show if unused groups are enabled
+            if (isUnused) {
+                return showUnusedGroups;
+            }
+
+            // For groups with channels and/or M3U, show if either filter is enabled
+            let shouldShow = false;
+            if (hasChannels && showChannelGroups) shouldShow = true;
+            if (hasM3U && showM3UGroups) shouldShow = true;
+
+            return shouldShow;
+        });
+
+        return filtered;
+    }, [sortedGroups, searchTerm, showChannelGroups, showM3UGroups, showUnusedGroups, groupUsage]);
+
+    // Calculate filter counts
+    const filterCounts = useMemo(() => {
+        const counts = {
+            channels: 0,
+            m3u: 0,
+            unused: 0
+        };
+
+        sortedGroups.forEach(group => {
+            const usage = groupUsage[group.id];
+            if (usage) {
+                const hasChannels = usage.hasChannels;
+                const hasM3U = usage.hasM3UAccounts;
+
+                // Count groups with channels (including those with both)
+                if (hasChannels) {
+                    counts.channels++;
+                }
+
+                // Count groups with M3U (including those with both)
+                if (hasM3U) {
+                    counts.m3u++;
+                }
+
+                // Count truly unused groups
+                if (!hasChannels && !hasM3U) {
+                    counts.unused++;
+                }
+            }
+        });
+
+        return counts;
+    }, [sortedGroups, groupUsage]);
 
     // Fetch group usage information when modal opens
     useEffect(() => {
@@ -342,7 +409,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
             opened={isOpen}
             onClose={onClose}
             title="Group Manager"
-            size="md"
+            size="lg"
             scrollAreaComponent={ScrollArea.Autosize}
         >
             <Stack>
@@ -399,12 +466,13 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
 
                 <Divider />
 
-                {/* Existing groups */}
-                <Stack>
+                {/* Filter Controls */}
+                <Stack gap="sm">
                     <Group justify="space-between" align="center">
-                        <Text size="sm" fw={600}>
-                            Groups ({filteredGroups.length}{searchTerm && ` of ${sortedGroups.length}`})
-                        </Text>
+                        <Group align="center" gap="sm">
+                            <Filter size={16} />
+                            <Text size="sm" fw={600}>Filter Groups</Text>
+                        </Group>
                         <TextInput
                             placeholder="Search groups..."
                             value={searchTerm}
@@ -423,11 +491,54 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                         />
                     </Group>
 
+                    <Group gap="xs" align="center">
+                        <Text size="xs" c="dimmed">Show:</Text>
+                        <Chip
+                            checked={showChannelGroups}
+                            onChange={setShowChannelGroups}
+                            size="sm"
+                            color="blue"
+                        >
+                            <Group gap={4}>
+                                <Tv size={10} />
+                                Channel Groups ({filterCounts.channels})
+                            </Group>
+                        </Chip>
+                        <Chip
+                            checked={showM3UGroups}
+                            onChange={setShowM3UGroups}
+                            size="sm"
+                            color="purple"
+                        >
+                            <Group gap={4}>
+                                <Database size={10} />
+                                M3U Groups ({filterCounts.m3u})
+                            </Group>
+                        </Chip>
+                        <Chip
+                            checked={showUnusedGroups}
+                            onChange={setShowUnusedGroups}
+                            size="sm"
+                            color="gray"
+                        >
+                            Unused Groups ({filterCounts.unused})
+                        </Chip>
+                    </Group>
+                </Stack>
+
+                <Divider />
+
+                {/* Existing groups */}
+                <Stack>
+                    <Text size="sm" fw={600}>
+                        Groups ({filteredGroups.length}{(searchTerm || !showChannelGroups || !showM3UGroups || !showUnusedGroups) && ` of ${sortedGroups.length}`})
+                    </Text>
+
                     {loading ? (
                         <Text size="sm" c="dimmed">Loading group information...</Text>
                     ) : filteredGroups.length === 0 ? (
                         <Text size="sm" c="dimmed">
-                            {searchTerm ? 'No groups found matching your search' : 'No groups found'}
+                            {searchTerm || !showChannelGroups || !showM3UGroups || !showUnusedGroups ? 'No groups found matching your filters' : 'No groups found'}
                         </Text>
                     ) : (
                         <Stack gap="xs">
