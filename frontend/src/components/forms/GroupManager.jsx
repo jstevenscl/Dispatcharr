@@ -447,6 +447,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 title="Group Manager"
                 size="lg"
                 scrollAreaComponent={ScrollArea.Autosize}
+                zIndex={2000}
             >
                 <Stack>
                     <Alert icon={<AlertCircle size={16} />} color="blue" variant="light">
@@ -631,6 +632,7 @@ This action cannot be undone.`}
                 actionKey="delete-group"
                 onSuppressChange={suppressWarning}
                 size="md"
+                zIndex={2100}
             />
 
             <ConfirmationDialog
@@ -652,6 +654,7 @@ This action cannot be undone.`}
                 actionKey="cleanup-groups"
                 onSuppressChange={suppressWarning}
                 size="md"
+                zIndex={2100}
             />
         </>
     );

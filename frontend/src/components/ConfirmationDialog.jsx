@@ -27,7 +27,8 @@ const ConfirmationDialog = ({
   cancelLabel = 'Cancel',
   actionKey,
   onSuppressChange,
-  size = 'md', // Add default size parameter - md is a medium width
+  size = 'md',
+  zIndex = 1000,
 }) => {
   const suppressWarning = useWarningsStore((s) => s.suppressWarning);
   const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
@@ -50,7 +51,14 @@ const ConfirmationDialog = ({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title={title} size={size} centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={title}
+      size={size}
+      centered
+      zIndex={zIndex}
+    >
       <Box mb={20}>{message}</Box>
 
       {actionKey && (
