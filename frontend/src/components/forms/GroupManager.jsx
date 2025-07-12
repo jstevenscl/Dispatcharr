@@ -142,6 +142,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [groupUsage, setGroupUsage] = useState({});
     const [loading, setLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Memoize the channel groups array to prevent unnecessary re-renders
     const channelGroupsArray = useMemo(() =>
@@ -154,6 +155,14 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         channelGroupsArray.sort((a, b) => a.name.localeCompare(b.name)),
         [channelGroupsArray]
     );
+
+    // Filter groups based on search term
+    const filteredGroups = useMemo(() => {
+        if (!searchTerm.trim()) return sortedGroups;
+        return sortedGroups.filter(group =>
+            group.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [sortedGroups, searchTerm]);
 
     // Fetch group usage information when modal opens
     useEffect(() => {
@@ -293,7 +302,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 color: 'red',
             });
         }
-    }, [groupUsage]);
+    }, [groupUsage, fetchGroupUsage]);
 
     const handleNewGroupNameChange = useCallback((e) => {
         setNewGroupName(e.target.value);
@@ -301,6 +310,10 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
 
     const handleEditNameChange = useCallback((e) => {
         setEditName(e.target.value);
+    }, []);
+
+    const handleSearchChange = useCallback((e) => {
+        setSearchTerm(e.target.value);
     }, []);
 
     if (!isOpen) return null;
@@ -359,15 +372,37 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
 
                 {/* Existing groups */}
                 <Stack>
-                    <Text size="sm" fw={600}>Existing Groups ({channelGroupsArray.length})</Text>
+                    <Group justify="space-between" align="center">
+                        <Text size="sm" fw={600}>
+                            Existing Groups ({filteredGroups.length}{searchTerm && ` of ${sortedGroups.length}`})
+                        </Text>
+                        <TextInput
+                            placeholder="Search groups..."
+                            value={searchTerm}
+                            onChange={handleSearchChange}
+                            size="sm"
+                            style={{ width: '200px' }}
+                            rightSection={searchTerm && (
+                                <ActionIcon
+                                    size="sm"
+                                    variant="subtle"
+                                    onClick={() => setSearchTerm('')}
+                                >
+                                    <X size={14} />
+                                </ActionIcon>
+                            )}
+                        />
+                    </Group>
 
                     {loading ? (
                         <Text size="sm" c="dimmed">Loading group information...</Text>
-                    ) : sortedGroups.length === 0 ? (
-                        <Text size="sm" c="dimmed">No groups found</Text>
+                    ) : filteredGroups.length === 0 ? (
+                        <Text size="sm" c="dimmed">
+                            {searchTerm ? 'No groups found matching your search' : 'No groups found'}
+                        </Text>
                     ) : (
                         <Stack gap="xs">
-                            {sortedGroups.map((group) => (
+                            {filteredGroups.map((group) => (
                                 <GroupItem
                                     key={group.id}
                                     group={group}
