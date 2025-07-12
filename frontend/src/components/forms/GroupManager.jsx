@@ -12,11 +12,12 @@ import {
     Alert,
     Divider,
     ScrollArea,
+    useMantineTheme,
 } from '@mantine/core';
 import {
     SquarePlus,
     SquarePen,
-    Trash2,
+    SquareMinus,
     Check,
     X,
     AlertCircle,
@@ -42,6 +43,8 @@ const GroupItem = React.memo(({
     canEditGroup,
     canDeleteGroup
 }) => {
+    const theme = useMantineTheme();
+
     const getGroupBadges = (group) => {
         const usage = groupUsage[group.id];
         const badges = [];
@@ -69,7 +72,7 @@ const GroupItem = React.memo(({
         <Group justify="space-between" p="sm" style={{
             border: '1px solid #e0e0e0',
             borderRadius: '4px',
-            backgroundColor: editingGroup === group.id ? '#f8f9fa' : 'transparent'
+            backgroundColor: editingGroup === group.id ? '#3f3f46' : 'transparent'
         }}>
             <Stack gap={4} style={{ flex: 1 }}>
                 {editingGroup === group.id ? (
@@ -103,20 +106,22 @@ const GroupItem = React.memo(({
                 ) : (
                     <>
                         <ActionIcon
-                            color="blue"
+                            variant="transparent"
+                            color={theme.tailwind.yellow[3]}
                             size="sm"
                             onClick={() => onEdit(group)}
                             disabled={!canEditGroup(group)}
                         >
-                            <SquarePen size={14} />
+                            <SquarePen size={18} />
                         </ActionIcon>
                         <ActionIcon
-                            color="red"
+                            variant="transparent"
+                            color={theme.tailwind.red[6]}
                             size="sm"
                             onClick={() => onDelete(group)}
                             disabled={!canDeleteGroup(group)}
                         >
-                            <Trash2 size={14} />
+                            <SquareMinus size="18" />
                         </ActionIcon>
                     </>
                 )}
@@ -346,9 +351,39 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 </Alert>
 
                 {/* Create new group section */}
-                <Stack>
-                    <Group justify="space-between" align="center">
-                        <Text size="sm" fw={600}>Create New Group</Text>
+                <Group justify="space-between">
+                    {isCreating ? (
+                        <Group style={{ flex: 1 }}>
+                            <TextInput
+                                placeholder="Enter group name"
+                                value={newGroupName}
+                                onChange={handleNewGroupNameChange}
+                                style={{ flex: 1 }}
+                                onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
+                                autoFocus
+                            />
+                            <ActionIcon color="green" onClick={handleCreate}>
+                                <Check size={16} />
+                            </ActionIcon>
+                            <ActionIcon color="gray" onClick={() => {
+                                setIsCreating(false);
+                                setNewGroupName('');
+                            }}>
+                                <X size={16} />
+                            </ActionIcon>
+                        </Group>
+                    ) : (
+                        <Button
+                            leftSection={<SquarePlus size={16} />}
+                            variant="light"
+                            size="sm"
+                            onClick={() => setIsCreating(true)}
+                        >
+                            Add Group
+                        </Button>
+                    )}
+
+                    {!isCreating && (
                         <Button
                             leftSection={<Trash size={16} />}
                             variant="light"
@@ -359,40 +394,8 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                         >
                             Cleanup Unused
                         </Button>
-                    </Group>
-                    <Group>
-                        {isCreating ? (
-                            <>
-                                <TextInput
-                                    placeholder="Enter group name"
-                                    value={newGroupName}
-                                    onChange={handleNewGroupNameChange}
-                                    style={{ flex: 1 }}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
-                                    autoFocus
-                                />
-                                <ActionIcon color="green" onClick={handleCreate}>
-                                    <Check size={16} />
-                                </ActionIcon>
-                                <ActionIcon color="gray" onClick={() => {
-                                    setIsCreating(false);
-                                    setNewGroupName('');
-                                }}>
-                                    <X size={16} />
-                                </ActionIcon>
-                            </>
-                        ) : (
-                            <Button
-                                leftSection={<SquarePlus size={16} />}
-                                variant="light"
-                                size="sm"
-                                onClick={() => setIsCreating(true)}
-                            >
-                                Add Group
-                            </Button>
-                        )}
-                    </Group>
-                </Stack>
+                    )}
+                </Group>
 
                 <Divider />
 
@@ -400,7 +403,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 <Stack>
                     <Group justify="space-between" align="center">
                         <Text size="sm" fw={600}>
-                            Existing Groups ({filteredGroups.length}{searchTerm && ` of ${sortedGroups.length}`})
+                            Groups ({filteredGroups.length}{searchTerm && ` of ${sortedGroups.length}`})
                         </Text>
                         <TextInput
                             placeholder="Search groups..."
