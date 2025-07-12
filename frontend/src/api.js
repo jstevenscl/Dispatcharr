@@ -301,6 +301,22 @@ export default class API {
     }
   }
 
+  static async cleanupUnusedChannelGroups() {
+    try {
+      const response = await request(`${host}/api/channels/groups/cleanup/`, {
+        method: 'POST',
+      });
+
+      // Refresh channel groups to update the UI
+      useChannelsStore.getState().fetchChannelGroups();
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to cleanup unused channel groups', e);
+      throw e;
+    }
+  }
+
   static async addChannel(channel) {
     try {
       let body = null;

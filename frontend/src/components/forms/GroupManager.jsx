@@ -21,7 +21,8 @@ import {
     X,
     AlertCircle,
     Database,
-    Tv
+    Tv,
+    Trash
 } from 'lucide-react';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from '../../store/channels';
@@ -135,6 +136,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
     const [groupUsage, setGroupUsage] = useState({});
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
 
     // Memoize the channel groups array to prevent unnecessary re-renders
     const channelGroupsArray = useMemo(() =>
@@ -305,6 +307,29 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         setSearchTerm(e.target.value);
     }, []);
 
+    const handleCleanup = useCallback(async () => {
+        setIsCleaningUp(true);
+        try {
+            const result = await API.cleanupUnusedChannelGroups();
+
+            notifications.show({
+                title: 'Cleanup Complete',
+                message: `Successfully deleted ${result.deleted_count} unused groups`,
+                color: 'green',
+            });
+
+            fetchGroupUsage(); // Refresh usage data
+        } catch (error) {
+            notifications.show({
+                title: 'Cleanup Failed',
+                message: 'Failed to cleanup unused groups',
+                color: 'red',
+            });
+        } finally {
+            setIsCleaningUp(false);
+        }
+    }, [fetchGroupUsage]);
+
     if (!isOpen) return null;
 
     return (
@@ -322,7 +347,19 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
 
                 {/* Create new group section */}
                 <Stack>
-                    <Text size="sm" fw={600}>Create New Group</Text>
+                    <Group justify="space-between" align="center">
+                        <Text size="sm" fw={600}>Create New Group</Text>
+                        <Button
+                            leftSection={<Trash size={16} />}
+                            variant="light"
+                            size="sm"
+                            color="orange"
+                            onClick={handleCleanup}
+                            loading={isCleaningUp}
+                        >
+                            Cleanup Unused
+                        </Button>
+                    </Group>
                     <Group>
                         {isCreating ? (
                             <>

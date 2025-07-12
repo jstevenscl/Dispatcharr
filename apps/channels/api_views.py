@@ -198,47 +198,78 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         """Override update to check M3U associations"""
         instance = self.get_object()
-        
+
         # Check if group has M3U account associations
         if hasattr(instance, 'm3u_account') and instance.m3u_account.exists():
             return Response(
                 {"error": "Cannot edit group with M3U account associations"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
         """Override partial_update to check M3U associations"""
         instance = self.get_object()
-        
+
         # Check if group has M3U account associations
         if hasattr(instance, 'm3u_account') and instance.m3u_account.exists():
             return Response(
                 {"error": "Cannot edit group with M3U account associations"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        method="post",
+        operation_description="Delete all channel groups that have no associations (no channels or M3U accounts)",
+        responses={200: "Cleanup completed"},
+    )
+    @action(detail=False, methods=["post"], url_path="cleanup")
+    def cleanup_unused_groups(self, request):
+        """Delete all channel groups with no channels or M3U account associations"""
+        from django.db.models import Count
+
+        # Find groups with no channels and no M3U account associations
+        unused_groups = ChannelGroup.objects.annotate(
+            channel_count=Count('channels', distinct=True),
+            m3u_account_count=Count('m3u_account', distinct=True)
+        ).filter(
+            channel_count=0,
+            m3u_account_count=0
+        )
+
+        deleted_count = unused_groups.count()
+        group_names = list(unused_groups.values_list('name', flat=True))
+
+        # Delete the unused groups
+        unused_groups.delete()
+
+        return Response({
+            "message": f"Successfully deleted {deleted_count} unused channel groups",
+            "deleted_count": deleted_count,
+            "deleted_groups": group_names
+        })
 
     def destroy(self, request, *args, **kwargs):
         """Override destroy to check for associations before deletion"""
         instance = self.get_object()
-        
+
         # Check if group has associated channels
         if instance.channels.exists():
             return Response(
                 {"error": "Cannot delete group with associated channels"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Check if group has M3U account associations
         if hasattr(instance, 'm3u_account') and instance.m3u_account.exists():
             return Response(
                 {"error": "Cannot delete group with M3U account associations"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return super().destroy(request, *args, **kwargs)
 
 
