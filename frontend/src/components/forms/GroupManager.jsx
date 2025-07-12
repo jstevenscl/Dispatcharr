@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from '../../store/channels';
+import useWarningsStore from '../../store/warnings';
+import ConfirmationDialog from '../ConfirmationDialog';
 import API from '../../api';
 
 // Move GroupItem outside to prevent recreation on every render
@@ -136,6 +138,9 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
     const channelGroups = useChannelsStore((s) => s.channelGroups);
     const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
     const canDeleteChannelGroup = useChannelsStore((s) => s.canDeleteChannelGroup);
+    const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
+    const suppressWarning = useWarningsStore((s) => s.suppressWarning);
+
     const [editingGroup, setEditingGroup] = useState(null);
     const [editName, setEditName] = useState('');
     const [newGroupName, setNewGroupName] = useState('');
@@ -147,6 +152,11 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
     const [showChannelGroups, setShowChannelGroups] = useState(true);
     const [showM3UGroups, setShowM3UGroups] = useState(true);
     const [showUnusedGroups, setShowUnusedGroups] = useState(true);
+
+    // Confirmation dialog states
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+    const [groupToDelete, setGroupToDelete] = useState(null);
+    const [confirmCleanupOpen, setConfirmCleanupOpen] = useState(false);
 
     // Memoize the channel groups array to prevent unnecessary re-renders
     const channelGroupsArray = useMemo(() =>
@@ -348,6 +358,18 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
             return;
         }
 
+        // Store group for confirmation dialog
+        setGroupToDelete(group);
+
+        // Skip warning if it's been suppressed
+        if (isWarningSuppressed('delete-group')) {
+            return executeDeleteGroup(group);
+        }
+
+        setConfirmDeleteOpen(true);
+    }, [groupUsage, isWarningSuppressed]);
+
+    const executeDeleteGroup = useCallback(async (group) => {
         try {
             await API.deleteChannelGroup(group.id);
 
@@ -358,14 +380,50 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
             });
 
             fetchGroupUsage(); // Refresh usage data
+            setConfirmDeleteOpen(false);
         } catch (error) {
             notifications.show({
                 title: 'Error',
                 message: 'Failed to delete group',
                 color: 'red',
             });
+            setConfirmDeleteOpen(false);
         }
-    }, [groupUsage, fetchGroupUsage]);
+    }, [fetchGroupUsage]);
+
+    const handleCleanup = useCallback(async () => {
+        // Skip warning if it's been suppressed
+        if (isWarningSuppressed('cleanup-groups')) {
+            return executeCleanup();
+        }
+
+        setConfirmCleanupOpen(true);
+    }, [isWarningSuppressed]);
+
+    const executeCleanup = useCallback(async () => {
+        setIsCleaningUp(true);
+        try {
+            const result = await API.cleanupUnusedChannelGroups();
+
+            notifications.show({
+                title: 'Cleanup Complete',
+                message: `Successfully deleted ${result.deleted_count} unused groups`,
+                color: 'green',
+            });
+
+            fetchGroupUsage(); // Refresh usage data
+            setConfirmCleanupOpen(false);
+        } catch (error) {
+            notifications.show({
+                title: 'Cleanup Failed',
+                message: 'Failed to cleanup unused groups',
+                color: 'red',
+            });
+            setConfirmCleanupOpen(false);
+        } finally {
+            setIsCleaningUp(false);
+        }
+    }, [fetchGroupUsage]);
 
     const handleNewGroupNameChange = useCallback((e) => {
         setNewGroupName(e.target.value);
@@ -379,198 +437,224 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         setSearchTerm(e.target.value);
     }, []);
 
-    const handleCleanup = useCallback(async () => {
-        setIsCleaningUp(true);
-        try {
-            const result = await API.cleanupUnusedChannelGroups();
-
-            notifications.show({
-                title: 'Cleanup Complete',
-                message: `Successfully deleted ${result.deleted_count} unused groups`,
-                color: 'green',
-            });
-
-            fetchGroupUsage(); // Refresh usage data
-        } catch (error) {
-            notifications.show({
-                title: 'Cleanup Failed',
-                message: 'Failed to cleanup unused groups',
-                color: 'red',
-            });
-        } finally {
-            setIsCleaningUp(false);
-        }
-    }, [fetchGroupUsage]);
-
     if (!isOpen) return null;
 
     return (
-        <Modal
-            opened={isOpen}
-            onClose={onClose}
-            title="Group Manager"
-            size="lg"
-            scrollAreaComponent={ScrollArea.Autosize}
-        >
-            <Stack>
-                <Alert icon={<AlertCircle size={16} />} color="blue" variant="light">
-                    Manage channel groups. Groups associated with M3U accounts or containing channels cannot be deleted.
-                </Alert>
-
-                {/* Create new group section */}
-                <Group justify="space-between">
-                    {isCreating ? (
-                        <Group style={{ flex: 1 }}>
-                            <TextInput
-                                placeholder="Enter group name"
-                                value={newGroupName}
-                                onChange={handleNewGroupNameChange}
-                                style={{ flex: 1 }}
-                                onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
-                                autoFocus
-                            />
-                            <ActionIcon color="green" onClick={handleCreate}>
-                                <Check size={16} />
-                            </ActionIcon>
-                            <ActionIcon color="gray" onClick={() => {
-                                setIsCreating(false);
-                                setNewGroupName('');
-                            }}>
-                                <X size={16} />
-                            </ActionIcon>
-                        </Group>
-                    ) : (
-                        <Button
-                            leftSection={<SquarePlus size={16} />}
-                            variant="light"
-                            size="sm"
-                            onClick={() => setIsCreating(true)}
-                        >
-                            Add Group
-                        </Button>
-                    )}
-
-                    {!isCreating && (
-                        <Button
-                            leftSection={<Trash size={16} />}
-                            variant="light"
-                            size="sm"
-                            color="orange"
-                            onClick={handleCleanup}
-                            loading={isCleaningUp}
-                        >
-                            Cleanup Unused
-                        </Button>
-                    )}
-                </Group>
-
-                <Divider />
-
-                {/* Filter Controls */}
-                <Stack gap="sm">
-                    <Group justify="space-between" align="center">
-                        <Group align="center" gap="sm">
-                            <Filter size={16} />
-                            <Text size="sm" fw={600}>Filter Groups</Text>
-                        </Group>
-                        <TextInput
-                            placeholder="Search groups..."
-                            value={searchTerm}
-                            onChange={handleSearchChange}
-                            size="sm"
-                            style={{ width: '200px' }}
-                            rightSection={searchTerm && (
-                                <ActionIcon
-                                    size="sm"
-                                    variant="subtle"
-                                    onClick={() => setSearchTerm('')}
-                                >
-                                    <X size={14} />
-                                </ActionIcon>
-                            )}
-                        />
-                    </Group>
-
-                    <Group gap="xs" align="center">
-                        <Text size="xs" c="dimmed">Show:</Text>
-                        <Chip
-                            checked={showChannelGroups}
-                            onChange={setShowChannelGroups}
-                            size="sm"
-                            color="blue"
-                        >
-                            <Group gap={4}>
-                                <Tv size={10} />
-                                Channel Groups ({filterCounts.channels})
-                            </Group>
-                        </Chip>
-                        <Chip
-                            checked={showM3UGroups}
-                            onChange={setShowM3UGroups}
-                            size="sm"
-                            color="purple"
-                        >
-                            <Group gap={4}>
-                                <Database size={10} />
-                                M3U Groups ({filterCounts.m3u})
-                            </Group>
-                        </Chip>
-                        <Chip
-                            checked={showUnusedGroups}
-                            onChange={setShowUnusedGroups}
-                            size="sm"
-                            color="gray"
-                        >
-                            Unused Groups ({filterCounts.unused})
-                        </Chip>
-                    </Group>
-                </Stack>
-
-                <Divider />
-
-                {/* Existing groups */}
+        <>
+            <Modal
+                opened={isOpen}
+                onClose={onClose}
+                title="Group Manager"
+                size="lg"
+                scrollAreaComponent={ScrollArea.Autosize}
+            >
                 <Stack>
-                    <Text size="sm" fw={600}>
-                        Groups ({filteredGroups.length}{(searchTerm || !showChannelGroups || !showM3UGroups || !showUnusedGroups) && ` of ${sortedGroups.length}`})
-                    </Text>
+                    <Alert icon={<AlertCircle size={16} />} color="blue" variant="light">
+                        Manage channel groups. Groups associated with M3U accounts or containing channels cannot be deleted.
+                    </Alert>
 
-                    {loading ? (
-                        <Text size="sm" c="dimmed">Loading group information...</Text>
-                    ) : filteredGroups.length === 0 ? (
-                        <Text size="sm" c="dimmed">
-                            {searchTerm || !showChannelGroups || !showM3UGroups || !showUnusedGroups ? 'No groups found matching your filters' : 'No groups found'}
-                        </Text>
-                    ) : (
-                        <Stack gap="xs">
-                            {filteredGroups.map((group) => (
-                                <GroupItem
-                                    key={group.id}
-                                    group={group}
-                                    editingGroup={editingGroup}
-                                    editName={editName}
-                                    onEditNameChange={handleEditNameChange}
-                                    onSaveEdit={handleSaveEdit}
-                                    onCancelEdit={handleCancelEdit}
-                                    onEdit={handleEdit}
-                                    onDelete={handleDelete}
-                                    groupUsage={groupUsage}
-                                    canEditGroup={canEditChannelGroup}
-                                    canDeleteGroup={canDeleteChannelGroup}
+                    {/* Create new group section */}
+                    <Group justify="space-between">
+                        {isCreating ? (
+                            <Group style={{ flex: 1 }}>
+                                <TextInput
+                                    placeholder="Enter group name"
+                                    value={newGroupName}
+                                    onChange={handleNewGroupNameChange}
+                                    style={{ flex: 1 }}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
+                                    autoFocus
                                 />
-                            ))}
-                        </Stack>
-                    )}
+                                <ActionIcon color="green" onClick={handleCreate}>
+                                    <Check size={16} />
+                                </ActionIcon>
+                                <ActionIcon color="gray" onClick={() => {
+                                    setIsCreating(false);
+                                    setNewGroupName('');
+                                }}>
+                                    <X size={16} />
+                                </ActionIcon>
+                            </Group>
+                        ) : (
+                            <Button
+                                leftSection={<SquarePlus size={16} />}
+                                variant="light"
+                                size="sm"
+                                onClick={() => setIsCreating(true)}
+                            >
+                                Add Group
+                            </Button>
+                        )}
+
+                        {!isCreating && (
+                            <Button
+                                leftSection={<Trash size={16} />}
+                                variant="light"
+                                size="sm"
+                                color="orange"
+                                onClick={handleCleanup}
+                                loading={isCleaningUp}
+                            >
+                                Cleanup Unused
+                            </Button>
+                        )}
+                    </Group>
+
+                    <Divider />
+
+                    {/* Filter Controls */}
+                    <Stack gap="sm">
+                        <Group justify="space-between" align="center">
+                            <Group align="center" gap="sm">
+                                <Filter size={16} />
+                                <Text size="sm" fw={600}>Filter Groups</Text>
+                            </Group>
+                            <TextInput
+                                placeholder="Search groups..."
+                                value={searchTerm}
+                                onChange={handleSearchChange}
+                                size="sm"
+                                style={{ width: '200px' }}
+                                rightSection={searchTerm && (
+                                    <ActionIcon
+                                        size="sm"
+                                        variant="subtle"
+                                        onClick={() => setSearchTerm('')}
+                                    >
+                                        <X size={14} />
+                                    </ActionIcon>
+                                )}
+                            />
+                        </Group>
+
+                        <Group gap="xs" align="center">
+                            <Text size="xs" c="dimmed">Show:</Text>
+                            <Chip
+                                checked={showChannelGroups}
+                                onChange={setShowChannelGroups}
+                                size="sm"
+                                color="blue"
+                            >
+                                <Group gap={4}>
+                                    <Tv size={10} />
+                                    Channel Groups ({filterCounts.channels})
+                                </Group>
+                            </Chip>
+                            <Chip
+                                checked={showM3UGroups}
+                                onChange={setShowM3UGroups}
+                                size="sm"
+                                color="purple"
+                            >
+                                <Group gap={4}>
+                                    <Database size={10} />
+                                    M3U Groups ({filterCounts.m3u})
+                                </Group>
+                            </Chip>
+                            <Chip
+                                checked={showUnusedGroups}
+                                onChange={setShowUnusedGroups}
+                                size="sm"
+                                color="gray"
+                            >
+                                Unused Groups ({filterCounts.unused})
+                            </Chip>
+                        </Group>
+                    </Stack>
+
+                    <Divider />
+
+                    {/* Existing groups */}
+                    <Stack>
+                        <Text size="sm" fw={600}>
+                            Groups ({filteredGroups.length}{(searchTerm || !showChannelGroups || !showM3UGroups || !showUnusedGroups) && ` of ${sortedGroups.length}`})
+                        </Text>
+
+                        {loading ? (
+                            <Text size="sm" c="dimmed">Loading group information...</Text>
+                        ) : filteredGroups.length === 0 ? (
+                            <Text size="sm" c="dimmed">
+                                {searchTerm || !showChannelGroups || !showM3UGroups || !showUnusedGroups ? 'No groups found matching your filters' : 'No groups found'}
+                            </Text>
+                        ) : (
+                            <Stack gap="xs">
+                                {filteredGroups.map((group) => (
+                                    <GroupItem
+                                        key={group.id}
+                                        group={group}
+                                        editingGroup={editingGroup}
+                                        editName={editName}
+                                        onEditNameChange={handleEditNameChange}
+                                        onSaveEdit={handleSaveEdit}
+                                        onCancelEdit={handleCancelEdit}
+                                        onEdit={handleEdit}
+                                        onDelete={handleDelete}
+                                        groupUsage={groupUsage}
+                                        canEditGroup={canEditChannelGroup}
+                                        canDeleteGroup={canDeleteChannelGroup}
+                                    />
+                                ))}
+                            </Stack>
+                        )}
+                    </Stack>
+
+                    <Divider />
+
+                    <Flex justify="flex-end">
+                        <Button variant="default" onClick={onClose}>
+                            Close
+                        </Button>
+                    </Flex>
                 </Stack>
+            </Modal>
 
-                <Divider />
+            <ConfirmationDialog
+                opened={confirmDeleteOpen}
+                onClose={() => setConfirmDeleteOpen(false)}
+                onConfirm={() => executeDeleteGroup(groupToDelete)}
+                title="Confirm Group Deletion"
+                message={
+                    groupToDelete ? (
+                        <div style={{ whiteSpace: 'pre-line' }}>
+                            {`Are you sure you want to delete the following group?
 
-                <Flex justify="flex-end">
-                    <Button variant="default" onClick={onClose}>
-                        Close
-                    </Button>
-                </Flex>
-            </Stack>
-        </Modal>
+Name: ${groupToDelete.name}
+
+This action cannot be undone.`}
+                        </div>
+                    ) : (
+                        'Are you sure you want to delete this group? This action cannot be undone.'
+                    )
+                }
+                confirmLabel="Delete"
+                cancelLabel="Cancel"
+                actionKey="delete-group"
+                onSuppressChange={suppressWarning}
+                size="md"
+            />
+
+            <ConfirmationDialog
+                opened={confirmCleanupOpen}
+                onClose={() => setConfirmCleanupOpen(false)}
+                onConfirm={executeCleanup}
+                title="Confirm Group Cleanup"
+                message={
+                    <div style={{ whiteSpace: 'pre-line' }}>
+                        {`Are you sure you want to cleanup all unused groups?
+
+This will permanently delete all groups that are not associated with any channels or M3U accounts.
+
+This action cannot be undone.`}
+                    </div>
+                }
+                confirmLabel="Cleanup"
+                cancelLabel="Cancel"
+                actionKey="cleanup-groups"
+                onSuppressChange={suppressWarning}
+                size="md"
+            />
+        </>
     );
 });
+
 export default GroupManager;
