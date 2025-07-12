@@ -187,6 +187,40 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         except KeyError:
             return [Authenticated()]
 
+    def get_queryset(self):
+        """Add annotation for association counts"""
+        from django.db.models import Count
+        return ChannelGroup.objects.annotate(
+            channel_count=Count('channels', distinct=True),
+            m3u_account_count=Count('m3u_account', distinct=True)
+        )
+
+    def update(self, request, *args, **kwargs):
+        """Override update to check M3U associations"""
+        instance = self.get_object()
+        
+        # Check if group has M3U account associations
+        if hasattr(instance, 'm3u_account') and instance.m3u_account.exists():
+            return Response(
+                {"error": "Cannot edit group with M3U account associations"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Override partial_update to check M3U associations"""
+        instance = self.get_object()
+        
+        # Check if group has M3U account associations
+        if hasattr(instance, 'm3u_account') and instance.m3u_account.exists():
+            return Response(
+                {"error": "Cannot edit group with M3U account associations"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().partial_update(request, *args, **kwargs)
+
     def destroy(self, request, *args, **kwargs):
         """Override destroy to check for associations before deletion"""
         instance = self.get_object()

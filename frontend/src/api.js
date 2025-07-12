@@ -250,7 +250,15 @@ export default class API {
       });
 
       if (response.id) {
-        useChannelsStore.getState().addChannelGroup(response);
+        // Add association flags for new groups
+        const processedGroup = {
+          ...response,
+          hasChannels: false,
+          hasM3UAccounts: false,
+          canEdit: true,
+          canDelete: true
+        };
+        useChannelsStore.getState().addChannelGroup(processedGroup);
       }
 
       return response;

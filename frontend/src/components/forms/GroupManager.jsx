@@ -37,7 +37,9 @@ const GroupItem = React.memo(({
     onCancelEdit,
     onEdit,
     onDelete,
-    groupUsage
+    groupUsage,
+    canEditGroup,
+    canDeleteGroup
 }) => {
     const getGroupBadges = (group) => {
         const usage = groupUsage[group.id];
@@ -60,16 +62,6 @@ const GroupItem = React.memo(({
         }
 
         return badges;
-    };
-
-    const canEditGroup = (group) => {
-        const usage = groupUsage[group.id];
-        return usage?.canEdit !== false;
-    };
-
-    const canDeleteGroup = (group) => {
-        const usage = groupUsage[group.id];
-        return usage?.canDelete !== false && !usage?.hasChannels && !usage?.hasM3UAccounts;
     };
 
     return (
@@ -133,9 +125,9 @@ const GroupItem = React.memo(({
 });
 
 const GroupManager = React.memo(({ isOpen, onClose }) => {
-    // Use a more specific selector to avoid unnecessary re-renders
-    const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
     const channelGroups = useChannelsStore((s) => s.channelGroups);
+    const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
+    const canDeleteChannelGroup = useChannelsStore((s) => s.canDeleteChannelGroup);
     const [editingGroup, setEditingGroup] = useState(null);
     const [editName, setEditName] = useState('');
     const [newGroupName, setNewGroupName] = useState('');
@@ -171,21 +163,18 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         }
     }, [isOpen]);
 
-    const fetchGroupUsage = async () => {
+    const fetchGroupUsage = useCallback(async () => {
         setLoading(true);
         try {
-            // This would ideally be a dedicated API endpoint, but we'll use the existing data
-            // For now, we'll determine usage based on the group having associated data
+            // Use the actual channel group data that already has the flags
             const usage = {};
 
-            // Check which groups have channels or M3U associations
-            // This is a simplified check - in a real implementation you'd want a dedicated API
             Object.values(channelGroups).forEach(group => {
                 usage[group.id] = {
-                    hasChannels: false, // Would need API call to check
-                    hasM3UAccounts: false, // Would need API call to check
-                    canEdit: true, // Assume editable unless proven otherwise
-                    canDelete: true // Assume deletable unless proven otherwise
+                    hasChannels: group.hasChannels ?? false,
+                    hasM3UAccounts: group.hasM3UAccounts ?? false,
+                    canEdit: group.canEdit ?? true,
+                    canDelete: group.canDelete ?? true
                 };
             });
 
@@ -195,7 +184,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [channelGroups]);
 
     const handleEdit = useCallback((group) => {
         setEditingGroup(group.id);
@@ -414,6 +403,8 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                                     onEdit={handleEdit}
                                     onDelete={handleDelete}
                                     groupUsage={groupUsage}
+                                    canEditGroup={canEditChannelGroup}
+                                    canDeleteGroup={canDeleteChannelGroup}
                                 />
                             ))}
                         </Stack>
@@ -431,5 +422,4 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         </Modal>
     );
 });
-
 export default GroupManager;

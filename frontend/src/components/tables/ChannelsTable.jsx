@@ -216,6 +216,9 @@ const ChannelRowActions = React.memo(
 
 const ChannelsTable = ({ }) => {
   const theme = useMantineTheme();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
+  const canDeleteChannelGroup = useChannelsStore((s) => s.canDeleteChannelGroup);
 
   /**
    * STORES
@@ -241,7 +244,6 @@ const ChannelsTable = ({ }) => {
   const channels = useChannelsStore((s) => s.channels);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
-  const channelGroups = useChannelsStore((s) => s.channelGroups);
   const logos = useChannelsStore((s) => s.logos);
   const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
     pageSize: 50,

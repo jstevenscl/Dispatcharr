@@ -89,9 +89,12 @@ class StreamSerializer(serializers.ModelSerializer):
 # Channel Group
 #
 class ChannelGroupSerializer(serializers.ModelSerializer):
+    channel_count = serializers.IntegerField(read_only=True)
+    m3u_account_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = ChannelGroup
-        fields = ["id", "name"]
+        fields = ["id", "name", "channel_count", "m3u_account_count"]
 
 
 class ChannelProfileSerializer(serializers.ModelSerializer):
