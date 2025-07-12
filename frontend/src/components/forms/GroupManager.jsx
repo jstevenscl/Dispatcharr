@@ -240,13 +240,6 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         return counts;
     }, [sortedGroups, groupUsage]);
 
-    // Fetch group usage information when modal opens
-    useEffect(() => {
-        if (isOpen) {
-            fetchGroupUsage();
-        }
-    }, [isOpen]);
-
     const fetchGroupUsage = useCallback(async () => {
         setLoading(true);
         try {
@@ -269,6 +262,13 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
             setLoading(false);
         }
     }, [channelGroups]);
+
+    // Fetch group usage information when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            fetchGroupUsage();
+        }
+    }, [isOpen, fetchGroupUsage]);
 
     const handleEdit = useCallback((group) => {
         setEditingGroup(group.id);
@@ -299,6 +299,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
 
             setEditingGroup(null);
             setEditName('');
+            await fetchGroupUsage(); // Refresh usage data
         } catch (error) {
             notifications.show({
                 title: 'Error',
@@ -306,7 +307,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 color: 'red',
             });
         }
-    }, [editName, editingGroup]);
+    }, [editName, editingGroup, fetchGroupUsage]);
 
     const handleCancelEdit = useCallback(() => {
         setEditingGroup(null);
@@ -336,7 +337,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
 
             setNewGroupName('');
             setIsCreating(false);
-            fetchGroupUsage(); // Refresh usage data
+            await fetchGroupUsage(); // Refresh usage data
         } catch (error) {
             notifications.show({
                 title: 'Error',
@@ -344,7 +345,29 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 color: 'red',
             });
         }
-    }, [newGroupName]);
+    }, [newGroupName, fetchGroupUsage]);
+
+    const executeDeleteGroup = useCallback(async (group) => {
+        try {
+            await API.deleteChannelGroup(group.id);
+
+            notifications.show({
+                title: 'Success',
+                message: 'Group deleted successfully',
+                color: 'green',
+            });
+
+            await fetchGroupUsage(); // Refresh usage data
+            setConfirmDeleteOpen(false);
+        } catch (error) {
+            notifications.show({
+                title: 'Error',
+                message: 'Failed to delete group',
+                color: 'red',
+            });
+            setConfirmDeleteOpen(false);
+        }
+    }, [fetchGroupUsage]);
 
     const handleDelete = useCallback(async (group) => {
         const usage = groupUsage[group.id];
@@ -367,38 +390,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
         }
 
         setConfirmDeleteOpen(true);
-    }, [groupUsage, isWarningSuppressed]);
-
-    const executeDeleteGroup = useCallback(async (group) => {
-        try {
-            await API.deleteChannelGroup(group.id);
-
-            notifications.show({
-                title: 'Success',
-                message: 'Group deleted successfully',
-                color: 'green',
-            });
-
-            fetchGroupUsage(); // Refresh usage data
-            setConfirmDeleteOpen(false);
-        } catch (error) {
-            notifications.show({
-                title: 'Error',
-                message: 'Failed to delete group',
-                color: 'red',
-            });
-            setConfirmDeleteOpen(false);
-        }
-    }, [fetchGroupUsage]);
-
-    const handleCleanup = useCallback(async () => {
-        // Skip warning if it's been suppressed
-        if (isWarningSuppressed('cleanup-groups')) {
-            return executeCleanup();
-        }
-
-        setConfirmCleanupOpen(true);
-    }, [isWarningSuppressed]);
+    }, [groupUsage, isWarningSuppressed, executeDeleteGroup]);
 
     const executeCleanup = useCallback(async () => {
         setIsCleaningUp(true);
@@ -411,7 +403,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
                 color: 'green',
             });
 
-            fetchGroupUsage(); // Refresh usage data
+            await fetchGroupUsage(); // Refresh usage data
             setConfirmCleanupOpen(false);
         } catch (error) {
             notifications.show({
@@ -424,6 +416,15 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
             setIsCleaningUp(false);
         }
     }, [fetchGroupUsage]);
+
+    const handleCleanup = useCallback(async () => {
+        // Skip warning if it's been suppressed
+        if (isWarningSuppressed('cleanup-groups')) {
+            return executeCleanup();
+        }
+
+        setConfirmCleanupOpen(true);
+    }, [isWarningSuppressed, executeCleanup]);
 
     const handleNewGroupNameChange = useCallback((e) => {
         setNewGroupName(e.target.value);
@@ -612,7 +613,7 @@ const GroupManager = React.memo(({ isOpen, onClose }) => {
             <ConfirmationDialog
                 opened={confirmDeleteOpen}
                 onClose={() => setConfirmDeleteOpen(false)}
-                onConfirm={() => executeDeleteGroup(groupToDelete)}
+                onConfirm={() => groupToDelete && executeDeleteGroup(groupToDelete)}
                 title="Confirm Group Deletion"
                 message={
                     groupToDelete ? (
