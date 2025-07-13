@@ -868,42 +868,38 @@ def sync_auto_channels(account_id):
 
             logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
 
-            # Get all streams in this group for this M3U account
-            current_streams = Stream.objects.filter(
-                m3u_account=account,
-                channel_group=channel_group
-            )
-
-            # Get existing auto-created channels in this group that were created by this M3U account
+            # Step 1: Delete all existing auto-created channels for this account in this group
             existing_auto_channels = Channel.objects.filter(
                 channel_group=channel_group,
                 auto_created=True,
                 auto_created_by=account
-            ).distinct()
+            )
 
-            # Create a mapping of stream hashes to existing channels
-            existing_channel_streams = {}
-            for channel in existing_auto_channels:
-                for stream in channel.streams.filter(m3u_account=account):
-                    existing_channel_streams[stream.stream_hash] = channel
+            deleted_count = existing_auto_channels.count()
+            if deleted_count > 0:
+                logger.debug(f"Deleting {deleted_count} existing auto-created channels in group {channel_group.name}")
+                existing_auto_channels.delete()
+                channels_deleted += deleted_count
 
-            # Track which channels should exist (based on current streams)
-            channels_to_keep = set()
+            # Step 2: Get all current streams in this group for this M3U account
+            current_streams = Stream.objects.filter(
+                m3u_account=account,
+                channel_group=channel_group
+            ).order_by('name')  # Sort by name for consistent ordering
+
+            if not current_streams.exists():
+                logger.debug(f"No streams found in group {channel_group.name}, skipping channel creation")
+                continue
+
+            # Step 3: Create new channels for all streams
             current_channel_number = start_number
 
-            # Create channels for streams that don't have them
-            for stream in current_streams.order_by('name'):
-                if stream.stream_hash in existing_channel_streams:
-                    # Channel already exists for this stream
-                    channels_to_keep.add(existing_channel_streams[stream.stream_hash].id)
-                    continue
-
-                # Find next available channel number
-                while Channel.objects.filter(channel_number=current_channel_number).exists():
-                    current_channel_number += 0.1
-
-                # Create new channel
+            for stream in current_streams:
                 try:
+                    # Find next available channel number
+                    while Channel.objects.filter(channel_number=current_channel_number).exists():
+                        current_channel_number += 0.1
+
                     # Parse custom properties for additional info
                     stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
 
@@ -946,7 +942,6 @@ def sync_auto_channels(account_id):
                         channel.logo = logo
                         channel.save(update_fields=['logo'])
 
-                    channels_to_keep.add(channel.id)
                     channels_created += 1
                     current_channel_number += 1.0
 
@@ -955,19 +950,6 @@ def sync_auto_channels(account_id):
                 except Exception as e:
                     logger.error(f"Error creating auto channel for stream {stream.name}: {str(e)}")
                     continue
-
-            # Delete channels that no longer have corresponding streams
-            # Only delete auto-created channels that were created by this M3U account
-            channels_to_delete = existing_auto_channels.exclude(id__in=channels_to_keep)
-
-            for channel in channels_to_delete:
-                # Double-check that this is an auto-created channel by this account
-                if channel.auto_created and channel.auto_created_by_id == account.id:
-                    logger.debug(f"Deleting auto-created channel: {channel.channel_number} - {channel.name}")
-                    channel.delete()
-                    channels_deleted += 1
-                else:
-                    logger.warning(f"Skipping deletion of non-auto-created channel: {channel.channel_number} - {channel.name}")
 
         logger.info(f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_deleted} deleted")
         return f"Auto sync: {channels_created} channels created, {channels_deleted} deleted"
@@ -1230,6 +1212,16 @@ def refresh_single_m3u_account(account_id):
         # Now run cleanup
         streams_deleted = cleanup_streams(account_id, refresh_start_timestamp)
 
+        # Run auto channel sync after successful refresh
+        auto_sync_message = ""
+        try:
+            sync_result = sync_auto_channels(account_id)
+            logger.info(f"Auto channel sync result for account {account_id}: {sync_result}")
+            if sync_result and "created" in sync_result:
+                auto_sync_message = f" {sync_result}."
+        except Exception as e:
+            logger.error(f"Error running auto channel sync for account {account_id}: {str(e)}")
+
         # Calculate elapsed time
         elapsed_time = time.time() - start_time
 
@@ -1238,7 +1230,7 @@ def refresh_single_m3u_account(account_id):
         account.last_message = (
             f"Processing completed in {elapsed_time:.1f} seconds. "
             f"Streams: {streams_created} created, {streams_updated} updated, {streams_deleted} removed. "
-            f"Total processed: {streams_processed}."
+            f"Total processed: {streams_processed}.{auto_sync_message}"
         )
         account.updated_at = timezone.now()
         account.save(update_fields=['status', 'last_message', 'updated_at'])
@@ -1258,12 +1250,6 @@ def refresh_single_m3u_account(account_id):
             message=account.last_message
         )
 
-        # Run auto channel sync after successful refresh
-        try:
-            sync_result = sync_auto_channels(account_id)
-            logger.info(f"Auto channel sync result for account {account_id}: {sync_result}")
-        except Exception as e:
-            logger.error(f"Error running auto channel sync for account {account_id}: {str(e)}")
     except Exception as e:
         logger.error(f"Error processing M3U for account {account_id}: {str(e)}")
         account.status = M3UAccount.Status.ERROR

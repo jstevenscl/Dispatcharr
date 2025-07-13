@@ -24,10 +24,12 @@ import {
   NumberInput,
   Divider,
   Alert,
+  Box,
 } from '@mantine/core';
 import { Info } from 'lucide-react';
 import useChannelsStore from '../../store/channels';
 import { CircleCheck, CircleX } from 'lucide-react';
+import { notifications } from '@mantine/notifications';
 
 const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
@@ -80,11 +82,27 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const submit = async () => {
     setIsLoading(true);
     try {
-      // Update group settings via new API endpoint
+      // Update group settings via API endpoint
       await API.updateM3UGroupSettings(playlist.id, groupStates);
 
-      // Refresh the playlist
-      API.refreshPlaylist(playlist.id);
+      // Show notification about the refresh process
+      notifications.show({
+        title: 'Group Settings Updated',
+        message: 'Settings saved. Starting M3U refresh to apply changes...',
+        color: 'green',
+        autoClose: 3000,
+      });
+
+      // Refresh the playlist - this will handle channel sync automatically at the end
+      await API.refreshPlaylist(playlist.id);
+
+      notifications.show({
+        title: 'M3U Refresh Started',
+        message: 'The M3U account is being refreshed. Channel sync will occur automatically after parsing completes.',
+        color: 'blue',
+        autoClose: 5000,
+      });
+
       onClose();
     } catch (error) {
       console.error('Error updating group settings:', error);
@@ -124,7 +142,8 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
       opened={isOpen}
       onClose={onClose}
       title="M3U Group Filter & Auto Channel Sync"
-      size={1200}
+      size={1000}
+      styles={{ content: { '--mantine-color-body': '#27272A' } }}
     >
       <LoadingOverlay visible={isLoading} overlayBlur={2} />
       <Stack>
@@ -141,78 +160,88 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
             value={groupFilter}
             onChange={(event) => setGroupFilter(event.currentTarget.value)}
             style={{ flex: 1 }}
+            size="xs"
           />
-          <Button variant="default" size="sm" onClick={selectAll}>
+          <Button variant="default" size="xs" onClick={selectAll}>
             Select Visible
           </Button>
-          <Button variant="default" size="sm" onClick={deselectAll}>
+          <Button variant="default" size="xs" onClick={deselectAll}>
             Deselect Visible
           </Button>
         </Flex>
 
         <Divider label="Groups & Auto Sync Settings" labelPosition="center" />
 
-        <Stack spacing="xs" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-          {groupStates
-            .filter((group) =>
-              group.name.toLowerCase().includes(groupFilter.toLowerCase())
-            )
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((group) => (
-              <Group key={group.channel_group} spacing="md" style={{
-                padding: '12px',
-                border: '1px solid #e0e0e0',
-                borderRadius: '8px',
-                backgroundColor: group.enabled ? '#f8f9fa' : '#f5f5f5'
-              }}>
-                {/* Group Enable/Disable Button */}
-                <Button
-                  color={group.enabled ? 'green' : 'gray'}
-                  variant="filled"
-                  onClick={() => toggleGroupEnabled(group.channel_group)}
-                  radius="md"
-                  size="sm"
-                  leftSection={
-                    group.enabled ? (
-                      <CircleCheck size={16} />
-                    ) : (
-                      <CircleX size={16} />
-                    )
-                  }
-                  style={{ minWidth: '140px' }}
-                >
-                  <Text size="sm" truncate style={{ maxWidth: '120px' }}>
-                    {group.name}
-                  </Text>
-                </Button>
+        <Box style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+          <SimpleGrid
+            cols={{ base: 1, sm: 2, md: 3 }}
+            spacing="xs"
+            verticalSpacing="xs"
+          >
+            {groupStates
+              .filter((group) =>
+                group.name.toLowerCase().includes(groupFilter.toLowerCase())
+              )
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((group) => (
+                <Group key={group.channel_group} spacing="xs" style={{
+                  padding: '8px',
+                  border: '1px solid #444',
+                  borderRadius: '8px',
+                  backgroundColor: group.enabled ? '#2A2A2E' : '#1E1E22',
+                  flexDirection: 'column',
+                  alignItems: 'stretch'
+                }}>
+                  {/* Group Enable/Disable Button */}
+                  <Button
+                    color={group.enabled ? 'green' : 'gray'}
+                    variant="filled"
+                    onClick={() => toggleGroupEnabled(group.channel_group)}
+                    radius="md"
+                    size="xs"
+                    leftSection={
+                      group.enabled ? (
+                        <CircleCheck size={14} />
+                      ) : (
+                        <CircleX size={14} />
+                      )
+                    }
+                    fullWidth
+                  >
+                    <Text size="xs" truncate>
+                      {group.name}
+                    </Text>
+                  </Button>
 
-                {/* Auto Sync Checkbox */}
-                <Checkbox
-                  label="Auto Channel Sync"
-                  checked={group.auto_channel_sync && group.enabled}
-                  disabled={!group.enabled}
-                  onChange={() => toggleAutoSync(group.channel_group)}
-                  size="sm"
-                />
+                  {/* Auto Sync Controls */}
+                  <Stack spacing={4}>
+                    <Checkbox
+                      label="Auto Channel Sync"
+                      checked={group.auto_channel_sync && group.enabled}
+                      disabled={!group.enabled}
+                      onChange={() => toggleAutoSync(group.channel_group)}
+                      size="xs"
+                    />
 
-                {/* Channel Start Number Input */}
-                <NumberInput
-                  label="Start Channel #"
-                  value={group.auto_sync_channel_start}
-                  onChange={(value) => updateChannelStart(group.channel_group, value)}
-                  disabled={!group.enabled || !group.auto_channel_sync}
-                  min={1}
-                  step={1}
-                  size="sm"
-                  style={{ width: '120px' }}
-                  precision={1}
-                />
-              </Group>
-            ))}
-        </Stack>
+                    {group.auto_channel_sync && group.enabled && (
+                      <NumberInput
+                        label="Start Channel #"
+                        value={group.auto_sync_channel_start}
+                        onChange={(value) => updateChannelStart(group.channel_group, value)}
+                        min={1}
+                        step={1}
+                        size="xs"
+                        precision={1}
+                      />
+                    )}
+                  </Stack>
+                </Group>
+              ))}
+          </SimpleGrid>
+        </Box>
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-          <Button variant="default" onClick={onClose}>
+          <Button variant="default" onClick={onClose} size="xs">
             Cancel
           </Button>
           <Button
