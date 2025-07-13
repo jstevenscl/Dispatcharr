@@ -145,8 +145,7 @@ const M3U = ({
       if (values.account_type != 'XC') {
         notifications.show({
           title: 'Fetching M3U Groups',
-          message: 'Filter out groups or refresh M3U once complete.',
-          // color: 'green.5',
+          message: 'Configure group filters and auto sync settings once complete.',
         });
 
         // Don't prompt for group filters, but keeping this here

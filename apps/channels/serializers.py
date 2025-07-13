@@ -289,10 +289,12 @@ class ChannelSerializer(serializers.ModelSerializer):
 
 class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
     enabled = serializers.BooleanField()
+    auto_channel_sync = serializers.BooleanField(default=False)
+    auto_sync_channel_start = serializers.FloatField(allow_null=True, required=False)
 
     class Meta:
         model = ChannelGroupM3UAccount
-        fields = ["id", "channel_group", "enabled"]
+        fields = ["id", "channel_group", "enabled", "auto_channel_sync", "auto_sync_channel_start"]
 
     # Optionally, if you only need the id of the ChannelGroup, you can customize it like this:
     # channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())

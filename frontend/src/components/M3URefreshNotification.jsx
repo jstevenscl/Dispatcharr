@@ -49,7 +49,7 @@ export default function M3URefreshNotification() {
         message: (
           <Stack>
             {data.message ||
-              'M3U groups loaded. Please select groups or refresh M3U to complete setup.'}
+              'M3U groups loaded. Configure group filters and auto channel sync settings.'}
             <Group grow>
               <Button
                 size="xs"
@@ -72,7 +72,7 @@ export default function M3URefreshNotification() {
                   navigate('/sources');
                 }}
               >
-                Edit Groups
+                Configure Groups
               </Button>
             </Group>
           </Stack>

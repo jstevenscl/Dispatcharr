@@ -839,6 +839,144 @@ def delete_m3u_refresh_task_by_id(account_id):
         return False
 
 @shared_task
+def sync_auto_channels(account_id):
+    """
+    Automatically create/delete channels to match streams in groups with auto_channel_sync enabled.
+    Called after M3U refresh completes successfully.
+    """
+    from apps.channels.models import Channel, ChannelGroup, ChannelGroupM3UAccount, Stream, ChannelStream
+    from apps.epg.models import EPGData
+    import json
+
+    try:
+        account = M3UAccount.objects.get(id=account_id)
+        logger.info(f"Starting auto channel sync for M3U account {account.name}")
+
+        # Get groups with auto sync enabled for this account
+        auto_sync_groups = ChannelGroupM3UAccount.objects.filter(
+            m3u_account=account,
+            enabled=True,
+            auto_channel_sync=True
+        ).select_related('channel_group')
+
+        channels_created = 0
+        channels_deleted = 0
+
+        for group_relation in auto_sync_groups:
+            channel_group = group_relation.channel_group
+            start_number = group_relation.auto_sync_channel_start or 1.0
+
+            logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
+
+            # Get all streams in this group for this M3U account
+            current_streams = Stream.objects.filter(
+                m3u_account=account,
+                channel_group=channel_group
+            )
+
+            # Get existing channels in this group that were auto-created (we'll track this via a custom property)
+            existing_auto_channels = Channel.objects.filter(
+                channel_group=channel_group,
+                streams__m3u_account=account
+            ).distinct()
+
+            # Create a mapping of stream hashes to existing channels
+            existing_channel_streams = {}
+            for channel in existing_auto_channels:
+                for stream in channel.streams.filter(m3u_account=account):
+                    existing_channel_streams[stream.stream_hash] = channel
+
+            # Track which channels should exist (based on current streams)
+            channels_to_keep = set()
+            current_channel_number = start_number
+
+            # Create channels for streams that don't have them
+            for stream in current_streams.order_by('name'):
+                if stream.stream_hash in existing_channel_streams:
+                    # Channel already exists for this stream
+                    channels_to_keep.add(existing_channel_streams[stream.stream_hash].id)
+                    continue
+
+                # Find next available channel number
+                while Channel.objects.filter(channel_number=current_channel_number).exists():
+                    current_channel_number += 0.1
+
+                # Create new channel
+                try:
+                    # Parse custom properties for additional info
+                    stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
+
+                    # Get tvc_guide_stationid from custom properties if it exists
+                    tvc_guide_stationid = stream_custom_props.get("tvc-guide-stationid")
+
+                    # Create the channel
+                    channel = Channel.objects.create(
+                        channel_number=current_channel_number,
+                        name=stream.name,
+                        tvg_id=stream.tvg_id,
+                        tvc_guide_stationid=tvc_guide_stationid,
+                        channel_group=channel_group,
+                        user_level=0  # Default user level
+                    )
+
+                    # Associate the stream with the channel
+                    ChannelStream.objects.create(
+                        channel=channel,
+                        stream=stream,
+                        order=0
+                    )
+
+                    # Try to match EPG data
+                    if stream.tvg_id:
+                        epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
+                        if epg_data:
+                            channel.epg_data = epg_data
+                            channel.save(update_fields=['epg_data'])
+
+                    # Handle logo
+                    if stream.logo_url:
+                        from apps.channels.models import Logo
+                        logo, _ = Logo.objects.get_or_create(
+                            url=stream.logo_url,
+                            defaults={"name": stream.name or stream.tvg_id or "Unknown"}
+                        )
+                        channel.logo = logo
+                        channel.save(update_fields=['logo'])
+
+                    channels_to_keep.add(channel.id)
+                    channels_created += 1
+                    current_channel_number += 1.0
+
+                    logger.debug(f"Created auto channel: {channel.channel_number} - {channel.name}")
+
+                except Exception as e:
+                    logger.error(f"Error creating auto channel for stream {stream.name}: {str(e)}")
+                    continue
+
+            # Delete channels that no longer have corresponding streams
+            channels_to_delete = existing_auto_channels.exclude(id__in=channels_to_keep)
+
+            for channel in channels_to_delete:
+                # Only delete if all streams for this channel are from this M3U account
+                # and this channel group
+                all_streams_from_account = all(
+                    s.m3u_account_id == account.id and s.channel_group_id == channel_group.id
+                    for s in channel.streams.all()
+                )
+
+                if all_streams_from_account:
+                    logger.debug(f"Deleting auto channel: {channel.channel_number} - {channel.name}")
+                    channel.delete()
+                    channels_deleted += 1
+
+        logger.info(f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_deleted} deleted")
+        return f"Auto sync: {channels_created} channels created, {channels_deleted} deleted"
+
+    except Exception as e:
+        logger.error(f"Error in auto channel sync for account {account_id}: {str(e)}")
+        return f"Auto sync error: {str(e)}"
+
+@shared_task
 def refresh_single_m3u_account(account_id):
     """Splits M3U processing into chunks and dispatches them as parallel tasks."""
     if not acquire_task_lock('refresh_single_m3u_account', account_id):
@@ -1120,6 +1258,12 @@ def refresh_single_m3u_account(account_id):
             message=account.last_message
         )
 
+        # Run auto channel sync after successful refresh
+        try:
+            sync_result = sync_auto_channels(account_id)
+            logger.info(f"Auto channel sync result for account {account_id}: {sync_result}")
+        except Exception as e:
+            logger.error(f"Error running auto channel sync for account {account_id}: {str(e)}")
     except Exception as e:
         logger.error(f"Error processing M3U for account {account_id}: {str(e)}")
         account.status = M3UAccount.Status.ERROR

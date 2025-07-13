@@ -541,6 +541,15 @@ class ChannelGroupM3UAccount(models.Model):
     )
     custom_properties = models.TextField(null=True, blank=True)
     enabled = models.BooleanField(default=True)
+    auto_channel_sync = models.BooleanField(
+        default=False,
+        help_text='Automatically create/delete channels to match streams in this group'
+    )
+    auto_sync_channel_start = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='Starting channel number for auto-created channels in this group'
+    )
 
     class Meta:
         unique_together = ("channel_group", "m3u_account")

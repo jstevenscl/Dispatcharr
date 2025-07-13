@@ -733,6 +733,19 @@ export default class API {
     }
   }
 
+  static async updateM3UGroupSettings(playlistId, groupSettings) {
+    try {
+      const response = await request(`${host}/api/m3u/accounts/${playlistId}/group-settings/`, {
+        method: 'PATCH',
+        body: { group_settings: groupSettings },
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update M3U group settings', e);
+    }
+  }
+
   static async addPlaylist(values) {
     if (values.custom_properties) {
       values.custom_properties = JSON.stringify(values.custom_properties);
