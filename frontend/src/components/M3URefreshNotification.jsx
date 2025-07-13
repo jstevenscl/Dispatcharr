@@ -15,6 +15,7 @@ export default function M3URefreshNotification() {
   const refreshProgress = usePlaylistsStore((s) => s.refreshProgress);
   const fetchStreams = useStreamsStore((s) => s.fetchStreams);
   const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
+  const fetchChannels = useChannelsStore((s) => s.fetchChannels);
   const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
 
@@ -135,6 +136,7 @@ export default function M3URefreshNotification() {
       // Only trigger additional fetches on successful completion
       if (data.action == 'parsing') {
         fetchStreams();
+        fetchChannels();
       } else if (data.action == 'processing_groups') {
         fetchStreams();
         fetchChannelGroups();
