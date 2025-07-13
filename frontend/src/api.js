@@ -259,6 +259,8 @@ export default class API {
           canDelete: true
         };
         useChannelsStore.getState().addChannelGroup(processedGroup);
+        // Refresh channel groups to update the UI
+        useChannelsStore.getState().fetchChannelGroups();
       }
 
       return response;
