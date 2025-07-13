@@ -173,6 +173,8 @@ class ChannelSerializer(serializers.ModelSerializer):
         required=False,
     )
 
+    auto_created_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Channel
         fields = [
@@ -188,6 +190,9 @@ class ChannelSerializer(serializers.ModelSerializer):
             "uuid",
             "logo_id",
             "user_level",
+            "auto_created",
+            "auto_created_by",
+            "auto_created_by_name",
         ]
 
     def to_representation(self, instance):
@@ -285,6 +290,12 @@ class ChannelSerializer(serializers.ModelSerializer):
         if value == "0" or value == 0 or value == "" or value is None:
             return None
         return value  # PrimaryKeyRelatedField will handle the conversion to object
+
+    def get_auto_created_by_name(self, obj):
+        """Get the name of the M3U account that auto-created this channel."""
+        if obj.auto_created_by:
+            return obj.auto_created_by.name
+        return None
 
 
 class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):

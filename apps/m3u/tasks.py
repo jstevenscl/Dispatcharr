@@ -874,10 +874,11 @@ def sync_auto_channels(account_id):
                 channel_group=channel_group
             )
 
-            # Get existing channels in this group that were auto-created (we'll track this via a custom property)
+            # Get existing auto-created channels in this group that were created by this M3U account
             existing_auto_channels = Channel.objects.filter(
                 channel_group=channel_group,
-                streams__m3u_account=account
+                auto_created=True,
+                auto_created_by=account
             ).distinct()
 
             # Create a mapping of stream hashes to existing channels
@@ -909,14 +910,16 @@ def sync_auto_channels(account_id):
                     # Get tvc_guide_stationid from custom properties if it exists
                     tvc_guide_stationid = stream_custom_props.get("tvc-guide-stationid")
 
-                    # Create the channel
+                    # Create the channel with auto-created tracking
                     channel = Channel.objects.create(
                         channel_number=current_channel_number,
                         name=stream.name,
                         tvg_id=stream.tvg_id,
                         tvc_guide_stationid=tvc_guide_stationid,
                         channel_group=channel_group,
-                        user_level=0  # Default user level
+                        user_level=0,  # Default user level
+                        auto_created=True,  # Mark as auto-created
+                        auto_created_by=account  # Track which M3U account created it
                     )
 
                     # Associate the stream with the channel
@@ -954,20 +957,17 @@ def sync_auto_channels(account_id):
                     continue
 
             # Delete channels that no longer have corresponding streams
+            # Only delete auto-created channels that were created by this M3U account
             channels_to_delete = existing_auto_channels.exclude(id__in=channels_to_keep)
 
             for channel in channels_to_delete:
-                # Only delete if all streams for this channel are from this M3U account
-                # and this channel group
-                all_streams_from_account = all(
-                    s.m3u_account_id == account.id and s.channel_group_id == channel_group.id
-                    for s in channel.streams.all()
-                )
-
-                if all_streams_from_account:
-                    logger.debug(f"Deleting auto channel: {channel.channel_number} - {channel.name}")
+                # Double-check that this is an auto-created channel by this account
+                if channel.auto_created and channel.auto_created_by_id == account.id:
+                    logger.debug(f"Deleting auto-created channel: {channel.channel_number} - {channel.name}")
                     channel.delete()
                     channels_deleted += 1
+                else:
+                    logger.warning(f"Skipping deletion of non-auto-created channel: {channel.channel_number} - {channel.name}")
 
         logger.info(f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_deleted} deleted")
         return f"Auto sync: {channels_created} channels created, {channels_deleted} deleted"

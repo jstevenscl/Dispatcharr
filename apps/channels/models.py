@@ -277,6 +277,19 @@ class Channel(models.Model):
 
     user_level = models.IntegerField(default=0)
 
+    auto_created = models.BooleanField(
+        default=False,
+        help_text="Whether this channel was automatically created via M3U auto channel sync"
+    )
+    auto_created_by = models.ForeignKey(
+        "m3u.M3UAccount",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="auto_created_channels",
+        help_text="The M3U account that auto-created this channel"
+    )
+
     def clean(self):
         # Enforce unique channel_number within a given group
         existing = Channel.objects.filter(
