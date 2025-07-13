@@ -287,31 +287,25 @@ const ChannelTableHeader = ({
                   selectedTableIds.length == 0 ||
                   authUser.user_level != USER_LEVELS.ADMIN
                 }
+                onClick={() => setAssignNumbersModalOpen(true)}
               >
-                <UnstyledButton
-                  size="xs"
-                  onClick={() => setAssignNumbersModalOpen(true)}
-                >
-                  <Text size="xs">Assign #s</Text>
-                </UnstyledButton>
+                <Text size="xs">Assign #s</Text>
               </Menu.Item>
 
               <Menu.Item
                 leftSection={<Binary size={18} />}
                 disabled={authUser.user_level != USER_LEVELS.ADMIN}
+                onClick={matchEpg}
               >
-                <UnstyledButton size="xs" onClick={matchEpg}>
-                  <Text size="xs">Auto-Match</Text>
-                </UnstyledButton>
+                <Text size="xs">Auto-Match</Text>
               </Menu.Item>
 
               <Menu.Item
                 leftSection={<Settings size={18} />}
                 disabled={authUser.user_level != USER_LEVELS.ADMIN}
+                onClick={() => setGroupManagerOpen(true)}
               >
-                <UnstyledButton size="xs" onClick={() => setGroupManagerOpen(true)}>
-                  <Text size="xs">Edit Groups</Text>
-                </UnstyledButton>
+                <Text size="xs">Edit Groups</Text>
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
