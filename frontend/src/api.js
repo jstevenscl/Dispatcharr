@@ -250,7 +250,17 @@ export default class API {
       });
 
       if (response.id) {
-        useChannelsStore.getState().addChannelGroup(response);
+        // Add association flags for new groups
+        const processedGroup = {
+          ...response,
+          hasChannels: false,
+          hasM3UAccounts: false,
+          canEdit: true,
+          canDelete: true
+        };
+        useChannelsStore.getState().addChannelGroup(processedGroup);
+        // Refresh channel groups to update the UI
+        useChannelsStore.getState().fetchChannelGroups();
       }
 
       return response;
@@ -274,6 +284,38 @@ export default class API {
       return response;
     } catch (e) {
       errorNotification('Failed to update channel group', e);
+    }
+  }
+
+  static async deleteChannelGroup(id) {
+    try {
+      await request(`${host}/api/channels/groups/${id}/`, {
+        method: 'DELETE',
+      });
+
+      // Remove from store after successful deletion
+      useChannelsStore.getState().removeChannelGroup(id);
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete channel group', e);
+      throw e;
+    }
+  }
+
+  static async cleanupUnusedChannelGroups() {
+    try {
+      const response = await request(`${host}/api/channels/groups/cleanup/`, {
+        method: 'POST',
+      });
+
+      // Refresh channel groups to update the UI
+      useChannelsStore.getState().fetchChannelGroups();
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to cleanup unused channel groups', e);
+      throw e;
     }
   }
 

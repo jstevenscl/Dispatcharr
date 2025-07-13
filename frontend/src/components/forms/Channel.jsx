@@ -45,6 +45,8 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const groupListRef = useRef(null);
 
   const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
+
   const logos = useChannelsStore((s) => s.logos);
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
   const streams = useStreamsStore((state) => state.streams);
