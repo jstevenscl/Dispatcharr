@@ -841,7 +841,8 @@ def delete_m3u_refresh_task_by_id(account_id):
 @shared_task
 def sync_auto_channels(account_id):
     """
-    Automatically create/delete channels to match streams in groups with auto_channel_sync enabled.
+    Automatically create/update/delete channels to match streams in groups with auto_channel_sync enabled.
+    Preserves existing channel UUIDs to maintain M3U link integrity.
     Called after M3U refresh completes successfully.
     """
     from apps.channels.models import Channel, ChannelGroup, ChannelGroupM3UAccount, Stream, ChannelStream
@@ -860,6 +861,7 @@ def sync_auto_channels(account_id):
         ).select_related('channel_group')
 
         channels_created = 0
+        channels_updated = 0
         channels_deleted = 0
 
         for group_relation in auto_sync_groups:
@@ -868,91 +870,169 @@ def sync_auto_channels(account_id):
 
             logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
 
-            # Step 1: Delete all existing auto-created channels for this account in this group
-            existing_auto_channels = Channel.objects.filter(
-                channel_group=channel_group,
-                auto_created=True,
-                auto_created_by=account
-            )
-
-            deleted_count = existing_auto_channels.count()
-            if deleted_count > 0:
-                logger.debug(f"Deleting {deleted_count} existing auto-created channels in group {channel_group.name}")
-                existing_auto_channels.delete()
-                channels_deleted += deleted_count
-
-            # Step 2: Get all current streams in this group for this M3U account
+            # Get all current streams in this group for this M3U account
             current_streams = Stream.objects.filter(
                 m3u_account=account,
                 channel_group=channel_group
-            ).order_by('name')  # Sort by name for consistent ordering
+            ).order_by('name')
+
+            # Get existing auto-created channels for this account in this group
+            existing_channels = Channel.objects.filter(
+                channel_group=channel_group,
+                auto_created=True,
+                auto_created_by=account
+            ).select_related('logo', 'epg_data')
+
+            # Create mapping of existing channels by their associated stream
+            existing_channel_map = {}
+            for channel in existing_channels:
+                # Get streams associated with this channel that belong to our M3U account
+                channel_streams = ChannelStream.objects.filter(
+                    channel=channel,
+                    stream__m3u_account=account
+                ).select_related('stream')
+
+                # Map each of our M3U account's streams to this channel
+                for channel_stream in channel_streams:
+                    if channel_stream.stream:
+                        existing_channel_map[channel_stream.stream.id] = channel
+
+            # Track which streams we've processed
+            processed_stream_ids = set()
 
             if not current_streams.exists():
-                logger.debug(f"No streams found in group {channel_group.name}, skipping channel creation")
+                logger.debug(f"No streams found in group {channel_group.name}")
+                # Delete all existing auto channels if no streams
+                if existing_channels.exists():
+                    deleted_count = existing_channels.count()
+                    existing_channels.delete()
+                    channels_deleted += deleted_count
+                    logger.debug(f"Deleted {deleted_count} auto channels (no streams remaining)")
                 continue
 
-            # Step 3: Create new channels for all streams
+            # Process each current stream
             current_channel_number = start_number
 
             for stream in current_streams:
-                try:
-                    # Find next available channel number
-                    while Channel.objects.filter(channel_number=current_channel_number).exists():
-                        current_channel_number += 0.1
+                processed_stream_ids.add(stream.id)
 
+                try:
                     # Parse custom properties for additional info
                     stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
-
-                    # Get tvc_guide_stationid from custom properties if it exists
                     tvc_guide_stationid = stream_custom_props.get("tvc-guide-stationid")
 
-                    # Create the channel with auto-created tracking
-                    channel = Channel.objects.create(
-                        channel_number=current_channel_number,
-                        name=stream.name,
-                        tvg_id=stream.tvg_id,
-                        tvc_guide_stationid=tvc_guide_stationid,
-                        channel_group=channel_group,
-                        user_level=0,  # Default user level
-                        auto_created=True,  # Mark as auto-created
-                        auto_created_by=account  # Track which M3U account created it
-                    )
+                    # Check if we already have a channel for this stream
+                    existing_channel = existing_channel_map.get(stream.id)
 
-                    # Associate the stream with the channel
-                    ChannelStream.objects.create(
-                        channel=channel,
-                        stream=stream,
-                        order=0
-                    )
+                    if existing_channel:
+                        # Update existing channel if needed
+                        channel_updated = False
 
-                    # Try to match EPG data
-                    if stream.tvg_id:
-                        epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
-                        if epg_data:
-                            channel.epg_data = epg_data
-                            channel.save(update_fields=['epg_data'])
+                        # Check for changes in key fields
+                        if existing_channel.name != stream.name:
+                            existing_channel.name = stream.name
+                            channel_updated = True
 
-                    # Handle logo
-                    if stream.logo_url:
-                        from apps.channels.models import Logo
-                        logo, _ = Logo.objects.get_or_create(
-                            url=stream.logo_url,
-                            defaults={"name": stream.name or stream.tvg_id or "Unknown"}
+                        if existing_channel.tvg_id != stream.tvg_id:
+                            existing_channel.tvg_id = stream.tvg_id
+                            channel_updated = True
+
+                        if existing_channel.tvc_guide_stationid != tvc_guide_stationid:
+                            existing_channel.tvc_guide_stationid = tvc_guide_stationid
+                            channel_updated = True
+
+                        # Handle logo updates
+                        current_logo = None
+                        if stream.logo_url:
+                            from apps.channels.models import Logo
+                            current_logo, _ = Logo.objects.get_or_create(
+                                url=stream.logo_url,
+                                defaults={"name": stream.name or stream.tvg_id or "Unknown"}
+                            )
+
+                        if existing_channel.logo != current_logo:
+                            existing_channel.logo = current_logo
+                            channel_updated = True
+
+                        # Handle EPG data updates
+                        current_epg_data = None
+                        if stream.tvg_id:
+                            current_epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
+
+                        if existing_channel.epg_data != current_epg_data:
+                            existing_channel.epg_data = current_epg_data
+                            channel_updated = True
+
+                        if channel_updated:
+                            existing_channel.save()
+                            channels_updated += 1
+                            logger.debug(f"Updated auto channel: {existing_channel.channel_number} - {existing_channel.name}")
+
+                    else:
+                        # Create new channel
+                        # Find next available channel number
+                        while Channel.objects.filter(channel_number=current_channel_number).exists():
+                            current_channel_number += 0.1
+
+                        # Create the channel with auto-created tracking
+                        channel = Channel.objects.create(
+                            channel_number=current_channel_number,
+                            name=stream.name,
+                            tvg_id=stream.tvg_id,
+                            tvc_guide_stationid=tvc_guide_stationid,
+                            channel_group=channel_group,
+                            user_level=0,  # Default user level
+                            auto_created=True,  # Mark as auto-created
+                            auto_created_by=account  # Track which M3U account created it
                         )
-                        channel.logo = logo
-                        channel.save(update_fields=['logo'])
 
-                    channels_created += 1
-                    current_channel_number += 1.0
+                        # Associate the stream with the channel
+                        ChannelStream.objects.create(
+                            channel=channel,
+                            stream=stream,
+                            order=0
+                        )
 
-                    logger.debug(f"Created auto channel: {channel.channel_number} - {channel.name}")
+                        # Try to match EPG data
+                        if stream.tvg_id:
+                            epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
+                            if epg_data:
+                                channel.epg_data = epg_data
+                                channel.save(update_fields=['epg_data'])
+
+                        # Handle logo
+                        if stream.logo_url:
+                            from apps.channels.models import Logo
+                            logo, _ = Logo.objects.get_or_create(
+                                url=stream.logo_url,
+                                defaults={"name": stream.name or stream.tvg_id or "Unknown"}
+                            )
+                            channel.logo = logo
+                            channel.save(update_fields=['logo'])
+
+                        channels_created += 1
+                        current_channel_number += 1.0
+
+                        logger.debug(f"Created auto channel: {channel.channel_number} - {channel.name}")
 
                 except Exception as e:
-                    logger.error(f"Error creating auto channel for stream {stream.name}: {str(e)}")
+                    logger.error(f"Error processing auto channel for stream {stream.name}: {str(e)}")
                     continue
 
-        logger.info(f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_deleted} deleted")
-        return f"Auto sync: {channels_created} channels created, {channels_deleted} deleted"
+            # Delete channels for streams that no longer exist
+            channels_to_delete = []
+            for stream_id, channel in existing_channel_map.items():
+                if stream_id not in processed_stream_ids:
+                    channels_to_delete.append(channel)
+
+            if channels_to_delete:
+                deleted_count = len(channels_to_delete)
+                Channel.objects.filter(id__in=[ch.id for ch in channels_to_delete]).delete()
+                channels_deleted += deleted_count
+                logger.debug(f"Deleted {deleted_count} auto channels for removed streams")
+
+        logger.info(f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_updated} updated, {channels_deleted} deleted")
+        return f"Auto sync: {channels_created} channels created, {channels_updated} updated, {channels_deleted} deleted"
 
     except Exception as e:
         logger.error(f"Error in auto channel sync for account {account_id}: {str(e)}")
