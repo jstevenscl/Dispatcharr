@@ -1012,6 +1012,8 @@ def sync_auto_channels(account_id):
 
                         channels_created += 1
                         current_channel_number += 1.0
+                        if current_channel_number % 1 != 0:  # Has decimal
+                            current_channel_number = int(current_channel_number) + 1.0
 
                         logger.debug(f"Created auto channel: {channel.channel_number} - {channel.name}")
 
