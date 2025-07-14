@@ -62,6 +62,7 @@ def cleanup_task_memory(**kwargs):
         'apps.m3u.tasks.refresh_m3u_accounts',
         'apps.m3u.tasks.process_m3u_batch',
         'apps.m3u.tasks.process_xc_category',
+        'apps.m3u.tasks.sync_auto_channels',
         'apps.epg.tasks.refresh_epg_data',
         'apps.epg.tasks.refresh_all_epg_data',
         'apps.epg.tasks.parse_programs_for_source',
