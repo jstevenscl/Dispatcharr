@@ -136,6 +136,7 @@ export default function M3URefreshNotification() {
       // Only trigger additional fetches on successful completion
       if (data.action == 'parsing') {
         fetchStreams();
+        API.requeryChannels();
         fetchChannels();
       } else if (data.action == 'processing_groups') {
         fetchStreams();
