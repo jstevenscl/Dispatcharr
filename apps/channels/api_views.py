@@ -1038,6 +1038,31 @@ class LogoViewSet(viewsets.ModelViewSet):
         except KeyError:
             return [Authenticated()]
 
+    def create(self, request, *args, **kwargs):
+        """Create a new logo entry"""
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            logo = serializer.save()
+            return Response(self.get_serializer(logo).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        """Update an existing logo"""
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a logo"""
+        logo = self.get_object()
+        
+        # Check if logo is being used by any channels
+        if logo.channels.exists():
+            return Response(
+                {"error": f"Cannot delete logo as it is used by {logo.channels.count()} channel(s)"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["post"])
     def upload(self, request):
         if "file" not in request.FILES:
@@ -1062,7 +1087,7 @@ class LogoViewSet(viewsets.ModelViewSet):
         )
 
         return Response(
-            {"id": logo.id, "name": logo.name, "url": logo.url},
+            LogoSerializer(logo, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -1092,7 +1117,13 @@ class LogoViewSet(viewsets.ModelViewSet):
 
         else:  # Remote image
             try:
-                remote_response = requests.get(logo_url, stream=True)
+                # Add proper timeouts to prevent hanging
+                remote_response = requests.get(
+                    logo_url, 
+                    stream=True, 
+                    timeout=(10, 30),  # (connect_timeout, read_timeout)
+                    headers={'User-Agent': 'Dispatcharr/1.0'}
+                )
                 if remote_response.status_code == 200:
                     # Try to get content type from response headers first
                     content_type = remote_response.headers.get("Content-Type")
@@ -1114,7 +1145,14 @@ class LogoViewSet(viewsets.ModelViewSet):
                     )
                     return response
                 raise Http404("Remote image not found")
-            except requests.RequestException:
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout fetching logo from {logo_url}")
+                raise Http404("Logo request timed out")
+            except requests.exceptions.ConnectionError:
+                logger.warning(f"Connection error fetching logo from {logo_url}")
+                raise Http404("Unable to connect to logo server")
+            except requests.RequestException as e:
+                logger.warning(f"Error fetching logo from {logo_url}: {e}")
                 raise Http404("Error fetching remote image")
 
 

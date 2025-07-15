@@ -15,6 +15,7 @@ import Stats from './pages/Stats';
 import DVR from './pages/DVR';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
+import LogosPage from './pages/Logos';
 import useAuthStore from './store/auth';
 import FloatingVideo from './components/FloatingVideo';
 import { WebsocketProvider } from './WebSocket';
@@ -133,6 +134,7 @@ const App = () => {
                         <Route path="/stats" element={<Stats />} />
                         <Route path="/users" element={<Users />} />
                         <Route path="/settings" element={<Settings />} />
+                        <Route path="/logos" element={<LogosPage />} />
                       </>
                     ) : (
                       <Route path="/login" element={<Login needsSuperuser />} />

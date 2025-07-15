@@ -13,6 +13,7 @@ import {
   Ellipsis,
   LogOut,
   User,
+  FileImage,
 } from 'lucide-react';
 import {
   Avatar,
@@ -108,6 +109,11 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           label: 'Users',
           icon: <User size={20} />,
           path: '/users',
+        },
+        {
+          label: 'Logos',
+          icon: <FileImage size={20} />,
+          path: '/logos',
         },
         {
           label: 'Settings',

@@ -1253,6 +1253,50 @@ export default class API {
     }
   }
 
+  static async createLogo(values) {
+    try {
+      const response = await request(`${host}/api/channels/logos/`, {
+        method: 'POST',
+        body: values,
+      });
+
+      useChannelsStore.getState().addLogo(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create logo', e);
+    }
+  }
+
+  static async updateLogo(id, values) {
+    try {
+      const response = await request(`${host}/api/channels/logos/${id}/`, {
+        method: 'PUT',
+        body: values,
+      });
+
+      useChannelsStore.getState().updateLogo(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update logo', e);
+    }
+  }
+
+  static async deleteLogo(id) {
+    try {
+      await request(`${host}/api/channels/logos/${id}/`, {
+        method: 'DELETE',
+      });
+
+      useChannelsStore.getState().removeLogo(id);
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete logo', e);
+    }
+  }
+
   static async getChannelProfiles() {
     try {
       const response = await request(`${host}/api/channels/profiles/`);
