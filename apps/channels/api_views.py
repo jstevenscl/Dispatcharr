@@ -17,6 +17,8 @@ from apps.accounts.permissions import (
     permission_classes_by_method,
 )
 
+from core.models import UserAgent, CoreSettings
+
 from .models import (
     Stream,
     Channel,
@@ -1053,14 +1055,14 @@ class LogoViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Delete a logo"""
         logo = self.get_object()
-        
+
         # Check if logo is being used by any channels
         if logo.channels.exists():
             return Response(
                 {"error": f"Cannot delete logo as it is used by {logo.channels.count()} channel(s)"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=["post"])
@@ -1117,12 +1119,21 @@ class LogoViewSet(viewsets.ModelViewSet):
 
         else:  # Remote image
             try:
+                # Get the default user agent
+                try:
+                    default_user_agent_id = CoreSettings.get_default_user_agent_id()
+                    user_agent_obj = UserAgent.objects.get(id=int(default_user_agent_id))
+                    user_agent = user_agent_obj.user_agent
+                except (CoreSettings.DoesNotExist, UserAgent.DoesNotExist, ValueError):
+                    # Fallback to hardcoded if default not found
+                    user_agent = 'Dispatcharr/1.0'
+
                 # Add proper timeouts to prevent hanging
                 remote_response = requests.get(
-                    logo_url, 
-                    stream=True, 
-                    timeout=(10, 30),  # (connect_timeout, read_timeout)
-                    headers={'User-Agent': 'Dispatcharr/1.0'}
+                    logo_url,
+                    stream=True,
+                    timeout=(3, 5),  # (connect_timeout, read_timeout)
+                    headers={'User-Agent': user_agent}
                 )
                 if remote_response.status_code == 200:
                     # Try to get content type from response headers first
