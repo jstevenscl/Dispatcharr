@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import API from '../../api';
 import LogoForm from '../forms/Logo';
 import useChannelsStore from '../../store/channels';
@@ -93,6 +93,16 @@ const LogosTable = () => {
         name: '',
         used: 'all'
     });
+    const [debouncedNameFilter, setDebouncedNameFilter] = useState('');
+
+    // Debounce the name filter
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedNameFilter(filters.name);
+        }, 300); // 300ms delay
+
+        return () => clearTimeout(timer);
+    }, [filters.name]);
 
     /**
      * Functions
@@ -261,9 +271,9 @@ const LogosTable = () => {
         // Apply filters
         let filteredLogos = logosArray;
 
-        if (filters.name) {
+        if (debouncedNameFilter) {
             filteredLogos = filteredLogos.filter(logo =>
-                logo.name.toLowerCase().includes(filters.name.toLowerCase())
+                logo.name.toLowerCase().includes(debouncedNameFilter.toLowerCase())
             );
         }
 
@@ -274,7 +284,7 @@ const LogosTable = () => {
         }
 
         return filteredLogos.sort((a, b) => a.id - b.id);
-    }, [logos, filters]);
+    }, [logos, debouncedNameFilter, filters.used]);
 
     const renderHeaderCell = (header) => {
         return (
@@ -355,12 +365,13 @@ const LogosTable = () => {
                                 <TextInput
                                     placeholder="Filter by name..."
                                     value={filters.name}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                        const value = event.target.value;
                                         setFilters(prev => ({
                                             ...prev,
-                                            name: event.currentTarget.value
-                                        }))
-                                    }
+                                            name: value
+                                        }));
+                                    }}
                                     size="xs"
                                     style={{ width: 200 }}
                                 />
