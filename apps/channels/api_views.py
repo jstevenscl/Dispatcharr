@@ -1074,13 +1074,21 @@ class BulkDeleteLogosAPIView(APIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
+
+class CleanupUnusedLogosAPIView(APIView):
+    def get_permissions(self):
+        try:
+            return [
+                perm() for perm in permission_classes_by_method[self.request.method]
+            ]
+        except KeyError:
+            return [Authenticated()]
+
     @swagger_auto_schema(
-        method="post",
         operation_description="Delete all logos that are not used by any channels",
         responses={200: "Cleanup completed"},
     )
-    @action(detail=False, methods=["post"], url_path="cleanup")
-    def cleanup_unused_logos(self, request):
+    def post(self, request):
         """Delete all logos with no channel associations"""
         unused_logos = Logo.objects.filter(channels__isnull=True)
         deleted_count = unused_logos.count()

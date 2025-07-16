@@ -1332,9 +1332,6 @@ export default class API {
         method: 'POST',
       });
 
-      // Refresh logos to update the UI
-      await this.fetchLogos();
-
       return response;
     } catch (e) {
       errorNotification('Failed to cleanup unused logos', e);
