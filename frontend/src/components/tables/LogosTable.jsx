@@ -133,7 +133,7 @@ const LogosTable = () => {
                 size: 80,
                 enableSorting: false,
                 cell: ({ getValue, row }) => (
-                    <Center style={{ width: '100%' }}>
+                    <Center style={{ width: '100%', padding: '4px' }}>
                         <Image
                             src={getValue()}
                             alt={row.original.name}
