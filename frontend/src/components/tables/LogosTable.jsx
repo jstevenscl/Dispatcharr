@@ -132,6 +132,12 @@ const LogosTable = () => {
         return filteredLogos.sort((a, b) => a.id - b.id);
     }, [logos, debouncedNameFilter, filters.used]);
 
+    // Calculate unused logos count
+    const unusedLogosCount = useMemo(() => {
+        const allLogos = Object.values(logos || {});
+        return allLogos.filter(logo => !logo.is_used).length;
+    }, [logos]);
+
     /**
      * Functions
      */
@@ -528,8 +534,9 @@ const LogosTable = () => {
                                     color="orange"
                                     onClick={handleCleanupUnused}
                                     loading={isCleaningUp}
+                                    disabled={unusedLogosCount === 0}
                                 >
-                                    Cleanup Unused
+                                    Cleanup Unused {unusedLogosCount > 0 ? `(${unusedLogosCount})` : ''}
                                 </Button>
 
                                 <Button
@@ -630,7 +637,7 @@ const LogosTable = () => {
                 title="Cleanup Unused Logos"
                 message={
                     <div>
-                        Are you sure you want to cleanup all unused logos?
+                        Are you sure you want to cleanup {unusedLogosCount} unused logo{unusedLogosCount !== 1 ? 's' : ''}?
                         <Text size="sm" c="dimmed" mt="xs">
                             This will permanently delete all logos that are not currently used by any channels.
                         </Text>
