@@ -1040,6 +1040,24 @@ class LogoViewSet(viewsets.ModelViewSet):
         except KeyError:
             return [Authenticated()]
 
+    def get_queryset(self):
+        """Optimize queryset with prefetch and add filtering"""
+        queryset = Logo.objects.prefetch_related('channels').order_by('name')
+        
+        # Filter by usage
+        used_filter = self.request.query_params.get('used', None)
+        if used_filter == 'true':
+            queryset = queryset.filter(channels__isnull=False).distinct()
+        elif used_filter == 'false':
+            queryset = queryset.filter(channels__isnull=True)
+            
+        # Filter by name
+        name_filter = self.request.query_params.get('name', None)
+        if name_filter:
+            queryset = queryset.filter(name__icontains=name_filter)
+            
+        return queryset
+
     def create(self, request, *args, **kwargs):
         """Create a new logo entry"""
         serializer = self.get_serializer(data=request.data)

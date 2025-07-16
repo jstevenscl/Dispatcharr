@@ -8,6 +8,7 @@ import {
     SquareMinus,
     SquarePen,
     ExternalLink,
+    Filter,
 } from 'lucide-react';
 import {
     ActionIcon,
@@ -22,6 +23,11 @@ import {
     Stack,
     Image,
     Center,
+    Badge,
+    Tooltip,
+    Select,
+    TextInput,
+    Menu,
 } from '@mantine/core';
 import { CustomTable, useTable } from './CustomTable';
 import ConfirmationDialog from '../ConfirmationDialog';
@@ -83,6 +89,10 @@ const LogosTable = () => {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [logoToDelete, setLogoToDelete] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [filters, setFilters] = useState({
+        name: '',
+        used: 'all'
+    });
 
     /**
      * Functions
@@ -156,6 +166,42 @@ const LogosTable = () => {
                 ),
             },
             {
+                header: 'Usage',
+                accessorKey: 'channel_count',
+                size: 120,
+                cell: ({ getValue, row }) => {
+                    const count = getValue();
+                    const channelNames = row.original.channel_names || [];
+
+                    if (count === 0) {
+                        return (
+                            <Badge size="sm" variant="light" color="gray">
+                                Unused
+                            </Badge>
+                        );
+                    }
+
+                    return (
+                        <Tooltip
+                            label={
+                                <div>
+                                    <Text size="xs" fw={600}>Used by {count} channel{count !== 1 ? 's' : ''}:</Text>
+                                    {channelNames.map((name, index) => (
+                                        <Text key={index} size="xs">• {name}</Text>
+                                    ))}
+                                </div>
+                            }
+                            multiline
+                            width={220}
+                        >
+                            <Badge size="sm" variant="light" color="blue">
+                                {count} channel{count !== 1 ? 's' : ''}
+                            </Badge>
+                        </Tooltip>
+                    );
+                },
+            },
+            {
                 header: 'URL',
                 accessorKey: 'url',
                 cell: ({ getValue }) => (
@@ -211,8 +257,24 @@ const LogosTable = () => {
 
     const data = useMemo(() => {
         const logosArray = Object.values(logos || {});
-        return logosArray.sort((a, b) => a.id - b.id);
-    }, [logos]);
+
+        // Apply filters
+        let filteredLogos = logosArray;
+
+        if (filters.name) {
+            filteredLogos = filteredLogos.filter(logo =>
+                logo.name.toLowerCase().includes(filters.name.toLowerCase())
+            );
+        }
+
+        if (filters.used === 'used') {
+            filteredLogos = filteredLogos.filter(logo => logo.is_used);
+        } else if (filters.used === 'unused') {
+            filteredLogos = filteredLogos.filter(logo => !logo.is_used);
+        }
+
+        return filteredLogos.sort((a, b) => a.id - b.id);
+    }, [logos, filters]);
 
     const renderHeaderCell = (header) => {
         return (
@@ -238,6 +300,7 @@ const LogosTable = () => {
             cache_url: renderHeaderCell,
             name: renderHeaderCell,
             url: renderHeaderCell,
+            channel_count: renderHeaderCell,
         },
     });
 
@@ -282,11 +345,44 @@ const LogosTable = () => {
                         <Box
                             style={{
                                 display: 'flex',
-                                justifyContent: 'flex-end',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
                                 padding: '16px',
                                 borderBottom: '1px solid #3f3f46',
                             }}
                         >
+                            <Group gap="sm">
+                                <TextInput
+                                    placeholder="Filter by name..."
+                                    value={filters.name}
+                                    onChange={(event) =>
+                                        setFilters(prev => ({
+                                            ...prev,
+                                            name: event.currentTarget.value
+                                        }))
+                                    }
+                                    size="xs"
+                                    style={{ width: 200 }}
+                                />
+                                <Select
+                                    placeholder="Usage filter"
+                                    value={filters.used}
+                                    onChange={(value) =>
+                                        setFilters(prev => ({
+                                            ...prev,
+                                            used: value
+                                        }))
+                                    }
+                                    data={[
+                                        { value: 'all', label: 'All logos' },
+                                        { value: 'used', label: 'Used only' },
+                                        { value: 'unused', label: 'Unused only' },
+                                    ]}
+                                    size="xs"
+                                    style={{ width: 140 }}
+                                />
+                            </Group>
+
                             <Button
                                 leftSection={<SquarePlus size={18} />}
                                 variant="light"
@@ -336,7 +432,11 @@ const LogosTable = () => {
                     logoToDelete ? (
                         <div>
                             Are you sure you want to delete the logo "{logoToDelete.name}"?
-                            <br />
+                            {logoToDelete.channel_count > 0 && (
+                                <Text size="sm" c="orange" mt="xs">
+                                    Warning: This logo is currently used by {logoToDelete.channel_count} channel{logoToDelete.channel_count !== 1 ? 's' : ''}.
+                                </Text>
+                            )}
                             <Text size="sm" c="dimmed" mt="xs">
                                 This action cannot be undone.
                             </Text>

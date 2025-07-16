@@ -1225,13 +1225,24 @@ export default class API {
     }
   }
 
-  static async getLogos() {
+  static async getLogos(params = {}) {
     try {
-      const response = await request(`${host}/api/channels/logos/`);
+      const queryParams = new URLSearchParams(params);
+      const response = await request(`${host}/api/channels/logos/?${queryParams.toString()}`);
 
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve logos', e);
+    }
+  }
+
+  static async fetchLogos() {
+    try {
+      const response = await this.getLogos();
+      useChannelsStore.getState().setLogos(response);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch logos', e);
     }
   }
 

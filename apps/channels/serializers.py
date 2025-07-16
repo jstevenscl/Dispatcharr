@@ -20,10 +20,13 @@ from django.utils import timezone
 
 class LogoSerializer(serializers.ModelSerializer):
     cache_url = serializers.SerializerMethodField()
+    channel_count = serializers.SerializerMethodField()
+    is_used = serializers.SerializerMethodField()
+    channel_names = serializers.SerializerMethodField()
 
     class Meta:
         model = Logo
-        fields = ["id", "name", "url", "cache_url"]
+        fields = ["id", "name", "url", "cache_url", "channel_count", "is_used", "channel_names"]
 
     def get_cache_url(self, obj):
         # return f"/api/channels/logos/{obj.id}/cache/"
@@ -33,6 +36,22 @@ class LogoSerializer(serializers.ModelSerializer):
                 reverse("api:channels:logo-cache", args=[obj.id])
             )
         return reverse("api:channels:logo-cache", args=[obj.id])
+
+    def get_channel_count(self, obj):
+        """Get the number of channels using this logo"""
+        return obj.channels.count()
+
+    def get_is_used(self, obj):
+        """Check if this logo is used by any channels"""
+        return obj.channels.exists()
+
+    def get_channel_names(self, obj):
+        """Get the names of channels using this logo (limited to first 5)"""
+        channels = obj.channels.all()[:5]
+        names = [channel.name for channel in channels]
+        if obj.channels.count() > 5:
+            names.append(f"...and {obj.channels.count() - 5} more")
+        return names
 
 
 #
