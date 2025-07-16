@@ -1023,6 +1023,79 @@ class BulkDeleteChannelsAPIView(APIView):
         )
 
 
+# ─────────────────────────────────────────────────────────
+# 6) Bulk Delete Logos
+# ─────────────────────────────────────────────────────────
+class BulkDeleteLogosAPIView(APIView):
+    def get_permissions(self):
+        try:
+            return [
+                perm() for perm in permission_classes_by_method[self.request.method]
+            ]
+        except KeyError:
+            return [Authenticated()]
+
+    @swagger_auto_schema(
+        operation_description="Bulk delete logos by ID",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["logo_ids"],
+            properties={
+                "logo_ids": openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_INTEGER),
+                    description="Logo IDs to delete",
+                )
+            },
+        ),
+        responses={204: "Logos deleted"},
+    )
+    def delete(self, request):
+        logo_ids = request.data.get("logo_ids", [])
+
+        # Check if any logos are being used by channels
+        used_logos = Logo.objects.filter(
+            id__in=logo_ids,
+            channels__isnull=False
+        ).distinct()
+
+        if used_logos.exists():
+            used_names = list(used_logos.values_list('name', flat=True))
+            return Response(
+                {"error": f"Cannot delete logos that are in use: {', '.join(used_names)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Delete logos that are not in use
+        deleted_count = Logo.objects.filter(id__in=logo_ids).delete()[0]
+
+        return Response(
+            {"message": f"Successfully deleted {deleted_count} logos"},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+    @swagger_auto_schema(
+        method="post",
+        operation_description="Delete all logos that are not used by any channels",
+        responses={200: "Cleanup completed"},
+    )
+    @action(detail=False, methods=["post"], url_path="cleanup")
+    def cleanup_unused_logos(self, request):
+        """Delete all logos with no channel associations"""
+        unused_logos = Logo.objects.filter(channels__isnull=True)
+        deleted_count = unused_logos.count()
+        logo_names = list(unused_logos.values_list('name', flat=True))
+
+        # Delete the unused logos
+        unused_logos.delete()
+
+        return Response({
+            "message": f"Successfully deleted {deleted_count} unused logos",
+            "deleted_count": deleted_count,
+            "deleted_logos": logo_names
+        })
+
+
 class LogoViewSet(viewsets.ModelViewSet):
     queryset = Logo.objects.all()
     serializer_class = LogoSerializer
@@ -1043,19 +1116,19 @@ class LogoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Optimize queryset with prefetch and add filtering"""
         queryset = Logo.objects.prefetch_related('channels').order_by('name')
-        
+
         # Filter by usage
         used_filter = self.request.query_params.get('used', None)
         if used_filter == 'true':
             queryset = queryset.filter(channels__isnull=False).distinct()
         elif used_filter == 'false':
             queryset = queryset.filter(channels__isnull=True)
-            
+
         # Filter by name
         name_filter = self.request.query_params.get('name', None)
         if name_filter:
             queryset = queryset.filter(name__icontains=name_filter)
-            
+
         return queryset
 
     def create(self, request, *args, **kwargs):

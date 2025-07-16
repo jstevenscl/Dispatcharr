@@ -9,6 +9,8 @@ import {
     SquarePen,
     ExternalLink,
     Filter,
+    Trash2,
+    Trash,
 } from 'lucide-react';
 import {
     ActionIcon,
@@ -28,6 +30,7 @@ import {
     Select,
     TextInput,
     Menu,
+    Checkbox,
 } from '@mantine/core';
 import { CustomTable, useTable } from './CustomTable';
 import ConfirmationDialog from '../ConfirmationDialog';
@@ -89,11 +92,15 @@ const LogosTable = () => {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [logoToDelete, setLogoToDelete] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [confirmCleanupOpen, setConfirmCleanupOpen] = useState(false);
+    const [isBulkDelete, setIsBulkDelete] = useState(false);
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
     const [filters, setFilters] = useState({
         name: '',
         used: 'all'
     });
     const [debouncedNameFilter, setDebouncedNameFilter] = useState('');
+    const [selectedRows, setSelectedRows] = useState(new Set());
 
     // Debounce the name filter
     useEffect(() => {
@@ -103,6 +110,27 @@ const LogosTable = () => {
 
         return () => clearTimeout(timer);
     }, [filters.name]);
+
+    const data = useMemo(() => {
+        const logosArray = Object.values(logos || {});
+
+        // Apply filters
+        let filteredLogos = logosArray;
+
+        if (debouncedNameFilter) {
+            filteredLogos = filteredLogos.filter(logo =>
+                logo.name.toLowerCase().includes(debouncedNameFilter.toLowerCase())
+            );
+        }
+
+        if (filters.used === 'used') {
+            filteredLogos = filteredLogos.filter(logo => logo.is_used);
+        } else if (filters.used === 'unused') {
+            filteredLogos = filteredLogos.filter(logo => !logo.is_used);
+        }
+
+        return filteredLogos.sort((a, b) => a.id - b.id);
+    }, [logos, debouncedNameFilter, filters.used]);
 
     /**
      * Functions
@@ -126,6 +154,61 @@ const LogosTable = () => {
         } finally {
             setIsLoading(false);
             setConfirmDeleteOpen(false);
+            setDeleteTarget(null);
+            setLogoToDelete(null);
+            setIsBulkDelete(false);
+            setSelectedRows(new Set()); // Clear selections
+        }
+    }, [fetchLogos]);
+
+    const executeBulkDelete = useCallback(async () => {
+        if (selectedRows.size === 0) return;
+
+        setIsLoading(true);
+        try {
+            await API.deleteLogos(Array.from(selectedRows));
+            await fetchLogos();
+
+            notifications.show({
+                title: 'Success',
+                message: `${selectedRows.size} logos deleted successfully`,
+                color: 'green',
+            });
+        } catch (error) {
+            notifications.show({
+                title: 'Error',
+                message: 'Failed to delete logos',
+                color: 'red',
+            });
+        } finally {
+            setIsLoading(false);
+            setConfirmDeleteOpen(false);
+            setIsBulkDelete(false);
+            setSelectedRows(new Set()); // Clear selections
+        }
+    }, [selectedRows, fetchLogos]);
+
+    const executeCleanupUnused = useCallback(async () => {
+        setIsCleaningUp(true);
+        try {
+            const result = await API.cleanupUnusedLogos();
+            await fetchLogos(); // Refresh the logos list
+
+            notifications.show({
+                title: 'Cleanup Complete',
+                message: `Successfully deleted ${result.deleted_count} unused logos`,
+                color: 'green',
+            });
+        } catch (error) {
+            notifications.show({
+                title: 'Cleanup Failed',
+                message: 'Failed to cleanup unused logos',
+                color: 'red',
+            });
+        } finally {
+            setIsCleaningUp(false);
+            setConfirmCleanupOpen(false);
+            setSelectedRows(new Set()); // Clear selections after cleanup
         }
     }, [fetchLogos]);
 
@@ -139,14 +222,73 @@ const LogosTable = () => {
         const logo = logosArray.find((l) => l.id === id);
         setLogoToDelete(logo);
         setDeleteTarget(id);
+        setIsBulkDelete(false);
         setConfirmDeleteOpen(true);
     }, [logos]);
+
+    const handleSelectRow = useCallback((id, checked) => {
+        setSelectedRows(prev => {
+            const newSet = new Set(prev);
+            if (checked) {
+                newSet.add(id);
+            } else {
+                newSet.delete(id);
+            }
+            return newSet;
+        });
+    }, []);
+
+    const handleSelectAll = useCallback((checked) => {
+        if (checked) {
+            setSelectedRows(new Set(data.map(logo => logo.id)));
+        } else {
+            setSelectedRows(new Set());
+        }
+    }, [data]);
+
+    const deleteBulkLogos = useCallback(() => {
+        if (selectedRows.size === 0) return;
+
+        setIsBulkDelete(true);
+        setLogoToDelete(null);
+        setDeleteTarget(Array.from(selectedRows));
+        setConfirmDeleteOpen(true);
+    }, [selectedRows]);
+
+    const handleCleanupUnused = useCallback(() => {
+        setConfirmCleanupOpen(true);
+    }, []);
+
+    // Clear selections when logos data changes (e.g., after filtering)
+    useEffect(() => {
+        setSelectedRows(new Set());
+    }, [data.length]);
 
     /**
      * useMemo
      */
     const columns = useMemo(
         () => [
+            {
+                id: 'select',
+                header: ({ table }) => (
+                    <Checkbox
+                        checked={selectedRows.size > 0 && selectedRows.size === data.length}
+                        indeterminate={selectedRows.size > 0 && selectedRows.size < data.length}
+                        onChange={(event) => handleSelectAll(event.currentTarget.checked)}
+                        size="sm"
+                    />
+                ),
+                cell: ({ row }) => (
+                    <Checkbox
+                        checked={selectedRows.has(row.original.id)}
+                        onChange={(event) => handleSelectRow(row.original.id, event.currentTarget.checked)}
+                        size="sm"
+                    />
+                ),
+                size: 50,
+                enableSorting: false,
+            },
             {
                 header: 'Preview',
                 accessorKey: 'cache_url',
@@ -256,7 +398,7 @@ const LogosTable = () => {
                 ),
             },
         ],
-        [theme, editLogo, deleteLogo]
+        [theme, editLogo, deleteLogo, selectedRows, handleSelectRow, handleSelectAll, data.length]
     );
 
     const closeLogoForm = () => {
@@ -264,27 +406,6 @@ const LogosTable = () => {
         setLogoModalOpen(false);
         fetchLogos(); // Refresh the logos list
     };
-
-    const data = useMemo(() => {
-        const logosArray = Object.values(logos || {});
-
-        // Apply filters
-        let filteredLogos = logosArray;
-
-        if (debouncedNameFilter) {
-            filteredLogos = filteredLogos.filter(logo =>
-                logo.name.toLowerCase().includes(debouncedNameFilter.toLowerCase())
-            );
-        }
-
-        if (filters.used === 'used') {
-            filteredLogos = filteredLogos.filter(logo => logo.is_used);
-        } else if (filters.used === 'unused') {
-            filteredLogos = filteredLogos.filter(logo => !logo.is_used);
-        }
-
-        return filteredLogos.sort((a, b) => a.id - b.id);
-    }, [logos, debouncedNameFilter, filters.used]);
 
     const renderHeaderCell = (header) => {
         return (
@@ -294,17 +415,22 @@ const LogosTable = () => {
         );
     };
 
+    const onRowSelectionChange = useCallback((newSelection) => {
+        setSelectedRows(new Set(newSelection));
+    }, []);
+
     const table = useTable({
         columns,
         data,
         allRowIds: data.map((logo) => logo.id),
         enablePagination: false,
-        enableRowSelection: false,
+        enableRowSelection: true,
         enableRowVirtualization: false,
         renderTopToolbar: false,
         manualSorting: false,
         manualFiltering: false,
         manualPagination: false,
+        onRowSelectionChange: onRowSelectionChange,
         headerCellRenderFns: {
             actions: renderHeaderCell,
             cache_url: renderHeaderCell,
@@ -394,21 +520,44 @@ const LogosTable = () => {
                                 />
                             </Group>
 
-                            <Button
-                                leftSection={<SquarePlus size={18} />}
-                                variant="light"
-                                size="xs"
-                                onClick={() => editLogo()}
-                                p={5}
-                                color={theme.tailwind.green[5]}
-                                style={{
-                                    borderWidth: '1px',
-                                    borderColor: theme.tailwind.green[5],
-                                    color: 'white',
-                                }}
-                            >
-                                Add Logo
-                            </Button>
+                            <Group gap="sm">
+                                <Button
+                                    leftSection={<Trash size={16} />}
+                                    variant="light"
+                                    size="xs"
+                                    color="orange"
+                                    onClick={handleCleanupUnused}
+                                    loading={isCleaningUp}
+                                >
+                                    Cleanup Unused
+                                </Button>
+
+                                <Button
+                                    leftSection={<SquareMinus size={18} />}
+                                    variant="default"
+                                    size="xs"
+                                    onClick={deleteBulkLogos}
+                                    disabled={selectedRows.size === 0}
+                                >
+                                    Delete {selectedRows.size > 0 ? `(${selectedRows.size})` : ''}
+                                </Button>
+
+                                <Button
+                                    leftSection={<SquarePlus size={18} />}
+                                    variant="light"
+                                    size="xs"
+                                    onClick={() => editLogo()}
+                                    p={5}
+                                    color={theme.tailwind.green[5]}
+                                    style={{
+                                        borderWidth: '1px',
+                                        borderColor: theme.tailwind.green[5],
+                                        color: 'white',
+                                    }}
+                                >
+                                    Add Logo
+                                </Button>
+                            </Group>
                         </Box>
 
                         {/* Table container */}
@@ -437,10 +586,23 @@ const LogosTable = () => {
             <ConfirmationDialog
                 opened={confirmDeleteOpen}
                 onClose={() => setConfirmDeleteOpen(false)}
-                onConfirm={() => executeDeleteLogo(deleteTarget)}
-                title="Delete Logo"
+                onConfirm={() => {
+                    if (isBulkDelete) {
+                        executeBulkDelete();
+                    } else {
+                        executeDeleteLogo(deleteTarget);
+                    }
+                }}
+                title={isBulkDelete ? "Delete Multiple Logos" : "Delete Logo"}
                 message={
-                    logoToDelete ? (
+                    isBulkDelete ? (
+                        <div>
+                            Are you sure you want to delete {selectedRows.size} selected logos?
+                            <Text size="sm" c="dimmed" mt="xs">
+                                This action cannot be undone.
+                            </Text>
+                        </div>
+                    ) : logoToDelete ? (
                         <div>
                             Are you sure you want to delete the logo "{logoToDelete.name}"?
                             {logoToDelete.channel_count > 0 && (
@@ -457,6 +619,27 @@ const LogosTable = () => {
                     )
                 }
                 confirmLabel="Delete"
+                cancelLabel="Cancel"
+                size="md"
+            />
+
+            <ConfirmationDialog
+                opened={confirmCleanupOpen}
+                onClose={() => setConfirmCleanupOpen(false)}
+                onConfirm={executeCleanupUnused}
+                title="Cleanup Unused Logos"
+                message={
+                    <div>
+                        Are you sure you want to cleanup all unused logos?
+                        <Text size="sm" c="dimmed" mt="xs">
+                            This will permanently delete all logos that are not currently used by any channels.
+                        </Text>
+                        <Text size="sm" c="dimmed" mt="xs">
+                            This action cannot be undone.
+                        </Text>
+                    </div>
+                }
+                confirmLabel="Cleanup"
                 cancelLabel="Cancel"
                 size="md"
             />

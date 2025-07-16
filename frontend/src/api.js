@@ -1308,6 +1308,40 @@ export default class API {
     }
   }
 
+  static async deleteLogos(ids) {
+    try {
+      await request(`${host}/api/channels/logos/bulk-delete/`, {
+        method: 'DELETE',
+        body: { logo_ids: ids },
+      });
+
+      // Remove multiple logos from store
+      ids.forEach(id => {
+        useChannelsStore.getState().removeLogo(id);
+      });
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete logos', e);
+    }
+  }
+
+  static async cleanupUnusedLogos() {
+    try {
+      const response = await request(`${host}/api/channels/logos/cleanup/`, {
+        method: 'POST',
+      });
+
+      // Refresh logos to update the UI
+      await this.fetchLogos();
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to cleanup unused logos', e);
+      throw e;
+    }
+  }
+
   static async getChannelProfiles() {
     try {
       const response = await request(`${host}/api/channels/profiles/`);

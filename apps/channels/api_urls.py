@@ -6,6 +6,7 @@ from .api_views import (
     ChannelGroupViewSet,
     BulkDeleteStreamsAPIView,
     BulkDeleteChannelsAPIView,
+    BulkDeleteLogosAPIView,
     LogoViewSet,
     ChannelProfileViewSet,
     UpdateChannelMembershipAPIView,
@@ -28,6 +29,8 @@ urlpatterns = [
     # Bulk delete is a single APIView, not a ViewSet
     path('streams/bulk-delete/', BulkDeleteStreamsAPIView.as_view(), name='bulk_delete_streams'),
     path('channels/bulk-delete/', BulkDeleteChannelsAPIView.as_view(), name='bulk_delete_channels'),
+    path('logos/bulk-delete/', BulkDeleteLogosAPIView.as_view(), name='bulk_delete_logos'),
+    path('logos/cleanup/', BulkDeleteLogosAPIView.as_view(), {'action': 'cleanup_unused_logos'}, name='cleanup_unused_logos'),
     path('channels/<int:channel_id>/streams/', GetChannelStreamsAPIView.as_view(), name='get_channel_streams'),
     path('profiles/<int:profile_id>/channels/<int:channel_id>/', UpdateChannelMembershipAPIView.as_view(), name='update_channel_membership'),
     path('profiles/<int:profile_id>/channels/bulk-update/', BulkUpdateChannelMembershipAPIView.as_view(), name='bulk_update_channel_membership'),
