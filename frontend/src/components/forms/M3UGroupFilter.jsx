@@ -281,6 +281,32 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           onChange={() => toggleForceDummyEPG(group.channel_group)}
                           size="xs"
                         />
+
+                        {/* Override Channel Group Select */}
+                        <Select
+                          label="Override Channel Group"
+                          placeholder="Select group (optional)"
+                          value={group.custom_properties?.group_override?.toString() || null}
+                          onChange={(value) => {
+                            const newValue = value ? parseInt(value) : null;
+                            setGroupStates(
+                              groupStates.map((state) => ({
+                                ...state,
+                                custom_properties: {
+                                  ...state.custom_properties,
+                                  group_override: newValue,
+                                },
+                              }))
+                            );
+                          }}
+                          data={Object.values(channelGroups).map((g) => ({
+                            value: g.id.toString(),
+                            label: g.name,
+                          }))}
+                          clearable
+                          searchable
+                          size="xs"
+                        />
                       </>
                     )}
                   </Stack>

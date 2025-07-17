@@ -847,7 +847,6 @@ def sync_auto_channels(account_id):
     """
     from apps.channels.models import Channel, ChannelGroup, ChannelGroupM3UAccount, Stream, ChannelStream
     from apps.epg.models import EPGData
-    import json
 
     try:
         account = M3UAccount.objects.get(id=account_id)
@@ -868,15 +867,27 @@ def sync_auto_channels(account_id):
             channel_group = group_relation.channel_group
             start_number = group_relation.auto_sync_channel_start or 1.0
 
-            # Get force_dummy_epg from group custom_properties
+            # Get force_dummy_epg and group_override from group custom_properties
             group_custom_props = {}
             force_dummy_epg = False
+            override_group_id = None
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
                     force_dummy_epg = group_custom_props.get("force_dummy_epg", False)
+                    override_group_id = group_custom_props.get("group_override")
                 except Exception:
                     force_dummy_epg = False
+                    override_group_id = None
+
+            # Determine which group to use for created channels
+            target_group = channel_group
+            if override_group_id:
+                try:
+                    target_group = ChannelGroup.objects.get(id=override_group_id)
+                    logger.info(f"Using override group '{target_group.name}' instead of '{channel_group.name}' for auto-created channels")
+                except ChannelGroup.DoesNotExist:
+                    logger.warning(f"Override group with ID {override_group_id} not found, using original group '{channel_group.name}'")
 
             logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
 
@@ -886,20 +897,22 @@ def sync_auto_channels(account_id):
                 channel_group=channel_group
             ).order_by('name')
 
-            # Get existing auto-created channels for this account in this group
+            # Get existing auto-created channels for this account (regardless of current group)
+            # We'll find them by their stream associations instead of just group location
             existing_channels = Channel.objects.filter(
-                channel_group=channel_group,
                 auto_created=True,
                 auto_created_by=account
             ).select_related('logo', 'epg_data')
 
             # Create mapping of existing channels by their associated stream
+            # This approach finds channels even if they've been moved to different groups
             existing_channel_map = {}
             for channel in existing_channels:
-                # Get streams associated with this channel that belong to our M3U account
+                # Get streams associated with this channel that belong to our M3U account and original group
                 channel_streams = ChannelStream.objects.filter(
                     channel=channel,
-                    stream__m3u_account=account
+                    stream__m3u_account=account,
+                    stream__channel_group=channel_group  # Match streams from the original group
                 ).select_related('stream')
 
                 # Map each of our M3U account's streams to this channel
@@ -913,9 +926,10 @@ def sync_auto_channels(account_id):
             if not current_streams.exists():
                 logger.debug(f"No streams found in group {channel_group.name}")
                 # Delete all existing auto channels if no streams
-                if existing_channels.exists():
-                    deleted_count = existing_channels.count()
-                    existing_channels.delete()
+                channels_to_delete = [ch for ch in existing_channel_map.values()]
+                if channels_to_delete:
+                    deleted_count = len(channels_to_delete)
+                    Channel.objects.filter(id__in=[ch.id for ch in channels_to_delete]).delete()
                     channels_deleted += deleted_count
                     logger.debug(f"Deleted {deleted_count} auto channels (no streams remaining)")
                 continue
@@ -951,6 +965,12 @@ def sync_auto_channels(account_id):
                             existing_channel.tvc_guide_stationid = tvc_guide_stationid
                             channel_updated = True
 
+                        # Check if channel group needs to be updated (in case override was added/changed)
+                        if existing_channel.channel_group != target_group:
+                            existing_channel.channel_group = target_group
+                            channel_updated = True
+                            logger.info(f"Moved auto channel '{existing_channel.name}' from '{existing_channel.channel_group.name if existing_channel.channel_group else 'None'}' to '{target_group.name}'")
+
                         # Handle logo updates
                         current_logo = None
                         if stream.logo_url:
@@ -984,13 +1004,13 @@ def sync_auto_channels(account_id):
                         while Channel.objects.filter(channel_number=current_channel_number).exists():
                             current_channel_number += 0.1
 
-                        # Create the channel with auto-created tracking
+                        # Create the channel with auto-created tracking in the target group
                         channel = Channel.objects.create(
                             channel_number=current_channel_number,
                             name=stream.name,
                             tvg_id=stream.tvg_id,
                             tvc_guide_stationid=tvc_guide_stationid,
-                            channel_group=channel_group,
+                            channel_group=target_group,  # Use target group (could be override)
                             user_level=0,  # Default user level
                             auto_created=True,  # Mark as auto-created
                             auto_created_by=account  # Track which M3U account created it
