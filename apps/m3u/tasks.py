@@ -868,6 +868,16 @@ def sync_auto_channels(account_id):
             channel_group = group_relation.channel_group
             start_number = group_relation.auto_sync_channel_start or 1.0
 
+            # Get force_dummy_epg from group custom_properties
+            group_custom_props = {}
+            force_dummy_epg = False
+            if group_relation.custom_properties:
+                try:
+                    group_custom_props = json.loads(group_relation.custom_properties)
+                    force_dummy_epg = group_custom_props.get("force_dummy_epg", False)
+                except Exception:
+                    force_dummy_epg = False
+
             logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
 
             # Get all current streams in this group for this M3U account
@@ -956,7 +966,7 @@ def sync_auto_channels(account_id):
 
                         # Handle EPG data updates
                         current_epg_data = None
-                        if stream.tvg_id:
+                        if stream.tvg_id and not force_dummy_epg:
                             current_epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
 
                         if existing_channel.epg_data != current_epg_data:
@@ -994,11 +1004,14 @@ def sync_auto_channels(account_id):
                         )
 
                         # Try to match EPG data
-                        if stream.tvg_id:
+                        if stream.tvg_id and not force_dummy_epg:
                             epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
                             if epg_data:
                                 channel.epg_data = epg_data
                                 channel.save(update_fields=['epg_data'])
+                        elif stream.tvg_id and force_dummy_epg:
+                            channel.epg_data = None
+                            channel.save(update_fields=['epg_data'])
 
                         # Handle logo
                         if stream.logo_url:
