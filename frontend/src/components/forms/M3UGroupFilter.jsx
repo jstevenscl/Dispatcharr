@@ -43,12 +43,26 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     }
 
     setGroupStates(
-      playlist.channel_groups.map((group) => ({
-        ...group,
-        name: channelGroups[group.channel_group].name,
-        auto_channel_sync: group.auto_channel_sync || false,
-        auto_sync_channel_start: group.auto_sync_channel_start || 1.0,
-      }))
+      playlist.channel_groups.map((group) => {
+        // Parse custom_properties if present
+        let customProps = {};
+        if (group.custom_properties) {
+          try {
+            customProps = typeof group.custom_properties === 'string'
+              ? JSON.parse(group.custom_properties)
+              : group.custom_properties;
+          } catch (e) {
+            customProps = {};
+          }
+        }
+        return {
+          ...group,
+          name: channelGroups[group.channel_group].name,
+          auto_channel_sync: group.auto_channel_sync || false,
+          auto_sync_channel_start: group.auto_sync_channel_start || 1.0,
+          custom_properties: customProps,
+        };
+      })
     );
   }, [playlist, channelGroups]);
 
@@ -79,11 +93,36 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     );
   };
 
+  // Toggle force_dummy_epg in custom_properties for a group
+  const toggleForceDummyEPG = (id) => {
+    setGroupStates(
+      groupStates.map((state) => {
+        if (state.channel_group == id) {
+          const customProps = { ...(state.custom_properties || {}) };
+          customProps.force_dummy_epg = !customProps.force_dummy_epg;
+          return {
+            ...state,
+            custom_properties: customProps,
+          };
+        }
+        return state;
+      })
+    );
+  };
+
   const submit = async () => {
     setIsLoading(true);
     try {
+      // Prepare groupStates for API: custom_properties must be stringified
+      const payload = groupStates.map((state) => ({
+        ...state,
+        custom_properties: state.custom_properties
+          ? JSON.stringify(state.custom_properties)
+          : undefined,
+      }));
+
       // Update group settings via API endpoint
-      await API.updateM3UGroupSettings(playlist.id, groupStates);
+      await API.updateM3UGroupSettings(playlist.id, payload);
 
       // Show notification about the refresh process
       notifications.show({
@@ -224,15 +263,25 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                     />
 
                     {group.auto_channel_sync && group.enabled && (
-                      <NumberInput
-                        label="Start Channel #"
-                        value={group.auto_sync_channel_start}
-                        onChange={(value) => updateChannelStart(group.channel_group, value)}
-                        min={1}
-                        step={1}
-                        size="xs"
-                        precision={1}
-                      />
+                      <>
+                        <NumberInput
+                          label="Start Channel #"
+                          value={group.auto_sync_channel_start}
+                          onChange={(value) => updateChannelStart(group.channel_group, value)}
+                          min={1}
+                          step={1}
+                          size="xs"
+                          precision={1}
+                        />
+
+                        {/* Force Dummy EPG Checkbox */}
+                        <Checkbox
+                          label="Force Dummy EPG"
+                          checked={!!(group.custom_properties && group.custom_properties.force_dummy_epg)}
+                          onChange={() => toggleForceDummyEPG(group.channel_group)}
+                          size="xs"
+                        />
+                      </>
                     )}
                   </Stack>
                 </Group>
