@@ -288,7 +288,8 @@ const ChannelsTable = ({ }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
-  const [epgUrl, setEPGUrl] = useState(epgUrlBase); const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
+  const [epgUrl, setEPGUrl] = useState(epgUrlBase);
+  const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -308,7 +309,7 @@ const ChannelsTable = ({ }) => {
   });
 
   /**
-   * Dereived variables
+   * Derived variables
    */
   const activeGroupIds = new Set(
     Object.values(channels).map((channel) => channel.channel_group_id)

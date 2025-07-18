@@ -15,6 +15,7 @@ import os
 from rest_framework.decorators import action
 from django.conf import settings
 from .tasks import refresh_m3u_groups
+import json
 
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
@@ -154,6 +155,7 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
                 enabled = setting.get("enabled", True)
                 auto_sync = setting.get("auto_channel_sync", False)
                 sync_start = setting.get("auto_sync_channel_start")
+                custom_properties = setting.get("custom_properties", {})
 
                 if group_id:
                     ChannelGroupM3UAccount.objects.update_or_create(
@@ -163,6 +165,11 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
                             "enabled": enabled,
                             "auto_channel_sync": auto_sync,
                             "auto_sync_channel_start": sync_start,
+                            "custom_properties": (
+                                custom_properties
+                                if isinstance(custom_properties, str)
+                                else json.dumps(custom_properties)
+                            ),
                         },
                     )
 

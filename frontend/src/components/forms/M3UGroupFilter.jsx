@@ -43,12 +43,26 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     }
 
     setGroupStates(
-      playlist.channel_groups.map((group) => ({
-        ...group,
-        name: channelGroups[group.channel_group].name,
-        auto_channel_sync: group.auto_channel_sync || false,
-        auto_sync_channel_start: group.auto_sync_channel_start || 1.0,
-      }))
+      playlist.channel_groups.map((group) => {
+        // Parse custom_properties if present
+        let customProps = {};
+        if (group.custom_properties) {
+          try {
+            customProps = typeof group.custom_properties === 'string'
+              ? JSON.parse(group.custom_properties)
+              : group.custom_properties;
+          } catch (e) {
+            customProps = {};
+          }
+        }
+        return {
+          ...group,
+          name: channelGroups[group.channel_group].name,
+          auto_channel_sync: group.auto_channel_sync || false,
+          auto_sync_channel_start: group.auto_sync_channel_start || 1.0,
+          custom_properties: customProps,
+        };
+      })
     );
   }, [playlist, channelGroups]);
 
@@ -79,11 +93,36 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     );
   };
 
+  // Toggle force_dummy_epg in custom_properties for a group
+  const toggleForceDummyEPG = (id) => {
+    setGroupStates(
+      groupStates.map((state) => {
+        if (state.channel_group == id) {
+          const customProps = { ...(state.custom_properties || {}) };
+          customProps.force_dummy_epg = !customProps.force_dummy_epg;
+          return {
+            ...state,
+            custom_properties: customProps,
+          };
+        }
+        return state;
+      })
+    );
+  };
+
   const submit = async () => {
     setIsLoading(true);
     try {
+      // Prepare groupStates for API: custom_properties must be stringified
+      const payload = groupStates.map((state) => ({
+        ...state,
+        custom_properties: state.custom_properties
+          ? JSON.stringify(state.custom_properties)
+          : undefined,
+      }));
+
       // Update group settings via API endpoint
-      await API.updateM3UGroupSettings(playlist.id, groupStates);
+      await API.updateM3UGroupSettings(playlist.id, payload);
 
       // Show notification about the refresh process
       notifications.show({
@@ -215,24 +254,95 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
 
                   {/* Auto Sync Controls */}
                   <Stack spacing={4}>
-                    <Checkbox
-                      label="Auto Channel Sync"
-                      checked={group.auto_channel_sync && group.enabled}
-                      disabled={!group.enabled}
-                      onChange={() => toggleAutoSync(group.channel_group)}
-                      size="xs"
-                    />
+                    <Flex align="center" gap="xs">
+                      <Checkbox
+                        label="Auto Channel Sync"
+                        checked={group.auto_channel_sync && group.enabled}
+                        disabled={!group.enabled}
+                        onChange={() => toggleAutoSync(group.channel_group)}
+                        size="xs"
+                      />
+                      {group.auto_channel_sync && group.enabled && (
+                        <Checkbox
+                          label="Force Dummy EPG"
+                          checked={!!(group.custom_properties && group.custom_properties.force_dummy_epg)}
+                          onChange={() => toggleForceDummyEPG(group.channel_group)}
+                          size="xs"
+                        />
+                      )}
+                    </Flex>
 
                     {group.auto_channel_sync && group.enabled && (
-                      <NumberInput
-                        label="Start Channel #"
-                        value={group.auto_sync_channel_start}
-                        onChange={(value) => updateChannelStart(group.channel_group, value)}
-                        min={1}
-                        step={1}
-                        size="xs"
-                        precision={1}
-                      />
+                      <>
+                        <NumberInput
+                          label="Start Channel #"
+                          value={group.auto_sync_channel_start}
+                          onChange={(value) => updateChannelStart(group.channel_group, value)}
+                          min={1}
+                          step={1}
+                          size="xs"
+                          precision={1}
+                        />
+
+                        {/* Override Channel Group */}
+                        <Flex align="center" gap="xs">
+                          <Checkbox
+                            checked={!!(group.custom_properties && Object.prototype.hasOwnProperty.call(group.custom_properties, 'group_override'))}
+                            onChange={(event) => {
+                              const isEnabled = event.currentTarget.checked;
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (state.channel_group == group.channel_group) {
+                                    const newCustomProps = { ...(state.custom_properties || {}) };
+                                    if (isEnabled) {
+                                      newCustomProps.group_override = null;
+                                    } else {
+                                      delete newCustomProps.group_override;
+                                    }
+                                    return {
+                                      ...state,
+                                      custom_properties: newCustomProps,
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            size="xs"
+                          />
+                          <Select
+                            label="Override Channel Group"
+                            placeholder="Choose group..."
+                            value={group.custom_properties?.group_override?.toString() || null}
+                            onChange={(value) => {
+                              const newValue = value ? parseInt(value) : null;
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (state.channel_group == group.channel_group) {
+                                    return {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        group_override: newValue,
+                                      },
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            data={Object.values(channelGroups).map((g) => ({
+                              value: g.id.toString(),
+                              label: g.name,
+                            }))}
+                            disabled={!(group.custom_properties && Object.prototype.hasOwnProperty.call(group.custom_properties, 'group_override'))}
+                            clearable
+                            searchable
+                            size="xs"
+                            style={{ flex: 1 }}
+                          />
+                        </Flex>
+                      </>
                     )}
                   </Stack>
                 </Group>
