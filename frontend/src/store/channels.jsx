@@ -232,7 +232,6 @@ const useChannelsStore = create((set, get) => ({
         logos: logos.reduce((acc, logo) => {
           acc[logo.id] = {
             ...logo,
-            url: logo.url.replace(/^\/data/, ''),
           };
           return acc;
         }, {}),
@@ -250,7 +249,6 @@ const useChannelsStore = create((set, get) => ({
         ...state.logos,
         [newLogo.id]: {
           ...newLogo,
-          url: newLogo.url.replace(/^\/data/, ''),
         },
       },
     })),
@@ -261,7 +259,6 @@ const useChannelsStore = create((set, get) => ({
         ...state.logos,
         [logo.id]: {
           ...logo,
-          url: logo.url.replace(/^\/data/, ''),
         },
       },
     })),
