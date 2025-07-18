@@ -111,7 +111,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           path: '/users',
         },
         {
-          label: 'Logos',
+          label: 'Logo Manager',
           icon: <FileImage size={20} />,
           path: '/logos',
         },
