@@ -254,13 +254,23 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
 
                   {/* Auto Sync Controls */}
                   <Stack spacing={4}>
-                    <Checkbox
-                      label="Auto Channel Sync"
-                      checked={group.auto_channel_sync && group.enabled}
-                      disabled={!group.enabled}
-                      onChange={() => toggleAutoSync(group.channel_group)}
-                      size="xs"
-                    />
+                    <Flex align="center" gap="xs">
+                      <Checkbox
+                        label="Auto Channel Sync"
+                        checked={group.auto_channel_sync && group.enabled}
+                        disabled={!group.enabled}
+                        onChange={() => toggleAutoSync(group.channel_group)}
+                        size="xs"
+                      />
+                      {group.auto_channel_sync && group.enabled && (
+                        <Checkbox
+                          label="Force Dummy EPG"
+                          checked={!!(group.custom_properties && group.custom_properties.force_dummy_epg)}
+                          onChange={() => toggleForceDummyEPG(group.channel_group)}
+                          size="xs"
+                        />
+                      )}
+                    </Flex>
 
                     {group.auto_channel_sync && group.enabled && (
                       <>
@@ -274,39 +284,64 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           precision={1}
                         />
 
-                        {/* Force Dummy EPG Checkbox */}
-                        <Checkbox
-                          label="Force Dummy EPG"
-                          checked={!!(group.custom_properties && group.custom_properties.force_dummy_epg)}
-                          onChange={() => toggleForceDummyEPG(group.channel_group)}
-                          size="xs"
-                        />
-
-                        {/* Override Channel Group Select */}
-                        <Select
-                          label="Override Channel Group"
-                          placeholder="Select group (optional)"
-                          value={group.custom_properties?.group_override?.toString() || null}
-                          onChange={(value) => {
-                            const newValue = value ? parseInt(value) : null;
-                            setGroupStates(
-                              groupStates.map((state) => ({
-                                ...state,
-                                custom_properties: {
-                                  ...state.custom_properties,
-                                  group_override: newValue,
-                                },
-                              }))
-                            );
-                          }}
-                          data={Object.values(channelGroups).map((g) => ({
-                            value: g.id.toString(),
-                            label: g.name,
-                          }))}
-                          clearable
-                          searchable
-                          size="xs"
-                        />
+                        {/* Override Channel Group */}
+                        <Flex align="center" gap="xs">
+                          <Checkbox
+                            checked={!!(group.custom_properties && Object.prototype.hasOwnProperty.call(group.custom_properties, 'group_override'))}
+                            onChange={(event) => {
+                              const isEnabled = event.currentTarget.checked;
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (state.channel_group == group.channel_group) {
+                                    const newCustomProps = { ...(state.custom_properties || {}) };
+                                    if (isEnabled) {
+                                      newCustomProps.group_override = null;
+                                    } else {
+                                      delete newCustomProps.group_override;
+                                    }
+                                    return {
+                                      ...state,
+                                      custom_properties: newCustomProps,
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            size="xs"
+                          />
+                          <Select
+                            label="Override Channel Group"
+                            placeholder="Choose group..."
+                            value={group.custom_properties?.group_override?.toString() || null}
+                            onChange={(value) => {
+                              const newValue = value ? parseInt(value) : null;
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (state.channel_group == group.channel_group) {
+                                    return {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        group_override: newValue,
+                                      },
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            data={Object.values(channelGroups).map((g) => ({
+                              value: g.id.toString(),
+                              label: g.name,
+                            }))}
+                            disabled={!(group.custom_properties && Object.prototype.hasOwnProperty.call(group.custom_properties, 'group_override'))}
+                            clearable
+                            searchable
+                            size="xs"
+                            style={{ flex: 1 }}
+                          />
+                        </Flex>
                       </>
                     )}
                   </Stack>
