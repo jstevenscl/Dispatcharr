@@ -1380,10 +1380,16 @@ export default class API {
     }
   }
 
-  static async cleanupUnusedLogos() {
+  static async cleanupUnusedLogos(deleteFiles = false) {
     try {
+      const body = {};
+      if (deleteFiles) {
+        body.delete_files = true;
+      }
+
       const response = await request(`${host}/api/channels/logos/cleanup/`, {
         method: 'POST',
+        body: body,
       });
 
       return response;

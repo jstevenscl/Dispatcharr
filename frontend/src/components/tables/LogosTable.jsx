@@ -209,15 +209,20 @@ const LogosTable = () => {
         }
     }, [selectedRows, fetchLogos]);
 
-    const executeCleanupUnused = useCallback(async () => {
+    const executeCleanupUnused = useCallback(async (deleteFiles = false) => {
         setIsCleaningUp(true);
         try {
-            const result = await API.cleanupUnusedLogos();
+            const result = await API.cleanupUnusedLogos(deleteFiles);
             await fetchLogos(); // Refresh the logos list
+
+            let message = `Successfully deleted ${result.deleted_count} unused logos`;
+            if (result.local_files_deleted > 0) {
+                message += ` and deleted ${result.local_files_deleted} local files`;
+            }
 
             notifications.show({
                 title: 'Cleanup Complete',
-                message: `Successfully deleted ${result.deleted_count} unused logos`,
+                message: message,
                 color: 'green',
             });
         } catch (error) {
@@ -778,6 +783,8 @@ const LogosTable = () => {
                 confirmLabel="Cleanup"
                 cancelLabel="Cancel"
                 size="md"
+                showDeleteFileOption={true}
+                deleteFileLabel="Also delete local logo files from disk"
             />
         </>
     );

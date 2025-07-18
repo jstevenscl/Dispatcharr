@@ -1107,21 +1107,55 @@ class CleanupUnusedLogosAPIView(APIView):
 
     @swagger_auto_schema(
         operation_description="Delete all logos that are not used by any channels",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "delete_files": openapi.Schema(
+                    type=openapi.TYPE_BOOLEAN,
+                    description="Whether to delete local logo files from disk",
+                    default=False
+                )
+            },
+        ),
         responses={200: "Cleanup completed"},
     )
     def post(self, request):
         """Delete all logos with no channel associations"""
+        delete_files = request.data.get("delete_files", False)
+        
         unused_logos = Logo.objects.filter(channels__isnull=True)
         deleted_count = unused_logos.count()
         logo_names = list(unused_logos.values_list('name', flat=True))
+        local_files_deleted = 0
+
+        # Handle file deletion for local files if requested
+        if delete_files:
+            for logo in unused_logos:
+                if logo.url and logo.url.startswith('/data/logos'):
+                    try:
+                        if os.path.exists(logo.url):
+                            os.remove(logo.url)
+                            local_files_deleted += 1
+                            logger.info(f"Deleted local logo file: {logo.url}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete logo file {logo.url}: {str(e)}")
+                        return Response(
+                            {"error": f"Failed to delete logo file {logo.url}: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
 
         # Delete the unused logos
         unused_logos.delete()
 
+        message = f"Successfully deleted {deleted_count} unused logos"
+        if local_files_deleted > 0:
+            message += f" and deleted {local_files_deleted} local files"
+
         return Response({
-            "message": f"Successfully deleted {deleted_count} unused logos",
+            "message": message,
             "deleted_count": deleted_count,
-            "deleted_logos": logo_names
+            "deleted_logos": logo_names,
+            "local_files_deleted": local_files_deleted
         })
 
 
