@@ -21,7 +21,7 @@ const useChannelsStore = create((set, get) => ({
   forceUpdate: 0,
 
   triggerUpdate: () => {
-    set({ forecUpdate: new Date() });
+    set({ forceUpdate: new Date() });
   },
 
   fetchChannels: async () => {
@@ -232,7 +232,6 @@ const useChannelsStore = create((set, get) => ({
         logos: logos.reduce((acc, logo) => {
           acc[logo.id] = {
             ...logo,
-            url: logo.url.replace(/^\/data/, ''),
           };
           return acc;
         }, {}),
@@ -250,10 +249,26 @@ const useChannelsStore = create((set, get) => ({
         ...state.logos,
         [newLogo.id]: {
           ...newLogo,
-          url: newLogo.url.replace(/^\/data/, ''),
         },
       },
     })),
+
+  updateLogo: (logo) =>
+    set((state) => ({
+      logos: {
+        ...state.logos,
+        [logo.id]: {
+          ...logo,
+        },
+      },
+    })),
+
+  removeLogo: (logoId) =>
+    set((state) => {
+      const newLogos = { ...state.logos };
+      delete newLogos[logoId];
+      return { logos: newLogos };
+    }),
 
   addProfile: (profile) =>
     set((state) => ({

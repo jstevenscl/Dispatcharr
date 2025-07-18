@@ -218,6 +218,7 @@ export const WebsocketProvider = ({ children }) => {
                   }
 
                   updatePlaylist(updateData);
+                  fetchPlaylists(); // Refresh playlists to ensure UI is up-to-date
                 } else {
                   // Log when playlist can't be found for debugging purposes
                   console.warn(
@@ -417,6 +418,16 @@ export const WebsocketProvider = ({ children }) => {
               }
               break;
 
+            case 'logo_processing_summary':
+              notifications.show({
+                title: 'Logo Processing Summary',
+                message: `${parsedEvent.data.message}`,
+                color: 'blue',
+                autoClose: 5000,
+              });
+              fetchLogos();
+              break;
+
             default:
               console.error(
                 `Unknown websocket event type: ${parsedEvent.data?.type}`
@@ -487,6 +498,7 @@ export const WebsocketProvider = ({ children }) => {
   const setProfilePreview = usePlaylistsStore((s) => s.setProfilePreview);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
   const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
 
   const ret = useMemo(() => {
     return [isReady, ws.current?.send.bind(ws.current), val];

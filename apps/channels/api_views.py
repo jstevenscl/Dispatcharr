@@ -1023,6 +1023,142 @@ class BulkDeleteChannelsAPIView(APIView):
         )
 
 
+# ─────────────────────────────────────────────────────────
+# 6) Bulk Delete Logos
+# ─────────────────────────────────────────────────────────
+class BulkDeleteLogosAPIView(APIView):
+    def get_permissions(self):
+        try:
+            return [
+                perm() for perm in permission_classes_by_method[self.request.method]
+            ]
+        except KeyError:
+            return [Authenticated()]
+
+    @swagger_auto_schema(
+        operation_description="Bulk delete logos by ID",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["logo_ids"],
+            properties={
+                "logo_ids": openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_INTEGER),
+                    description="Logo IDs to delete",
+                )
+            },
+        ),
+        responses={204: "Logos deleted"},
+    )
+    def delete(self, request):
+        logo_ids = request.data.get("logo_ids", [])
+        delete_files = request.data.get("delete_files", False)
+
+        # Get logos and their usage info before deletion
+        logos_to_delete = Logo.objects.filter(id__in=logo_ids)
+        total_channels_affected = 0
+        local_files_deleted = 0
+
+        for logo in logos_to_delete:
+            # Handle file deletion for local files
+            if delete_files and logo.url and logo.url.startswith('/data/logos'):
+                try:
+                    if os.path.exists(logo.url):
+                        os.remove(logo.url)
+                        local_files_deleted += 1
+                        logger.info(f"Deleted local logo file: {logo.url}")
+                except Exception as e:
+                    logger.error(f"Failed to delete logo file {logo.url}: {str(e)}")
+                    return Response(
+                        {"error": f"Failed to delete logo file {logo.url}: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+            if logo.channels.exists():
+                channel_count = logo.channels.count()
+                total_channels_affected += channel_count
+                # Remove logo from channels
+                logo.channels.update(logo=None)
+                logger.info(f"Removed logo {logo.name} from {channel_count} channels before deletion")
+
+        # Delete logos
+        deleted_count = logos_to_delete.delete()[0]
+
+        message = f"Successfully deleted {deleted_count} logos"
+        if total_channels_affected > 0:
+            message += f" and removed them from {total_channels_affected} channels"
+        if local_files_deleted > 0:
+            message += f" and deleted {local_files_deleted} local files"
+
+        return Response(
+            {"message": message},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+class CleanupUnusedLogosAPIView(APIView):
+    def get_permissions(self):
+        try:
+            return [
+                perm() for perm in permission_classes_by_method[self.request.method]
+            ]
+        except KeyError:
+            return [Authenticated()]
+
+    @swagger_auto_schema(
+        operation_description="Delete all logos that are not used by any channels",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "delete_files": openapi.Schema(
+                    type=openapi.TYPE_BOOLEAN,
+                    description="Whether to delete local logo files from disk",
+                    default=False
+                )
+            },
+        ),
+        responses={200: "Cleanup completed"},
+    )
+    def post(self, request):
+        """Delete all logos with no channel associations"""
+        delete_files = request.data.get("delete_files", False)
+        
+        unused_logos = Logo.objects.filter(channels__isnull=True)
+        deleted_count = unused_logos.count()
+        logo_names = list(unused_logos.values_list('name', flat=True))
+        local_files_deleted = 0
+
+        # Handle file deletion for local files if requested
+        if delete_files:
+            for logo in unused_logos:
+                if logo.url and logo.url.startswith('/data/logos'):
+                    try:
+                        if os.path.exists(logo.url):
+                            os.remove(logo.url)
+                            local_files_deleted += 1
+                            logger.info(f"Deleted local logo file: {logo.url}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete logo file {logo.url}: {str(e)}")
+                        return Response(
+                            {"error": f"Failed to delete logo file {logo.url}: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+
+        # Delete the unused logos
+        unused_logos.delete()
+
+        message = f"Successfully deleted {deleted_count} unused logos"
+        if local_files_deleted > 0:
+            message += f" and deleted {local_files_deleted} local files"
+
+        return Response({
+            "message": message,
+            "deleted_count": deleted_count,
+            "deleted_logos": logo_names,
+            "local_files_deleted": local_files_deleted
+        })
+
+
 class LogoViewSet(viewsets.ModelViewSet):
     queryset = Logo.objects.all()
     serializer_class = LogoSerializer
@@ -1040,6 +1176,24 @@ class LogoViewSet(viewsets.ModelViewSet):
         except KeyError:
             return [Authenticated()]
 
+    def get_queryset(self):
+        """Optimize queryset with prefetch and add filtering"""
+        queryset = Logo.objects.prefetch_related('channels').order_by('name')
+
+        # Filter by usage
+        used_filter = self.request.query_params.get('used', None)
+        if used_filter == 'true':
+            queryset = queryset.filter(channels__isnull=False).distinct()
+        elif used_filter == 'false':
+            queryset = queryset.filter(channels__isnull=True)
+
+        # Filter by name
+        name_filter = self.request.query_params.get('name', None)
+        if name_filter:
+            queryset = queryset.filter(name__icontains=name_filter)
+
+        return queryset
+
     def create(self, request, *args, **kwargs):
         """Create a new logo entry"""
         serializer = self.get_serializer(data=request.data)
@@ -1053,15 +1207,28 @@ class LogoViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        """Delete a logo"""
+        """Delete a logo and remove it from any channels using it"""
         logo = self.get_object()
+        delete_file = request.query_params.get('delete_file', 'false').lower() == 'true'
 
-        # Check if logo is being used by any channels
+        # Check if it's a local file that should be deleted
+        if delete_file and logo.url and logo.url.startswith('/data/logos'):
+            try:
+                if os.path.exists(logo.url):
+                    os.remove(logo.url)
+                    logger.info(f"Deleted local logo file: {logo.url}")
+            except Exception as e:
+                logger.error(f"Failed to delete logo file {logo.url}: {str(e)}")
+                return Response(
+                    {"error": f"Failed to delete logo file: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Instead of preventing deletion, remove the logo from channels
         if logo.channels.exists():
-            return Response(
-                {"error": f"Cannot delete logo as it is used by {logo.channels.count()} channel(s)"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            channel_count = logo.channels.count()
+            logo.channels.update(logo=None)
+            logger.info(f"Removed logo {logo.name} from {channel_count} channels before deletion")
 
         return super().destroy(request, *args, **kwargs)
 
@@ -1073,6 +1240,16 @@ class LogoViewSet(viewsets.ModelViewSet):
             )
 
         file = request.FILES["file"]
+
+        # Validate file
+        try:
+            from dispatcharr.utils import validate_logo_file
+            validate_logo_file(file)
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
         file_name = file.name
         file_path = os.path.join("/data/logos", file_name)
 
@@ -1088,8 +1265,10 @@ class LogoViewSet(viewsets.ModelViewSet):
             },
         )
 
+        # Use get_serializer to ensure proper context
+        serializer = self.get_serializer(logo)
         return Response(
-            LogoSerializer(logo, context={'request': request}).data,
+            serializer.data,
             status=status.HTTP_201_CREATED,
         )
 
