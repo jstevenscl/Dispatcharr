@@ -31,6 +31,7 @@ import {
   Image,
   UnstyledButton,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { ListOrdered, SquarePlus, SquareX, X } from 'lucide-react';
 import useEPGsStore from '../../store/epgs';
 import { Dropzone } from '@mantine/dropzone';
@@ -84,10 +85,28 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
 
   const handleLogoChange = async (files) => {
     if (files.length === 1) {
-      const retval = await API.uploadLogo(files[0]);
-      await fetchLogos();
-      setLogoPreview(retval.cache_url);
-      formik.setFieldValue('logo_id', retval.id);
+      const file = files[0];
+
+      // Validate file size on frontend first
+      if (file.size > 5 * 1024 * 1024) {
+        // 5MB
+        notifications.show({
+          title: 'Error',
+          message: 'File too large. Maximum size is 5MB.',
+          color: 'red',
+        });
+        return;
+      }
+
+      try {
+        const retval = await API.uploadLogo(file);
+        await fetchLogos();
+        setLogoPreview(retval.cache_url);
+        formik.setFieldValue('logo_id', retval.id);
+      } catch (error) {
+        console.error('Logo upload failed:', error);
+        // Error notification is already handled in API.uploadLogo
+      }
     } else {
       setLogoPreview(null);
     }

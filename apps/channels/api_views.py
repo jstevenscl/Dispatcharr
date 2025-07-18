@@ -1172,6 +1172,16 @@ class LogoViewSet(viewsets.ModelViewSet):
             )
 
         file = request.FILES["file"]
+
+        # Validate file
+        try:
+            from dispatcharr.utils import validate_logo_file
+            validate_logo_file(file)
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
         file_name = file.name
         file_path = os.path.join("/data/logos", file_name)
 
@@ -1187,8 +1197,10 @@ class LogoViewSet(viewsets.ModelViewSet):
             },
         )
 
+        # Use get_serializer to ensure proper context
+        serializer = self.get_serializer(logo)
         return Response(
-            LogoSerializer(logo, context={'request': request}).data,
+            serializer.data,
             status=status.HTTP_201_CREATED,
         )
 

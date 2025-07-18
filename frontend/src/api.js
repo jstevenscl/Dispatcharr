@@ -209,10 +209,10 @@ export default class API {
         API.getAllChannelIds(API.lastQueryParams),
       ]);
 
-      useChannelsTable
+      useChannelsTableStore
         .getState()
         .queryChannels(response, API.lastQueryParams);
-      useChannelsTable.getState().setAllQueryIds(ids);
+      useChannelsTableStore.getState().setAllQueryIds(ids);
 
       return response;
     } catch (e) {
@@ -1252,16 +1252,48 @@ export default class API {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await request(`${host}/api/channels/logos/upload/`, {
+      // Add timeout handling for file uploads
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const response = await fetch(`${host}/api/channels/logos/upload/`, {
         method: 'POST',
         body: formData,
+        headers: {
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+        signal: controller.signal,
       });
 
-      useChannelsStore.getState().addLogo(response);
+      clearTimeout(timeoutId);
 
-      return response;
+      if (!response.ok) {
+        const error = new Error(`HTTP error! Status: ${response.status}`);
+        let errorBody = await response.text();
+
+        try {
+          errorBody = JSON.parse(errorBody);
+        } catch (e) {
+          // If parsing fails, leave errorBody as the raw text
+        }
+
+        error.status = response.status;
+        error.response = response;
+        error.body = errorBody;
+        throw error;
+      }
+
+      const result = await response.json();
+      useChannelsStore.getState().addLogo(result);
+      return result;
     } catch (e) {
+      if (e.name === 'AbortError') {
+        const timeoutError = new Error('Upload timed out. Please try again.');
+        timeoutError.code = 'NETWORK_ERROR';
+        throw timeoutError;
+      }
       errorNotification('Failed to upload logo', e);
+      throw e;
     }
   }
 

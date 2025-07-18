@@ -51,12 +51,12 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                 onClose();
             } catch (error) {
                 let errorMessage = logo ? 'Failed to update logo' : 'Failed to create logo';
-                
+
                 // Handle specific timeout errors
                 if (error.code === 'NETWORK_ERROR' || error.message?.includes('timeout')) {
                     errorMessage = 'Request timed out. Please try again.';
                 }
-                
+
                 notifications.show({
                     title: 'Error',
                     message: errorMessage,
@@ -85,6 +85,17 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
         if (files.length === 0) return;
 
         const file = files[0];
+
+        // Validate file size on frontend first
+        if (file.size > 5 * 1024 * 1024) { // 5MB
+            notifications.show({
+                title: 'Error',
+                message: 'File too large. Maximum size is 5MB.',
+                color: 'red',
+            });
+            return;
+        }
+
         setUploading(true);
 
         try {
@@ -102,12 +113,16 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
             });
         } catch (error) {
             let errorMessage = 'Failed to upload logo';
-            
+
             // Handle specific timeout errors
             if (error.code === 'NETWORK_ERROR' || error.message?.includes('timeout')) {
                 errorMessage = 'Upload timed out. Please try again.';
+            } else if (error.status === 413) {
+                errorMessage = 'File too large. Please choose a smaller file.';
+            } else if (error.body?.error) {
+                errorMessage = error.body.error;
             }
-            
+
             notifications.show({
                 title: 'Error',
                 message: errorMessage,
