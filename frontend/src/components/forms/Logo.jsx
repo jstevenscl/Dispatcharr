@@ -33,8 +33,8 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                 .required('URL is required')
                 .test('valid-url-or-path', 'Must be a valid URL or local file path', (value) => {
                     if (!value) return false;
-                    // Allow local file paths starting with /logos/
-                    if (value.startsWith('/logos/')) return true;
+                    // Allow local file paths starting with /data/logos/
+                    if (value.startsWith('/data/logos/')) return true;
                     // Allow valid URLs
                     try {
                         new URL(value);
