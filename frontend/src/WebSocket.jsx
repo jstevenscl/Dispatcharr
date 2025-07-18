@@ -218,6 +218,7 @@ export const WebsocketProvider = ({ children }) => {
                   }
 
                   updatePlaylist(updateData);
+                  fetchPlaylists(); // Refresh playlists to ensure UI is up-to-date
                 } else {
                   // Log when playlist can't be found for debugging purposes
                   console.warn(
