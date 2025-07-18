@@ -739,7 +739,9 @@ export default class API {
         method: 'PATCH',
         body: { group_settings: groupSettings },
       });
-
+      // Fetch the updated playlist and update the store
+      const updatedPlaylist = await API.getPlaylist(playlistId);
+      usePlaylistsStore.getState().updatePlaylist(updatedPlaylist);
       return response;
     } catch (e) {
       errorNotification('Failed to update M3U group settings', e);
@@ -781,7 +783,6 @@ export default class API {
       const response = await request(`${host}/api/m3u/refresh/${id}/`, {
         method: 'POST',
       });
-
       return response;
     } catch (e) {
       errorNotification('Failed to refresh M3U account', e);
