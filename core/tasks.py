@@ -269,10 +269,14 @@ def scan_and_process_files():
 
     logger.trace(f"EPG processing complete: {epg_processed} processed, {epg_skipped} skipped, {epg_errors} errors")
 
-    # Process Logo files
+    # Process Logo files (including subdirectories)
     try:
-        logo_files = os.listdir(LOGO_WATCH_DIR) if os.path.exists(LOGO_WATCH_DIR) else []
-        logger.trace(f"Found {len(logo_files)} files in LOGO directory")
+        logo_files = []
+        if os.path.exists(LOGO_WATCH_DIR):
+            for root, dirs, files in os.walk(LOGO_WATCH_DIR):
+                for filename in files:
+                    logo_files.append(os.path.join(root, filename))
+        logger.trace(f"Found {len(logo_files)} files in LOGO directory (including subdirectories)")
     except Exception as e:
         logger.error(f"Error listing LOGO directory: {e}")
         logo_files = []
@@ -281,8 +285,8 @@ def scan_and_process_files():
     logo_skipped = 0
     logo_errors = 0
 
-    for filename in logo_files:
-        filepath = os.path.join(LOGO_WATCH_DIR, filename)
+    for filepath in logo_files:
+        filename = os.path.basename(filepath)
 
         if not os.path.isfile(filepath):
             if _first_scan_completed:
@@ -361,8 +365,6 @@ def scan_and_process_files():
                 logger.debug(f"Logo entry already exists: {logo_name}")
 
             logo_processed += 1
-
-            # Remove individual websocket notification - will send summary instead
 
         except Exception as e:
             logger.error(f"Error processing logo file {filename}: {str(e)}", exc_info=True)
