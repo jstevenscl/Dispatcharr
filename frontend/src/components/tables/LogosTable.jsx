@@ -31,6 +31,8 @@ import {
     TextInput,
     Menu,
     Checkbox,
+    Pagination,
+    NativeSelect,
 } from '@mantine/core';
 import { CustomTable, useTable } from './CustomTable';
 import ConfirmationDialog from '../ConfirmationDialog';
@@ -101,6 +103,12 @@ const LogosTable = () => {
     });
     const [debouncedNameFilter, setDebouncedNameFilter] = useState('');
     const [selectedRows, setSelectedRows] = useState(new Set());
+    const [pageSize, setPageSize] = useLocalStorage('logos-page-size', 25);
+    const [pagination, setPagination] = useState({
+        pageIndex: 0,
+        pageSize: pageSize,
+    });
+    const [paginationString, setPaginationString] = useState('');
 
     // Debounce the name filter
     useEffect(() => {
@@ -131,6 +139,13 @@ const LogosTable = () => {
 
         return filteredLogos.sort((a, b) => a.id - b.id);
     }, [logos, debouncedNameFilter, filters.used]);
+
+    // Get paginated data
+    const paginatedData = useMemo(() => {
+        const startIndex = pagination.pageIndex * pagination.pageSize;
+        const endIndex = startIndex + pagination.pageSize;
+        return data.slice(startIndex, endIndex);
+    }, [data, pagination.pageIndex, pagination.pageSize]);
 
     // Calculate unused logos count
     const unusedLogosCount = useMemo(() => {
@@ -269,6 +284,29 @@ const LogosTable = () => {
     useEffect(() => {
         setSelectedRows(new Set());
     }, [data.length]);
+
+    // Update pagination when pageSize changes
+    useEffect(() => {
+        setPagination(prev => ({
+            ...prev,
+            pageSize: pageSize,
+        }));
+    }, [pageSize]);
+
+    // Calculate pagination string
+    useEffect(() => {
+        const startItem = pagination.pageIndex * pagination.pageSize + 1;
+        const endItem = Math.min(
+            (pagination.pageIndex + 1) * pagination.pageSize,
+            data.length
+        );
+        setPaginationString(`${startItem} to ${endItem} of ${data.length}`);
+    }, [pagination.pageIndex, pagination.pageSize, data.length]);
+
+    // Calculate page count
+    const pageCount = useMemo(() => {
+        return Math.ceil(data.length / pagination.pageSize);
+    }, [data.length, pagination.pageSize]);
 
     /**
      * useMemo
@@ -425,17 +463,38 @@ const LogosTable = () => {
         setSelectedRows(new Set(newSelection));
     }, []);
 
+    const onPageSizeChange = (e) => {
+        const newPageSize = parseInt(e.target.value);
+        setPageSize(newPageSize);
+        setPagination(prev => ({
+            ...prev,
+            pageSize: newPageSize,
+            pageIndex: 0, // Reset to first page
+        }));
+    };
+
+    const onPageIndexChange = (pageIndex) => {
+        if (!pageIndex || pageIndex > pageCount) {
+            return;
+        }
+
+        setPagination(prev => ({
+            ...prev,
+            pageIndex: pageIndex - 1,
+        }));
+    };
+
     const table = useTable({
         columns,
-        data,
-        allRowIds: data.map((logo) => logo.id),
-        enablePagination: false,
+        data: paginatedData,
+        allRowIds: paginatedData.map((logo) => logo.id),
+        enablePagination: false, // Disable internal pagination since we're handling it manually
         enableRowSelection: true,
         enableRowVirtualization: false,
         renderTopToolbar: false,
         manualSorting: false,
         manualFiltering: false,
-        manualPagination: false,
+        manualPagination: true, // Enable manual pagination
         onRowSelectionChange: onRowSelectionChange,
         headerCellRenderFns: {
             actions: renderHeaderCell,
@@ -571,14 +630,57 @@ const LogosTable = () => {
                         <Box
                             style={{
                                 position: 'relative',
-                                overflow: 'auto',
                                 borderRadius: '0 0 var(--mantine-radius-md) var(--mantine-radius-md)',
                             }}
                         >
-                            <div style={{ minWidth: '700px' }}>
-                                <LoadingOverlay visible={isLoading} />
-                                <CustomTable table={table} />
-                            </div>
+                            <Box
+                                style={{
+                                    overflow: 'auto',
+                                    maxHeight: 'calc(100vh - 200px)',
+                                }}
+                            >
+                                <div style={{ minWidth: '700px' }}>
+                                    <LoadingOverlay visible={isLoading} />
+                                    <CustomTable table={table} />
+                                </div>
+                            </Box>
+
+                            {/* Pagination Controls */}
+                            <Box
+                                style={{
+                                    position: 'sticky',
+                                    bottom: 0,
+                                    zIndex: 3,
+                                    backgroundColor: '#27272A',
+                                    borderTop: '1px solid #3f3f46',
+                                }}
+                            >
+                                <Group
+                                    gap={5}
+                                    justify="center"
+                                    style={{
+                                        padding: 8,
+                                    }}
+                                >
+                                    <Text size="xs">Page Size</Text>
+                                    <NativeSelect
+                                        size="xxs"
+                                        value={pagination.pageSize}
+                                        data={['25', '50', '100', '250']}
+                                        onChange={onPageSizeChange}
+                                        style={{ paddingRight: 20 }}
+                                    />
+                                    <Pagination
+                                        total={pageCount}
+                                        value={pagination.pageIndex + 1}
+                                        onChange={onPageIndexChange}
+                                        size="xs"
+                                        withEdges
+                                        style={{ paddingRight: 20 }}
+                                    />
+                                    <Text size="xs">{paginationString}</Text>
+                                </Group>
+                            </Box>
                         </Box>
                     </Paper>
                 </Stack>
