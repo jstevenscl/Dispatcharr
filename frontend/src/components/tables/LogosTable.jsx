@@ -512,7 +512,8 @@ const LogosTable = () => {
                     display: 'flex',
                     justifyContent: 'center',
                     padding: '0px',
-                    minHeight: '100vh',
+                    minHeight: 'calc(100vh - 200px)',
+                    minWidth: '900px',
                 }}
             >
                 <Stack gap="md" style={{ maxWidth: '1200px', width: '100%' }}>
@@ -636,10 +637,10 @@ const LogosTable = () => {
                             <Box
                                 style={{
                                     overflow: 'auto',
-                                    maxHeight: 'calc(100vh - 200px)',
+                                    height: 'calc(100vh - 200px)',
                                 }}
                             >
-                                <div style={{ minWidth: '700px' }}>
+                                <div >
                                     <LoadingOverlay visible={isLoading} />
                                     <CustomTable table={table} />
                                 </div>
