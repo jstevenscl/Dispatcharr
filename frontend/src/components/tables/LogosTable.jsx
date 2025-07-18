@@ -347,6 +347,16 @@ const LogosTable = () => {
                             height={30}
                             fit="contain"
                             fallbackSrc="/logo.png"
+                            style={{
+                                transition: 'transform 0.3s ease',
+                                cursor: 'pointer',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.transform = 'scale(1.5)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.transform = 'scale(1)';
+                            }}
                         />
                     </Center>
                 ),

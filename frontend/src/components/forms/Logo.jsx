@@ -179,6 +179,19 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                                     height={75}
                                     fit="contain"
                                     fallbackSrc="/logo.png"
+                                    style={{
+                                        transition: 'transform 0.3s ease',
+                                        cursor: 'pointer',
+                                        ':hover': {
+                                            transform: 'scale(1.5)'
+                                        }
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.transform = 'scale(1.5)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.transform = 'scale(1)';
+                                    }}
                                 />
                             </Box>
                         </Center>
