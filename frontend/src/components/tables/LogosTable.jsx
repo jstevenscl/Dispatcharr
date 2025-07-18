@@ -156,10 +156,10 @@ const LogosTable = () => {
     /**
      * Functions
      */
-    const executeDeleteLogo = useCallback(async (id) => {
+    const executeDeleteLogo = useCallback(async (id, deleteFile = false) => {
         setIsLoading(true);
         try {
-            await API.deleteLogo(id);
+            await API.deleteLogo(id, deleteFile);
             await fetchLogos();
             notifications.show({
                 title: 'Success',
@@ -182,12 +182,12 @@ const LogosTable = () => {
         }
     }, [fetchLogos]);
 
-    const executeBulkDelete = useCallback(async () => {
+    const executeBulkDelete = useCallback(async (deleteFiles = false) => {
         if (selectedRows.size === 0) return;
 
         setIsLoading(true);
         try {
-            await API.deleteLogos(Array.from(selectedRows));
+            await API.deleteLogos(Array.from(selectedRows), deleteFiles);
             await fetchLogos();
 
             notifications.show({
@@ -706,11 +706,11 @@ const LogosTable = () => {
             <ConfirmationDialog
                 opened={confirmDeleteOpen}
                 onClose={() => setConfirmDeleteOpen(false)}
-                onConfirm={() => {
+                onConfirm={(deleteFiles) => {
                     if (isBulkDelete) {
-                        executeBulkDelete();
+                        executeBulkDelete(deleteFiles);
                     } else {
-                        executeDeleteLogo(deleteTarget);
+                        executeDeleteLogo(deleteTarget, deleteFiles);
                     }
                 }}
                 title={isBulkDelete ? "Delete Multiple Logos" : "Delete Logo"}
@@ -744,6 +744,19 @@ const LogosTable = () => {
                 confirmLabel="Delete"
                 cancelLabel="Cancel"
                 size="md"
+                showDeleteFileOption={
+                    isBulkDelete
+                        ? Array.from(selectedRows).some(id => {
+                            const logo = Object.values(logos).find(l => l.id === id);
+                            return logo && logo.url && logo.url.startsWith('/data/logos');
+                        })
+                        : logoToDelete && logoToDelete.url && logoToDelete.url.startsWith('/data/logos')
+                }
+                deleteFileLabel={
+                    isBulkDelete
+                        ? "Also delete local logo files from disk"
+                        : "Also delete logo file from disk"
+                }
             />
 
             <ConfirmationDialog

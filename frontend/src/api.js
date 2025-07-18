@@ -1337,9 +1337,15 @@ export default class API {
     }
   }
 
-  static async deleteLogo(id) {
+  static async deleteLogo(id, deleteFile = false) {
     try {
-      await request(`${host}/api/channels/logos/${id}/`, {
+      const params = new URLSearchParams();
+      if (deleteFile) {
+        params.append('delete_file', 'true');
+      }
+
+      const url = `${host}/api/channels/logos/${id}/?${params.toString()}`;
+      await request(url, {
         method: 'DELETE',
       });
 
@@ -1351,11 +1357,16 @@ export default class API {
     }
   }
 
-  static async deleteLogos(ids) {
+  static async deleteLogos(ids, deleteFiles = false) {
     try {
+      const body = { logo_ids: ids };
+      if (deleteFiles) {
+        body.delete_files = true;
+      }
+
       await request(`${host}/api/channels/logos/bulk-delete/`, {
         method: 'DELETE',
-        body: { logo_ids: ids },
+        body: body,
       });
 
       // Remove multiple logos from store

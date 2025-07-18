@@ -1052,12 +1052,28 @@ class BulkDeleteLogosAPIView(APIView):
     )
     def delete(self, request):
         logo_ids = request.data.get("logo_ids", [])
+        delete_files = request.data.get("delete_files", False)
 
         # Get logos and their usage info before deletion
         logos_to_delete = Logo.objects.filter(id__in=logo_ids)
         total_channels_affected = 0
-        
+        local_files_deleted = 0
+
         for logo in logos_to_delete:
+            # Handle file deletion for local files
+            if delete_files and logo.url and logo.url.startswith('/data/logos'):
+                try:
+                    if os.path.exists(logo.url):
+                        os.remove(logo.url)
+                        local_files_deleted += 1
+                        logger.info(f"Deleted local logo file: {logo.url}")
+                except Exception as e:
+                    logger.error(f"Failed to delete logo file {logo.url}: {str(e)}")
+                    return Response(
+                        {"error": f"Failed to delete logo file {logo.url}: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
             if logo.channels.exists():
                 channel_count = logo.channels.count()
                 total_channels_affected += channel_count
@@ -1071,6 +1087,8 @@ class BulkDeleteLogosAPIView(APIView):
         message = f"Successfully deleted {deleted_count} logos"
         if total_channels_affected > 0:
             message += f" and removed them from {total_channels_affected} channels"
+        if local_files_deleted > 0:
+            message += f" and deleted {local_files_deleted} local files"
 
         return Response(
             {"message": message},
@@ -1157,6 +1175,20 @@ class LogoViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Delete a logo and remove it from any channels using it"""
         logo = self.get_object()
+        delete_file = request.query_params.get('delete_file', 'false').lower() == 'true'
+
+        # Check if it's a local file that should be deleted
+        if delete_file and logo.url and logo.url.startswith('/data/logos'):
+            try:
+                if os.path.exists(logo.url):
+                    os.remove(logo.url)
+                    logger.info(f"Deleted local logo file: {logo.url}")
+            except Exception as e:
+                logger.error(f"Failed to delete logo file {logo.url}: {str(e)}")
+                return Response(
+                    {"error": f"Failed to delete logo file: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         # Instead of preventing deletion, remove the logo from channels
         if logo.channels.exists():
