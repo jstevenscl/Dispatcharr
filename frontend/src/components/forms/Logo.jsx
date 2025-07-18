@@ -68,6 +68,8 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                 // Handle specific timeout errors
                 if (error.code === 'NETWORK_ERROR' || error.message?.includes('timeout')) {
                     errorMessage = 'Request timed out. Please try again.';
+                } else if (error.response?.data?.error) {
+                    errorMessage = error.response.data.error;
                 }
 
                 notifications.show({

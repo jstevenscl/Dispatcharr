@@ -1053,24 +1053,27 @@ class BulkDeleteLogosAPIView(APIView):
     def delete(self, request):
         logo_ids = request.data.get("logo_ids", [])
 
-        # Check if any logos are being used by channels
-        used_logos = Logo.objects.filter(
-            id__in=logo_ids,
-            channels__isnull=False
-        ).distinct()
+        # Get logos and their usage info before deletion
+        logos_to_delete = Logo.objects.filter(id__in=logo_ids)
+        total_channels_affected = 0
+        
+        for logo in logos_to_delete:
+            if logo.channels.exists():
+                channel_count = logo.channels.count()
+                total_channels_affected += channel_count
+                # Remove logo from channels
+                logo.channels.update(logo=None)
+                logger.info(f"Removed logo {logo.name} from {channel_count} channels before deletion")
 
-        if used_logos.exists():
-            used_names = list(used_logos.values_list('name', flat=True))
-            return Response(
-                {"error": f"Cannot delete logos that are in use: {', '.join(used_names)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Delete logos
+        deleted_count = logos_to_delete.delete()[0]
 
-        # Delete logos that are not in use
-        deleted_count = Logo.objects.filter(id__in=logo_ids).delete()[0]
+        message = f"Successfully deleted {deleted_count} logos"
+        if total_channels_affected > 0:
+            message += f" and removed them from {total_channels_affected} channels"
 
         return Response(
-            {"message": f"Successfully deleted {deleted_count} logos"},
+            {"message": message},
             status=status.HTTP_204_NO_CONTENT
         )
 
@@ -1152,15 +1155,14 @@ class LogoViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        """Delete a logo"""
+        """Delete a logo and remove it from any channels using it"""
         logo = self.get_object()
 
-        # Check if logo is being used by any channels
+        # Instead of preventing deletion, remove the logo from channels
         if logo.channels.exists():
-            return Response(
-                {"error": f"Cannot delete logo as it is used by {logo.channels.count()} channel(s)"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            channel_count = logo.channels.count()
+            logo.channels.update(logo=None)
+            logger.info(f"Removed logo {logo.name} from {channel_count} channels before deletion")
 
         return super().destroy(request, *args, **kwargs)
 

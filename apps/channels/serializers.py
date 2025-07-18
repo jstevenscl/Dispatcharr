@@ -28,6 +28,16 @@ class LogoSerializer(serializers.ModelSerializer):
         model = Logo
         fields = ["id", "name", "url", "cache_url", "channel_count", "is_used", "channel_names"]
 
+    def validate_url(self, value):
+        """Validate that the URL is unique for creation or update"""
+        if self.instance and self.instance.url == value:
+            return value
+        
+        if Logo.objects.filter(url=value).exists():
+            raise serializers.ValidationError("A logo with this URL already exists.")
+        
+        return value
+
     def get_cache_url(self, obj):
         # return f"/api/channels/logos/{obj.id}/cache/"
         request = self.context.get("request")

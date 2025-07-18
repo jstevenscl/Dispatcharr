@@ -719,6 +719,9 @@ const LogosTable = () => {
                         <div>
                             Are you sure you want to delete {selectedRows.size} selected logos?
                             <Text size="sm" c="dimmed" mt="xs">
+                                Any channels using these logos will have their logo removed.
+                            </Text>
+                            <Text size="sm" c="dimmed" mt="xs">
                                 This action cannot be undone.
                             </Text>
                         </div>
@@ -727,7 +730,7 @@ const LogosTable = () => {
                             Are you sure you want to delete the logo "{logoToDelete.name}"?
                             {logoToDelete.channel_count > 0 && (
                                 <Text size="sm" c="orange" mt="xs">
-                                    Warning: This logo is currently used by {logoToDelete.channel_count} channel{logoToDelete.channel_count !== 1 ? 's' : ''}.
+                                    This logo is currently used by {logoToDelete.channel_count} channel{logoToDelete.channel_count !== 1 ? 's' : ''}. They will have their logo removed.
                                 </Text>
                             )}
                             <Text size="sm" c="dimmed" mt="xs">
