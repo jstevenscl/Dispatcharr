@@ -421,7 +421,7 @@ export const WebsocketProvider = ({ children }) => {
             case 'logo_processing_summary':
               notifications.show({
                 title: 'Logo Processing Summary',
-                message: `Logo processing complete: ${parsedEvent.data.processed} logos processed, ${parsedEvent.data.duplicates_merged} duplicates merged.`,
+                message: `${parsedEvent.data.message}`,
                 color: 'blue',
                 autoClose: 5000,
               });
