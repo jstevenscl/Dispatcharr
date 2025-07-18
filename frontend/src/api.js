@@ -209,10 +209,10 @@ export default class API {
         API.getAllChannelIds(API.lastQueryParams),
       ]);
 
-      useChannelsTableStore
+      useChannelsTable
         .getState()
         .queryChannels(response, API.lastQueryParams);
-      useChannelsTableStore.getState().setAllQueryIds(ids);
+      useChannelsTable.getState().setAllQueryIds(ids);
 
       return response;
     } catch (e) {
@@ -1282,9 +1282,19 @@ export default class API {
 
   static async updateLogo(id, values) {
     try {
+      // Convert values to FormData for the multipart/form-data content type
+      const formData = new FormData();
+
+      // Add each field to the form data
+      Object.keys(values).forEach(key => {
+        if (values[key] !== null && values[key] !== undefined) {
+          formData.append(key, values[key]);
+        }
+      });
+
       const response = await request(`${host}/api/channels/logos/${id}/`, {
         method: 'PUT',
-        body: values,
+        body: formData, // Send as FormData instead of JSON
       });
 
       useChannelsStore.getState().updateLogo(response);
