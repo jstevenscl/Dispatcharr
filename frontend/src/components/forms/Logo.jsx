@@ -29,7 +29,20 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
         },
         validationSchema: Yup.object({
             name: Yup.string().required('Name is required'),
-            url: Yup.string().url('Must be a valid URL').required('URL is required'),
+            url: Yup.string()
+                .required('URL is required')
+                .test('valid-url-or-path', 'Must be a valid URL or local file path', (value) => {
+                    if (!value) return false;
+                    // Allow local file paths starting with /logos/
+                    if (value.startsWith('/logos/')) return true;
+                    // Allow valid URLs
+                    try {
+                        new URL(value);
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                }),
         }),
         onSubmit: async (values, { setSubmitting }) => {
             try {
