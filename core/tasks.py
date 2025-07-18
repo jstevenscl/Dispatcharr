@@ -362,15 +362,7 @@ def scan_and_process_files():
 
             logo_processed += 1
 
-            # Send websocket notification
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "updates",
-                {
-                    "type": "update",
-                    "data": {"success": True, "type": "logo_file", "filename": filename, "created": created}
-                },
-            )
+            # Remove individual websocket notification - will send summary instead
 
         except Exception as e:
             logger.error(f"Error processing logo file {filename}: {str(e)}", exc_info=True)
@@ -378,6 +370,22 @@ def scan_and_process_files():
             continue
 
     logger.trace(f"LOGO processing complete: {logo_processed} processed, {logo_skipped} skipped, {logo_errors} errors")
+
+    # Send summary websocket update for logo processing
+    if logo_processed > 0 or logo_errors > 0:
+        send_websocket_update(
+            "updates",
+            "update",
+            {
+                "success": True,
+                "type": "logo_processing_summary",
+                "processed": logo_processed,
+                "skipped": logo_skipped,
+                "errors": logo_errors,
+                "total_files": len(logo_files),
+                "message": f"Logo processing complete: {logo_processed} processed, {logo_skipped} skipped, {logo_errors} errors"
+            }
+        )
 
     # Mark that the first scan is complete
     _first_scan_completed = True

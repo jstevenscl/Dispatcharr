@@ -418,6 +418,16 @@ export const WebsocketProvider = ({ children }) => {
               }
               break;
 
+            case 'logo_processing_summary':
+              notifications.show({
+                title: 'Logo Processing Summary',
+                message: `Logo processing complete: ${parsedEvent.data.processed} logos processed, ${parsedEvent.data.duplicates_merged} duplicates merged.`,
+                color: 'blue',
+                autoClose: 5000,
+              });
+              fetchLogos();
+              break;
+
             default:
               console.error(
                 `Unknown websocket event type: ${parsedEvent.data?.type}`
@@ -488,6 +498,7 @@ export const WebsocketProvider = ({ children }) => {
   const setProfilePreview = usePlaylistsStore((s) => s.setProfilePreview);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
   const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
 
   const ret = useMemo(() => {
     return [isReady, ws.current?.send.bind(ws.current), val];
