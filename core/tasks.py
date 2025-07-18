@@ -21,10 +21,12 @@ logger = logging.getLogger(__name__)
 
 EPG_WATCH_DIR = '/data/epgs'
 M3U_WATCH_DIR = '/data/m3us'
+LOGO_WATCH_DIR = '/data/logos'
 MIN_AGE_SECONDS = 6
 STARTUP_SKIP_AGE = 30
 REDIS_PREFIX = "processed_file:"
 REDIS_TTL = 60 * 60 * 24 * 3  # expire keys after 3 days (optional)
+SUPPORTED_LOGO_FORMATS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg']
 
 # Store the last known value to compare with new data
 last_known_data = {}
@@ -56,10 +58,11 @@ def scan_and_process_files():
     global _first_scan_completed
     redis_client = RedisClient.get_client()
     now = time.time()
+
     # Check if directories exist
-    dirs_exist = all(os.path.exists(d) for d in [M3U_WATCH_DIR, EPG_WATCH_DIR])
+    dirs_exist = all(os.path.exists(d) for d in [M3U_WATCH_DIR, EPG_WATCH_DIR, LOGO_WATCH_DIR])
     if not dirs_exist:
-        throttled_log(logger.warning, f"Watch directories missing: M3U ({os.path.exists(M3U_WATCH_DIR)}), EPG ({os.path.exists(EPG_WATCH_DIR)})", "watch_dirs_missing")
+        throttled_log(logger.warning, f"Watch directories missing: M3U ({os.path.exists(M3U_WATCH_DIR)}), EPG ({os.path.exists(EPG_WATCH_DIR)}), LOGO ({os.path.exists(LOGO_WATCH_DIR)})", "watch_dirs_missing")
 
     # Process M3U files
     m3u_files = [f for f in os.listdir(M3U_WATCH_DIR)
@@ -265,6 +268,116 @@ def scan_and_process_files():
             continue
 
     logger.trace(f"EPG processing complete: {epg_processed} processed, {epg_skipped} skipped, {epg_errors} errors")
+
+    # Process Logo files
+    try:
+        logo_files = os.listdir(LOGO_WATCH_DIR) if os.path.exists(LOGO_WATCH_DIR) else []
+        logger.trace(f"Found {len(logo_files)} files in LOGO directory")
+    except Exception as e:
+        logger.error(f"Error listing LOGO directory: {e}")
+        logo_files = []
+
+    logo_processed = 0
+    logo_skipped = 0
+    logo_errors = 0
+
+    for filename in logo_files:
+        filepath = os.path.join(LOGO_WATCH_DIR, filename)
+
+        if not os.path.isfile(filepath):
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Not a file")
+            else:
+                logger.debug(f"Skipping {filename}: Not a file")
+            logo_skipped += 1
+            continue
+
+        # Check if file has supported logo extension
+        file_ext = os.path.splitext(filename)[1].lower()
+        if file_ext not in SUPPORTED_LOGO_FORMATS:
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Not a supported logo format")
+            else:
+                logger.debug(f"Skipping {filename}: Not a supported logo format")
+            logo_skipped += 1
+            continue
+
+        mtime = os.path.getmtime(filepath)
+        age = now - mtime
+        redis_key = REDIS_PREFIX + filepath
+        stored_mtime = redis_client.get(redis_key)
+
+        # Check if logo already exists in database
+        if not stored_mtime and age > STARTUP_SKIP_AGE:
+            from apps.channels.models import Logo
+            existing_logo = Logo.objects.filter(url=filepath).exists()
+            if existing_logo:
+                if _first_scan_completed:
+                    logger.trace(f"Skipping {filename}: Already exists in database")
+                else:
+                    logger.debug(f"Skipping {filename}: Already exists in database")
+                redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+                logo_skipped += 1
+                continue
+            else:
+                logger.debug(f"Processing {filename} despite age: Not found in database")
+
+        # File too new — probably still being written
+        if age < MIN_AGE_SECONDS:
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Too new, possibly still being written (age={age}s)")
+            else:
+                logger.debug(f"Skipping {filename}: Too new, possibly still being written (age={age}s)")
+            logo_skipped += 1
+            continue
+
+        # Skip if we've already processed this mtime
+        if stored_mtime and float(stored_mtime) >= mtime:
+            if _first_scan_completed:
+                logger.trace(f"Skipping {filename}: Already processed this version")
+            else:
+                logger.debug(f"Skipping {filename}: Already processed this version")
+            logo_skipped += 1
+            continue
+
+        try:
+            from apps.channels.models import Logo
+
+            # Create logo entry with just the filename (without extension) as name
+            logo_name = os.path.splitext(filename)[0]
+
+            logo, created = Logo.objects.get_or_create(
+                url=filepath,
+                defaults={
+                    "name": logo_name,
+                }
+            )
+
+            redis_client.set(redis_key, mtime, ex=REDIS_TTL)
+
+            if created:
+                logger.info(f"Created new logo entry: {logo_name}")
+            else:
+                logger.debug(f"Logo entry already exists: {logo_name}")
+
+            logo_processed += 1
+
+            # Send websocket notification
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "updates",
+                {
+                    "type": "update",
+                    "data": {"success": True, "type": "logo_file", "filename": filename, "created": created}
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing logo file {filename}: {str(e)}", exc_info=True)
+            logo_errors += 1
+            continue
+
+    logger.trace(f"LOGO processing complete: {logo_processed} processed, {logo_skipped} skipped, {logo_errors} errors")
 
     # Mark that the first scan is complete
     _first_scan_completed = True
