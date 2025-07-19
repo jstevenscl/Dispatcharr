@@ -867,18 +867,24 @@ def sync_auto_channels(account_id):
             channel_group = group_relation.channel_group
             start_number = group_relation.auto_sync_channel_start or 1.0
 
-            # Get force_dummy_epg and group_override from group custom_properties
+            # Get force_dummy_epg, group_override, and regex patterns from group custom_properties
             group_custom_props = {}
             force_dummy_epg = False
             override_group_id = None
+            name_regex_pattern = None
+            name_replace_pattern = None
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
                     force_dummy_epg = group_custom_props.get("force_dummy_epg", False)
                     override_group_id = group_custom_props.get("group_override")
+                    name_regex_pattern = group_custom_props.get("name_regex_pattern")
+                    name_replace_pattern = group_custom_props.get("name_replace_pattern")
                 except Exception:
                     force_dummy_epg = False
                     override_group_id = None
+                    name_regex_pattern = None
+                    name_replace_pattern = None
 
             # Determine which group to use for created channels
             target_group = channel_group
@@ -945,6 +951,18 @@ def sync_auto_channels(account_id):
                     stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
                     tvc_guide_stationid = stream_custom_props.get("tvc-guide-stationid")
 
+                    # --- REGEX FIND/REPLACE LOGIC ---
+                    original_name = stream.name
+                    new_name = original_name
+                    if name_regex_pattern is not None:
+                        # If replace is None, treat as empty string (remove match)
+                        replace = name_replace_pattern if name_replace_pattern is not None else ''
+                        try:
+                            new_name = re.sub(name_regex_pattern, replace, original_name)
+                        except re.error as e:
+                            logger.warning(f"Regex error for group '{channel_group.name}': {e}. Using original name.")
+                            new_name = original_name
+
                     # Check if we already have a channel for this stream
                     existing_channel = existing_channel_map.get(stream.id)
 
@@ -952,9 +970,9 @@ def sync_auto_channels(account_id):
                         # Update existing channel if needed
                         channel_updated = False
 
-                        # Check for changes in key fields
-                        if existing_channel.name != stream.name:
-                            existing_channel.name = stream.name
+                        # Use new_name instead of stream.name
+                        if existing_channel.name != new_name:
+                            existing_channel.name = new_name
                             channel_updated = True
 
                         if existing_channel.tvg_id != stream.tvg_id:
@@ -1007,7 +1025,7 @@ def sync_auto_channels(account_id):
                         # Create the channel with auto-created tracking in the target group
                         channel = Channel.objects.create(
                             channel_number=current_channel_number,
-                            name=stream.name,
+                            name=new_name,
                             tvg_id=stream.tvg_id,
                             tvc_guide_stationid=tvc_guide_stationid,
                             channel_group=target_group,  # Use target group (could be override)

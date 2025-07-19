@@ -284,6 +284,51 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           precision={1}
                         />
 
+                        <TextInput
+                          label="Channel Name Regex"
+                          placeholder="e.g. ^.*? - PPV\d+ - (.+)$"
+                          value={group.custom_properties?.name_regex_pattern || ''}
+                          onChange={e => {
+                            const val = e.currentTarget.value;
+                            setGroupStates(
+                              groupStates.map(state =>
+                                state.channel_group === group.channel_group
+                                  ? {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        name_regex_pattern: val,
+                                      },
+                                    }
+                                  : state
+                              )
+                            );
+                          }}
+                          size="xs"
+                        />
+                        <TextInput
+                          label="Channel Name Replace"
+                          placeholder="e.g. $1"
+                          value={group.custom_properties?.name_replace_pattern || ''}
+                          onChange={e => {
+                            const val = e.currentTarget.value;
+                            setGroupStates(
+                              groupStates.map(state =>
+                                state.channel_group === group.channel_group
+                                  ? {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        name_replace_pattern: val,
+                                      },
+                                    }
+                                  : state
+                              )
+                            );
+                          }}
+                          size="xs"
+                        />
+
                         {/* Override Channel Group */}
                         <Flex align="center" gap="xs">
                           <Checkbox
