@@ -839,7 +839,7 @@ def delete_m3u_refresh_task_by_id(account_id):
         return False
 
 @shared_task
-def sync_auto_channels(account_id):
+def sync_auto_channels(account_id, scan_start_time=None):
     """
     Automatically create/update/delete channels to match streams in groups with auto_channel_sync enabled.
     Preserves existing channel UUIDs to maintain M3U link integrity.
@@ -847,10 +847,18 @@ def sync_auto_channels(account_id):
     """
     from apps.channels.models import Channel, ChannelGroup, ChannelGroupM3UAccount, Stream, ChannelStream
     from apps.epg.models import EPGData
+    from django.utils import timezone
 
     try:
         account = M3UAccount.objects.get(id=account_id)
         logger.info(f"Starting auto channel sync for M3U account {account.name}")
+
+        # Always use scan_start_time as the cutoff for last_seen
+        if scan_start_time is not None:
+            if isinstance(scan_start_time, str):
+                scan_start_time = timezone.datetime.fromisoformat(scan_start_time)
+        else:
+            scan_start_time = timezone.now()
 
         # Get groups with auto sync enabled for this account
         auto_sync_groups = ChannelGroupM3UAccount.objects.filter(
@@ -897,10 +905,11 @@ def sync_auto_channels(account_id):
 
             logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
 
-            # Get all current streams in this group for this M3U account
+            # Get all current streams in this group for this M3U account, filter out stale streams
             current_streams = Stream.objects.filter(
                 m3u_account=account,
-                channel_group=channel_group
+                channel_group=channel_group,
+                last_seen__gte=scan_start_time
             ).order_by('name')
 
             # Get existing auto-created channels for this account (regardless of current group)
@@ -1348,7 +1357,7 @@ def refresh_single_m3u_account(account_id):
         # Run auto channel sync after successful refresh
         auto_sync_message = ""
         try:
-            sync_result = sync_auto_channels(account_id)
+            sync_result = sync_auto_channels(account_id, scan_start_time=str(refresh_start_timestamp))
             logger.info(f"Auto channel sync result for account {account_id}: {sync_result}")
             if sync_result and "created" in sync_result:
                 auto_sync_message = f" {sync_result}."
