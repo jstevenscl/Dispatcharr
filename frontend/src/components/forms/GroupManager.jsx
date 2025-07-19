@@ -14,6 +14,7 @@ import {
     ScrollArea,
     useMantineTheme,
     Chip,
+    Box,
 } from '@mantine/core';
 import {
     SquarePlus,
@@ -73,64 +74,70 @@ const GroupItem = React.memo(({
     };
 
     return (
-        <Group justify="space-between" p="sm" style={{
-            border: '1px solid #e0e0e0',
-            borderRadius: '4px',
-            backgroundColor: editingGroup === group.id ? '#3f3f46' : 'transparent'
-        }}>
-            <Stack gap={4} style={{ flex: 1 }}>
-                {editingGroup === group.id ? (
-                    <TextInput
-                        value={editName}
-                        onChange={onEditNameChange}
-                        size="sm"
-                        onKeyPress={(e) => e.key === 'Enter' && onSaveEdit()}
-                        autoFocus
-                    />
-                ) : (
-                    <>
-                        <Text size="sm" fw={500}>{group.name}</Text>
-                        <Group gap={4}>
-                            {getGroupBadges(group)}
-                        </Group>
-                    </>
-                )}
-            </Stack>
+        <Box
+            style={{
+                border: '1px solid #444',
+                borderRadius: '8px',
+                backgroundColor: editingGroup === group.id ? '#3f3f46' : (group.enabled ? '#2A2A2E' : '#1E1E22'),
+                padding: '8px',
+                marginBottom: '2px',
+            }}
+        >
+            <Group justify="space-between" gap="xs" align="flex-start">
+                <Stack gap={4} style={{ flex: 1 }}>
+                    {editingGroup === group.id ? (
+                        <TextInput
+                            value={editName}
+                            onChange={onEditNameChange}
+                            size="sm"
+                            onKeyPress={(e) => e.key === 'Enter' && onSaveEdit()}
+                            autoFocus
+                        />
+                    ) : (
+                        <>
+                            <Text size="sm" fw={500}>{group.name}</Text>
+                            <Group gap={4}>
+                                {getGroupBadges(group)}
+                            </Group>
+                        </>
+                    )}
+                </Stack>
 
-            <Group gap="xs">
-                {editingGroup === group.id ? (
-                    <>
-                        <ActionIcon color="green" size="sm" onClick={onSaveEdit}>
-                            <Check size={14} />
-                        </ActionIcon>
-                        <ActionIcon color="gray" size="sm" onClick={onCancelEdit}>
-                            <X size={14} />
-                        </ActionIcon>
-                    </>
-                ) : (
-                    <>
-                        <ActionIcon
-                            variant="transparent"
-                            color={theme.tailwind.yellow[3]}
-                            size="sm"
-                            onClick={() => onEdit(group)}
-                            disabled={!canEditGroup(group)}
-                        >
-                            <SquarePen size={18} />
-                        </ActionIcon>
-                        <ActionIcon
-                            variant="transparent"
-                            color={theme.tailwind.red[6]}
-                            size="sm"
-                            onClick={() => onDelete(group)}
-                            disabled={!canDeleteGroup(group)}
-                        >
-                            <SquareMinus size="18" />
-                        </ActionIcon>
-                    </>
-                )}
+                <Group gap="xs">
+                    {editingGroup === group.id ? (
+                        <>
+                            <ActionIcon color="green" size="sm" onClick={onSaveEdit}>
+                                <Check size={14} />
+                            </ActionIcon>
+                            <ActionIcon color="gray" size="sm" onClick={onCancelEdit}>
+                                <X size={14} />
+                            </ActionIcon>
+                        </>
+                    ) : (
+                        <>
+                            <ActionIcon
+                                variant="transparent"
+                                color={theme.tailwind.yellow[3]}
+                                size="sm"
+                                onClick={() => onEdit(group)}
+                                disabled={!canEditGroup(group)}
+                            >
+                                <SquarePen size={18} />
+                            </ActionIcon>
+                            <ActionIcon
+                                variant="transparent"
+                                color={theme.tailwind.red[6]}
+                                size="sm"
+                                onClick={() => onDelete(group)}
+                                disabled={!canDeleteGroup(group)}
+                            >
+                                <SquareMinus size="18" />
+                            </ActionIcon>
+                        </>
+                    )}
+                </Group>
             </Group>
-        </Group>
+        </Box>
     );
 });
 
