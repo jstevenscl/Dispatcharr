@@ -881,6 +881,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
             override_group_id = None
             name_regex_pattern = None
             name_replace_pattern = None
+            name_match_regex = None
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
@@ -888,11 +889,13 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     override_group_id = group_custom_props.get("group_override")
                     name_regex_pattern = group_custom_props.get("name_regex_pattern")
                     name_replace_pattern = group_custom_props.get("name_replace_pattern")
+                    name_match_regex = group_custom_props.get("name_match_regex")
                 except Exception:
                     force_dummy_epg = False
                     override_group_id = None
                     name_regex_pattern = None
                     name_replace_pattern = None
+                    name_match_regex = None
 
             # Determine which group to use for created channels
             target_group = channel_group
@@ -911,6 +914,16 @@ def sync_auto_channels(account_id, scan_start_time=None):
                 channel_group=channel_group,
                 last_seen__gte=scan_start_time
             ).order_by('name')
+
+            # --- FILTER STREAMS BY NAME MATCH REGEX IF SPECIFIED ---
+            if name_match_regex:
+                try:
+                    compiled_name_match_regex = re.compile(name_match_regex, re.IGNORECASE)
+                    current_streams = current_streams.filter(
+                        name__iregex=name_match_regex
+                    )
+                except re.error as e:
+                    logger.warning(f"Invalid name_match_regex '{name_match_regex}' for group '{channel_group.name}': {e}. Skipping name filter.")
 
             # Get existing auto-created channels for this account (regardless of current group)
             # We'll find them by their stream associations instead of just group location

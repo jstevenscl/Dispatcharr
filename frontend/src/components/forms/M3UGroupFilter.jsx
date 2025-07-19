@@ -1,5 +1,5 @@
 // Modal.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import API from '../../api';
@@ -26,11 +26,21 @@ import {
   Alert,
   Box,
   MultiSelect,
+  Tooltip,
 } from '@mantine/core';
 import { Info } from 'lucide-react';
 import useChannelsStore from '../../store/channels';
 import { CircleCheck, CircleX } from 'lucide-react';
 import { notifications } from '@mantine/notifications';
+
+// Custom item component for MultiSelect with tooltip
+const OptionWithTooltip = forwardRef(({ label, description, ...others }, ref) => (
+  <Tooltip label={description} withArrow>
+    <div ref={ref} {...others}>
+      {label}
+    </div>
+  </Tooltip>
+));
 
 const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
@@ -254,7 +264,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                   </Button>
 
                   {/* Auto Sync Controls */}
-                  <Stack spacing={4}>
+                  <Stack spacing={4} >
                     <Flex align="center" gap="xs">
                       <Checkbox
                         label="Auto Channel Sync"
@@ -282,10 +292,28 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           label="Advanced Options"
                           placeholder="Select options..."
                           data={[
-                            { value: 'force_dummy_epg', label: 'Force Dummy EPG' },
-                            { value: 'group_override', label: 'Override Channel Group' },
-                            { value: 'name_regex', label: 'Channel Name Regex' },
+                            {
+                              value: 'force_dummy_epg',
+                              label: 'Force Dummy EPG',
+                              description: 'Assign a dummy EPG to all channels in this group if no EPG is matched',
+                            },
+                            {
+                              value: 'group_override',
+                              label: 'Override Channel Group',
+                              description: 'Override the group assignment for all channels in this group',
+                            },
+                            {
+                              value: 'name_regex',
+                              label: 'Channel Name Find & Replace (Regex)',
+                              description: 'Find and replace part of the channel name using a regex pattern',
+                            },
+                            {
+                              value: 'name_match_regex',
+                              label: 'Channel Name Filter (Regex)',
+                              description: 'Only include channels whose names match this regex pattern',
+                            },
                           ]}
+                          itemComponent={OptionWithTooltip}
                           value={(() => {
                             const selectedValues = [];
                             if (group.custom_properties?.force_dummy_epg) {
@@ -294,9 +322,14 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                             if (group.custom_properties?.group_override !== undefined) {
                               selectedValues.push('group_override');
                             }
-                            if (group.custom_properties?.name_regex_pattern !== undefined ||
-                              group.custom_properties?.name_replace_pattern !== undefined) {
+                            if (
+                              group.custom_properties?.name_regex_pattern !== undefined ||
+                              group.custom_properties?.name_replace_pattern !== undefined
+                            ) {
                               selectedValues.push('name_regex');
+                            }
+                            if (group.custom_properties?.name_match_regex !== undefined) {
+                              selectedValues.push('name_match_regex');
                             }
                             return selectedValues;
                           })()}
@@ -338,6 +371,15 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                                     delete newCustomProps.name_replace_pattern;
                                   }
 
+                                  // Handle name_match_regex
+                                  if (selectedOptions.includes('name_match_regex')) {
+                                    if (newCustomProps.name_match_regex === undefined) {
+                                      newCustomProps.name_match_regex = '';
+                                    }
+                                  } else {
+                                    delete newCustomProps.name_match_regex;
+                                  }
+
                                   return {
                                     ...state,
                                     custom_properties: newCustomProps,
@@ -353,87 +395,133 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
 
                         {/* Show group select only if group_override is selected */}
                         {group.custom_properties?.group_override !== undefined && (
-                          <Select
-                            label="Override Channel Group"
-                            placeholder="Choose group..."
-                            value={group.custom_properties?.group_override?.toString() || null}
-                            onChange={(value) => {
-                              const newValue = value ? parseInt(value) : null;
-                              setGroupStates(
-                                groupStates.map((state) => {
-                                  if (state.channel_group === group.channel_group) {
-                                    return {
-                                      ...state,
-                                      custom_properties: {
-                                        ...state.custom_properties,
-                                        group_override: newValue,
-                                      },
-                                    };
-                                  }
-                                  return state;
-                                })
-                              );
-                            }}
-                            data={Object.values(channelGroups).map((g) => ({
-                              value: g.id.toString(),
-                              label: g.name,
-                            }))}
-                            clearable
-                            searchable
-                            size="xs"
-                          />
+                          <Tooltip
+                            label="Select a group to override the assignment for all channels in this group."
+                            withArrow
+                          >
+                            <Select
+                              label="Override Channel Group"
+                              placeholder="Choose group..."
+                              value={group.custom_properties?.group_override?.toString() || null}
+                              onChange={(value) => {
+                                const newValue = value ? parseInt(value) : null;
+                                setGroupStates(
+                                  groupStates.map((state) => {
+                                    if (state.channel_group === group.channel_group) {
+                                      return {
+                                        ...state,
+                                        custom_properties: {
+                                          ...state.custom_properties,
+                                          group_override: newValue,
+                                        },
+                                      };
+                                    }
+                                    return state;
+                                  })
+                                );
+                              }}
+                              data={Object.values(channelGroups).map((g) => ({
+                                value: g.id.toString(),
+                                label: g.name,
+                              }))}
+                              clearable
+                              searchable
+                              size="xs"
+                            />
+                          </Tooltip>
                         )}
 
                         {/* Show regex fields only if name_regex is selected */}
                         {(group.custom_properties?.name_regex_pattern !== undefined ||
                           group.custom_properties?.name_replace_pattern !== undefined) && (
                             <>
-                              <TextInput
-                                label="Channel Name Regex"
-                                placeholder="e.g. ^.*? - PPV\\d+ - (.+)$"
-                                value={group.custom_properties?.name_regex_pattern || ''}
-                                onChange={e => {
-                                  const val = e.currentTarget.value;
-                                  setGroupStates(
-                                    groupStates.map(state =>
-                                      state.channel_group === group.channel_group
-                                        ? {
-                                          ...state,
-                                          custom_properties: {
-                                            ...state.custom_properties,
-                                            name_regex_pattern: val,
-                                          },
-                                        }
-                                        : state
-                                    )
-                                  );
-                                }}
-                                size="xs"
-                              />
-                              <TextInput
-                                label="Channel Name Replace"
-                                placeholder="e.g. $1"
-                                value={group.custom_properties?.name_replace_pattern || ''}
-                                onChange={e => {
-                                  const val = e.currentTarget.value;
-                                  setGroupStates(
-                                    groupStates.map(state =>
-                                      state.channel_group === group.channel_group
-                                        ? {
-                                          ...state,
-                                          custom_properties: {
-                                            ...state.custom_properties,
-                                            name_replace_pattern: val,
-                                          },
-                                        }
-                                        : state
-                                    )
-                                  );
-                                }}
-                                size="xs"
-                              />
+                              <Tooltip
+                                label="Regex pattern to find in the channel name. Example: ^.*? - PPV\\d+ - (.+)$"
+                                withArrow
+                              >
+                                <TextInput
+                                  label="Channel Name Find (Regex)"
+                                  placeholder="e.g. ^.*? - PPV\\d+ - (.+)$"
+                                  value={group.custom_properties?.name_regex_pattern || ''}
+                                  onChange={e => {
+                                    const val = e.currentTarget.value;
+                                    setGroupStates(
+                                      groupStates.map(state =>
+                                        state.channel_group === group.channel_group
+                                          ? {
+                                            ...state,
+                                            custom_properties: {
+                                              ...state.custom_properties,
+                                              name_regex_pattern: val,
+                                            },
+                                          }
+                                          : state
+                                      )
+                                    );
+                                  }}
+                                  size="xs"
+                                />
+                              </Tooltip>
+                              <Tooltip
+                                label="Replacement pattern for the channel name. Example: $1"
+                                withArrow
+                              >
+                                <TextInput
+                                  label="Channel Name Replace"
+                                  placeholder="e.g. $1"
+                                  value={group.custom_properties?.name_replace_pattern || ''}
+                                  onChange={e => {
+                                    const val = e.currentTarget.value;
+                                    setGroupStates(
+                                      groupStates.map(state =>
+                                        state.channel_group === group.channel_group
+                                          ? {
+                                            ...state,
+                                            custom_properties: {
+                                              ...state.custom_properties,
+                                              name_replace_pattern: val,
+                                            },
+                                          }
+                                          : state
+                                      )
+                                    );
+                                  }}
+                                  size="xs"
+                                />
+                              </Tooltip>
                             </>
                           )}
+
+                        {/* Show name_match_regex field only if selected */}
+                        {group.custom_properties?.name_match_regex !== undefined && (
+                          <Tooltip
+                            label="Only channels whose names match this regex will be included. Example: ^Sports.*"
+                            withArrow
+                          >
+                            <TextInput
+                              label="Channel Name Filter (Regex)"
+                              placeholder="e.g. ^Sports.*"
+                              value={group.custom_properties?.name_match_regex || ''}
+                              onChange={e => {
+                                const val = e.currentTarget.value;
+                                setGroupStates(
+                                  groupStates.map(state =>
+                                    state.channel_group === group.channel_group
+                                      ? {
+                                        ...state,
+                                        custom_properties: {
+                                          ...state.custom_properties,
+                                          name_match_regex: val,
+                                        },
+                                      }
+                                      : state
+                                  )
+                                );
+                              }}
+                              size="xs"
+                            />
+                          </Tooltip>
+                        )}
                       </>
                     )}
                   </Stack>
