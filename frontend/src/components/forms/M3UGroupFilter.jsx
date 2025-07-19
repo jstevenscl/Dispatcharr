@@ -264,7 +264,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                   </Button>
 
                   {/* Auto Sync Controls */}
-                  <Stack spacing={4} >
+                  <Stack spacing="xs" style={{ '--stack-gap': '4px' }}>
                     <Flex align="center" gap="xs">
                       <Checkbox
                         label="Auto Channel Sync"
