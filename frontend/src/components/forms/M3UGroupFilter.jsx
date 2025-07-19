@@ -25,6 +25,7 @@ import {
   Divider,
   Alert,
   Box,
+  MultiSelect,
 } from '@mantine/core';
 import { Info } from 'lucide-react';
 import useChannelsStore from '../../store/channels';
@@ -262,14 +263,6 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                         onChange={() => toggleAutoSync(group.channel_group)}
                         size="xs"
                       />
-                      {group.auto_channel_sync && group.enabled && (
-                        <Checkbox
-                          label="Force Dummy EPG"
-                          checked={!!(group.custom_properties && group.custom_properties.force_dummy_epg)}
-                          onChange={() => toggleForceDummyEPG(group.channel_group)}
-                          size="xs"
-                        />
-                      )}
                     </Flex>
 
                     {group.auto_channel_sync && group.enabled && (
@@ -284,77 +277,82 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           precision={1}
                         />
 
-                        <TextInput
-                          label="Channel Name Regex"
-                          placeholder="e.g. ^.*? - PPV\d+ - (.+)$"
-                          value={group.custom_properties?.name_regex_pattern || ''}
-                          onChange={e => {
-                            const val = e.currentTarget.value;
+                        {/* Auto Channel Sync Options Multi-Select */}
+                        <MultiSelect
+                          label="Advanced Options"
+                          placeholder="Select options..."
+                          data={[
+                            { value: 'force_dummy_epg', label: 'Force Dummy EPG' },
+                            { value: 'group_override', label: 'Override Channel Group' },
+                            { value: 'name_regex', label: 'Channel Name Regex' },
+                          ]}
+                          value={(() => {
+                            const selectedValues = [];
+                            if (group.custom_properties?.force_dummy_epg) {
+                              selectedValues.push('force_dummy_epg');
+                            }
+                            if (group.custom_properties?.group_override !== undefined) {
+                              selectedValues.push('group_override');
+                            }
+                            if (group.custom_properties?.name_regex_pattern !== undefined ||
+                              group.custom_properties?.name_replace_pattern !== undefined) {
+                              selectedValues.push('name_regex');
+                            }
+                            return selectedValues;
+                          })()}
+                          onChange={(values) => {
+                            // MultiSelect always returns an array
+                            const selectedOptions = values || [];
+
                             setGroupStates(
-                              groupStates.map(state =>
-                                state.channel_group === group.channel_group
-                                  ? {
-                                      ...state,
-                                      custom_properties: {
-                                        ...state.custom_properties,
-                                        name_regex_pattern: val,
-                                      },
+                              groupStates.map((state) => {
+                                if (state.channel_group === group.channel_group) {
+                                  let newCustomProps = { ...(state.custom_properties || {}) };
+
+                                  // Handle force_dummy_epg
+                                  if (selectedOptions.includes('force_dummy_epg')) {
+                                    newCustomProps.force_dummy_epg = true;
+                                  } else {
+                                    delete newCustomProps.force_dummy_epg;
+                                  }
+
+                                  // Handle group_override
+                                  if (selectedOptions.includes('group_override')) {
+                                    if (newCustomProps.group_override === undefined) {
+                                      newCustomProps.group_override = null;
                                     }
-                                  : state
-                              )
+                                  } else {
+                                    delete newCustomProps.group_override;
+                                  }
+
+                                  // Handle name_regex
+                                  if (selectedOptions.includes('name_regex')) {
+                                    if (newCustomProps.name_regex_pattern === undefined) {
+                                      newCustomProps.name_regex_pattern = '';
+                                    }
+                                    if (newCustomProps.name_replace_pattern === undefined) {
+                                      newCustomProps.name_replace_pattern = '';
+                                    }
+                                  } else {
+                                    delete newCustomProps.name_regex_pattern;
+                                    delete newCustomProps.name_replace_pattern;
+                                  }
+
+                                  return {
+                                    ...state,
+                                    custom_properties: newCustomProps,
+                                  };
+                                }
+                                return state;
+                              })
                             );
                           }}
-                          size="xs"
-                        />
-                        <TextInput
-                          label="Channel Name Replace"
-                          placeholder="e.g. $1"
-                          value={group.custom_properties?.name_replace_pattern || ''}
-                          onChange={e => {
-                            const val = e.currentTarget.value;
-                            setGroupStates(
-                              groupStates.map(state =>
-                                state.channel_group === group.channel_group
-                                  ? {
-                                      ...state,
-                                      custom_properties: {
-                                        ...state.custom_properties,
-                                        name_replace_pattern: val,
-                                      },
-                                    }
-                                  : state
-                              )
-                            );
-                          }}
+                          clearable
                           size="xs"
                         />
 
-                        {/* Override Channel Group */}
-                        <Flex align="center" gap="xs">
-                          <Checkbox
-                            checked={!!(group.custom_properties && Object.prototype.hasOwnProperty.call(group.custom_properties, 'group_override'))}
-                            onChange={(event) => {
-                              const isEnabled = event.currentTarget.checked;
-                              setGroupStates(
-                                groupStates.map((state) => {
-                                  if (state.channel_group == group.channel_group) {
-                                    const newCustomProps = { ...(state.custom_properties || {}) };
-                                    if (isEnabled) {
-                                      newCustomProps.group_override = null;
-                                    } else {
-                                      delete newCustomProps.group_override;
-                                    }
-                                    return {
-                                      ...state,
-                                      custom_properties: newCustomProps,
-                                    };
-                                  }
-                                  return state;
-                                })
-                              );
-                            }}
-                            size="xs"
-                          />
+                        {/* Show group select only if group_override is selected */}
+                        {group.custom_properties?.group_override !== undefined && (
                           <Select
                             label="Override Channel Group"
                             placeholder="Choose group..."
@@ -363,7 +361,7 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                               const newValue = value ? parseInt(value) : null;
                               setGroupStates(
                                 groupStates.map((state) => {
-                                  if (state.channel_group == group.channel_group) {
+                                  if (state.channel_group === group.channel_group) {
                                     return {
                                       ...state,
                                       custom_properties: {
@@ -380,13 +378,62 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                               value: g.id.toString(),
                               label: g.name,
                             }))}
-                            disabled={!(group.custom_properties && Object.prototype.hasOwnProperty.call(group.custom_properties, 'group_override'))}
                             clearable
                             searchable
                             size="xs"
-                            style={{ flex: 1 }}
                           />
-                        </Flex>
+                        )}
+
+                        {/* Show regex fields only if name_regex is selected */}
+                        {(group.custom_properties?.name_regex_pattern !== undefined ||
+                          group.custom_properties?.name_replace_pattern !== undefined) && (
+                            <>
+                              <TextInput
+                                label="Channel Name Regex"
+                                placeholder="e.g. ^.*? - PPV\\d+ - (.+)$"
+                                value={group.custom_properties?.name_regex_pattern || ''}
+                                onChange={e => {
+                                  const val = e.currentTarget.value;
+                                  setGroupStates(
+                                    groupStates.map(state =>
+                                      state.channel_group === group.channel_group
+                                        ? {
+                                          ...state,
+                                          custom_properties: {
+                                            ...state.custom_properties,
+                                            name_regex_pattern: val,
+                                          },
+                                        }
+                                        : state
+                                    )
+                                  );
+                                }}
+                                size="xs"
+                              />
+                              <TextInput
+                                label="Channel Name Replace"
+                                placeholder="e.g. $1"
+                                value={group.custom_properties?.name_replace_pattern || ''}
+                                onChange={e => {
+                                  const val = e.currentTarget.value;
+                                  setGroupStates(
+                                    groupStates.map(state =>
+                                      state.channel_group === group.channel_group
+                                        ? {
+                                          ...state,
+                                          custom_properties: {
+                                            ...state.custom_properties,
+                                            name_replace_pattern: val,
+                                          },
+                                        }
+                                        : state
+                                    )
+                                  );
+                                }}
+                                size="xs"
+                              />
+                            </>
+                          )}
                       </>
                     )}
                   </Stack>
