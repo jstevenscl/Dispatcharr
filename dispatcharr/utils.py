@@ -21,11 +21,11 @@ def json_success_response(data=None, status=200):
 
 def validate_logo_file(file):
     """Validate uploaded logo file size and MIME type."""
-    valid_mime_types = ["image/jpeg", "image/png", "image/gif"]
+    valid_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
     if file.content_type not in valid_mime_types:
-        raise ValidationError("Unsupported file type. Allowed types: JPEG, PNG, GIF.")
-    if file.size > 2 * 1024 * 1024:
-        raise ValidationError("File too large. Max 2MB.")
+        raise ValidationError("Unsupported file type. Allowed types: JPEG, PNG, GIF, WebP.")
+    if file.size > 5 * 1024 * 1024:  # Increased to 5MB
+        raise ValidationError("File too large. Max 5MB.")
 
 
 def get_client_ip(request):

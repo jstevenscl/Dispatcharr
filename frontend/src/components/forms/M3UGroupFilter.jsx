@@ -1,5 +1,5 @@
 // Modal.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import API from '../../api';
@@ -21,9 +21,26 @@ import {
   Center,
   SimpleGrid,
   Text,
+  NumberInput,
+  Divider,
+  Alert,
+  Box,
+  MultiSelect,
+  Tooltip,
 } from '@mantine/core';
+import { Info } from 'lucide-react';
 import useChannelsStore from '../../store/channels';
 import { CircleCheck, CircleX } from 'lucide-react';
+import { notifications } from '@mantine/notifications';
+
+// Custom item component for MultiSelect with tooltip
+const OptionWithTooltip = forwardRef(({ label, description, ...others }, ref) => (
+  <Tooltip label={description} withArrow>
+    <div ref={ref} {...others}>
+      {label}
+    </div>
+  </Tooltip>
+));
 
 const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
@@ -37,10 +54,26 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     }
 
     setGroupStates(
-      playlist.channel_groups.map((group) => ({
-        ...group,
-        name: channelGroups[group.channel_group].name,
-      }))
+      playlist.channel_groups.map((group) => {
+        // Parse custom_properties if present
+        let customProps = {};
+        if (group.custom_properties) {
+          try {
+            customProps = typeof group.custom_properties === 'string'
+              ? JSON.parse(group.custom_properties)
+              : group.custom_properties;
+          } catch (e) {
+            customProps = {};
+          }
+        }
+        return {
+          ...group,
+          name: channelGroups[group.channel_group].name,
+          auto_channel_sync: group.auto_channel_sync || false,
+          auto_sync_channel_start: group.auto_sync_channel_start || 1.0,
+          custom_properties: customProps,
+        };
+      })
     );
   }, [playlist, channelGroups]);
 
@@ -53,15 +86,79 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     );
   };
 
+  const toggleAutoSync = (id) => {
+    setGroupStates(
+      groupStates.map((state) => ({
+        ...state,
+        auto_channel_sync: state.channel_group == id ? !state.auto_channel_sync : state.auto_channel_sync,
+      }))
+    );
+  };
+
+  const updateChannelStart = (id, value) => {
+    setGroupStates(
+      groupStates.map((state) => ({
+        ...state,
+        auto_sync_channel_start: state.channel_group == id ? value : state.auto_sync_channel_start,
+      }))
+    );
+  };
+
+  // Toggle force_dummy_epg in custom_properties for a group
+  const toggleForceDummyEPG = (id) => {
+    setGroupStates(
+      groupStates.map((state) => {
+        if (state.channel_group == id) {
+          const customProps = { ...(state.custom_properties || {}) };
+          customProps.force_dummy_epg = !customProps.force_dummy_epg;
+          return {
+            ...state,
+            custom_properties: customProps,
+          };
+        }
+        return state;
+      })
+    );
+  };
+
   const submit = async () => {
     setIsLoading(true);
-    await API.updatePlaylist({
-      ...playlist,
-      channel_groups: groupStates,
-    });
-    setIsLoading(false);
-    API.refreshPlaylist(playlist.id);
-    onClose();
+    try {
+      // Prepare groupStates for API: custom_properties must be stringified
+      const payload = groupStates.map((state) => ({
+        ...state,
+        custom_properties: state.custom_properties
+          ? JSON.stringify(state.custom_properties)
+          : undefined,
+      }));
+
+      // Update group settings via API endpoint
+      await API.updateM3UGroupSettings(playlist.id, payload);
+
+      // Show notification about the refresh process
+      notifications.show({
+        title: 'Group Settings Updated',
+        message: 'Settings saved. Starting M3U refresh to apply changes...',
+        color: 'green',
+        autoClose: 3000,
+      });
+
+      // Refresh the playlist - this will handle channel sync automatically at the end
+      await API.refreshPlaylist(playlist.id);
+
+      notifications.show({
+        title: 'M3U Refresh Started',
+        message: 'The M3U account is being refreshed. Channel sync will occur automatically after parsing completes.',
+        color: 'blue',
+        autoClose: 5000,
+      });
+
+      onClose();
+    } catch (error) {
+      console.error('Error updating group settings:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const selectAll = () => {
@@ -94,60 +191,354 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     <Modal
       opened={isOpen}
       onClose={onClose}
-      title="M3U Group Filter"
+      title="M3U Group Filter & Auto Channel Sync"
       size={1000}
+      styles={{ content: { '--mantine-color-body': '#27272A' } }}
     >
       <LoadingOverlay visible={isLoading} overlayBlur={2} />
       <Stack>
+        <Alert icon={<Info size={16} />} color="blue" variant="light">
+          <Text size="sm">
+            <strong>Auto Channel Sync:</strong> When enabled, channels will be automatically created for all streams in the group during M3U updates,
+            and removed when streams are no longer present. Set a starting channel number for each group to organize your channels.
+          </Text>
+        </Alert>
+
         <Flex gap="sm">
           <TextInput
-            placeholder="Filter"
+            placeholder="Filter groups..."
             value={groupFilter}
             onChange={(event) => setGroupFilter(event.currentTarget.value)}
             style={{ flex: 1 }}
+            size="xs"
           />
-          <Button variant="default" size="sm" onClick={selectAll}>
+          <Button variant="default" size="xs" onClick={selectAll}>
             Select Visible
           </Button>
-          <Button variant="default" size="sm" onClick={deselectAll}>
+          <Button variant="default" size="xs" onClick={deselectAll}>
             Deselect Visible
           </Button>
         </Flex>
-        <SimpleGrid cols={4}>
-          {groupStates
-            .filter((group) =>
-              group.name.toLowerCase().includes(groupFilter.toLowerCase())
-            )
-            .sort((a, b) => a.name > b.name)
-            .map((group) => (
-              <Button
-                key={group.channel_group}
-                color={group.enabled ? 'green' : 'gray'}
-                variant="filled"
-                checked={group.enabled}
-                onClick={() => toggleGroupEnabled(group.channel_group)}
-                radius="xl"
-                leftSection={
-                  group.enabled ? (
-                    <CircleCheck size={20} />
-                  ) : (
-                    <CircleX size={20} />
-                  )
-                }
-                justify="left"
-              >
-                <Text size="xs">{group.name}</Text>
-              </Button>
-            ))}
-        </SimpleGrid>
+
+        <Divider label="Groups & Auto Sync Settings" labelPosition="center" />
+
+        <Box style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+          <SimpleGrid
+            cols={{ base: 1, sm: 2, md: 3 }}
+            spacing="xs"
+            verticalSpacing="xs"
+          >
+            {groupStates
+              .filter((group) =>
+                group.name.toLowerCase().includes(groupFilter.toLowerCase())
+              )
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((group) => (
+                <Group key={group.channel_group} spacing="xs" style={{
+                  padding: '8px',
+                  border: '1px solid #444',
+                  borderRadius: '8px',
+                  backgroundColor: group.enabled ? '#2A2A2E' : '#1E1E22',
+                  flexDirection: 'column',
+                  alignItems: 'stretch'
+                }}>
+                  {/* Group Enable/Disable Button */}
+                  <Button
+                    color={group.enabled ? 'green' : 'gray'}
+                    variant="filled"
+                    onClick={() => toggleGroupEnabled(group.channel_group)}
+                    radius="md"
+                    size="xs"
+                    leftSection={
+                      group.enabled ? (
+                        <CircleCheck size={14} />
+                      ) : (
+                        <CircleX size={14} />
+                      )
+                    }
+                    fullWidth
+                  >
+                    <Text size="xs" truncate>
+                      {group.name}
+                    </Text>
+                  </Button>
+
+                  {/* Auto Sync Controls */}
+                  <Stack spacing="xs" style={{ '--stack-gap': '4px' }}>
+                    <Flex align="center" gap="xs">
+                      <Checkbox
+                        label="Auto Channel Sync"
+                        checked={group.auto_channel_sync && group.enabled}
+                        disabled={!group.enabled}
+                        onChange={() => toggleAutoSync(group.channel_group)}
+                        size="xs"
+                      />
+                    </Flex>
+
+                    {group.auto_channel_sync && group.enabled && (
+                      <>
+                        <NumberInput
+                          label="Start Channel #"
+                          value={group.auto_sync_channel_start}
+                          onChange={(value) => updateChannelStart(group.channel_group, value)}
+                          min={1}
+                          step={1}
+                          size="xs"
+                          precision={1}
+                        />
+
+                        {/* Auto Channel Sync Options Multi-Select */}
+                        <MultiSelect
+                          label="Advanced Options"
+                          placeholder="Select options..."
+                          data={[
+                            {
+                              value: 'force_dummy_epg',
+                              label: 'Force Dummy EPG',
+                              description: 'Assign a dummy EPG to all channels in this group if no EPG is matched',
+                            },
+                            {
+                              value: 'group_override',
+                              label: 'Override Channel Group',
+                              description: 'Override the group assignment for all channels in this group',
+                            },
+                            {
+                              value: 'name_regex',
+                              label: 'Channel Name Find & Replace (Regex)',
+                              description: 'Find and replace part of the channel name using a regex pattern',
+                            },
+                            {
+                              value: 'name_match_regex',
+                              label: 'Channel Name Filter (Regex)',
+                              description: 'Only include channels whose names match this regex pattern',
+                            },
+                          ]}
+                          itemComponent={OptionWithTooltip}
+                          value={(() => {
+                            const selectedValues = [];
+                            if (group.custom_properties?.force_dummy_epg) {
+                              selectedValues.push('force_dummy_epg');
+                            }
+                            if (group.custom_properties?.group_override !== undefined) {
+                              selectedValues.push('group_override');
+                            }
+                            if (
+                              group.custom_properties?.name_regex_pattern !== undefined ||
+                              group.custom_properties?.name_replace_pattern !== undefined
+                            ) {
+                              selectedValues.push('name_regex');
+                            }
+                            if (group.custom_properties?.name_match_regex !== undefined) {
+                              selectedValues.push('name_match_regex');
+                            }
+                            return selectedValues;
+                          })()}
+                          onChange={(values) => {
+                            // MultiSelect always returns an array
+                            const selectedOptions = values || [];
+
+                            setGroupStates(
+                              groupStates.map((state) => {
+                                if (state.channel_group === group.channel_group) {
+                                  let newCustomProps = { ...(state.custom_properties || {}) };
+
+                                  // Handle force_dummy_epg
+                                  if (selectedOptions.includes('force_dummy_epg')) {
+                                    newCustomProps.force_dummy_epg = true;
+                                  } else {
+                                    delete newCustomProps.force_dummy_epg;
+                                  }
+
+                                  // Handle group_override
+                                  if (selectedOptions.includes('group_override')) {
+                                    if (newCustomProps.group_override === undefined) {
+                                      newCustomProps.group_override = null;
+                                    }
+                                  } else {
+                                    delete newCustomProps.group_override;
+                                  }
+
+                                  // Handle name_regex
+                                  if (selectedOptions.includes('name_regex')) {
+                                    if (newCustomProps.name_regex_pattern === undefined) {
+                                      newCustomProps.name_regex_pattern = '';
+                                    }
+                                    if (newCustomProps.name_replace_pattern === undefined) {
+                                      newCustomProps.name_replace_pattern = '';
+                                    }
+                                  } else {
+                                    delete newCustomProps.name_regex_pattern;
+                                    delete newCustomProps.name_replace_pattern;
+                                  }
+
+                                  // Handle name_match_regex
+                                  if (selectedOptions.includes('name_match_regex')) {
+                                    if (newCustomProps.name_match_regex === undefined) {
+                                      newCustomProps.name_match_regex = '';
+                                    }
+                                  } else {
+                                    delete newCustomProps.name_match_regex;
+                                  }
+
+                                  return {
+                                    ...state,
+                                    custom_properties: newCustomProps,
+                                  };
+                                }
+                                return state;
+                              })
+                            );
+                          }}
+                          clearable
+                          size="xs"
+                        />
+
+                        {/* Show group select only if group_override is selected */}
+                        {group.custom_properties?.group_override !== undefined && (
+                          <Tooltip
+                            label="Select a group to override the assignment for all channels in this group."
+                            withArrow
+                          >
+                            <Select
+                              label="Override Channel Group"
+                              placeholder="Choose group..."
+                              value={group.custom_properties?.group_override?.toString() || null}
+                              onChange={(value) => {
+                                const newValue = value ? parseInt(value) : null;
+                                setGroupStates(
+                                  groupStates.map((state) => {
+                                    if (state.channel_group === group.channel_group) {
+                                      return {
+                                        ...state,
+                                        custom_properties: {
+                                          ...state.custom_properties,
+                                          group_override: newValue,
+                                        },
+                                      };
+                                    }
+                                    return state;
+                                  })
+                                );
+                              }}
+                              data={Object.values(channelGroups).map((g) => ({
+                                value: g.id.toString(),
+                                label: g.name,
+                              }))}
+                              clearable
+                              searchable
+                              size="xs"
+                            />
+                          </Tooltip>
+                        )}
+
+                        {/* Show regex fields only if name_regex is selected */}
+                        {(group.custom_properties?.name_regex_pattern !== undefined ||
+                          group.custom_properties?.name_replace_pattern !== undefined) && (
+                            <>
+                              <Tooltip
+                                label="Regex pattern to find in the channel name. Example: ^.*? - PPV\\d+ - (.+)$"
+                                withArrow
+                              >
+                                <TextInput
+                                  label="Channel Name Find (Regex)"
+                                  placeholder="e.g. ^.*? - PPV\\d+ - (.+)$"
+                                  value={group.custom_properties?.name_regex_pattern || ''}
+                                  onChange={e => {
+                                    const val = e.currentTarget.value;
+                                    setGroupStates(
+                                      groupStates.map(state =>
+                                        state.channel_group === group.channel_group
+                                          ? {
+                                            ...state,
+                                            custom_properties: {
+                                              ...state.custom_properties,
+                                              name_regex_pattern: val,
+                                            },
+                                          }
+                                          : state
+                                      )
+                                    );
+                                  }}
+                                  size="xs"
+                                />
+                              </Tooltip>
+                              <Tooltip
+                                label="Replacement pattern for the channel name. Example: $1"
+                                withArrow
+                              >
+                                <TextInput
+                                  label="Channel Name Replace"
+                                  placeholder="e.g. $1"
+                                  value={group.custom_properties?.name_replace_pattern || ''}
+                                  onChange={e => {
+                                    const val = e.currentTarget.value;
+                                    setGroupStates(
+                                      groupStates.map(state =>
+                                        state.channel_group === group.channel_group
+                                          ? {
+                                            ...state,
+                                            custom_properties: {
+                                              ...state.custom_properties,
+                                              name_replace_pattern: val,
+                                            },
+                                          }
+                                          : state
+                                      )
+                                    );
+                                  }}
+                                  size="xs"
+                                />
+                              </Tooltip>
+                            </>
+                          )}
+
+                        {/* Show name_match_regex field only if selected */}
+                        {group.custom_properties?.name_match_regex !== undefined && (
+                          <Tooltip
+                            label="Only channels whose names match this regex will be included. Example: ^Sports.*"
+                            withArrow
+                          >
+                            <TextInput
+                              label="Channel Name Filter (Regex)"
+                              placeholder="e.g. ^Sports.*"
+                              value={group.custom_properties?.name_match_regex || ''}
+                              onChange={e => {
+                                const val = e.currentTarget.value;
+                                setGroupStates(
+                                  groupStates.map(state =>
+                                    state.channel_group === group.channel_group
+                                      ? {
+                                        ...state,
+                                        custom_properties: {
+                                          ...state.custom_properties,
+                                          name_match_regex: val,
+                                        },
+                                      }
+                                      : state
+                                  )
+                                );
+                              }}
+                              size="xs"
+                            />
+                          </Tooltip>
+                        )}
+                      </>
+                    )}
+                  </Stack>
+                </Group>
+              ))}
+          </SimpleGrid>
+        </Box>
 
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+          <Button variant="default" onClick={onClose} size="xs">
+            Cancel
+          </Button>
           <Button
             type="submit"
-            variant="contained"
-            color="primary"
+            variant="filled"
+            color="blue"
             disabled={isLoading}
-            size="small"
             onClick={submit}
           >
             Save and Refresh

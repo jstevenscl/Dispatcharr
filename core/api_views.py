@@ -280,3 +280,40 @@ def version(request):
             "timestamp": __timestamp__,
         }
     )
+
+
+@swagger_auto_schema(
+    method="post",
+    operation_description="Trigger rehashing of all streams",
+    responses={200: "Rehash task started"},
+)
+@api_view(["POST"])
+@permission_classes([Authenticated])
+def rehash_streams_endpoint(request):
+    """Trigger the rehash streams task"""
+    try:
+        # Get the current hash keys from settings
+        hash_key_setting = CoreSettings.objects.get(key=STREAM_HASH_KEY)
+        hash_keys = hash_key_setting.value.split(",")
+        
+        # Queue the rehash task
+        task = rehash_streams.delay(hash_keys)
+        
+        return Response({
+            "success": True,
+            "message": "Stream rehashing task has been queued",
+            "task_id": task.id
+        }, status=status.HTTP_200_OK)
+        
+    except CoreSettings.DoesNotExist:
+        return Response({
+            "success": False,
+            "message": "Hash key settings not found"
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        logger.error(f"Error triggering rehash streams: {e}")
+        return Response({
+            "success": False,
+            "message": "Failed to trigger rehash task"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

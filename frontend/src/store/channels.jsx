@@ -21,7 +21,7 @@ const useChannelsStore = create((set, get) => ({
   forceUpdate: 0,
 
   triggerUpdate: () => {
-    set({ forecUpdate: new Date() });
+    set({ forceUpdate: new Date() });
   },
 
   fetchChannels: async () => {
@@ -46,16 +46,24 @@ const useChannelsStore = create((set, get) => ({
   },
 
   fetchChannelGroups: async () => {
-    set({ isLoading: true, error: null });
     try {
       const channelGroups = await api.getChannelGroups();
-      set({
-        channelGroups: channelGroups.reduce((acc, group) => {
-          acc[group.id] = group;
-          return acc;
-        }, {}),
-        isLoading: false,
-      });
+
+      // Process groups to add association flags
+      const processedGroups = channelGroups.reduce((acc, group) => {
+        acc[group.id] = {
+          ...group,
+          hasChannels: group.channel_count > 0,
+          hasM3UAccounts: group.m3u_account_count > 0,
+          canEdit: group.m3u_account_count === 0,
+          canDelete: group.channel_count === 0 && group.m3u_account_count === 0
+        };
+        return acc;
+      }, {});
+
+      set((state) => ({
+        channelGroups: processedGroups,
+      }));
     } catch (error) {
       console.error('Failed to fetch channel groups:', error);
       set({ error: 'Failed to load channel groups.', isLoading: false });
@@ -204,9 +212,17 @@ const useChannelsStore = create((set, get) => ({
 
   updateChannelGroup: (channelGroup) =>
     set((state) => ({
-      ...state.channelGroups,
-      [channelGroup.id]: channelGroup,
+      channelGroups: {
+        ...state.channelGroups,
+        [channelGroup.id]: channelGroup,
+      },
     })),
+
+  removeChannelGroup: (groupId) =>
+    set((state) => {
+      const { [groupId]: removed, ...remainingGroups } = state.channelGroups;
+      return { channelGroups: remainingGroups };
+    }),
 
   fetchLogos: async () => {
     set({ isLoading: true, error: null });
@@ -216,7 +232,6 @@ const useChannelsStore = create((set, get) => ({
         logos: logos.reduce((acc, logo) => {
           acc[logo.id] = {
             ...logo,
-            url: logo.url.replace(/^\/data/, ''),
           };
           return acc;
         }, {}),
@@ -234,10 +249,26 @@ const useChannelsStore = create((set, get) => ({
         ...state.logos,
         [newLogo.id]: {
           ...newLogo,
-          url: newLogo.url.replace(/^\/data/, ''),
         },
       },
     })),
+
+  updateLogo: (logo) =>
+    set((state) => ({
+      logos: {
+        ...state.logos,
+        [logo.id]: {
+          ...logo,
+        },
+      },
+    })),
+
+  removeLogo: (logoId) =>
+    set((state) => {
+      const newLogos = { ...state.logos };
+      delete newLogos[logoId];
+      return { logos: newLogos };
+    }),
 
   addProfile: (profile) =>
     set((state) => ({
@@ -426,6 +457,17 @@ const useChannelsStore = create((set, get) => ({
       console.error('Failed to fetch recordings:', error);
       set({ error: 'Failed to load recordings.', isLoading: false });
     }
+  },
+
+  // Add helper methods for validation
+  canEditChannelGroup: (groupIdOrGroup) => {
+    const groupId = typeof groupIdOrGroup === 'object' ? groupIdOrGroup.id : groupIdOrGroup;
+    return get().channelGroups[groupId]?.canEdit ?? true;
+  },
+
+  canDeleteChannelGroup: (groupIdOrGroup) => {
+    const groupId = typeof groupIdOrGroup === 'object' ? groupIdOrGroup.id : groupIdOrGroup;
+    return get().channelGroups[groupId]?.canDelete ?? true;
   },
 }));
 

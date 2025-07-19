@@ -27,13 +27,17 @@ const ConfirmationDialog = ({
   cancelLabel = 'Cancel',
   actionKey,
   onSuppressChange,
-  size = 'md', // Add default size parameter - md is a medium width
+  size = 'md',
+  zIndex = 1000,
+  showDeleteFileOption = false,
+  deleteFileLabel = "Also delete files from disk",
 }) => {
   const suppressWarning = useWarningsStore((s) => s.suppressWarning);
   const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
   const [suppressChecked, setSuppressChecked] = useState(
     isWarningSuppressed(actionKey)
   );
+  const [deleteFiles, setDeleteFiles] = useState(false);
 
   const handleToggleSuppress = (e) => {
     setSuppressChecked(e.currentTarget.checked);
@@ -46,11 +50,28 @@ const ConfirmationDialog = ({
     if (suppressChecked) {
       suppressWarning(actionKey);
     }
-    onConfirm();
+    if (showDeleteFileOption) {
+      onConfirm(deleteFiles);
+    } else {
+      onConfirm();
+    }
+    setDeleteFiles(false); // Reset for next time
+  };
+
+  const handleClose = () => {
+    setDeleteFiles(false); // Reset for next time
+    onClose();
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title={title} size={size} centered>
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title={title}
+      size={size}
+      centered
+      zIndex={zIndex}
+    >
       <Box mb={20}>{message}</Box>
 
       {actionKey && (
@@ -62,8 +83,17 @@ const ConfirmationDialog = ({
         />
       )}
 
+      {showDeleteFileOption && (
+        <Checkbox
+          checked={deleteFiles}
+          onChange={(event) => setDeleteFiles(event.currentTarget.checked)}
+          label={deleteFileLabel}
+          mb="md"
+        />
+      )}
+
       <Group justify="flex-end">
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={handleClose}>
           {cancelLabel}
         </Button>
         <Button color="red" onClick={handleConfirm}>

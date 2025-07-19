@@ -20,10 +20,23 @@ from django.utils import timezone
 
 class LogoSerializer(serializers.ModelSerializer):
     cache_url = serializers.SerializerMethodField()
+    channel_count = serializers.SerializerMethodField()
+    is_used = serializers.SerializerMethodField()
+    channel_names = serializers.SerializerMethodField()
 
     class Meta:
         model = Logo
-        fields = ["id", "name", "url", "cache_url"]
+        fields = ["id", "name", "url", "cache_url", "channel_count", "is_used", "channel_names"]
+
+    def validate_url(self, value):
+        """Validate that the URL is unique for creation or update"""
+        if self.instance and self.instance.url == value:
+            return value
+        
+        if Logo.objects.filter(url=value).exists():
+            raise serializers.ValidationError("A logo with this URL already exists.")
+        
+        return value
 
     def get_cache_url(self, obj):
         # return f"/api/channels/logos/{obj.id}/cache/"
@@ -33,6 +46,22 @@ class LogoSerializer(serializers.ModelSerializer):
                 reverse("api:channels:logo-cache", args=[obj.id])
             )
         return reverse("api:channels:logo-cache", args=[obj.id])
+
+    def get_channel_count(self, obj):
+        """Get the number of channels using this logo"""
+        return obj.channels.count()
+
+    def get_is_used(self, obj):
+        """Check if this logo is used by any channels"""
+        return obj.channels.exists()
+
+    def get_channel_names(self, obj):
+        """Get the names of channels using this logo (limited to first 5)"""
+        channels = obj.channels.all()[:5]
+        names = [channel.name for channel in channels]
+        if obj.channels.count() > 5:
+            names.append(f"...and {obj.channels.count() - 5} more")
+        return names
 
 
 #
@@ -89,9 +118,12 @@ class StreamSerializer(serializers.ModelSerializer):
 # Channel Group
 #
 class ChannelGroupSerializer(serializers.ModelSerializer):
+    channel_count = serializers.IntegerField(read_only=True)
+    m3u_account_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = ChannelGroup
-        fields = ["id", "name"]
+        fields = ["id", "name", "channel_count", "m3u_account_count"]
 
 
 class ChannelProfileSerializer(serializers.ModelSerializer):
@@ -170,6 +202,8 @@ class ChannelSerializer(serializers.ModelSerializer):
         required=False,
     )
 
+    auto_created_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Channel
         fields = [
@@ -185,6 +219,9 @@ class ChannelSerializer(serializers.ModelSerializer):
             "uuid",
             "logo_id",
             "user_level",
+            "auto_created",
+            "auto_created_by",
+            "auto_created_by_name",
         ]
 
     def to_representation(self, instance):
@@ -283,16 +320,45 @@ class ChannelSerializer(serializers.ModelSerializer):
             return None
         return value  # PrimaryKeyRelatedField will handle the conversion to object
 
+    def get_auto_created_by_name(self, obj):
+        """Get the name of the M3U account that auto-created this channel."""
+        if obj.auto_created_by:
+            return obj.auto_created_by.name
+        return None
+
 
 class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
     enabled = serializers.BooleanField()
+    auto_channel_sync = serializers.BooleanField(default=False)
+    auto_sync_channel_start = serializers.FloatField(allow_null=True, required=False)
+    custom_properties = serializers.JSONField(required=False)
 
     class Meta:
         model = ChannelGroupM3UAccount
-        fields = ["id", "channel_group", "enabled"]
+        fields = ["id", "channel_group", "enabled", "auto_channel_sync", "auto_sync_channel_start", "custom_properties"]
 
-    # Optionally, if you only need the id of the ChannelGroup, you can customize it like this:
-    # channel_group = serializers.PrimaryKeyRelatedField(queryset=ChannelGroup.objects.all())
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Ensure custom_properties is always a dict or None
+        val = ret.get("custom_properties")
+        if isinstance(val, str):
+            import json
+            try:
+                ret["custom_properties"] = json.loads(val)
+            except Exception:
+                ret["custom_properties"] = None
+        return ret
+
+    def to_internal_value(self, data):
+        # Accept both dict and JSON string for custom_properties
+        val = data.get("custom_properties")
+        if isinstance(val, str):
+            import json
+            try:
+                data["custom_properties"] = json.loads(val)
+            except Exception:
+                pass
+        return super().to_internal_value(data)
 
 
 class RecordingSerializer(serializers.ModelSerializer):

@@ -285,57 +285,56 @@ def process_xc_category(account_id, batch, groups, hash_keys):
     stream_hashes = {}
 
     try:
-        xc_client = XCClient(account.server_url, account.username, account.password, account.get_user_agent())
+        with XCClient(account.server_url, account.username, account.password, account.get_user_agent()) as xc_client:
+            # Log the batch details to help with debugging
+            logger.debug(f"Processing XC batch: {batch}")
 
-        # Log the batch details to help with debugging
-        logger.debug(f"Processing XC batch: {batch}")
-
-        for group_name, props in batch.items():
-            # Check if we have a valid xc_id for this group
-            if 'xc_id' not in props:
-                logger.error(f"Missing xc_id for group {group_name} in batch {batch}")
-                continue
-
-            # Get actual group ID from the mapping
-            group_id = groups.get(group_name)
-            if not group_id:
-                logger.error(f"Group {group_name} not found in enabled groups")
-                continue
-
-            try:
-                logger.debug(f"Fetching streams for XC category: {group_name} (ID: {props['xc_id']})")
-                streams = xc_client.get_live_category_streams(props['xc_id'])
-
-                if not streams:
-                    logger.warning(f"No streams found for XC category {group_name} (ID: {props['xc_id']})")
+            for group_name, props in batch.items():
+                # Check if we have a valid xc_id for this group
+                if 'xc_id' not in props:
+                    logger.error(f"Missing xc_id for group {group_name} in batch {batch}")
                     continue
 
-                logger.debug(f"Found {len(streams)} streams for category {group_name}")
+                # Get actual group ID from the mapping
+                group_id = groups.get(group_name)
+                if not group_id:
+                    logger.error(f"Group {group_name} not found in enabled groups")
+                    continue
 
-                for stream in streams:
-                    name = stream["name"]
-                    url = xc_client.get_stream_url(stream["stream_id"])
-                    tvg_id = stream.get("epg_channel_id", "")
-                    tvg_logo = stream.get("stream_icon", "")
-                    group_title = group_name
+                try:
+                    logger.debug(f"Fetching streams for XC category: {group_name} (ID: {props['xc_id']})")
+                    streams = xc_client.get_live_category_streams(props['xc_id'])
 
-                    stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
-                    stream_props = {
-                        "name": name,
-                        "url": url,
-                        "logo_url": tvg_logo,
-                        "tvg_id": tvg_id,
-                        "m3u_account": account,
-                        "channel_group_id": int(group_id),
-                        "stream_hash": stream_hash,
-                        "custom_properties": json.dumps(stream),
-                    }
+                    if not streams:
+                        logger.warning(f"No streams found for XC category {group_name} (ID: {props['xc_id']})")
+                        continue
 
-                    if stream_hash not in stream_hashes:
-                        stream_hashes[stream_hash] = stream_props
-            except Exception as e:
-                logger.error(f"Error processing XC category {group_name} (ID: {props['xc_id']}): {str(e)}")
-                continue
+                    logger.debug(f"Found {len(streams)} streams for category {group_name}")
+
+                    for stream in streams:
+                        name = stream["name"]
+                        url = xc_client.get_stream_url(stream["stream_id"])
+                        tvg_id = stream.get("epg_channel_id", "")
+                        tvg_logo = stream.get("stream_icon", "")
+                        group_title = group_name
+
+                        stream_hash = Stream.generate_hash_key(name, url, tvg_id, hash_keys)
+                        stream_props = {
+                            "name": name,
+                            "url": url,
+                            "logo_url": tvg_logo,
+                            "tvg_id": tvg_id,
+                            "m3u_account": account,
+                            "channel_group_id": int(group_id),
+                            "stream_hash": stream_hash,
+                            "custom_properties": json.dumps(stream),
+                        }
+
+                        if stream_hash not in stream_hashes:
+                            stream_hashes[stream_hash] = stream_props
+                except Exception as e:
+                    logger.error(f"Error processing XC category {group_name} (ID: {props['xc_id']}): {str(e)}")
+                    continue
 
         # Process all found streams
         existing_streams = {s.stream_hash: s for s in Stream.objects.filter(stream_hash__in=stream_hashes.keys())}
@@ -622,62 +621,63 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
 
             # Create XCClient with explicit error handling
             try:
-                xc_client = XCClient(server_url, account.username, account.password, user_agent_string)
-                logger.info(f"XCClient instance created successfully")
+                with XCClient(server_url, account.username, account.password, user_agent_string) as xc_client:
+                    logger.info(f"XCClient instance created successfully")
+
+                    # Authenticate with detailed error handling
+                    try:
+                        logger.debug(f"Authenticating with XC server {server_url}")
+                        auth_result = xc_client.authenticate()
+                        logger.debug(f"Authentication response: {auth_result}")
+                    except Exception as e:
+                        error_msg = f"Failed to authenticate with XC server: {str(e)}"
+                        logger.error(error_msg)
+                        account.status = M3UAccount.Status.ERROR
+                        account.last_message = error_msg
+                        account.save(update_fields=['status', 'last_message'])
+                        send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
+                        release_task_lock('refresh_m3u_account_groups', account_id)
+                        return error_msg, None
+
+                    # Get categories with detailed error handling
+                    try:
+                        logger.info(f"Getting live categories from XC server")
+                        xc_categories = xc_client.get_live_categories()
+                        logger.info(f"Found {len(xc_categories)} categories: {xc_categories}")
+
+                        # Validate response
+                        if not isinstance(xc_categories, list):
+                            error_msg = f"Unexpected response from XC server: {xc_categories}"
+                            logger.error(error_msg)
+                            account.status = M3UAccount.Status.ERROR
+                            account.last_message = error_msg
+                            account.save(update_fields=['status', 'last_message'])
+                            send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
+                            release_task_lock('refresh_m3u_account_groups', account_id)
+                            return error_msg, None
+
+                        if len(xc_categories) == 0:
+                            logger.warning("No categories found in XC server response")
+
+                        for category in xc_categories:
+                            cat_name = category.get("category_name", "Unknown Category")
+                            cat_id = category.get("category_id", "0")
+                            logger.info(f"Adding category: {cat_name} (ID: {cat_id})")
+                            groups[cat_name] = {
+                                "xc_id": cat_id,
+                            }
+                    except Exception as e:
+                        error_msg = f"Failed to get categories from XC server: {str(e)}"
+                        logger.error(error_msg)
+                        account.status = M3UAccount.Status.ERROR
+                        account.last_message = error_msg
+                        account.save(update_fields=['status', 'last_message'])
+                        send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
+                        release_task_lock('refresh_m3u_account_groups', account_id)
+                        return error_msg, None
+
             except Exception as e:
-                error_msg = f"Failed to create XCClient: {str(e)}"
-                logger.error(error_msg)
-                account.status = M3UAccount.Status.ERROR
-                account.last_message = error_msg
-                account.save(update_fields=['status', 'last_message'])
-                send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
-                release_task_lock('refresh_m3u_account_groups', account_id)
-                return error_msg, None
-
-            # Authenticate with detailed error handling
-            try:
-                logger.debug(f"Authenticating with XC server {server_url}")
-                auth_result = xc_client.authenticate()
-                logger.debug(f"Authentication response: {auth_result}")
-            except Exception as e:
-                error_msg = f"Failed to authenticate with XC server: {str(e)}"
-                logger.error(error_msg)
-                account.status = M3UAccount.Status.ERROR
-                account.last_message = error_msg
-                account.save(update_fields=['status', 'last_message'])
-                send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
-                release_task_lock('refresh_m3u_account_groups', account_id)
-                return error_msg, None
-
-            # Get categories with detailed error handling
-            try:
-                logger.info(f"Getting live categories from XC server")
-                xc_categories = xc_client.get_live_categories()
-                logger.info(f"Found {len(xc_categories)} categories: {xc_categories}")
-
-                # Validate response
-                if not isinstance(xc_categories, list):
-                    error_msg = f"Unexpected response from XC server: {xc_categories}"
-                    logger.error(error_msg)
-                    account.status = M3UAccount.Status.ERROR
-                    account.last_message = error_msg
-                    account.save(update_fields=['status', 'last_message'])
-                    send_m3u_update(account_id, "processing_groups", 100, status="error", error=error_msg)
-                    release_task_lock('refresh_m3u_account_groups', account_id)
-                    return error_msg, None
-
-                if len(xc_categories) == 0:
-                    logger.warning("No categories found in XC server response")
-
-                for category in xc_categories:
-                    cat_name = category.get("category_name", "Unknown Category")
-                    cat_id = category.get("category_id", "0")
-                    logger.info(f"Adding category: {cat_name} (ID: {cat_id})")
-                    groups[cat_name] = {
-                        "xc_id": cat_id,
-                    }
-            except Exception as e:
-                error_msg = f"Failed to get categories from XC server: {str(e)}"
+                error_msg = f"Failed to create XC Client: {str(e)}"
                 logger.error(error_msg)
                 account.status = M3UAccount.Status.ERROR
                 account.last_message = error_msg
@@ -686,7 +686,7 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False):
                 release_task_lock('refresh_m3u_account_groups', account_id)
                 return error_msg, None
         except Exception as e:
-            error_msg = f"Unexpected error in XC processing: {str(e)}"
+            error_msg = f"Unexpected error occurred in XC Client: {str(e)}"
             logger.error(error_msg)
             account.status = M3UAccount.Status.ERROR
             account.last_message = error_msg
@@ -837,6 +837,281 @@ def delete_m3u_refresh_task_by_id(account_id):
     except Exception as e:
         logger.error(f"Error deleting periodic task for M3UAccount {account_id}: {str(e)}", exc_info=True)
         return False
+
+@shared_task
+def sync_auto_channels(account_id, scan_start_time=None):
+    """
+    Automatically create/update/delete channels to match streams in groups with auto_channel_sync enabled.
+    Preserves existing channel UUIDs to maintain M3U link integrity.
+    Called after M3U refresh completes successfully.
+    """
+    from apps.channels.models import Channel, ChannelGroup, ChannelGroupM3UAccount, Stream, ChannelStream
+    from apps.epg.models import EPGData
+    from django.utils import timezone
+
+    try:
+        account = M3UAccount.objects.get(id=account_id)
+        logger.info(f"Starting auto channel sync for M3U account {account.name}")
+
+        # Always use scan_start_time as the cutoff for last_seen
+        if scan_start_time is not None:
+            if isinstance(scan_start_time, str):
+                scan_start_time = timezone.datetime.fromisoformat(scan_start_time)
+        else:
+            scan_start_time = timezone.now()
+
+        # Get groups with auto sync enabled for this account
+        auto_sync_groups = ChannelGroupM3UAccount.objects.filter(
+            m3u_account=account,
+            enabled=True,
+            auto_channel_sync=True
+        ).select_related('channel_group')
+
+        channels_created = 0
+        channels_updated = 0
+        channels_deleted = 0
+
+        for group_relation in auto_sync_groups:
+            channel_group = group_relation.channel_group
+            start_number = group_relation.auto_sync_channel_start or 1.0
+
+            # Get force_dummy_epg, group_override, and regex patterns from group custom_properties
+            group_custom_props = {}
+            force_dummy_epg = False
+            override_group_id = None
+            name_regex_pattern = None
+            name_replace_pattern = None
+            name_match_regex = None
+            if group_relation.custom_properties:
+                try:
+                    group_custom_props = json.loads(group_relation.custom_properties)
+                    force_dummy_epg = group_custom_props.get("force_dummy_epg", False)
+                    override_group_id = group_custom_props.get("group_override")
+                    name_regex_pattern = group_custom_props.get("name_regex_pattern")
+                    name_replace_pattern = group_custom_props.get("name_replace_pattern")
+                    name_match_regex = group_custom_props.get("name_match_regex")
+                except Exception:
+                    force_dummy_epg = False
+                    override_group_id = None
+                    name_regex_pattern = None
+                    name_replace_pattern = None
+                    name_match_regex = None
+
+            # Determine which group to use for created channels
+            target_group = channel_group
+            if override_group_id:
+                try:
+                    target_group = ChannelGroup.objects.get(id=override_group_id)
+                    logger.info(f"Using override group '{target_group.name}' instead of '{channel_group.name}' for auto-created channels")
+                except ChannelGroup.DoesNotExist:
+                    logger.warning(f"Override group with ID {override_group_id} not found, using original group '{channel_group.name}'")
+
+            logger.info(f"Processing auto sync for group: {channel_group.name} (start: {start_number})")
+
+            # Get all current streams in this group for this M3U account, filter out stale streams
+            current_streams = Stream.objects.filter(
+                m3u_account=account,
+                channel_group=channel_group,
+                last_seen__gte=scan_start_time
+            ).order_by('name')
+
+            # --- FILTER STREAMS BY NAME MATCH REGEX IF SPECIFIED ---
+            if name_match_regex:
+                try:
+                    compiled_name_match_regex = re.compile(name_match_regex, re.IGNORECASE)
+                    current_streams = current_streams.filter(
+                        name__iregex=name_match_regex
+                    )
+                except re.error as e:
+                    logger.warning(f"Invalid name_match_regex '{name_match_regex}' for group '{channel_group.name}': {e}. Skipping name filter.")
+
+            # Get existing auto-created channels for this account (regardless of current group)
+            # We'll find them by their stream associations instead of just group location
+            existing_channels = Channel.objects.filter(
+                auto_created=True,
+                auto_created_by=account
+            ).select_related('logo', 'epg_data')
+
+            # Create mapping of existing channels by their associated stream
+            # This approach finds channels even if they've been moved to different groups
+            existing_channel_map = {}
+            for channel in existing_channels:
+                # Get streams associated with this channel that belong to our M3U account and original group
+                channel_streams = ChannelStream.objects.filter(
+                    channel=channel,
+                    stream__m3u_account=account,
+                    stream__channel_group=channel_group  # Match streams from the original group
+                ).select_related('stream')
+
+                # Map each of our M3U account's streams to this channel
+                for channel_stream in channel_streams:
+                    if channel_stream.stream:
+                        existing_channel_map[channel_stream.stream.id] = channel
+
+            # Track which streams we've processed
+            processed_stream_ids = set()
+
+            if not current_streams.exists():
+                logger.debug(f"No streams found in group {channel_group.name}")
+                # Delete all existing auto channels if no streams
+                channels_to_delete = [ch for ch in existing_channel_map.values()]
+                if channels_to_delete:
+                    deleted_count = len(channels_to_delete)
+                    Channel.objects.filter(id__in=[ch.id for ch in channels_to_delete]).delete()
+                    channels_deleted += deleted_count
+                    logger.debug(f"Deleted {deleted_count} auto channels (no streams remaining)")
+                continue
+
+            # Process each current stream
+            current_channel_number = start_number
+
+            for stream in current_streams:
+                processed_stream_ids.add(stream.id)
+
+                try:
+                    # Parse custom properties for additional info
+                    stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
+                    tvc_guide_stationid = stream_custom_props.get("tvc-guide-stationid")
+
+                    # --- REGEX FIND/REPLACE LOGIC ---
+                    original_name = stream.name
+                    new_name = original_name
+                    if name_regex_pattern is not None:
+                        # If replace is None, treat as empty string (remove match)
+                        replace = name_replace_pattern if name_replace_pattern is not None else ''
+                        try:
+                            new_name = re.sub(name_regex_pattern, replace, original_name)
+                        except re.error as e:
+                            logger.warning(f"Regex error for group '{channel_group.name}': {e}. Using original name.")
+                            new_name = original_name
+
+                    # Check if we already have a channel for this stream
+                    existing_channel = existing_channel_map.get(stream.id)
+
+                    if existing_channel:
+                        # Update existing channel if needed
+                        channel_updated = False
+
+                        # Use new_name instead of stream.name
+                        if existing_channel.name != new_name:
+                            existing_channel.name = new_name
+                            channel_updated = True
+
+                        if existing_channel.tvg_id != stream.tvg_id:
+                            existing_channel.tvg_id = stream.tvg_id
+                            channel_updated = True
+
+                        if existing_channel.tvc_guide_stationid != tvc_guide_stationid:
+                            existing_channel.tvc_guide_stationid = tvc_guide_stationid
+                            channel_updated = True
+
+                        # Check if channel group needs to be updated (in case override was added/changed)
+                        if existing_channel.channel_group != target_group:
+                            existing_channel.channel_group = target_group
+                            channel_updated = True
+                            logger.info(f"Moved auto channel '{existing_channel.name}' from '{existing_channel.channel_group.name if existing_channel.channel_group else 'None'}' to '{target_group.name}'")
+
+                        # Handle logo updates
+                        current_logo = None
+                        if stream.logo_url:
+                            from apps.channels.models import Logo
+                            current_logo, _ = Logo.objects.get_or_create(
+                                url=stream.logo_url,
+                                defaults={"name": stream.name or stream.tvg_id or "Unknown"}
+                            )
+
+                        if existing_channel.logo != current_logo:
+                            existing_channel.logo = current_logo
+                            channel_updated = True
+
+                        # Handle EPG data updates
+                        current_epg_data = None
+                        if stream.tvg_id and not force_dummy_epg:
+                            current_epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
+
+                        if existing_channel.epg_data != current_epg_data:
+                            existing_channel.epg_data = current_epg_data
+                            channel_updated = True
+
+                        if channel_updated:
+                            existing_channel.save()
+                            channels_updated += 1
+                            logger.debug(f"Updated auto channel: {existing_channel.channel_number} - {existing_channel.name}")
+
+                    else:
+                        # Create new channel
+                        # Find next available channel number
+                        while Channel.objects.filter(channel_number=current_channel_number).exists():
+                            current_channel_number += 0.1
+
+                        # Create the channel with auto-created tracking in the target group
+                        channel = Channel.objects.create(
+                            channel_number=current_channel_number,
+                            name=new_name,
+                            tvg_id=stream.tvg_id,
+                            tvc_guide_stationid=tvc_guide_stationid,
+                            channel_group=target_group,  # Use target group (could be override)
+                            user_level=0,  # Default user level
+                            auto_created=True,  # Mark as auto-created
+                            auto_created_by=account  # Track which M3U account created it
+                        )
+
+                        # Associate the stream with the channel
+                        ChannelStream.objects.create(
+                            channel=channel,
+                            stream=stream,
+                            order=0
+                        )
+
+                        # Try to match EPG data
+                        if stream.tvg_id and not force_dummy_epg:
+                            epg_data = EPGData.objects.filter(tvg_id=stream.tvg_id).first()
+                            if epg_data:
+                                channel.epg_data = epg_data
+                                channel.save(update_fields=['epg_data'])
+                        elif stream.tvg_id and force_dummy_epg:
+                            channel.epg_data = None
+                            channel.save(update_fields=['epg_data'])
+
+                        # Handle logo
+                        if stream.logo_url:
+                            from apps.channels.models import Logo
+                            logo, _ = Logo.objects.get_or_create(
+                                url=stream.logo_url,
+                                defaults={"name": stream.name or stream.tvg_id or "Unknown"}
+                            )
+                            channel.logo = logo
+                            channel.save(update_fields=['logo'])
+
+                        channels_created += 1
+                        current_channel_number += 1.0
+                        if current_channel_number % 1 != 0:  # Has decimal
+                            current_channel_number = int(current_channel_number) + 1.0
+
+                        logger.debug(f"Created auto channel: {channel.channel_number} - {channel.name}")
+
+                except Exception as e:
+                    logger.error(f"Error processing auto channel for stream {stream.name}: {str(e)}")
+                    continue
+
+            # Delete channels for streams that no longer exist
+            channels_to_delete = []
+            for stream_id, channel in existing_channel_map.items():
+                if stream_id not in processed_stream_ids:
+                    channels_to_delete.append(channel)
+
+            if channels_to_delete:
+                deleted_count = len(channels_to_delete)
+                Channel.objects.filter(id__in=[ch.id for ch in channels_to_delete]).delete()
+                channels_deleted += deleted_count
+                logger.debug(f"Deleted {deleted_count} auto channels for removed streams")
+
+        logger.info(f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_updated} updated, {channels_deleted} deleted")
+        return f"Auto sync: {channels_created} channels created, {channels_updated} updated, {channels_deleted} deleted"
+
+    except Exception as e:
+        logger.error(f"Error in auto channel sync for account {account_id}: {str(e)}")
+        return f"Auto sync error: {str(e)}"
 
 @shared_task
 def refresh_single_m3u_account(account_id):
@@ -1092,6 +1367,16 @@ def refresh_single_m3u_account(account_id):
         # Now run cleanup
         streams_deleted = cleanup_streams(account_id, refresh_start_timestamp)
 
+        # Run auto channel sync after successful refresh
+        auto_sync_message = ""
+        try:
+            sync_result = sync_auto_channels(account_id, scan_start_time=str(refresh_start_timestamp))
+            logger.info(f"Auto channel sync result for account {account_id}: {sync_result}")
+            if sync_result and "created" in sync_result:
+                auto_sync_message = f" {sync_result}."
+        except Exception as e:
+            logger.error(f"Error running auto channel sync for account {account_id}: {str(e)}")
+
         # Calculate elapsed time
         elapsed_time = time.time() - start_time
 
@@ -1100,7 +1385,7 @@ def refresh_single_m3u_account(account_id):
         account.last_message = (
             f"Processing completed in {elapsed_time:.1f} seconds. "
             f"Streams: {streams_created} created, {streams_updated} updated, {streams_deleted} removed. "
-            f"Total processed: {streams_processed}."
+            f"Total processed: {streams_processed}.{auto_sync_message}"
         )
         account.updated_at = timezone.now()
         account.save(update_fields=['status', 'last_message', 'updated_at'])
@@ -1162,11 +1447,7 @@ def send_m3u_update(account_id, action, progress, **kwargs):
 
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)
-
-    # Use the standardized function with memory management
-    # Enable garbage collection for certain operations
-    collect_garbage = action == "parsing" and progress % 25 == 0
-    send_websocket_update('updates', 'update', data, collect_garbage=collect_garbage)
+    send_websocket_update('updates', 'update', data, collect_garbage=False)
 
     # Explicitly clear data reference to help garbage collection
     data = None

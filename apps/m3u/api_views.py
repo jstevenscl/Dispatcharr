@@ -15,14 +15,13 @@ import os
 from rest_framework.decorators import action
 from django.conf import settings
 from .tasks import refresh_m3u_groups
+import json
 
-# Import all models, including UserAgent.
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
 from apps.channels.models import ChannelGroupM3UAccount
 from core.serializers import UserAgentSerializer
 
-# Import all serializers, including the UserAgentSerializer.
 from .serializers import (
     M3UAccountSerializer,
     M3UFilterSerializer,
@@ -143,6 +142,44 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
 
         # Continue with regular partial update
         return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["patch"], url_path="group-settings")
+    def update_group_settings(self, request, pk=None):
+        """Update auto channel sync settings for M3U account groups"""
+        account = self.get_object()
+        group_settings = request.data.get("group_settings", [])
+
+        try:
+            for setting in group_settings:
+                group_id = setting.get("channel_group")
+                enabled = setting.get("enabled", True)
+                auto_sync = setting.get("auto_channel_sync", False)
+                sync_start = setting.get("auto_sync_channel_start")
+                custom_properties = setting.get("custom_properties", {})
+
+                if group_id:
+                    ChannelGroupM3UAccount.objects.update_or_create(
+                        channel_group_id=group_id,
+                        m3u_account=account,
+                        defaults={
+                            "enabled": enabled,
+                            "auto_channel_sync": auto_sync,
+                            "auto_sync_channel_start": sync_start,
+                            "custom_properties": (
+                                custom_properties
+                                if isinstance(custom_properties, str)
+                                else json.dumps(custom_properties)
+                            ),
+                        },
+                    )
+
+            return Response({"message": "Group settings updated successfully"})
+
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to update group settings: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class M3UFilterViewSet(viewsets.ModelViewSet):

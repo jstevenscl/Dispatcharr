@@ -31,12 +31,15 @@ import {
   REGION_CHOICES,
 } from '../constants';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import useWarningsStore from '../store/warnings';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
   const userAgents = useUserAgentsStore((s) => s.userAgents);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
   const authUser = useAuthStore((s) => s.user);
+  const suppressWarning = useWarningsStore((s) => s.suppressWarning);
+  const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
 
   const [accordianValue, setAccordianValue] = useState(null);
   const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
@@ -47,6 +50,12 @@ const SettingsPage = () => {
     useState([]);
 
   const [proxySettingsSaved, setProxySettingsSaved] = useState(false);
+  const [rehashingStreams, setRehashingStreams] = useState(false);
+  const [rehashSuccess, setRehashSuccess] = useState(false);
+  const [rehashConfirmOpen, setRehashConfirmOpen] = useState(false);
+
+  // Add a new state to track the dialog type
+  const [rehashDialogType, setRehashDialogType] = useState(null); // 'save' or 'rehash'
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -157,11 +166,25 @@ const SettingsPage = () => {
   const onSubmit = async () => {
     const values = form.getValues();
     const changedSettings = {};
+    let m3uHashKeyChanged = false;
+
     for (const settingKey in values) {
-      // If the user changed the setting’s value from what’s in the DB:
+      // If the user changed the setting's value from what's in the DB:
       if (String(values[settingKey]) !== String(settings[settingKey].value)) {
         changedSettings[settingKey] = `${values[settingKey]}`;
+
+        // Check if M3U hash key was changed
+        if (settingKey === 'm3u-hash-key') {
+          m3uHashKeyChanged = true;
+        }
       }
+    }
+
+    // If M3U hash key changed, show warning (unless suppressed)
+    if (m3uHashKeyChanged && !isWarningSuppressed('rehash-streams')) {
+      setRehashDialogType('save'); // Set dialog type to save
+      setRehashConfirmOpen(true);
+      return;
     }
 
     // Update each changed setting in the backend
@@ -242,6 +265,63 @@ const SettingsPage = () => {
       case 'table-size':
         setTableSize(value);
         break;
+    }
+  };
+
+  const executeSettingsSaveAndRehash = async () => {
+    setRehashConfirmOpen(false);
+
+    // First save the settings
+    const values = form.getValues();
+    const changedSettings = {};
+
+    for (const settingKey in values) {
+      if (String(values[settingKey]) !== String(settings[settingKey].value)) {
+        changedSettings[settingKey] = `${values[settingKey]}`;
+      }
+    }
+
+    // Update each changed setting in the backend
+    for (const updatedKey in changedSettings) {
+      await API.updateSetting({
+        ...settings[updatedKey],
+        value: changedSettings[updatedKey],
+      });
+    }
+  };
+
+  const executeRehashStreamsOnly = async () => {
+    setRehashingStreams(true);
+    setRehashSuccess(false);
+    setRehashConfirmOpen(false);
+
+    try {
+      await API.rehashStreams();
+      setRehashSuccess(true);
+      setTimeout(() => setRehashSuccess(false), 5000);
+    } catch (error) {
+      console.error('Error rehashing streams:', error);
+    } finally {
+      setRehashingStreams(false);
+    }
+  };
+
+  const onRehashStreams = async () => {
+    // Skip warning if it's been suppressed
+    if (isWarningSuppressed('rehash-streams')) {
+      return executeRehashStreamsOnly();
+    }
+
+    setRehashDialogType('rehash'); // Set dialog type to rehash
+    setRehashConfirmOpen(true);
+  };
+
+  // Create a function to handle the confirmation based on dialog type
+  const handleRehashConfirm = () => {
+    if (rehashDialogType === 'save') {
+      executeSettingsSaveAndRehash();
+    } else {
+      executeRehashStreamsOnly();
     }
   };
 
@@ -395,12 +475,28 @@ const SettingsPage = () => {
                       key={form.key('m3u-hash-key')}
                     />
 
+                    {rehashSuccess && (
+                      <Alert
+                        variant="light"
+                        color="green"
+                        title="Rehash task queued successfully"
+                      />
+                    )}
+
                     <Flex
                       mih={50}
                       gap="xs"
-                      justify="flex-end"
+                      justify="space-between"
                       align="flex-end"
                     >
+                      <Button
+                        onClick={onRehashStreams}
+                        loading={rehashingStreams}
+                        variant="outline"
+                        color="blue"
+                      >
+                        Rehash Streams
+                      </Button>
                       <Button
                         type="submit"
                         disabled={form.submitting}
@@ -587,6 +683,32 @@ const SettingsPage = () => {
           )}
         </Accordion>
       </Box>
+
+      <ConfirmationDialog
+        opened={rehashConfirmOpen}
+        onClose={() => {
+          setRehashConfirmOpen(false);
+          setRehashDialogType(null);
+        }}
+        onConfirm={handleRehashConfirm}
+        title={rehashDialogType === 'save' ? 'Save Settings and Rehash Streams' : 'Confirm Stream Rehash'}
+        message={
+          <div style={{ whiteSpace: 'pre-line' }}>
+            {`Are you sure you want to rehash all streams?
+
+This process may take a while depending on the number of streams.
+Do not shut down Dispatcharr until the rehashing is complete.
+M3U refreshes will be blocked until this process finishes.
+
+Please ensure you have time to let this complete before proceeding.`}
+          </div>
+        }
+        confirmLabel={rehashDialogType === 'save' ? 'Save and Rehash' : 'Start Rehash'}
+        cancelLabel="Cancel"
+        actionKey="rehash-streams"
+        onSuppressChange={suppressWarning}
+        size="md"
+      />
 
       <ConfirmationDialog
         opened={networkAccessConfirmOpen}

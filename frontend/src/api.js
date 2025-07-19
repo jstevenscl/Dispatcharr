@@ -250,7 +250,17 @@ export default class API {
       });
 
       if (response.id) {
-        useChannelsStore.getState().addChannelGroup(response);
+        // Add association flags for new groups
+        const processedGroup = {
+          ...response,
+          hasChannels: false,
+          hasM3UAccounts: false,
+          canEdit: true,
+          canDelete: true
+        };
+        useChannelsStore.getState().addChannelGroup(processedGroup);
+        // Refresh channel groups to update the UI
+        useChannelsStore.getState().fetchChannelGroups();
       }
 
       return response;
@@ -274,6 +284,38 @@ export default class API {
       return response;
     } catch (e) {
       errorNotification('Failed to update channel group', e);
+    }
+  }
+
+  static async deleteChannelGroup(id) {
+    try {
+      await request(`${host}/api/channels/groups/${id}/`, {
+        method: 'DELETE',
+      });
+
+      // Remove from store after successful deletion
+      useChannelsStore.getState().removeChannelGroup(id);
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete channel group', e);
+      throw e;
+    }
+  }
+
+  static async cleanupUnusedChannelGroups() {
+    try {
+      const response = await request(`${host}/api/channels/groups/cleanup/`, {
+        method: 'POST',
+      });
+
+      // Refresh channel groups to update the UI
+      useChannelsStore.getState().fetchChannelGroups();
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to cleanup unused channel groups', e);
+      throw e;
     }
   }
 
@@ -691,6 +733,21 @@ export default class API {
     }
   }
 
+  static async updateM3UGroupSettings(playlistId, groupSettings) {
+    try {
+      const response = await request(`${host}/api/m3u/accounts/${playlistId}/group-settings/`, {
+        method: 'PATCH',
+        body: { group_settings: groupSettings },
+      });
+      // Fetch the updated playlist and update the store
+      const updatedPlaylist = await API.getPlaylist(playlistId);
+      usePlaylistsStore.getState().updatePlaylist(updatedPlaylist);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update M3U group settings', e);
+    }
+  }
+
   static async addPlaylist(values) {
     if (values.custom_properties) {
       values.custom_properties = JSON.stringify(values.custom_properties);
@@ -726,7 +783,6 @@ export default class API {
       const response = await request(`${host}/api/m3u/refresh/${id}/`, {
         method: 'POST',
       });
-
       return response;
     } catch (e) {
       errorNotification('Failed to refresh M3U account', e);
@@ -1170,13 +1226,24 @@ export default class API {
     }
   }
 
-  static async getLogos() {
+  static async getLogos(params = {}) {
     try {
-      const response = await request(`${host}/api/channels/logos/`);
+      const queryParams = new URLSearchParams(params);
+      const response = await request(`${host}/api/channels/logos/?${queryParams.toString()}`);
 
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve logos', e);
+    }
+  }
+
+  static async fetchLogos() {
+    try {
+      const response = await this.getLogos();
+      useChannelsStore.getState().setLogos(response);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch logos', e);
     }
   }
 
@@ -1185,16 +1252,150 @@ export default class API {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await request(`${host}/api/channels/logos/upload/`, {
+      // Add timeout handling for file uploads
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const response = await fetch(`${host}/api/channels/logos/upload/`, {
         method: 'POST',
         body: formData,
+        headers: {
+          Authorization: `Bearer ${await API.getAuthToken()}`,
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = new Error(`HTTP error! Status: ${response.status}`);
+        let errorBody = await response.text();
+
+        try {
+          errorBody = JSON.parse(errorBody);
+        } catch (e) {
+          // If parsing fails, leave errorBody as the raw text
+        }
+
+        error.status = response.status;
+        error.response = response;
+        error.body = errorBody;
+        throw error;
+      }
+
+      const result = await response.json();
+      useChannelsStore.getState().addLogo(result);
+      return result;
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        const timeoutError = new Error('Upload timed out. Please try again.');
+        timeoutError.code = 'NETWORK_ERROR';
+        throw timeoutError;
+      }
+      errorNotification('Failed to upload logo', e);
+      throw e;
+    }
+  }
+
+  static async createLogo(values) {
+    try {
+      const response = await request(`${host}/api/channels/logos/`, {
+        method: 'POST',
+        body: values,
       });
 
       useChannelsStore.getState().addLogo(response);
 
       return response;
     } catch (e) {
-      errorNotification('Failed to upload logo', e);
+      errorNotification('Failed to create logo', e);
+    }
+  }
+
+  static async updateLogo(id, values) {
+    try {
+      // Convert values to FormData for the multipart/form-data content type
+      const formData = new FormData();
+
+      // Add each field to the form data
+      Object.keys(values).forEach(key => {
+        if (values[key] !== null && values[key] !== undefined) {
+          formData.append(key, values[key]);
+        }
+      });
+
+      const response = await request(`${host}/api/channels/logos/${id}/`, {
+        method: 'PUT',
+        body: formData, // Send as FormData instead of JSON
+      });
+
+      useChannelsStore.getState().updateLogo(response);
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update logo', e);
+    }
+  }
+
+  static async deleteLogo(id, deleteFile = false) {
+    try {
+      const params = new URLSearchParams();
+      if (deleteFile) {
+        params.append('delete_file', 'true');
+      }
+
+      const url = `${host}/api/channels/logos/${id}/?${params.toString()}`;
+      await request(url, {
+        method: 'DELETE',
+      });
+
+      useChannelsStore.getState().removeLogo(id);
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete logo', e);
+    }
+  }
+
+  static async deleteLogos(ids, deleteFiles = false) {
+    try {
+      const body = { logo_ids: ids };
+      if (deleteFiles) {
+        body.delete_files = true;
+      }
+
+      await request(`${host}/api/channels/logos/bulk-delete/`, {
+        method: 'DELETE',
+        body: body,
+      });
+
+      // Remove multiple logos from store
+      ids.forEach(id => {
+        useChannelsStore.getState().removeLogo(id);
+      });
+
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete logos', e);
+    }
+  }
+
+  static async cleanupUnusedLogos(deleteFiles = false) {
+    try {
+      const body = {};
+      if (deleteFiles) {
+        body.delete_files = true;
+      }
+
+      const response = await request(`${host}/api/channels/logos/cleanup/`, {
+        method: 'POST',
+        body: body,
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to cleanup unused logos', e);
+      throw e;
     }
   }
 
@@ -1461,6 +1662,18 @@ export default class API {
       useUsersStore.getState().removeUser(id);
     } catch (e) {
       errorNotification('Failed to delete user', e);
+    }
+  }
+
+  static async rehashStreams() {
+    try {
+      const response = await request(`${host}/api/core/rehash-streams/`, {
+        method: 'POST',
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to trigger stream rehash', e);
     }
   }
 }

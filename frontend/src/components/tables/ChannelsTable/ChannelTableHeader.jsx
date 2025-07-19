@@ -25,6 +25,7 @@ import {
   SquareMinus,
   SquarePen,
   SquarePlus,
+  Settings,
 } from 'lucide-react';
 import API from '../../../api';
 import { notifications } from '@mantine/notifications';
@@ -32,6 +33,7 @@ import useChannelsStore from '../../../store/channels';
 import useAuthStore from '../../../store/auth';
 import { USER_LEVELS } from '../../../constants';
 import AssignChannelNumbersForm from '../../forms/AssignChannelNumbers';
+import GroupManager from '../../forms/GroupManager';
 import ConfirmationDialog from '../../ConfirmationDialog';
 import useWarningsStore from '../../../store/warnings';
 
@@ -105,6 +107,7 @@ const ChannelTableHeader = ({
 
   const [channelNumAssignmentStart, setChannelNumAssignmentStart] = useState(1);
   const [assignNumbersModalOpen, setAssignNumbersModalOpen] = useState(false);
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
   const [confirmDeleteProfileOpen, setConfirmDeleteProfileOpen] = useState(false);
   const [profileToDelete, setProfileToDelete] = useState(null);
 
@@ -284,22 +287,25 @@ const ChannelTableHeader = ({
                   selectedTableIds.length == 0 ||
                   authUser.user_level != USER_LEVELS.ADMIN
                 }
+                onClick={() => setAssignNumbersModalOpen(true)}
               >
-                <UnstyledButton
-                  size="xs"
-                  onClick={() => setAssignNumbersModalOpen(true)}
-                >
-                  <Text size="xs">Assign #s</Text>
-                </UnstyledButton>
+                <Text size="xs">Assign #s</Text>
               </Menu.Item>
 
               <Menu.Item
                 leftSection={<Binary size={18} />}
                 disabled={authUser.user_level != USER_LEVELS.ADMIN}
+                onClick={matchEpg}
               >
-                <UnstyledButton size="xs" onClick={matchEpg}>
-                  <Text size="xs">Auto-Match</Text>
-                </UnstyledButton>
+                <Text size="xs">Auto-Match</Text>
+              </Menu.Item>
+
+              <Menu.Item
+                leftSection={<Settings size={18} />}
+                disabled={authUser.user_level != USER_LEVELS.ADMIN}
+                onClick={() => setGroupManagerOpen(true)}
+              >
+                <Text size="xs">Edit Groups</Text>
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
@@ -310,6 +316,11 @@ const ChannelTableHeader = ({
         channelIds={selectedTableIds}
         isOpen={assignNumbersModalOpen}
         onClose={closeAssignChannelNumbersModal}
+      />
+
+      <GroupManager
+        isOpen={groupManagerOpen}
+        onClose={() => setGroupManagerOpen(false)}
       />
 
       <ConfirmationDialog

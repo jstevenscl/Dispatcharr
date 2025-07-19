@@ -277,6 +277,19 @@ class Channel(models.Model):
 
     user_level = models.IntegerField(default=0)
 
+    auto_created = models.BooleanField(
+        default=False,
+        help_text="Whether this channel was automatically created via M3U auto channel sync"
+    )
+    auto_created_by = models.ForeignKey(
+        "m3u.M3UAccount",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="auto_created_channels",
+        help_text="The M3U account that auto-created this channel"
+    )
+
     def clean(self):
         # Enforce unique channel_number within a given group
         existing = Channel.objects.filter(
@@ -541,6 +554,15 @@ class ChannelGroupM3UAccount(models.Model):
     )
     custom_properties = models.TextField(null=True, blank=True)
     enabled = models.BooleanField(default=True)
+    auto_channel_sync = models.BooleanField(
+        default=False,
+        help_text='Automatically create/delete channels to match streams in this group'
+    )
+    auto_sync_channel_start = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='Starting channel number for auto-created channels in this group'
+    )
 
     class Meta:
         unique_together = ("channel_group", "m3u_account")

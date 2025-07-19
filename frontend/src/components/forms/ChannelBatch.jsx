@@ -32,6 +32,8 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
   const groupListRef = useRef(null);
 
   const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
+
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const [channelGroupModelOpen, setChannelGroupModalOpen] = useState(false);

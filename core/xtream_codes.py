@@ -17,20 +17,29 @@ class Client:
         # Fix: Properly handle all possible user_agent input types
         if user_agent:
             if isinstance(user_agent, str):
-                # Direct string user agent
                 user_agent_string = user_agent
             elif hasattr(user_agent, 'user_agent'):
-                # UserAgent model object
                 user_agent_string = user_agent.user_agent
             else:
-                # Fallback for any other type
                 logger.warning(f"Unexpected user_agent type: {type(user_agent)}, using default")
                 user_agent_string = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         else:
-            # No user agent provided
             user_agent_string = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 
-        self.headers = {'User-Agent': user_agent_string}
+        # Create persistent session
+        self.session = requests.Session()
+        self.session.headers.update({'User-Agent': user_agent_string})
+
+        # Configure connection pooling
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=1,
+            pool_maxsize=2,
+            max_retries=3,
+            pool_block=False
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+
         self.server_info = None
 
     def _normalize_url(self, url):
@@ -53,11 +62,35 @@ class Client:
             url = f"{self.server_url}/{endpoint}"
             logger.debug(f"XC API Request: {url} with params: {params}")
 
-            response = requests.get(url, params=params, headers=self.headers, timeout=30)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
 
-            data = response.json()
-            logger.debug(f"XC API Response: {url} status code: {response.status_code}")
+            # Check if response is empty
+            if not response.content:
+                error_msg = f"XC API returned empty response from {url}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            # Check for common blocking responses before trying to parse JSON
+            response_text = response.text.strip()
+            if response_text.lower() in ['blocked', 'forbidden', 'access denied', 'unauthorized']:
+                error_msg = f"XC API request blocked by server from {url}. Response: {response_text}"
+                logger.error(error_msg)
+                logger.error(f"This may indicate IP blocking, User-Agent filtering, or rate limiting")
+                raise ValueError(error_msg)
+
+            try:
+                data = response.json()
+            except requests.exceptions.JSONDecodeError as json_err:
+                error_msg = f"XC API returned invalid JSON from {url}. Response: {response.text[:1000]}"
+                logger.error(error_msg)
+                logger.error(f"JSON decode error: {str(json_err)}")
+
+                # Check if it looks like an HTML error page
+                if response_text.startswith('<'):
+                    logger.error("Response appears to be HTML - server may be returning an error page")
+
+                raise ValueError(error_msg)
 
             # Check for XC-specific error responses
             if isinstance(data, dict) and data.get('user_info') is None and 'error' in data:
@@ -162,3 +195,24 @@ class Client:
     def get_stream_url(self, stream_id):
         """Get the playback URL for a stream"""
         return f"{self.server_url}/live/{self.username}/{self.password}/{stream_id}.ts"
+
+    def close(self):
+        """Close the session and cleanup resources"""
+        if hasattr(self, 'session') and self.session:
+            try:
+                self.session.close()
+            except Exception as e:
+                logger.debug(f"Error closing XC session: {e}")
+
+    def __enter__(self):
+        """Enter the context manager"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and cleanup resources"""
+        self.close()
+        return False  # Don't suppress exceptions
+
+    def __del__(self):
+        """Ensure session is closed when object is destroyed"""
+        self.close()

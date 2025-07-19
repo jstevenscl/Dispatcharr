@@ -218,6 +218,7 @@ export const WebsocketProvider = ({ children }) => {
                   }
 
                   updatePlaylist(updateData);
+                  fetchPlaylists(); // Refresh playlists to ensure UI is up-to-date
                 } else {
                   // Log when playlist can't be found for debugging purposes
                   console.warn(
@@ -372,6 +373,61 @@ export const WebsocketProvider = ({ children }) => {
               }
               break;
 
+            case 'stream_rehash':
+              // Handle stream rehash progress updates
+              if (parsedEvent.data.action === 'starting') {
+                notifications.show({
+                  id: 'stream-rehash-progress', // Persistent ID
+                  title: 'Stream Rehash Started',
+                  message: parsedEvent.data.message,
+                  color: 'blue.5',
+                  autoClose: false, // Don't auto-close
+                  withCloseButton: false, // No close button during processing
+                  loading: true, // Show loading indicator
+                });
+              } else if (parsedEvent.data.action === 'processing') {
+                // Update the existing notification
+                notifications.update({
+                  id: 'stream-rehash-progress',
+                  title: 'Stream Rehash in Progress',
+                  message: `${parsedEvent.data.progress}% complete - ${parsedEvent.data.processed} streams processed, ${parsedEvent.data.duplicates_merged} duplicates merged`,
+                  color: 'blue.5',
+                  autoClose: false,
+                  withCloseButton: false,
+                  loading: true,
+                });
+              } else if (parsedEvent.data.action === 'completed') {
+                // Update to completion state
+                notifications.update({
+                  id: 'stream-rehash-progress',
+                  title: 'Stream Rehash Complete',
+                  message: `Processed ${parsedEvent.data.total_processed} streams, merged ${parsedEvent.data.duplicates_merged} duplicates. Final count: ${parsedEvent.data.final_count}`,
+                  color: 'green.5',
+                  autoClose: 8000, // Auto-close after completion
+                  withCloseButton: true, // Allow manual close
+                  loading: false, // Remove loading indicator
+                });
+              } else if (parsedEvent.data.action === 'blocked') {
+                // Handle blocked rehash attempt
+                notifications.show({
+                  title: 'Stream Rehash Blocked',
+                  message: parsedEvent.data.message,
+                  color: 'orange.5',
+                  autoClose: 8000,
+                });
+              }
+              break;
+
+            case 'logo_processing_summary':
+              notifications.show({
+                title: 'Logo Processing Summary',
+                message: `${parsedEvent.data.message}`,
+                color: 'blue',
+                autoClose: 5000,
+              });
+              fetchLogos();
+              break;
+
             default:
               console.error(
                 `Unknown websocket event type: ${parsedEvent.data?.type}`
@@ -442,6 +498,7 @@ export const WebsocketProvider = ({ children }) => {
   const setProfilePreview = usePlaylistsStore((s) => s.setProfilePreview);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
   const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
+  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
 
   const ret = useMemo(() => {
     return [isReady, ws.current?.send.bind(ws.current), val];

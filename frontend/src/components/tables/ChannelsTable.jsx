@@ -216,6 +216,9 @@ const ChannelRowActions = React.memo(
 
 const ChannelsTable = ({ }) => {
   const theme = useMantineTheme();
+  const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
+  const canDeleteChannelGroup = useChannelsStore((s) => s.canDeleteChannelGroup);
 
   /**
    * STORES
@@ -241,7 +244,6 @@ const ChannelsTable = ({ }) => {
   const channels = useChannelsStore((s) => s.channels);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
-  const channelGroups = useChannelsStore((s) => s.channelGroups);
   const logos = useChannelsStore((s) => s.logos);
   const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
     pageSize: 50,
@@ -286,7 +288,8 @@ const ChannelsTable = ({ }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
-  const [epgUrl, setEPGUrl] = useState(epgUrlBase); const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
+  const [epgUrl, setEPGUrl] = useState(epgUrlBase);
+  const [m3uUrl, setM3UUrl] = useState(m3uUrlBase);
 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -306,7 +309,7 @@ const ChannelsTable = ({ }) => {
   });
 
   /**
-   * Dereived variables
+   * Derived variables
    */
   const activeGroupIds = new Set(
     Object.values(channels).map((channel) => channel.channel_group_id)

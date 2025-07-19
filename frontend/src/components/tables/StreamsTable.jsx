@@ -189,9 +189,12 @@ const StreamsTable = ({ }) => {
   const [sorting, setSorting] = useState([{ id: 'name', desc: '' }]);
   const [selectedStreamIds, setSelectedStreamIds] = useState([]);
   // const [allRowsSelected, setAllRowsSelected] = useState(false);
+
+  // Add local storage for page size
+  const [storedPageSize, setStoredPageSize] = useLocalStorage('streams-page-size', 50);
   const [pagination, setPagination] = useState({
     pageIndex: 0,
-    pageSize: 50,
+    pageSize: storedPageSize,
   });
   const [filters, setFilters] = useState({
     name: '',
@@ -448,9 +451,11 @@ const StreamsTable = ({ }) => {
   };
 
   const onPageSizeChange = (e) => {
+    const newPageSize = parseInt(e.target.value);
+    setStoredPageSize(newPageSize);
     setPagination({
       ...pagination,
-      pageSize: e.target.value,
+      pageSize: newPageSize,
     });
   };
 
