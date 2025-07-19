@@ -69,7 +69,7 @@ class OrInFilter(django_filters.Filter):
 
 
 class StreamPagination(PageNumberPagination):
-    page_size = 25  # Default page size
+    page_size = 50  # Default page size to match frontend default
     page_size_query_param = "page_size"  # Allow clients to specify page size
     max_page_size = 10000  # Prevent excessive page sizes
 
@@ -279,7 +279,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
 # 3) Channel Management (CRUD)
 # ─────────────────────────────────────────────────────────
 class ChannelPagination(PageNumberPagination):
-    page_size = 25  # Default page size
+    page_size = 50  # Default page size to match frontend default
     page_size_query_param = "page_size"  # Allow clients to specify page size
     max_page_size = 10000  # Prevent excessive page sizes
 
