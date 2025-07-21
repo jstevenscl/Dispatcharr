@@ -378,8 +378,7 @@ def generate_epg(request, profile_name=None, user=None):
                         tvg_logo = direct_logo
                     else:
                         tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
-
-            display_name = channel.epg_data.name if channel.epg_data else channel.name
+            display_name = channel.name
             xml_lines.append(f'  <channel id="{channel_id}">')
             xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
             xml_lines.append(f'    <icon src="{html.escape(tvg_logo)}" />')
