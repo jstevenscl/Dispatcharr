@@ -918,7 +918,6 @@ def sync_auto_channels(account_id, scan_start_time=None):
             # --- FILTER STREAMS BY NAME MATCH REGEX IF SPECIFIED ---
             if name_match_regex:
                 try:
-                    compiled_name_match_regex = re.compile(name_match_regex, re.IGNORECASE)
                     current_streams = current_streams.filter(
                         name__iregex=name_match_regex
                     )
@@ -1042,7 +1041,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
                         # Create new channel
                         # Find next available channel number
                         while Channel.objects.filter(channel_number=current_channel_number).exists():
-                            current_channel_number += 0.1
+                            current_channel_number += 1
 
                         # Create the channel with auto-created tracking in the target group
                         channel = Channel.objects.create(
