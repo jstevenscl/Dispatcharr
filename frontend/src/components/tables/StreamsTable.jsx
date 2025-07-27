@@ -68,8 +68,8 @@ const StreamRowActions = ({
       name: row.original.name,
       channel_number: null,
       stream_id: row.original.id,
-      // Only pass channel_profile_id if a specific profile is selected (not "All")
-      ...(selectedChannelProfileId !== '0' && { channel_profile_id: selectedChannelProfileId }),
+      // Only pass channel_profile_ids if a specific profile is selected (not "All")
+      ...(selectedChannelProfileId !== '0' && { channel_profile_ids: selectedChannelProfileId }),
     });
     await API.requeryChannels();
     fetchLogos();
@@ -415,16 +415,16 @@ const StreamsTable = ({ }) => {
         return {
           stream_id: streamId,
           name: stream?.name || `Stream ${streamId}`,
-          ...(selectedChannelProfileId !== '0' && { channel_profile_id: selectedChannelProfileId }),
+          ...(selectedChannelProfileId !== '0' && { channel_profile_ids: selectedChannelProfileId }),
         };
       });
 
       await API.createChannelsFromStreams(streamData);
       await API.requeryChannels();
-      
+
       // Refresh channel profiles to update the membership information
       await useChannelsStore.getState().fetchChannelProfiles();
-      
+
       fetchLogos();
 
       // Clear selection and refresh data
