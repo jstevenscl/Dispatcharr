@@ -18,6 +18,7 @@ from apps.accounts.permissions import (
 )
 
 from core.models import UserAgent, CoreSettings
+from core.utils import RedisClient
 
 from .models import (
     Stream,
@@ -1263,6 +1264,17 @@ class LogoViewSet(viewsets.ModelViewSet):
         with open(file_path, "wb+") as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
+
+        # Mark file as processed in Redis to prevent file scanner notifications
+        try:
+            redis_client = RedisClient.get_client()
+            if redis_client:
+                # Use the same key format as the file scanner
+                redis_key = f"processed_file:{file_path}"
+                redis_client.setex(redis_key, 60 * 60 * 24 * 3, "api_upload")  # 3 day TTL
+                logger.debug(f"Marked uploaded logo file as processed in Redis: {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to mark logo file as processed in Redis: {e}")
 
         logo, _ = Logo.objects.get_or_create(
             url=file_path,
