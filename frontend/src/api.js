@@ -528,13 +528,14 @@ export default class API {
         }
       );
 
-      if (response.created.length > 0) {
+      if (response.created && response.created.length > 0) {
         useChannelsStore.getState().addChannels(response.created);
       }
 
       return response;
     } catch (e) {
       errorNotification('Failed to create channels', e);
+      throw e; // Re-throw to allow proper error handling in calling code
     }
   }
 

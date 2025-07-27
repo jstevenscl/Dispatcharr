@@ -189,6 +189,10 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
 
       formik.resetForm();
       API.requeryChannels();
+      
+      // Refresh channel profiles to update the membership information
+      useChannelsStore.getState().fetchChannelProfiles();
+      
       setSubmitting(false);
       setTvgFilter('');
       setLogoFilter('');

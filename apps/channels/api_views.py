@@ -494,7 +494,8 @@ class ChannelViewSet(viewsets.ModelViewSet):
         operation_description=(
             "Create a new channel from an existing stream. "
             "If 'channel_number' is provided, it will be used (if available); "
-            "otherwise, the next available channel number is assigned."
+            "otherwise, the next available channel number is assigned. "
+            "If 'channel_profile_id' is provided, the channel will only be added to that profile."
         ),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -509,6 +510,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 ),
                 "name": openapi.Schema(
                     type=openapi.TYPE_STRING, description="Desired channel name"
+                ),
+                "channel_profile_id": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="(Optional) ID of the channel profile to add the channel to. If not provided, channel is added to all profiles."
                 ),
             },
         ),
@@ -591,8 +596,35 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(data=channel_data)
         serializer.is_valid(raise_exception=True)
-        channel = serializer.save()
-        channel.streams.add(stream)
+
+        with transaction.atomic():
+            channel = serializer.save()
+            channel.streams.add(stream)
+
+            # Handle channel profile membership
+            channel_profile_id = request.data.get("channel_profile_id")
+            if channel_profile_id:
+                # Add channel only to the specified profile
+                try:
+                    channel_profile = ChannelProfile.objects.get(id=channel_profile_id)
+                    ChannelProfileMembership.objects.create(
+                        channel_profile=channel_profile,
+                        channel=channel,
+                        enabled=True
+                    )
+                except ChannelProfile.DoesNotExist:
+                    return Response(
+                        {"error": f"Channel profile with ID {channel_profile_id} not found"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else:
+                # Default behavior: add to all profiles
+                profiles = ChannelProfile.objects.all()
+                ChannelProfileMembership.objects.bulk_create([
+                    ChannelProfileMembership(channel_profile=profile, channel=channel, enabled=True)
+                    for profile in profiles
+                ])
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @swagger_auto_schema(
@@ -653,13 +685,15 @@ class ChannelViewSet(viewsets.ModelViewSet):
         channels_to_create = []
         streams_map = []
         logo_map = []
+        profile_map = []  # Track which profile each channel should be added to
+
         for item in data_list:
             stream_id = item.get("stream_id")
-            if not all([stream_id]):
+            if not stream_id:
                 errors.append(
                     {
                         "item": item,
-                        "error": "Missing required fields: stream_id and name are required.",
+                        "error": "Missing required field: stream_id is required.",
                     }
                 )
                 continue
@@ -704,7 +738,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         errors.append(
                             {
                                 "item": item,
-                                "error": "channel_number must be an integer.",
+                                "error": "channel_number must be a number.",
                             }
                         )
                         continue
@@ -746,6 +780,9 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 channels_to_create.append(channel)
 
                 streams_map.append([stream_id])
+                # Store which profile this channel should be added to
+                profile_map.append(item.get("channel_profile_id"))
+
                 if stream.logo_url:
                     logos_to_create.append(
                         Logo(
@@ -757,9 +794,6 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 else:
                     logo_map.append(None)
 
-                # channel = serializer.save()
-                # channel.streams.add(stream)
-                # created_channels.append(serializer.data)
             else:
                 errors.append({"item": item, "error": serializer.errors})
 
@@ -773,31 +807,67 @@ class ChannelViewSet(viewsets.ModelViewSet):
             )
         }
 
-        profiles = ChannelProfile.objects.all()
+        # Get all profiles for default assignment
+        all_profiles = ChannelProfile.objects.all()
         channel_profile_memberships = []
+
         if channels_to_create:
             with transaction.atomic():
                 created_channels = Channel.objects.bulk_create(channels_to_create)
 
                 update = []
-                for channel, stream_ids, logo_url in zip(
-                    created_channels, streams_map, logo_map
+                for channel, stream_ids, logo_url, channel_profile_id in zip(
+                    created_channels, streams_map, logo_map, profile_map
                 ):
                     if logo_url:
                         channel.logo = channel_logos[logo_url]
                     update.append(channel)
-                    channel_profile_memberships = channel_profile_memberships + [
-                        ChannelProfileMembership(
-                            channel_profile=profile, channel=channel
-                        )
-                        for profile in profiles
-                    ]
 
-                ChannelProfileMembership.objects.bulk_create(
-                    channel_profile_memberships
-                )
-                Channel.objects.bulk_update(update, ["logo"])
+                    # Handle channel profile membership based on channel_profile_id
+                    if channel_profile_id:
+                        # Add channel only to the specified profile
+                        try:
+                            channel_profile_id = int(channel_profile_id)
+                            specific_profile = ChannelProfile.objects.get(id=channel_profile_id)
+                            channel_profile_memberships.append(
+                                ChannelProfileMembership(
+                                    channel_profile=specific_profile,
+                                    channel=channel,
+                                    enabled=True
+                                )
+                            )
+                        except (ChannelProfile.DoesNotExist, ValueError, TypeError):
+                            # If profile doesn't exist or invalid ID, add to all profiles as fallback
+                            channel_profile_memberships.extend([
+                                ChannelProfileMembership(
+                                    channel_profile=profile,
+                                    channel=channel,
+                                    enabled=True
+                                )
+                                for profile in all_profiles
+                            ])
+                    else:
+                        # Default behavior: add to all profiles
+                        channel_profile_memberships.extend([
+                            ChannelProfileMembership(
+                                channel_profile=profile,
+                                channel=channel,
+                                enabled=True
+                            )
+                            for profile in all_profiles
+                        ])
 
+                # Bulk create profile memberships
+                if channel_profile_memberships:
+                    ChannelProfileMembership.objects.bulk_create(
+                        channel_profile_memberships
+                    )
+
+                # Update logos
+                if update:
+                    Channel.objects.bulk_update(update, ["logo"])
+
+                # Set stream relationships
                 for channel, stream_ids in zip(created_channels, streams_map):
                     channel.streams.set(stream_ids)
 
