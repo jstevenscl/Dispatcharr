@@ -1299,9 +1299,17 @@ export default class API {
 
   static async createLogo(values) {
     try {
+      // Use FormData for logo creation to match backend expectations
+      const formData = new FormData();
+      for (const [key, value] of Object.entries(values)) {
+        if (value !== null && value !== undefined) {
+          formData.append(key, value);
+        }
+      }
+
       const response = await request(`${host}/api/channels/logos/`, {
         method: 'POST',
-        body: values,
+        body: formData,
       });
 
       useChannelsStore.getState().addLogo(response);
@@ -1314,19 +1322,9 @@ export default class API {
 
   static async updateLogo(id, values) {
     try {
-      // Convert values to FormData for the multipart/form-data content type
-      const formData = new FormData();
-
-      // Add each field to the form data
-      Object.keys(values).forEach(key => {
-        if (values[key] !== null && values[key] !== undefined) {
-          formData.append(key, values[key]);
-        }
-      });
-
       const response = await request(`${host}/api/channels/logos/${id}/`, {
         method: 'PUT',
-        body: formData, // Send as FormData instead of JSON
+        body: values, // This will be converted to JSON in the request function
       });
 
       useChannelsStore.getState().updateLogo(response);

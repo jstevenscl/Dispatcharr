@@ -1122,7 +1122,7 @@ class CleanupUnusedLogosAPIView(APIView):
     def post(self, request):
         """Delete all logos with no channel associations"""
         delete_files = request.data.get("delete_files", False)
-        
+
         unused_logos = Logo.objects.filter(channels__isnull=True)
         deleted_count = unused_logos.count()
         logo_names = list(unused_logos.values_list('name', flat=True))
@@ -1204,7 +1204,13 @@ class LogoViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         """Update an existing logo"""
-        return super().update(request, *args, **kwargs)
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            logo = serializer.save()
+            return Response(self.get_serializer(logo).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def destroy(self, request, *args, **kwargs):
         """Delete a logo and remove it from any channels using it"""

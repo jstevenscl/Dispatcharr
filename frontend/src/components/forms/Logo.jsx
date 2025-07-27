@@ -206,9 +206,10 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                         </Text>
                         <Dropzone
                             onDrop={handleFileUpload}
-                            accept={['image/png', 'image/jpeg', 'image/gif', 'image/webp']}
-                            maxFiles={1}
                             loading={uploading}
+                            accept={{ "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"] }}
+                            multiple={false}
+                            maxSize={5 * 1024 * 1024} // 5MB limit
                         >
                             <Group justify="center" gap="xl" mih={120} style={{ pointerEvents: 'none' }}>
                                 <Dropzone.Accept>
@@ -226,7 +227,7 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                                         Drag image here or click to select
                                     </Text>
                                     <Text size="sm" color="dimmed" inline mt={7}>
-                                        Supports PNG, JPEG, GIF, WebP files
+                                        Supports PNG, JPEG, GIF, WebP, SVG files
                                     </Text>
                                 </div>
                             </Group>
