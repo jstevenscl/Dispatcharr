@@ -318,6 +318,11 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                               label: 'Channel Profile Assignment',
                               description: 'Specify which channel profiles the auto-synced channels should be added to',
                             },
+                            {
+                              value: 'channel_sort_order',
+                              label: 'Channel Sort Order',
+                              description: 'Specify the order in which channels are created (name, tvg_id, updated_at)',
+                            },
                           ]}
                           itemComponent={OptionWithTooltip}
                           value={(() => {
@@ -339,6 +344,9 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                             }
                             if (group.custom_properties?.channel_profile_ids !== undefined) {
                               selectedValues.push('profile_assignment');
+                            }
+                            if (group.custom_properties?.channel_sort_order !== undefined) {
+                              selectedValues.push('channel_sort_order');
                             }
                             return selectedValues;
                           })()}
@@ -397,6 +405,14 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                                   } else {
                                     delete newCustomProps.channel_profile_ids;
                                   }
+                                  // Handle channel_sort_order
+                                  if (selectedOptions.includes('channel_sort_order')) {
+                                    if (newCustomProps.channel_sort_order === undefined) {
+                                      newCustomProps.channel_sort_order = '';
+                                    }
+                                  } else {
+                                    delete newCustomProps.channel_sort_order;
+                                  }
 
                                   return {
                                     ...state,
@@ -410,6 +426,39 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           clearable
                           size="xs"
                         />
+                        {/* Show only channel_sort_order if selected */}
+                        {group.custom_properties?.channel_sort_order !== undefined && (
+                          <Select
+                            label="Channel Sort Order"
+                            placeholder="Select sort order..."
+                            value={group.custom_properties?.channel_sort_order || ''}
+                            onChange={(value) => {
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (state.channel_group === group.channel_group) {
+                                    return {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        channel_sort_order: value || '',
+                                      },
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            data={[
+                              { value: '', label: 'Provider Order (Default)' },
+                              { value: 'name', label: 'Name' },
+                              { value: 'tvg_id', label: 'TVG ID' },
+                              { value: 'updated_at', label: 'Updated At' },
+                            ]}
+                            clearable
+                            searchable
+                            size="xs"
+                          />
+                        )}
 
                         {/* Show profile selection only if profile_assignment is selected */}
                         {group.custom_properties?.channel_profile_ids !== undefined && (
