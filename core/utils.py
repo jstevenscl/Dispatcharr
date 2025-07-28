@@ -3,6 +3,7 @@ import logging
 import time
 import os
 import threading
+import re
 from django.conf import settings
 from redis.exceptions import ConnectionError, TimeoutError
 from django.core.cache import cache
@@ -14,6 +15,29 @@ logger = logging.getLogger(__name__)
 
 # Import the command detector
 from .command_utils import is_management_command
+
+def natural_sort_key(text):
+    """
+    Convert a string into a list of string and number chunks for natural sorting.
+    "PPV 10" becomes ['PPV ', 10] so it sorts correctly with "PPV 2".
+
+    This function enables natural/alphanumeric sorting where numbers within strings
+    are treated as actual numbers rather than strings.
+
+    Args:
+        text (str): The text to convert for sorting
+
+    Returns:
+        list: A list of strings and integers for proper sorting
+
+    Example:
+        >>> sorted(['PPV 1', 'PPV 10', 'PPV 2'], key=natural_sort_key)
+        ['PPV 1', 'PPV 2', 'PPV 10']
+    """
+    def convert(chunk):
+        return int(chunk) if chunk.isdigit() else chunk.lower()
+
+    return [convert(c) for c in re.split('([0-9]+)', text)]
 
 class RedisClient:
     _client = None

@@ -18,7 +18,7 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 import time
 import json
-from core.utils import RedisClient, acquire_task_lock, release_task_lock
+from core.utils import RedisClient, acquire_task_lock, release_task_lock, natural_sort_key
 from core.models import CoreSettings, UserAgent
 from asgiref.sync import async_to_sync
 from core.xtream_codes import Client as XCClient
@@ -933,7 +933,9 @@ def sync_auto_channels(account_id, scan_start_time=None):
             # --- APPLY CHANNEL SORT ORDER ---
             if channel_sort_order and channel_sort_order != '':
                 if channel_sort_order == 'name':
-                    current_streams = current_streams.order_by('name')
+                    # Use natural sorting for names to handle numbers correctly
+                    current_streams = list(current_streams)
+                    current_streams.sort(key=lambda stream: natural_sort_key(stream.name))
                 elif channel_sort_order == 'tvg_id':
                     current_streams = current_streams.order_by('tvg_id')
                 elif channel_sort_order == 'updated_at':
