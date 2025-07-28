@@ -882,6 +882,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
             name_regex_pattern = None
             name_replace_pattern = None
             name_match_regex = None
+            channel_profile_ids = None
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
@@ -890,12 +891,14 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     name_regex_pattern = group_custom_props.get("name_regex_pattern")
                     name_replace_pattern = group_custom_props.get("name_replace_pattern")
                     name_match_regex = group_custom_props.get("name_match_regex")
+                    channel_profile_ids = group_custom_props.get("channel_profile_ids")
                 except Exception:
                     force_dummy_epg = False
                     override_group_id = None
                     name_regex_pattern = None
                     name_replace_pattern = None
                     name_match_regex = None
+                    channel_profile_ids = None
 
             # Determine which group to use for created channels
             target_group = channel_group
@@ -961,12 +964,23 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     logger.debug(f"Deleted {deleted_count} auto channels (no streams remaining)")
                 continue
 
+            # Prepare profiles to assign to new channels
+            from apps.channels.models import ChannelProfile, ChannelProfileMembership
+            if channel_profile_ids and isinstance(channel_profile_ids, list) and len(channel_profile_ids) > 0:
+                # Convert all to int (in case they're strings)
+                try:
+                    profile_ids = [int(pid) for pid in channel_profile_ids]
+                except Exception:
+                    profile_ids = []
+                profiles_to_assign = list(ChannelProfile.objects.filter(id__in=profile_ids))
+            else:
+                profiles_to_assign = list(ChannelProfile.objects.all())
+
             # Process each current stream
             current_channel_number = start_number
 
             for stream in current_streams:
                 processed_stream_ids.add(stream.id)
-
                 try:
                     # Parse custom properties for additional info
                     stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
@@ -1037,22 +1051,51 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             channels_updated += 1
                             logger.debug(f"Updated auto channel: {existing_channel.channel_number} - {existing_channel.name}")
 
+                        # Update channel profile memberships for existing channels
+                        current_memberships = set(
+                            ChannelProfileMembership.objects.filter(
+                                channel=existing_channel,
+                                enabled=True
+                            ).values_list('channel_profile_id', flat=True)
+                        )
+
+                        target_profile_ids = set(profile.id for profile in profiles_to_assign)
+
+                        # Only update if memberships have changed
+                        if current_memberships != target_profile_ids:
+                            # Disable all current memberships
+                            ChannelProfileMembership.objects.filter(
+                                channel=existing_channel
+                            ).update(enabled=False)
+
+                            # Enable/create memberships for target profiles
+                            for profile in profiles_to_assign:
+                                membership, created = ChannelProfileMembership.objects.get_or_create(
+                                    channel_profile=profile,
+                                    channel=existing_channel,
+                                    defaults={'enabled': True}
+                                )
+                                if not created and not membership.enabled:
+                                    membership.enabled = True
+                                    membership.save()
+
+                            logger.debug(f"Updated profile memberships for auto channel: {existing_channel.name}")
+
                     else:
                         # Create new channel
                         # Find next available channel number
                         while Channel.objects.filter(channel_number=current_channel_number).exists():
                             current_channel_number += 1
 
-                        # Create the channel with auto-created tracking in the target group
                         channel = Channel.objects.create(
                             channel_number=current_channel_number,
                             name=new_name,
                             tvg_id=stream.tvg_id,
                             tvc_guide_stationid=tvc_guide_stationid,
-                            channel_group=target_group,  # Use target group (could be override)
-                            user_level=0,  # Default user level
-                            auto_created=True,  # Mark as auto-created
-                            auto_created_by=account  # Track which M3U account created it
+                            channel_group=target_group,
+                            user_level=0,
+                            auto_created=True,
+                            auto_created_by=account
                         )
 
                         # Associate the stream with the channel
@@ -1061,6 +1104,14 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             stream=stream,
                             order=0
                         )
+
+                        # Assign to correct profiles
+                        memberships = [
+                            ChannelProfileMembership(channel_profile=profile, channel=channel, enabled=True)
+                            for profile in profiles_to_assign
+                        ]
+                        if memberships:
+                            ChannelProfileMembership.objects.bulk_create(memberships)
 
                         # Try to match EPG data
                         if stream.tvg_id and not force_dummy_epg:
