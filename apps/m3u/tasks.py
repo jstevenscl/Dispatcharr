@@ -931,11 +931,13 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     logger.warning(f"Invalid name_match_regex '{name_match_regex}' for group '{channel_group.name}': {e}. Skipping name filter.")
 
             # --- APPLY CHANNEL SORT ORDER ---
+            streams_is_list = False  # Track if we converted to list
             if channel_sort_order and channel_sort_order != '':
                 if channel_sort_order == 'name':
                     # Use natural sorting for names to handle numbers correctly
                     current_streams = list(current_streams)
                     current_streams.sort(key=lambda stream: natural_sort_key(stream.name))
+                    streams_is_list = True
                 elif channel_sort_order == 'tvg_id':
                     current_streams = current_streams.order_by('tvg_id')
                 elif channel_sort_order == 'updated_at':
@@ -973,7 +975,10 @@ def sync_auto_channels(account_id, scan_start_time=None):
             # Track which streams we've processed
             processed_stream_ids = set()
 
-            if not current_streams.exists():
+            # Check if we have streams - handle both QuerySet and list cases
+            has_streams = len(current_streams) > 0 if streams_is_list else current_streams.exists()
+
+            if not has_streams:
                 logger.debug(f"No streams found in group {channel_group.name}")
                 # Delete all existing auto channels if no streams
                 channels_to_delete = [ch for ch in existing_channel_map.values()]
