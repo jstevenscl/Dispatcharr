@@ -303,8 +303,8 @@ const ChannelStreams = ({ channel, isExpanded }) => {
 
             return (
               <Box>
-                <Text fw={500} size="sm">{stream.name}</Text>
-                <Group gap="xs" mt={2}>
+                <Group gap="xs" align="center">
+                  <Text fw={500} size="sm">{stream.name}</Text>
                   <Badge size="xs" variant="light" color="teal">
                     {accountName}
                   </Badge>
