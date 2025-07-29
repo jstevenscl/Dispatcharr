@@ -1675,4 +1675,18 @@ export default class API {
       errorNotification('Failed to trigger stream rehash', e);
     }
   }
+
+  static async getStreamsByIds(ids) {
+    try {
+      const params = new URLSearchParams();
+      params.append('ids', ids.join(','));
+      const response = await request(
+        `${host}/api/channels/streams/?${params.toString()}`
+      );
+
+      return response.results || response;
+    } catch (e) {
+      errorNotification('Failed to retrieve streams by IDs', e);
+    }
+  }
 }
