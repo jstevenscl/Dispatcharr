@@ -181,7 +181,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
       basic: ['resolution', 'video_codec', 'source_fps', 'audio_codec', 'audio_channels'],
       video: ['video_bitrate', 'pixel_format', 'width', 'height', 'aspect_ratio', 'frame_rate'],
       audio: ['audio_bitrate', 'sample_rate', 'audio_format', 'audio_channels_layout'],
-      technical: ['stream_type', 'container_format', 'duration', 'file_size', 'ffmpeg_output_bitrate'],
+      technical: ['stream_type', 'container_format', 'duration', 'file_size', 'ffmpeg_output_bitrate', 'input_bitrate'],
       other: [] // Will catch anything not categorized above
     };
 
