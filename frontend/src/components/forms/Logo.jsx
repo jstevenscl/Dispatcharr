@@ -21,6 +21,7 @@ import API from '../../api';
 const LogoForm = ({ logo = null, isOpen, onClose }) => {
     const [logoPreview, setLogoPreview] = useState(null);
     const [uploading, setUploading] = useState(false);
+    const [selectedFile, setSelectedFile] = useState(null); // Store selected file
 
     const formik = useFormik({
         initialValues: {
@@ -46,6 +47,37 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
         }),
         onSubmit: async (values, { setSubmitting }) => {
             try {
+                setUploading(true);
+
+                // If we have a selected file, upload it first
+                if (selectedFile) {
+                    try {
+                        const uploadResponse = await API.uploadLogo(selectedFile);
+                        // Use the uploaded file data instead of form values
+                        values.name = uploadResponse.name;
+                        values.url = uploadResponse.url;
+                    } catch (uploadError) {
+                        let errorMessage = 'Failed to upload logo file';
+
+                        if (uploadError.code === 'NETWORK_ERROR' || uploadError.message?.includes('timeout')) {
+                            errorMessage = 'Upload timed out. Please try again.';
+                        } else if (uploadError.status === 413) {
+                            errorMessage = 'File too large. Please choose a smaller file.';
+                        } else if (uploadError.body?.error) {
+                            errorMessage = uploadError.body.error;
+                        }
+
+                        notifications.show({
+                            title: 'Upload Error',
+                            message: errorMessage,
+                            color: 'red',
+                        });
+                        return; // Don't proceed with creation if upload fails
+                    }
+                }
+
+                // Now create or update the logo with the final values
+                // Only proceed if we don't already have a logo from file upload
                 if (logo) {
                     await API.updateLogo(logo.id, values);
                     notifications.show({
@@ -53,11 +85,20 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                         message: 'Logo updated successfully',
                         color: 'green',
                     });
-                } else {
+                } else if (!selectedFile) {
+                    // Only create a new logo entry if we're not uploading a file
+                    // (file upload already created the logo entry)
                     await API.createLogo(values);
                     notifications.show({
                         title: 'Success',
                         message: 'Logo created successfully',
+                        color: 'green',
+                    });
+                } else {
+                    // File was uploaded and logo was already created
+                    notifications.show({
+                        title: 'Success',
+                        message: 'Logo uploaded successfully',
                         color: 'green',
                     });
                 }
@@ -79,6 +120,7 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                 });
             } finally {
                 setSubmitting(false);
+                setUploading(false);
             }
         },
     });
@@ -94,9 +136,11 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
             formik.resetForm();
             setLogoPreview(null);
         }
+        // Clear any selected file when logo changes
+        setSelectedFile(null);
     }, [logo, isOpen]);
 
-    const handleFileUpload = async (files) => {
+    const handleFileSelect = (files) => {
         if (files.length === 0) return;
 
         const file = files[0];
@@ -111,52 +155,52 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
             return;
         }
 
-        setUploading(true);
+        // Store the file for later upload and create preview
+        setSelectedFile(file);
 
-        try {
-            const response = await API.uploadLogo(file);
+        // Generate a local preview URL
+        const previewUrl = URL.createObjectURL(file);
+        setLogoPreview(previewUrl);
 
-            // Update form with uploaded file info
-            formik.setFieldValue('name', response.name);
-            formik.setFieldValue('url', response.url);
-            setLogoPreview(response.cache_url);
-
-            notifications.show({
-                title: 'Success',
-                message: 'Logo uploaded successfully',
-                color: 'green',
-            });
-        } catch (error) {
-            let errorMessage = 'Failed to upload logo';
-
-            // Handle specific timeout errors
-            if (error.code === 'NETWORK_ERROR' || error.message?.includes('timeout')) {
-                errorMessage = 'Upload timed out. Please try again.';
-            } else if (error.status === 413) {
-                errorMessage = 'File too large. Please choose a smaller file.';
-            } else if (error.body?.error) {
-                errorMessage = error.body.error;
-            }
-
-            notifications.show({
-                title: 'Error',
-                message: errorMessage,
-                color: 'red',
-            });
-        } finally {
-            setUploading(false);
+        // Auto-fill the name field if empty
+        if (!formik.values.name) {
+            const nameWithoutExtension = file.name.replace(/\.[^/.]+$/, "");
+            formik.setFieldValue('name', nameWithoutExtension);
         }
+
+        // Set a placeholder URL (will be replaced after upload)
+        formik.setFieldValue('url', 'file://pending-upload');
     };
 
     const handleUrlChange = (event) => {
         const url = event.target.value;
         formik.setFieldValue('url', url);
 
+        // Clear any selected file when manually entering URL
+        if (selectedFile) {
+            setSelectedFile(null);
+            // Revoke the object URL to free memory
+            if (logoPreview && logoPreview.startsWith('blob:')) {
+                URL.revokeObjectURL(logoPreview);
+            }
+        }
+
         // Update preview for remote URLs
         if (url && url.startsWith('http')) {
             setLogoPreview(url);
+        } else if (!url) {
+            setLogoPreview(null);
         }
     };
+
+    // Clean up object URLs when component unmounts or preview changes
+    useEffect(() => {
+        return () => {
+            if (logoPreview && logoPreview.startsWith('blob:')) {
+                URL.revokeObjectURL(logoPreview);
+            }
+        };
+    }, [logoPreview]);
 
     return (
         <Modal
@@ -205,10 +249,11 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                             Upload Logo File
                         </Text>
                         <Dropzone
-                            onDrop={handleFileUpload}
-                            accept={['image/png', 'image/jpeg', 'image/gif', 'image/webp']}
-                            maxFiles={1}
+                            onDrop={handleFileSelect}
                             loading={uploading}
+                            accept={{ "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"] }}
+                            multiple={false}
+                            maxSize={5 * 1024 * 1024} // 5MB limit
                         >
                             <Group justify="center" gap="xl" mih={120} style={{ pointerEvents: 'none' }}>
                                 <Dropzone.Accept>
@@ -223,10 +268,10 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
 
                                 <div>
                                     <Text size="xl" inline>
-                                        Drag image here or click to select
+                                        {selectedFile ? `Selected: ${selectedFile.name}` : 'Drag image here or click to select'}
                                     </Text>
                                     <Text size="sm" color="dimmed" inline mt={7}>
-                                        Supports PNG, JPEG, GIF, WebP files
+                                        {selectedFile ? 'File will be uploaded when you click Create/Update' : 'Supports PNG, JPEG, GIF, WebP, SVG files'}
                                     </Text>
                                 </div>
                             </Group>
@@ -242,6 +287,7 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                         {...formik.getFieldProps('url')}
                         onChange={handleUrlChange}
                         error={formik.touched.url && formik.errors.url}
+                        disabled={!!selectedFile} // Disable when file is selected
                     />
 
                     <TextInput
@@ -250,6 +296,12 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                         {...formik.getFieldProps('name')}
                         error={formik.touched.name && formik.errors.name}
                     />
+
+                    {selectedFile && (
+                        <Text size="sm" color="blue">
+                            Selected file: {selectedFile.name} - will be uploaded when you submit
+                        </Text>
+                    )}
 
                     <Group justify="flex-end" mt="md">
                         <Button variant="light" onClick={onClose}>

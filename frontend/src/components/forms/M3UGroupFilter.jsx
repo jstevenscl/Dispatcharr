@@ -44,6 +44,7 @@ const OptionWithTooltip = forwardRef(({ label, description, ...others }, ref) =>
 
 const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const profiles = useChannelsStore((s) => s.profiles);
   const [groupStates, setGroupStates] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
@@ -312,6 +313,16 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                               label: 'Channel Name Filter (Regex)',
                               description: 'Only include channels whose names match this regex pattern',
                             },
+                            {
+                              value: 'profile_assignment',
+                              label: 'Channel Profile Assignment',
+                              description: 'Specify which channel profiles the auto-synced channels should be added to',
+                            },
+                            {
+                              value: 'channel_sort_order',
+                              label: 'Channel Sort Order',
+                              description: 'Specify the order in which channels are created (name, tvg_id, updated_at)',
+                            },
                           ]}
                           itemComponent={OptionWithTooltip}
                           value={(() => {
@@ -330,6 +341,12 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                             }
                             if (group.custom_properties?.name_match_regex !== undefined) {
                               selectedValues.push('name_match_regex');
+                            }
+                            if (group.custom_properties?.channel_profile_ids !== undefined) {
+                              selectedValues.push('profile_assignment');
+                            }
+                            if (group.custom_properties?.channel_sort_order !== undefined) {
+                              selectedValues.push('channel_sort_order');
                             }
                             return selectedValues;
                           })()}
@@ -380,6 +397,23 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                                     delete newCustomProps.name_match_regex;
                                   }
 
+                                  // Handle profile_assignment
+                                  if (selectedOptions.includes('profile_assignment')) {
+                                    if (newCustomProps.channel_profile_ids === undefined) {
+                                      newCustomProps.channel_profile_ids = [];
+                                    }
+                                  } else {
+                                    delete newCustomProps.channel_profile_ids;
+                                  }
+                                  // Handle channel_sort_order
+                                  if (selectedOptions.includes('channel_sort_order')) {
+                                    if (newCustomProps.channel_sort_order === undefined) {
+                                      newCustomProps.channel_sort_order = '';
+                                    }
+                                  } else {
+                                    delete newCustomProps.channel_sort_order;
+                                  }
+
                                   return {
                                     ...state,
                                     custom_properties: newCustomProps,
@@ -392,6 +426,76 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                           clearable
                           size="xs"
                         />
+                        {/* Show only channel_sort_order if selected */}
+                        {group.custom_properties?.channel_sort_order !== undefined && (
+                          <Select
+                            label="Channel Sort Order"
+                            placeholder="Select sort order..."
+                            value={group.custom_properties?.channel_sort_order || ''}
+                            onChange={(value) => {
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (state.channel_group === group.channel_group) {
+                                    return {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        channel_sort_order: value || '',
+                                      },
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            data={[
+                              { value: '', label: 'Provider Order (Default)' },
+                              { value: 'name', label: 'Name' },
+                              { value: 'tvg_id', label: 'TVG ID' },
+                              { value: 'updated_at', label: 'Updated At' },
+                            ]}
+                            clearable
+                            searchable
+                            size="xs"
+                          />
+                        )}
+
+                        {/* Show profile selection only if profile_assignment is selected */}
+                        {group.custom_properties?.channel_profile_ids !== undefined && (
+                          <Tooltip
+                            label="Select which channel profiles the auto-synced channels should be added to. Leave empty to add to all profiles."
+                            withArrow
+                          >
+                            <MultiSelect
+                              label="Channel Profiles"
+                              placeholder="Select profiles..."
+                              value={group.custom_properties?.channel_profile_ids || []}
+                              onChange={(value) => {
+                                setGroupStates(
+                                  groupStates.map((state) => {
+                                    if (state.channel_group === group.channel_group) {
+                                      return {
+                                        ...state,
+                                        custom_properties: {
+                                          ...state.custom_properties,
+                                          channel_profile_ids: value || [],
+                                        },
+                                      };
+                                    }
+                                    return state;
+                                  })
+                                );
+                              }}
+                              data={Object.values(profiles).map((profile) => ({
+                                value: profile.id.toString(),
+                                label: profile.name,
+                              }))}
+                              clearable
+                              searchable
+                              size="xs"
+                            />
+                          </Tooltip>
+                        )}
 
                         {/* Show group select only if group_override is selected */}
                         {group.custom_properties?.group_override !== undefined && (

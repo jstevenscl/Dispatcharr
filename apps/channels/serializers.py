@@ -38,6 +38,17 @@ class LogoSerializer(serializers.ModelSerializer):
         
         return value
 
+    def create(self, validated_data):
+        """Handle logo creation with proper URL validation"""
+        return Logo.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        """Handle logo updates"""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
     def get_cache_url(self, obj):
         # return f"/api/channels/logos/{obj.id}/cache/"
         request = self.context.get("request")

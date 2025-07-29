@@ -40,8 +40,7 @@ const useChannelsStore = create((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
-      console.error('Failed to fetch channels:', error);
-      set({ error: 'Failed to load channels.', isLoading: false });
+      set({ error: error.message, isLoading: false });
     }
   },
 
@@ -115,7 +114,6 @@ const useChannelsStore = create((set, get) => ({
   addChannels: (newChannels) =>
     set((state) => {
       const channelsByUUID = {};
-      const logos = {};
       const profileChannels = new Set();
 
       const channelsByID = newChannels.reduce((acc, channel) => {
@@ -126,14 +124,8 @@ const useChannelsStore = create((set, get) => ({
         return acc;
       }, {});
 
-      const newProfiles = { ...defaultProfiles };
-      Object.entries(state.profiles).forEach(([id, profile]) => {
-        newProfiles[id] = {
-          ...profile,
-          channels: new Set([...profile.channels, ...profileChannels]),
-        };
-      });
-
+      // Don't automatically add to all profiles anymore - let the backend handle profile assignments
+      // Just maintain the existing profile structure
       return {
         channels: {
           ...state.channels,
@@ -143,7 +135,6 @@ const useChannelsStore = create((set, get) => ({
           ...state.channelsByUUID,
           ...channelsByUUID,
         },
-        profiles: newProfiles,
       };
     }),
 

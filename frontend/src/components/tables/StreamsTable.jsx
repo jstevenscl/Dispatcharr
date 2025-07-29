@@ -62,10 +62,14 @@ const StreamRowActions = ({
   const fetchLogos = useChannelsStore((s) => s.fetchLogos);
 
   const createChannelFromStream = async () => {
+    const selectedChannelProfileId = useChannelsStore.getState().selectedProfileId;
+
     await API.createChannelFromStream({
       name: row.original.name,
       channel_number: null,
       stream_id: row.original.id,
+      // Only pass channel_profile_ids if a specific profile is selected (not "All")
+      ...(selectedChannelProfileId !== '0' && { channel_profile_ids: selectedChannelProfileId }),
     });
     await API.requeryChannels();
     fetchLogos();
@@ -403,14 +407,34 @@ const StreamsTable = ({ }) => {
   // Bulk creation: create channels from selected streams in one API call
   const createChannelsFromStreams = async () => {
     setIsLoading(true);
-    await API.createChannelsFromStreams(
-      selectedStreamIds.map((stream_id) => ({
-        stream_id,
-      }))
-    );
-    await API.requeryChannels();
-    fetchLogos();
-    setIsLoading(false);
+    try {
+      const selectedChannelProfileId = useChannelsStore.getState().selectedProfileId;
+
+      const streamData = selectedStreamIds.map(streamId => {
+        const stream = data.find(s => s.id === streamId);
+        return {
+          stream_id: streamId,
+          name: stream?.name || `Stream ${streamId}`,
+          ...(selectedChannelProfileId !== '0' && { channel_profile_ids: selectedChannelProfileId }),
+        };
+      });
+
+      await API.createChannelsFromStreams(streamData);
+      await API.requeryChannels();
+
+      // Refresh channel profiles to update the membership information
+      await useChannelsStore.getState().fetchChannelProfiles();
+
+      fetchLogos();
+
+      // Clear selection and refresh data
+      setSelectedStreamIds([]);
+      await fetchData();
+    } catch (error) {
+      console.error('Error creating channels from streams:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const editStream = async (stream = null) => {

@@ -62,15 +62,6 @@ def refresh_epg_programs(sender, instance, created, **kwargs):
         logger.info(f"New channel {instance.id} ({instance.name}) created with EPG data, refreshing program data")
         parse_programs_for_tvg_id.delay(instance.epg_data.id)
 
-@receiver(post_save, sender=Channel)
-def add_new_channel_to_groups(sender, instance, created, **kwargs):
-    if created:
-        profiles = ChannelProfile.objects.all()
-        ChannelProfileMembership.objects.bulk_create([
-            ChannelProfileMembership(channel_profile=profile, channel=instance)
-            for profile in profiles
-        ])
-
 @receiver(post_save, sender=ChannelProfile)
 def create_profile_memberships(sender, instance, created, **kwargs):
     if created:

@@ -18,7 +18,7 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 import time
 import json
-from core.utils import RedisClient, acquire_task_lock, release_task_lock
+from core.utils import RedisClient, acquire_task_lock, release_task_lock, natural_sort_key
 from core.models import CoreSettings, UserAgent
 from asgiref.sync import async_to_sync
 from core.xtream_codes import Client as XCClient
@@ -882,6 +882,8 @@ def sync_auto_channels(account_id, scan_start_time=None):
             name_regex_pattern = None
             name_replace_pattern = None
             name_match_regex = None
+            channel_profile_ids = None
+            channel_sort_order = None
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
@@ -890,12 +892,16 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     name_regex_pattern = group_custom_props.get("name_regex_pattern")
                     name_replace_pattern = group_custom_props.get("name_replace_pattern")
                     name_match_regex = group_custom_props.get("name_match_regex")
+                    channel_profile_ids = group_custom_props.get("channel_profile_ids")
+                    channel_sort_order = group_custom_props.get("channel_sort_order")
                 except Exception:
                     force_dummy_epg = False
                     override_group_id = None
                     name_regex_pattern = None
                     name_replace_pattern = None
                     name_match_regex = None
+                    channel_profile_ids = None
+                    channel_sort_order = None
 
             # Determine which group to use for created channels
             target_group = channel_group
@@ -913,17 +919,35 @@ def sync_auto_channels(account_id, scan_start_time=None):
                 m3u_account=account,
                 channel_group=channel_group,
                 last_seen__gte=scan_start_time
-            ).order_by('name')
+            )
 
             # --- FILTER STREAMS BY NAME MATCH REGEX IF SPECIFIED ---
             if name_match_regex:
                 try:
-                    compiled_name_match_regex = re.compile(name_match_regex, re.IGNORECASE)
                     current_streams = current_streams.filter(
                         name__iregex=name_match_regex
                     )
                 except re.error as e:
                     logger.warning(f"Invalid name_match_regex '{name_match_regex}' for group '{channel_group.name}': {e}. Skipping name filter.")
+
+            # --- APPLY CHANNEL SORT ORDER ---
+            streams_is_list = False  # Track if we converted to list
+            if channel_sort_order and channel_sort_order != '':
+                if channel_sort_order == 'name':
+                    # Use natural sorting for names to handle numbers correctly
+                    current_streams = list(current_streams)
+                    current_streams.sort(key=lambda stream: natural_sort_key(stream.name))
+                    streams_is_list = True
+                elif channel_sort_order == 'tvg_id':
+                    current_streams = current_streams.order_by('tvg_id')
+                elif channel_sort_order == 'updated_at':
+                    current_streams = current_streams.order_by('updated_at')
+                else:
+                    logger.warning(f"Unknown channel_sort_order '{channel_sort_order}' for group '{channel_group.name}'. Using provider order.")
+                    current_streams = current_streams.order_by('id')
+            else:
+                current_streams = current_streams.order_by('id')
+            # If channel_sort_order is empty or None, use provider order (no additional sorting)
 
             # Get existing auto-created channels for this account (regardless of current group)
             # We'll find them by their stream associations instead of just group location
@@ -951,7 +975,10 @@ def sync_auto_channels(account_id, scan_start_time=None):
             # Track which streams we've processed
             processed_stream_ids = set()
 
-            if not current_streams.exists():
+            # Check if we have streams - handle both QuerySet and list cases
+            has_streams = len(current_streams) > 0 if streams_is_list else current_streams.exists()
+
+            if not has_streams:
                 logger.debug(f"No streams found in group {channel_group.name}")
                 # Delete all existing auto channels if no streams
                 channels_to_delete = [ch for ch in existing_channel_map.values()]
@@ -962,12 +989,63 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     logger.debug(f"Deleted {deleted_count} auto channels (no streams remaining)")
                 continue
 
+            # Prepare profiles to assign to new channels
+            from apps.channels.models import ChannelProfile, ChannelProfileMembership
+            if channel_profile_ids and isinstance(channel_profile_ids, list) and len(channel_profile_ids) > 0:
+                # Convert all to int (in case they're strings)
+                try:
+                    profile_ids = [int(pid) for pid in channel_profile_ids]
+                except Exception:
+                    profile_ids = []
+                profiles_to_assign = list(ChannelProfile.objects.filter(id__in=profile_ids))
+            else:
+                profiles_to_assign = list(ChannelProfile.objects.all())
+
             # Process each current stream
+            current_channel_number = start_number
+
+            # Always renumber all existing channels to match current sort order
+            # This ensures channels are always in the correct sequence
+            channels_to_renumber = []
+            temp_channel_number = start_number
+
+            # Get all channel numbers that are already in use by other channels (not auto-created by this account)
+            used_numbers = set(Channel.objects.exclude(
+                auto_created=True,
+                auto_created_by=account
+            ).values_list('channel_number', flat=True))
+
+            for stream in current_streams:
+                if stream.id in existing_channel_map:
+                    channel = existing_channel_map[stream.id]
+
+                    # Find next available number starting from temp_channel_number
+                    target_number = temp_channel_number
+                    while target_number in used_numbers:
+                        target_number += 1
+
+                    # Add this number to used_numbers so we don't reuse it in this batch
+                    used_numbers.add(target_number)
+
+                    if channel.channel_number != target_number:
+                        channel.channel_number = target_number
+                        channels_to_renumber.append(channel)
+                        logger.debug(f"Will renumber channel '{channel.name}' to {target_number}")
+
+                    temp_channel_number += 1.0
+                    if temp_channel_number % 1 != 0:  # Has decimal
+                        temp_channel_number = int(temp_channel_number) + 1.0
+
+            # Bulk update channel numbers if any need renumbering
+            if channels_to_renumber:
+                Channel.objects.bulk_update(channels_to_renumber, ['channel_number'])
+                logger.info(f"Renumbered {len(channels_to_renumber)} channels to maintain sort order")
+
+            # Reset channel number counter for processing new channels
             current_channel_number = start_number
 
             for stream in current_streams:
                 processed_stream_ids.add(stream.id)
-
                 try:
                     # Parse custom properties for additional info
                     stream_custom_props = json.loads(stream.custom_properties) if stream.custom_properties else {}
@@ -989,7 +1067,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     existing_channel = existing_channel_map.get(stream.id)
 
                     if existing_channel:
-                        # Update existing channel if needed
+                        # Update existing channel if needed (channel number already handled above)
                         channel_updated = False
 
                         # Use new_name instead of stream.name
@@ -1038,22 +1116,55 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             channels_updated += 1
                             logger.debug(f"Updated auto channel: {existing_channel.channel_number} - {existing_channel.name}")
 
+                        # Update channel profile memberships for existing channels
+                        current_memberships = set(
+                            ChannelProfileMembership.objects.filter(
+                                channel=existing_channel,
+                                enabled=True
+                            ).values_list('channel_profile_id', flat=True)
+                        )
+
+                        target_profile_ids = set(profile.id for profile in profiles_to_assign)
+
+                        # Only update if memberships have changed
+                        if current_memberships != target_profile_ids:
+                            # Disable all current memberships
+                            ChannelProfileMembership.objects.filter(
+                                channel=existing_channel
+                            ).update(enabled=False)
+
+                            # Enable/create memberships for target profiles
+                            for profile in profiles_to_assign:
+                                membership, created = ChannelProfileMembership.objects.get_or_create(
+                                    channel_profile=profile,
+                                    channel=existing_channel,
+                                    defaults={'enabled': True}
+                                )
+                                if not created and not membership.enabled:
+                                    membership.enabled = True
+                                    membership.save()
+
+                            logger.debug(f"Updated profile memberships for auto channel: {existing_channel.name}")
+
                     else:
                         # Create new channel
                         # Find next available channel number
-                        while Channel.objects.filter(channel_number=current_channel_number).exists():
-                            current_channel_number += 0.1
+                        target_number = current_channel_number
+                        while target_number in used_numbers:
+                            target_number += 1
 
-                        # Create the channel with auto-created tracking in the target group
+                        # Add this number to used_numbers
+                        used_numbers.add(target_number)
+
                         channel = Channel.objects.create(
-                            channel_number=current_channel_number,
+                            channel_number=target_number,
                             name=new_name,
                             tvg_id=stream.tvg_id,
                             tvc_guide_stationid=tvc_guide_stationid,
-                            channel_group=target_group,  # Use target group (could be override)
-                            user_level=0,  # Default user level
-                            auto_created=True,  # Mark as auto-created
-                            auto_created_by=account  # Track which M3U account created it
+                            channel_group=target_group,
+                            user_level=0,
+                            auto_created=True,
+                            auto_created_by=account
                         )
 
                         # Associate the stream with the channel
@@ -1062,6 +1173,14 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             stream=stream,
                             order=0
                         )
+
+                        # Assign to correct profiles
+                        memberships = [
+                            ChannelProfileMembership(channel_profile=profile, channel=channel, enabled=True)
+                            for profile in profiles_to_assign
+                        ]
+                        if memberships:
+                            ChannelProfileMembership.objects.bulk_create(memberships)
 
                         # Try to match EPG data
                         if stream.tvg_id and not force_dummy_epg:
@@ -1084,11 +1203,12 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             channel.save(update_fields=['logo'])
 
                         channels_created += 1
-                        current_channel_number += 1.0
-                        if current_channel_number % 1 != 0:  # Has decimal
-                            current_channel_number = int(current_channel_number) + 1.0
-
                         logger.debug(f"Created auto channel: {channel.channel_number} - {channel.name}")
+
+                    # Increment channel number for next iteration
+                    current_channel_number += 1.0
+                    if current_channel_number % 1 != 0:  # Has decimal
+                        current_channel_number = int(current_channel_number) + 1.0
 
                 except Exception as e:
                     logger.error(f"Error processing auto channel for stream {stream.name}: {str(e)}")
