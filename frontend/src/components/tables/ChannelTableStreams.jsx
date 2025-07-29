@@ -367,7 +367,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
                     )}
 
                     {/* Audio Information */}
-                    {(stream.stream_stats.audio_codec || stream.stream_stats.audio_channels || stream.stream_stats.audio_bitrate) && (
+                    {(stream.stream_stats.audio_codec || stream.stream_stats.audio_channels) && (
                       <>
                         <Text size="xs" c="dimmed" fw={500}>Audio:</Text>
                         {stream.stream_stats.audio_channels && (
@@ -378,11 +378,6 @@ const ChannelStreams = ({ channel, isExpanded }) => {
                         {stream.stream_stats.audio_codec && (
                           <Badge size="xs" variant="light" color="pink">
                             {stream.stream_stats.audio_codec.toUpperCase()}
-                          </Badge>
-                        )}
-                        {stream.stream_stats.audio_bitrate && (
-                          <Badge size="xs" variant="light" color="violet" style={{ textTransform: 'none' }}>
-                            {stream.stream_stats.audio_bitrate} kbps
                           </Badge>
                         )}
                       </>
