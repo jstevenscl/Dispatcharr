@@ -8,7 +8,11 @@ import {
   Text,
   useMantineTheme,
   Center,
+  Badge,
+  Group,
+  Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   useReactTable,
   getCoreRowModel,
@@ -141,6 +145,19 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     await API.requeryChannels();
   };
 
+  // Create M3U account map for quick lookup
+  const m3uAccountsMap = useMemo(() => {
+    const map = {};
+    if (playlists && Array.isArray(playlists)) {
+      playlists.forEach((account) => {
+        if (account.id) {
+          map[account.id] = account.name;
+        }
+      });
+    }
+    return map;
+  }, [playlists]);
+
   const table = useReactTable({
     columns: useMemo(
       () => [
@@ -152,14 +169,114 @@ const ChannelStreams = ({ channel, isExpanded }) => {
         },
         {
           id: 'name',
-          header: 'Name',
+          header: 'Stream Info',
           accessorKey: 'name',
-        },
-        {
-          id: 'm3u',
-          header: 'M3U',
-          accessorFn: (row) =>
-            playlists.find((playlist) => playlist.id === row.m3u_account)?.name,
+          cell: ({ row }) => {
+            const stream = row.original;
+            const playlistName = playlists[stream.m3u_account]?.name || 'Unknown';
+            const accountName = m3uAccountsMap[stream.m3u_account] || playlistName;
+
+            return (
+              <Box>
+                <Text fw={500} size="sm">{stream.name}</Text>
+                <Group gap="xs" mt={2}>
+                  <Badge size="xs" variant="light" color="teal">
+                    {accountName}
+                  </Badge>
+                  {stream.quality && (
+                    <Badge size="xs" variant="light" color="gray">
+                      {stream.quality}
+                    </Badge>
+                  )}
+                  {stream.url && (
+                    <Tooltip label={stream.url}>
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color="indigo"
+                        style={{ cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(stream.url);
+                          notifications.show({
+                            title: 'URL Copied',
+                            message: 'Stream URL copied to clipboard',
+                            color: 'green',
+                          });
+                        }}
+                      >
+                        URL
+                      </Badge>
+                    </Tooltip>
+                  )}
+                </Group>
+                {stream.stream_stats && (
+                  <Group gap="xs" mt={4} align="center">
+                    {/* Video Information */}
+                    {(stream.stream_stats.video_codec || stream.stream_stats.resolution || stream.stream_stats.video_bitrate || stream.stream_stats.source_fps) && (
+                      <>
+                        <Text size="xs" c="dimmed" fw={500}>Video:</Text>
+                        {stream.stream_stats.resolution && (
+                          <Badge size="xs" variant="light" color="red">
+                            {stream.stream_stats.resolution}
+                          </Badge>
+                        )}
+                        {stream.stream_stats.video_bitrate && (
+                          <Badge size="xs" variant="light" color="orange" style={{ textTransform: 'none' }}>
+                            {stream.stream_stats.video_bitrate} KbPS
+                          </Badge>
+                        )}
+                        {stream.stream_stats.source_fps && (
+                          <Badge size="xs" variant="light" color="orange">
+                            {stream.stream_stats.source_fps} FPS
+                          </Badge>
+                        )}
+                        {stream.stream_stats.video_codec && (
+                          <Badge size="xs" variant="light" color="blue">
+                            {stream.stream_stats.video_codec.toUpperCase()}
+                          </Badge>
+                        )}
+                      </>
+                    )}
+
+                    {/* Audio Information */}
+                    {(stream.stream_stats.audio_codec || stream.stream_stats.audio_channels || stream.stream_stats.audio_bitrate) && (
+                      <>
+                        <Text size="xs" c="dimmed" fw={500}>Audio:</Text>
+                        {stream.stream_stats.audio_channels && (
+                          <Badge size="xs" variant="light" color="pink">
+                            {stream.stream_stats.audio_channels}
+                          </Badge>
+                        )}
+                        {stream.stream_stats.audio_codec && (
+                          <Badge size="xs" variant="light" color="pink">
+                            {stream.stream_stats.audio_codec.toUpperCase()}
+                          </Badge>
+                        )}
+                        {stream.stream_stats.audio_bitrate && (
+                          <Badge size="xs" variant="light" color="violet" style={{ textTransform: 'none' }}>
+                            {stream.stream_stats.audio_bitrate} KbPS
+                          </Badge>
+                        )}
+                      </>
+                    )}
+
+                    {/* Output Bitrate */}
+                    {(stream.stream_stats.ffmpeg_output_bitrate) && (
+                      <>
+                        <Text size="xs" c="dimmed" fw={500}>Output Bitrate:</Text>
+                        {stream.stream_stats.ffmpeg_output_bitrate && (
+                          <Badge size="xs" variant="light" color="orange" style={{ textTransform: 'none' }}>
+                            {stream.stream_stats.ffmpeg_output_bitrate} KbPS
+                          </Badge>
+                        )}
+                      </>
+                    )}
+                  </Group>
+                )}
+              </Box>
+            );
+          },
         },
         {
           id: 'actions',
@@ -178,7 +295,7 @@ const ChannelStreams = ({ channel, isExpanded }) => {
           ),
         },
       ],
-      [data, playlists]
+      [data, playlists, m3uAccountsMap]
     ),
     data,
     state: {
@@ -291,5 +408,6 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     </Box>
   );
 };
+
 
 export default ChannelStreams;

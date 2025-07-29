@@ -102,10 +102,14 @@ const StreamRowActions = ({
       'ID:',
       row.original.id,
       'Hash:',
-      row.original.stream_hash
+      row.original.stream_hash,
+      'Quality:',
+      row.original.quality,
+      'Stats:',
+      row.original.stream_stats
     );
     handleWatchStream(row.original.stream_hash);
-  }, [row.original.id]); // Add proper dependency to ensure correct stream
+  }, [row.original, handleWatchStream]); // Add proper dependencies to ensure correct stream
 
   const iconSize =
     tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
