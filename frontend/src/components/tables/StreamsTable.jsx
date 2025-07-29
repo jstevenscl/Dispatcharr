@@ -102,10 +102,10 @@ const StreamRowActions = ({
       'ID:',
       row.original.id,
       'Hash:',
-      row.original.stream_hash
+      row.original.stream_hash,
     );
     handleWatchStream(row.original.stream_hash);
-  }, [row.original.id]); // Add proper dependency to ensure correct stream
+  }, [row.original, handleWatchStream]); // Add proper dependencies to ensure correct stream
 
   const iconSize =
     tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
@@ -410,8 +410,16 @@ const StreamsTable = ({ }) => {
     try {
       const selectedChannelProfileId = useChannelsStore.getState().selectedProfileId;
 
+      // Try to fetch the actual stream data for selected streams
+      let streamsData = [];
+      try {
+        streamsData = await API.getStreamsByIds(selectedStreamIds);
+      } catch (error) {
+        console.warn('Could not fetch stream details, using IDs only:', error);
+      }
+
       const streamData = selectedStreamIds.map(streamId => {
-        const stream = data.find(s => s.id === streamId);
+        const stream = streamsData.find(s => s.id === streamId);
         return {
           stream_id: streamId,
           name: stream?.name || `Stream ${streamId}`,

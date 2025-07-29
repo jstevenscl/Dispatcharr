@@ -587,9 +587,9 @@ class StreamManager:
 
                 from .services.channel_service import ChannelService
                 if "video:" in content_lower:
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video")
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "video", self.current_stream_id)
                 elif "audio:" in content_lower:
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio")
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "audio", self.current_stream_id)
 
             # Determine log level based on content
             if any(keyword in content_lower for keyword in ['error', 'failed', 'cannot', 'invalid', 'corrupt']):
@@ -605,7 +605,7 @@ class StreamManager:
                 if content.startswith('Input #0'):
                     # If it's input 0, parse stream info
                     from .services.channel_service import ChannelService
-                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "input")
+                    ChannelService.parse_and_store_stream_info(self.channel_id, content, "input", self.current_stream_id)
             else:
                 # Everything else at debug level
                 logger.debug(f"FFmpeg stderr for channel {self.channel_id}: {content}")
@@ -648,6 +648,14 @@ class StreamManager:
             # Store in Redis if we have valid data
             if any(x is not None for x in [ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_output_bitrate]):
                 self._update_ffmpeg_stats_in_redis(ffmpeg_speed, ffmpeg_fps, actual_fps, ffmpeg_output_bitrate)
+
+                # Also save ffmpeg_output_bitrate to database if we have stream_id
+                if ffmpeg_output_bitrate is not None and self.current_stream_id:
+                    from .services.channel_service import ChannelService
+                    ChannelService._update_stream_stats_in_db(
+                        self.current_stream_id,
+                        ffmpeg_output_bitrate=ffmpeg_output_bitrate
+                    )
 
             # Fix the f-string formatting
             actual_fps_str = f"{actual_fps:.1f}" if actual_fps is not None else "N/A"

@@ -524,24 +524,12 @@ const ChannelsTable = ({ }) => {
   };
 
   const handleCopy = async (textToCopy, ref) => {
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      notifications.show({
-        title: 'Copied!',
-        // style: { width: '200px', left: '200px' },
-      });
-    } catch (err) {
-      const inputElement = ref.current; // Get the actual input
-
-      if (inputElement) {
-        inputElement.focus();
-        inputElement.select();
-
-        // For older browsers
-        document.execCommand('copy');
-        notifications.show({ title: 'Copied!' });
-      }
-    }
+    const success = await copyToClipboard(textToCopy);
+    notifications.show({
+      title: success ? 'Copied!' : 'Copy Failed',
+      message: success ? undefined : 'Failed to copy to clipboard',
+      color: success ? 'green' : 'red',
+    });
   };
   // Build URLs with parameters
   const buildM3UUrl = () => {
@@ -564,25 +552,30 @@ const ChannelsTable = ({ }) => {
     return params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
   };
   // Example copy URLs
-  const copyM3UUrl = () => {
-    copyToClipboard(buildM3UUrl());
+  const copyM3UUrl = async () => {
+    const success = await copyToClipboard(buildM3UUrl());
     notifications.show({
-      title: 'M3U URL Copied!',
-      message: 'The M3U URL has been copied to your clipboard.',
+      title: success ? 'M3U URL Copied!' : 'Copy Failed',
+      message: success ? 'The M3U URL has been copied to your clipboard.' : 'Failed to copy M3U URL to clipboard',
+      color: success ? 'green' : 'red',
     });
   };
-  const copyEPGUrl = () => {
-    copyToClipboard(buildEPGUrl());
+
+  const copyEPGUrl = async () => {
+    const success = await copyToClipboard(buildEPGUrl());
     notifications.show({
-      title: 'EPG URL Copied!',
-      message: 'The EPG URL has been copied to your clipboard.',
+      title: success ? 'EPG URL Copied!' : 'Copy Failed',
+      message: success ? 'The EPG URL has been copied to your clipboard.' : 'Failed to copy EPG URL to clipboard',
+      color: success ? 'green' : 'red',
     });
   };
-  const copyHDHRUrl = () => {
-    copyToClipboard(hdhrUrl);
+
+  const copyHDHRUrl = async () => {
+    const success = await copyToClipboard(hdhrUrl);
     notifications.show({
-      title: 'HDHR URL Copied!',
-      message: 'The HDHR URL has been copied to your clipboard.',
+      title: success ? 'HDHR URL Copied!' : 'Copy Failed',
+      message: success ? 'The HDHR URL has been copied to your clipboard.' : 'Failed to copy HDHR URL to clipboard',
+      color: success ? 'green' : 'red',
     });
   };
 
