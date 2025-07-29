@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import API from '../../api';
+import { copyToClipboard } from '../../utils';
 import { GripHorizontal, SquareMinus } from 'lucide-react';
 import {
   Box,
@@ -195,13 +196,13 @@ const ChannelStreams = ({ channel, isExpanded }) => {
                         variant="light"
                         color="indigo"
                         style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          navigator.clipboard.writeText(stream.url);
+                          const success = await copyToClipboard(stream.url);
                           notifications.show({
-                            title: 'URL Copied',
-                            message: 'Stream URL copied to clipboard',
-                            color: 'green',
+                            title: success ? 'URL Copied' : 'Copy Failed',
+                            message: success ? 'Stream URL copied to clipboard' : 'Failed to copy URL to clipboard',
+                            color: success ? 'green' : 'red',
                           });
                         }}
                       >
