@@ -104,6 +104,8 @@ class StreamSerializer(serializers.ModelSerializer):
             "is_custom",
             "channel_group",
             "stream_hash",
+            "stream_stats",
+            "stream_stats_updated_at",
         ]
 
     def get_fields(self):
