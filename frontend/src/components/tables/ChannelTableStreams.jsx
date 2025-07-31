@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import API from '../../api';
 import { copyToClipboard } from '../../utils';
-import { GripHorizontal, SquareMinus, ChevronDown, ChevronRight } from 'lucide-react';
+import { GripHorizontal, SquareMinus, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import {
   Box,
   ActionIcon,
@@ -14,6 +14,7 @@ import {
   Tooltip,
   Collapse,
   Button,
+
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -24,6 +25,8 @@ import {
 import './table.css';
 import useChannelsTableStore from '../../store/channelsTable';
 import usePlaylistsStore from '../../store/playlists';
+import useVideoStore from '../../store/useVideoStore';
+import useSettingsStore from '../../store/settings';
 import {
   DndContext,
   KeyboardSensor,
@@ -130,6 +133,15 @@ const ChannelStreams = ({ channel, isExpanded }) => {
   );
   const playlists = usePlaylistsStore((s) => s.playlists);
   const authUser = useAuthStore((s) => s.user);
+  const showVideo = useVideoStore((s) => s.showVideo);
+  const env_mode = useSettingsStore((s) => s.environment.env_mode);
+  function handleWatchStream(streamHash) {
+    let vidUrl = `/proxy/ts/stream/${streamHash}`;
+    if (env_mode === 'dev') {
+      vidUrl = `${window.location.protocol}//${window.location.hostname}:5656${vidUrl}`;
+    }
+    showVideo(vidUrl);
+  }
 
   const [data, setData] = useState(channelStreams || []);
 
@@ -314,25 +326,38 @@ const ChannelStreams = ({ channel, isExpanded }) => {
                     </Badge>
                   )}
                   {stream.url && (
-                    <Tooltip label={stream.url}>
-                      <Badge
-                        size="xs"
-                        variant="light"
-                        color="indigo"
-                        style={{ cursor: 'pointer' }}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          const success = await copyToClipboard(stream.url);
-                          notifications.show({
-                            title: success ? 'URL Copied' : 'Copy Failed',
-                            message: success ? 'Stream URL copied to clipboard' : 'Failed to copy URL to clipboard',
-                            color: success ? 'green' : 'red',
-                          });
-                        }}
-                      >
-                        URL
-                      </Badge>
-                    </Tooltip>
+                    <>
+                      <Tooltip label={stream.url}>
+                        <Badge
+                          size="xs"
+                          variant="light"
+                          color="indigo"
+                          style={{ cursor: 'pointer' }}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const success = await copyToClipboard(stream.url);
+                            notifications.show({
+                              title: success ? 'URL Copied' : 'Copy Failed',
+                              message: success ? 'Stream URL copied to clipboard' : 'Failed to copy URL to clipboard',
+                              color: success ? 'green' : 'red',
+                            });
+                          }}
+                        >
+                          URL
+                        </Badge>
+                      </Tooltip>
+                      <Tooltip label="Preview Stream">
+                        <ActionIcon
+                          size="xs"
+                          color="blue"
+                          variant="light"
+                          onClick={() => handleWatchStream(stream.stream_hash || stream.id)}
+                          style={{ marginLeft: 2 }}
+                        >
+                          <Eye size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </>
                   )}
                 </Group>
 
@@ -562,6 +587,5 @@ const ChannelStreams = ({ channel, isExpanded }) => {
     </Box>
   );
 };
-
 
 export default ChannelStreams;
