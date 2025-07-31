@@ -1508,9 +1508,17 @@ class UpdateChannelMembershipAPIView(APIView):
         """Enable or disable a channel for a specific group"""
         channel_profile = get_object_or_404(ChannelProfile, id=profile_id)
         channel = get_object_or_404(Channel, id=channel_id)
-        membership = get_object_or_404(
-            ChannelProfileMembership, channel_profile=channel_profile, channel=channel
-        )
+        try:
+            membership = ChannelProfileMembership.objects.get(
+                channel_profile=channel_profile, channel=channel
+            )
+        except ChannelProfileMembership.DoesNotExist:
+            # Create the membership if it does not exist (for custom channels)
+            membership = ChannelProfileMembership.objects.create(
+                channel_profile=channel_profile,
+                channel=channel,
+                enabled=False  # Default to False, will be updated below
+            )
 
         serializer = ChannelProfileMembershipSerializer(
             membership, data=request.data, partial=True
