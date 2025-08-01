@@ -1,3 +1,4 @@
+from core.utils import validate_flexible_url
 from rest_framework import serializers
 from .models import EPGSource, EPGData, ProgramData
 from apps.channels.models import Channel
@@ -5,6 +6,12 @@ from apps.channels.models import Channel
 class EPGSourceSerializer(serializers.ModelSerializer):
     epg_data_ids = serializers.SerializerMethodField()
     read_only_fields = ['created_at', 'updated_at']
+    url = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[validate_flexible_url]
+    )
 
     class Meta:
         model = EPGSource

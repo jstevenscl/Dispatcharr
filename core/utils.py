@@ -9,6 +9,8 @@ from redis.exceptions import ConnectionError, TimeoutError
 from django.core.cache import cache
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
 import gc
 
 logger = logging.getLogger(__name__)
@@ -354,3 +356,33 @@ def is_protected_path(file_path):
             return True
 
     return False
+
+def validate_flexible_url(value):
+    """
+    Custom URL validator that accepts URLs with hostnames that aren't FQDNs.
+    This allows URLs like "http://hostname/" which
+    Django's standard URLValidator rejects.
+    """
+    if not value:
+        return  # Allow empty values since the field is nullable
+
+    # Create a standard Django URL validator
+    url_validator = URLValidator()
+
+    try:
+        # First try the standard validation
+        url_validator(value)
+    except ValidationError as e:
+        # If standard validation fails, check if it's a non-FQDN hostname
+        import re
+
+        # More flexible pattern for non-FQDN hostnames with paths
+        # Matches: http://hostname, http://hostname/, http://hostname:port/path/to/file.xml
+        non_fqdn_pattern = r'^https?://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\:[0-9]+)?(/[^\s]*)?$'
+        non_fqdn_match = re.match(non_fqdn_pattern, value)
+
+        if non_fqdn_match:
+            return  # Accept non-FQDN hostnames
+
+        # If it doesn't match our flexible patterns, raise the original error
+        raise ValidationError("Enter a valid URL.")

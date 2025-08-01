@@ -1,3 +1,4 @@
+from core.utils import validate_flexible_url
 from rest_framework import serializers
 from rest_framework.response import Response
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
@@ -75,6 +76,12 @@ class M3UAccountSerializer(serializers.ModelSerializer):
     # channel_groups = serializers.SerializerMethodField()
     channel_groups = ChannelGroupM3UAccountSerializer(
         source="channel_group", many=True, required=False
+    )
+    server_url = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[validate_flexible_url],
     )
 
     class Meta:
