@@ -67,7 +67,7 @@ const RowDragHandleCell = ({ rowId }) => {
 };
 
 // Row Component
-const DraggableRow = ({ filter, onDelete }) => {
+const DraggableRow = ({ filter, editFilter, onDelete }) => {
   const theme = useMantineTheme();
   const { transform, transition, setNodeRef, isDragging } = useSortable({
     id: filter.id,
@@ -283,6 +283,7 @@ const M3UFilters = ({ playlist, isOpen, onClose }) => {
               <DraggableRow
                 key={filter.id}
                 filter={filter}
+                editFilter={editFilter}
                 onDelete={onDelete}
               />
             ))}
