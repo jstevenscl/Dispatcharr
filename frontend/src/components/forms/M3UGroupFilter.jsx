@@ -410,8 +410,13 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                                     if (newCustomProps.channel_sort_order === undefined) {
                                       newCustomProps.channel_sort_order = '';
                                     }
+                                    // Keep channel_sort_reverse if it exists
+                                    if (newCustomProps.channel_sort_reverse === undefined) {
+                                      newCustomProps.channel_sort_reverse = false;
+                                    }
                                   } else {
                                     delete newCustomProps.channel_sort_order;
+                                    delete newCustomProps.channel_sort_reverse; // Remove reverse when sort is removed
                                   }
 
                                   return {
@@ -428,36 +433,65 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
                         />
                         {/* Show only channel_sort_order if selected */}
                         {group.custom_properties?.channel_sort_order !== undefined && (
-                          <Select
-                            label="Channel Sort Order"
-                            placeholder="Select sort order..."
-                            value={group.custom_properties?.channel_sort_order || ''}
-                            onChange={(value) => {
-                              setGroupStates(
-                                groupStates.map((state) => {
-                                  if (state.channel_group === group.channel_group) {
-                                    return {
-                                      ...state,
-                                      custom_properties: {
-                                        ...state.custom_properties,
-                                        channel_sort_order: value || '',
-                                      },
-                                    };
-                                  }
-                                  return state;
-                                })
-                              );
-                            }}
-                            data={[
-                              { value: '', label: 'Provider Order (Default)' },
-                              { value: 'name', label: 'Name' },
-                              { value: 'tvg_id', label: 'TVG ID' },
-                              { value: 'updated_at', label: 'Updated At' },
-                            ]}
-                            clearable
-                            searchable
-                            size="xs"
-                          />
+                          <>
+                            <Select
+                              label="Channel Sort Order"
+                              placeholder="Select sort order..."
+                              value={group.custom_properties?.channel_sort_order || ''}
+                              onChange={(value) => {
+                                setGroupStates(
+                                  groupStates.map((state) => {
+                                    if (state.channel_group === group.channel_group) {
+                                      return {
+                                        ...state,
+                                        custom_properties: {
+                                          ...state.custom_properties,
+                                          channel_sort_order: value || '',
+                                        },
+                                      };
+                                    }
+                                    return state;
+                                  })
+                                );
+                              }}
+                              data={[
+                                { value: '', label: 'Provider Order (Default)' },
+                                { value: 'name', label: 'Name' },
+                                { value: 'tvg_id', label: 'TVG ID' },
+                                { value: 'updated_at', label: 'Updated At' },
+                              ]}
+                              clearable
+                              searchable
+                              size="xs"
+                            />
+
+                            {/* Add reverse sort checkbox when sort order is selected (including default) */}
+                            {group.custom_properties?.channel_sort_order !== undefined && (
+                              <Flex align="center" gap="xs" mt="xs">
+                                <Checkbox
+                                  label="Reverse Sort Order"
+                                  checked={group.custom_properties?.channel_sort_reverse || false}
+                                  onChange={(event) => {
+                                    setGroupStates(
+                                      groupStates.map((state) => {
+                                        if (state.channel_group === group.channel_group) {
+                                          return {
+                                            ...state,
+                                            custom_properties: {
+                                              ...state.custom_properties,
+                                              channel_sort_reverse: event.target.checked,
+                                            },
+                                          };
+                                        }
+                                        return state;
+                                      })
+                                    );
+                                  }}
+                                  size="xs"
+                                />
+                              </Flex>
+                            )}
+                          </>
                         )}
 
                         {/* Show profile selection only if profile_assignment is selected */}
