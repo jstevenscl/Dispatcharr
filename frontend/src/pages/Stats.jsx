@@ -94,6 +94,7 @@ const ChannelCard = ({
   const [activeStreamId, setActiveStreamId] = useState(null);
   const [currentM3UProfile, setCurrentM3UProfile] = useState(null); // Add state for current M3U profile
   const [data, setData] = useState([]);
+  const [previewedStream, setPreviewedStream] = useState(null);
 
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
@@ -425,12 +426,29 @@ const ChannelCard = ({
 
   // Get logo URL from the logos object if available
   const logoUrl =
-    channel.logo_id && logos && logos[channel.logo_id]
+    (channel.logo_id && logos && logos[channel.logo_id]
       ? logos[channel.logo_id].cache_url
-      : null;
+      : null) ||
+    (previewedStream && previewedStream.logo_url) ||
+    null;
 
-  // Ensure these values exist to prevent errors
-  const channelName = channel.name || 'Unnamed Channel';
+  useEffect(() => {
+    let isMounted = true;
+    // Only fetch if we have a stream_id and NO channel.name
+    if (!channel.name && channel.stream_id) {
+      API.getStreamsByIds([channel.stream_id]).then((streams) => {
+        if (isMounted && streams && streams.length > 0) {
+          setPreviewedStream(streams[0]);
+        }
+      });
+    }
+    return () => { isMounted = false; };
+  }, [channel.name, channel.stream_id]);
+
+  const channelName =
+    channel.name ||
+    previewedStream?.name ||
+    'Unnamed Channel';
   const uptime = channel.uptime || 0;
   const bitrates = channel.bitrates || [];
   const totalBytes = channel.total_bytes || 0;
