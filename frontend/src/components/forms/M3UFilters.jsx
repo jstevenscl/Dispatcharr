@@ -19,8 +19,9 @@ import {
   Group,
   Switch,
   Stack,
+  Alert,
 } from '@mantine/core';
-import { GripHorizontal, SquareMinus, SquarePen } from 'lucide-react';
+import { GripHorizontal, Info, SquareMinus, SquarePen } from 'lucide-react';
 import M3UFilter from './M3UFilter';
 import { M3U_FILTER_TYPES } from '../../constants';
 import {
@@ -192,7 +193,6 @@ const M3UFilters = ({ playlist, isOpen, onClose }) => {
       return deleteFilter(id);
     }
 
-    fetchPlaylist(playlist.id);
     setConfirmDeleteOpen(true);
   };
 
@@ -207,6 +207,7 @@ const M3UFilters = ({ playlist, isOpen, onClose }) => {
     }
 
     fetchPlaylist(playlist.id);
+    setFilters(filters.filter((f) => f.id !== id));
   };
 
   const closeEditor = () => {
@@ -255,6 +256,19 @@ const M3UFilters = ({ playlist, isOpen, onClose }) => {
   return (
     <>
       <Modal opened={isOpen} onClose={onClose} title="Filters" size="lg">
+        <Alert
+          icon={<Info size={16} />}
+          color="blue"
+          variant="light"
+          style={{ marginBottom: 5 }}
+        >
+          <Text size="sm">
+            <strong>Order Matters!</strong> Rules are processed in the order
+            below. Once a stream matches a given rule, no other rules are
+            checked.
+          </Text>
+        </Alert>
+
         <DndContext
           collisionDetection={closestCenter}
           modifiers={[restrictToVerticalAxis]}
