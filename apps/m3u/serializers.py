@@ -16,11 +16,9 @@ logger = logging.getLogger(__name__)
 class M3UFilterSerializer(serializers.ModelSerializer):
     """Serializer for M3U Filters"""
 
-    channel_groups = ChannelGroupM3UAccountSerializer(source="m3u_account", many=True)
-
     class Meta:
         model = M3UFilter
-        fields = ["id", "filter_type", "regex_pattern", "exclude", "channel_groups"]
+        fields = ["id", "filter_type", "regex_pattern", "exclude", "order"]
 
 
 class M3UAccountProfileSerializer(serializers.ModelSerializer):
@@ -64,7 +62,7 @@ class M3UAccountProfileSerializer(serializers.ModelSerializer):
 class M3UAccountSerializer(serializers.ModelSerializer):
     """Serializer for M3U Account"""
 
-    filters = M3UFilterSerializer(many=True, read_only=True)
+    filters = serializers.SerializerMethodField()
     # Include user_agent as a mandatory field using its primary key.
     user_agent = serializers.PrimaryKeyRelatedField(
         queryset=UserAgent.objects.all(),
@@ -148,6 +146,10 @@ class M3UAccountSerializer(serializers.ModelSerializer):
             )
 
         return instance
+
+    def get_filters(self, obj):
+        filters = obj.filters.order_by("order")
+        return M3UFilterSerializer(filters, many=True).data
 
 
 class ServerGroupSerializer(serializers.ModelSerializer):

@@ -27,6 +27,7 @@ import usePlaylistsStore from '../../store/playlists';
 import { notifications } from '@mantine/notifications';
 import { isNotEmpty, useForm } from '@mantine/form';
 import useEPGsStore from '../../store/epgs';
+import M3UFilters from './M3UFilters';
 
 const M3U = ({
   m3uAccount = null,
@@ -45,6 +46,7 @@ const M3U = ({
   const [file, setFile] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [groupFilterModalOpen, setGroupFilterModalOpen] = useState(false);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingText, setLoadingText] = useState('');
   const [showCredentialFields, setShowCredentialFields] = useState(false);
 
@@ -85,7 +87,11 @@ const M3U = ({
         account_type: m3uAccount.account_type,
         username: m3uAccount.username ?? '',
         password: '',
-        stale_stream_days: m3uAccount.stale_stream_days !== undefined && m3uAccount.stale_stream_days !== null ? m3uAccount.stale_stream_days : 7,
+        stale_stream_days:
+          m3uAccount.stale_stream_days !== undefined &&
+          m3uAccount.stale_stream_days !== null
+            ? m3uAccount.stale_stream_days
+            : 7,
       });
 
       if (m3uAccount.account_type == 'XC') {
@@ -145,7 +151,8 @@ const M3U = ({
       if (values.account_type != 'XC') {
         notifications.show({
           title: 'Fetching M3U Groups',
-          message: 'Configure group filters and auto sync settings once complete.',
+          message:
+            'Configure group filters and auto sync settings once complete.',
         });
 
         // Don't prompt for group filters, but keeping this here
@@ -177,7 +184,10 @@ const M3U = ({
 
   const closeGroupFilter = () => {
     setGroupFilterModalOpen(false);
-    close();
+  };
+
+  const closeFilter = () => {
+    setFilterModalOpen(false);
   };
 
   useEffect(() => {
@@ -224,7 +234,12 @@ const M3U = ({
               id="account_type"
               name="account_type"
               label="Account Type"
-              description={<>Standard for direct M3U URLs, <br />Xtream Codes for panel-based services</>}
+              description={
+                <>
+                  Standard for direct M3U URLs, <br />
+                  Xtream Codes for panel-based services
+                </>
+              }
               data={[
                 {
                   value: 'STD',
@@ -316,8 +331,13 @@ const M3U = ({
 
             <NumberInput
               label="Refresh Interval (hours)"
-              description={<>How often to automatically refresh M3U data<br />
-                (0 to disable automatic refreshes)</>}
+              description={
+                <>
+                  How often to automatically refresh M3U data
+                  <br />
+                  (0 to disable automatic refreshes)
+                </>
+              }
               {...form.getInputProps('refresh_interval')}
               key={form.key('refresh_interval')}
             />
@@ -342,6 +362,13 @@ const M3U = ({
         <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
           {playlist && (
             <>
+              <Button
+                variant="filled"
+                size="sm"
+                onClick={() => setFilterModalOpen(true)}
+              >
+                Filters
+              </Button>
               <Button
                 variant="filled"
                 // color={theme.custom.colors.buttonPrimary}
@@ -381,6 +408,11 @@ const M3U = ({
               isOpen={groupFilterModalOpen}
               playlist={playlist}
               onClose={closeGroupFilter}
+            />
+            <M3UFilters
+              isOpen={filterModalOpen}
+              playlist={playlist}
+              onClose={closeFilter}
             />
           </>
         )}
