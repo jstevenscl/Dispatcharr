@@ -1703,7 +1703,7 @@ export default class API {
   static async getVODs(params = {}) {
     try {
       const searchParams = new URLSearchParams(params);
-      const response = await request(`${host}/api/vod/vods/?${searchParams.toString()}`);
+      const response = await request(`${host}/api/vod/movies/?${searchParams.toString()}`);
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve VODs', e);

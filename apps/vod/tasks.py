@@ -5,7 +5,7 @@ import re
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
-from .models import VOD, Series, VODCategory, VODConnection
+from .models import Series, VODCategory, VODConnection, Movie, Episode
 from apps.m3u.models import M3UAccount
 from apps.channels.models import Logo
 
@@ -161,11 +161,10 @@ def refresh_movies(account):
                 # Extract year from title if not provided in API
                 year = extract_year_from_data(movie_data, 'name')
 
-                vod_data = {
+                movie_data_dict = {
                     'name': movie_data['name'],
-                    'type': 'movie',
                     'url': stream_url,
-                    'category_id': category,
+                    'category': category,
                     'year': year,
                     'rating': movie_data.get('rating'),
                     'genre': movie_data.get('genre'),
@@ -176,10 +175,11 @@ def refresh_movies(account):
                     'custom_properties': json.dumps(movie_data) if movie_data else None
                 }
 
-                vod, created = VOD.objects.update_or_create(
+                # Use new Movie model
+                movie, created = Movie.objects.update_or_create(
                     stream_id=movie_data['stream_id'],
                     m3u_account=account,
-                    defaults=vod_data
+                    defaults=movie_data_dict
                 )
 
                 # Handle logo
@@ -188,8 +188,8 @@ def refresh_movies(account):
                         url=movie_data['stream_icon'],
                         defaults={'name': movie_data['name']}
                     )
-                    vod.logo = logo
-                    vod.save()
+                    movie.logo = logo
+                    movie.save()
 
             except Exception as e:
                 logger.error(f"Error processing movie {movie_data.get('name', 'Unknown')}: {e}")
@@ -326,7 +326,6 @@ def refresh_series_episodes(account, series, series_id):
 
                         episode_dict = {
                             'name': episode_data.get('title', f"Episode {episode_data.get('episode_num', '')}"),
-                            'type': 'episode',
                             'series': series,
                             'season_number': int(season_num) if season_num.isdigit() else None,
                             'episode_number': episode_data.get('episode_num'),
@@ -341,7 +340,8 @@ def refresh_series_episodes(account, series, series_id):
                             'custom_properties': json.dumps(episode_data) if episode_data else None
                         }
 
-                        VOD.objects.update_or_create(
+                        # Use new Episode model
+                        episode, created = Episode.objects.update_or_create(
                             stream_id=episode_data['id'],
                             m3u_account=account,
                             defaults=episode_dict
@@ -353,7 +353,6 @@ def refresh_series_episodes(account, series, series_id):
 
     except Exception as e:
         logger.error(f"Error refreshing episodes for series {series_id}: {e}")
-
 
 @shared_task
 def cleanup_inactive_vod_connections():

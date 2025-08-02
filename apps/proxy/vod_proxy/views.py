@@ -5,10 +5,10 @@ import requests
 from django.http import StreamingHttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.contenttypes.models import ContentType
 from rest_framework.decorators import api_view
 
-from apps.vod.models import VOD, VODConnection
-
+from apps.vod.models import Movie, Episode, VODConnection
 from apps.m3u.models import M3UAccountProfile
 from dispatcharr.utils import network_access_allowed, get_client_ip
 from core.models import UserAgent, CoreSettings
@@ -18,25 +18,37 @@ logger = logging.getLogger(__name__)
 
 @csrf_exempt
 @api_view(["GET"])
-def stream_vod(request, vod_uuid):
-    """Stream VOD content with connection tracking and range support"""
+def stream_movie(request, movie_uuid):
+    """Stream movie content with connection tracking and range support"""
+    return _stream_content(request, Movie, movie_uuid, "movie")
+
+
+@csrf_exempt
+@api_view(["GET"])
+def stream_episode(request, episode_uuid):
+    """Stream episode content with connection tracking and range support"""
+    return _stream_content(request, Episode, episode_uuid, "episode")
+
+
+def _stream_content(request, model_class, content_uuid, content_type_name):
+    """Generic function to stream VOD content"""
 
     if not network_access_allowed(request, "STREAMS"):
         return JsonResponse({"error": "Forbidden"}, status=403)
 
-    # Get VOD object
-    vod = get_object_or_404(VOD, uuid=vod_uuid)
+    # Get content object
+    content = get_object_or_404(model_class, uuid=content_uuid)
 
     # Generate client ID and get client info
     client_id = f"vod_client_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
     client_ip = get_client_ip(request)
     client_user_agent = request.META.get('HTTP_USER_AGENT', '')
 
-    logger.info(f"[{client_id}] VOD stream request for: {vod.name}")
+    logger.info(f"[{client_id}] VOD stream request for: {content.name}")
 
     try:
         # Get available M3U profile for connection management
-        m3u_account = vod.m3u_account
+        m3u_account = content.m3u_account
         available_profile = None
 
         for profile in m3u_account.profiles.filter(is_active=True):
@@ -51,9 +63,11 @@ def stream_vod(request, vod_uuid):
                 status=503
             )
 
-        # Create connection tracking record
+        # Create connection tracking record using generic foreign key
+        content_type = ContentType.objects.get_for_model(content)
         connection = VODConnection.objects.create(
-            vod=vod,
+            content_type=content_type,
+            object_id=content.id,
             m3u_profile=available_profile,
             client_id=client_id,
             client_ip=client_ip,
@@ -83,7 +97,7 @@ def stream_vod(request, vod_uuid):
         # Stream the VOD content
         try:
             response = requests.get(
-                vod.url,
+                content.url,
                 headers=headers,
                 stream=True,
                 timeout=(10, 60)
@@ -98,7 +112,7 @@ def stream_vod(request, vod_uuid):
                 )
 
             # Determine content type
-            content_type = response.headers.get('Content-Type', 'video/mp4')
+            content_type_header = response.headers.get('Content-Type', 'video/mp4')
             content_length = response.headers.get('Content-Length')
             content_range = response.headers.get('Content-Range')
 
@@ -132,7 +146,7 @@ def stream_vod(request, vod_uuid):
             # Build response with appropriate headers
             streaming_response = StreamingHttpResponse(
                 stream_generator(),
-                content_type=content_type,
+                content_type=content_type_header,
                 status=response.status_code
             )
 
@@ -147,7 +161,7 @@ def stream_vod(request, vod_uuid):
             streaming_response['Access-Control-Allow-Origin'] = '*'
             streaming_response['Cache-Control'] = 'no-cache'
 
-            logger.info(f"[{client_id}] Started streaming VOD: {vod.name}")
+            logger.info(f"[{client_id}] Started streaming {content_type_name}: {content.name}")
             return streaming_response
 
         except requests.RequestException as e:
@@ -168,8 +182,20 @@ def stream_vod(request, vod_uuid):
 
 @csrf_exempt
 @api_view(["POST"])
-def update_position(request, vod_uuid):
-    """Update playback position for a VOD"""
+def update_movie_position(request, movie_uuid):
+    """Update playback position for a movie"""
+    return _update_position(request, Movie, movie_uuid)
+
+
+@csrf_exempt
+@api_view(["POST"])
+def update_episode_position(request, episode_uuid):
+    """Update playback position for an episode"""
+    return _update_position(request, Episode, episode_uuid)
+
+
+def _update_position(request, model_class, content_uuid):
+    """Generic function to update playback position"""
 
     if not network_access_allowed(request, "STREAMS"):
         return JsonResponse({"error": "Forbidden"}, status=403)
@@ -181,8 +207,13 @@ def update_position(request, vod_uuid):
         return JsonResponse({"error": "Client ID required"}, status=400)
 
     try:
-        vod = get_object_or_404(VOD, uuid=vod_uuid)
-        connection = VODConnection.objects.get(vod=vod, client_id=client_id)
+        content = get_object_or_404(model_class, uuid=content_uuid)
+        content_type = ContentType.objects.get_for_model(content)
+        connection = VODConnection.objects.get(
+            content_type=content_type,
+            object_id=content.id,
+            client_id=client_id
+        )
         connection.update_activity(position=position)
 
         return JsonResponse({"status": "success"})

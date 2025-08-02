@@ -1042,12 +1042,12 @@ def xc_get_vod_categories(user):
 
 def xc_get_vod_streams(request, user, category_id=None):
     """Get VOD streams (movies) for XtreamCodes API"""
-    from apps.vod.models import VOD
+    from apps.vod.models import Movie
 
     streams = []
 
     # Build filters based on user access
-    filters = {"type": "movie", "m3u_account__is_active": True}
+    filters = {"m3u_account__is_active": True}
 
     if user.user_level == 0:
         # For regular users, filter by accessible M3U accounts
@@ -1065,28 +1065,28 @@ def xc_get_vod_streams(request, user, category_id=None):
     if category_id:
         filters["category_id"] = category_id
 
-    vods = VOD.objects.filter(**filters).select_related('category', 'logo', 'm3u_account')
+    movies = Movie.objects.filter(**filters).select_related('category', 'logo', 'm3u_account')
 
-    for vod in vods:
+    for movie in movies:
         streams.append({
-            "num": vod.id,
-            "name": vod.name,
+            "num": movie.id,
+            "name": movie.name,
             "stream_type": "movie",
-            "stream_id": vod.id,
+            "stream_id": movie.id,
             "stream_icon": (
-                None if not vod.logo
+                None if not movie.logo
                 else request.build_absolute_uri(
-                    reverse("api:channels:logo-cache", args=[vod.logo.id])
+                    reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
-            "rating": vod.rating or "0",
-            "rating_5based": float(vod.rating or 0) / 2 if vod.rating else 0,
+            "rating": movie.rating or "0",
+            "rating_5based": float(movie.rating or 0) / 2 if movie.rating else 0,
             "added": int(time.time()),  # TODO: use actual created date
             "is_adult": 0,
-            "category_id": str(vod.category.id) if vod.category else "0",
-            "container_extension": vod.container_extension or "mp4",
+            "category_id": str(movie.category.id) if movie.category else "0",
+            "container_extension": movie.container_extension or "mp4",
             "custom_sid": None,
-            "direct_source": vod.url,
+            "direct_source": movie.url,
         })
 
     return streams
@@ -1186,7 +1186,7 @@ def xc_get_series(request, user, category_id=None):
 
 def xc_get_series_info(request, user, series_id):
     """Get detailed series information including episodes"""
-    from apps.vod.models import Series, VOD
+    from apps.vod.models import Series, Episode
 
     if not series_id:
         raise Http404()
@@ -1212,9 +1212,8 @@ def xc_get_series_info(request, user, series_id):
         raise Http404()
 
     # Get episodes grouped by season
-    episodes = VOD.objects.filter(
-        series=serie,
-        type="episode"
+    episodes = Episode.objects.filter(
+        series=serie
     ).order_by('season_number', 'episode_number')
 
     # Group episodes by season
@@ -1285,13 +1284,13 @@ def xc_get_series_info(request, user, series_id):
 
 def xc_get_vod_info(request, user, vod_id):
     """Get detailed VOD (movie) information"""
-    from apps.vod.models import VOD
+    from apps.vod.models import Movie
 
     if not vod_id:
         raise Http404()
 
-    # Get VOD with user access filtering
-    filters = {"id": vod_id, "type": "movie", "m3u_account__is_active": True}
+    # Get Movie with user access filtering
+    filters = {"id": vod_id, "m3u_account__is_active": True}
 
     if user.user_level == 0:
         if user.channel_profiles.count() > 0:
@@ -1306,55 +1305,56 @@ def xc_get_vod_info(request, user, vod_id):
             raise Http404()
 
     try:
-        vod = VOD.objects.get(**filters)
-    except VOD.DoesNotExist:
+        movie = Movie.objects.get(**filters)
+    except Movie.DoesNotExist:
         raise Http404()
 
     info = {
         "info": {
-            "tmdb_id": vod.tmdb_id or "",
-            "name": vod.name,
-            "o_name": vod.name,
+            "tmdb_id": movie.tmdb_id or "",
+            "name": movie.name,
+            "o_name": movie.name,
             "cover_big": (
-                None if not vod.logo
+                None if not movie.logo
                 else request.build_absolute_uri(
-                    reverse("api:channels:logo-cache", args=[vod.logo.id])
+                    reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
             "movie_image": (
-                None if not vod.logo
+                None if not movie.logo
                 else request.build_absolute_uri(
-                    reverse("api:channels:logo-cache", args=[vod.logo.id])
+                    reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
-            "releasedate": f"{vod.year}-01-01" if vod.year else "",
-            "episode_run_time": (vod.duration or 0) * 60,
+            "releasedate": f"{movie.year}-01-01" if movie.year else "",
+            "episode_run_time": (movie.duration or 0) * 60,
             "youtube_trailer": "",
             "director": "",
             "actors": "",
             "cast": "",
-            "description": vod.description or "",
-            "plot": vod.description or "",
+            "description": movie.description or "",
+            "plot": movie.description or "",
             "age": "",
             "country": "",
-            "genre": vod.genre or "",
+            "genre": movie.genre or "",
             "backdrop_path": [],
-            "duration_secs": (vod.duration or 0) * 60,
-            "duration": f"{vod.duration or 0} min",
+            "duration_secs": (movie.duration or 0) * 60,
+            "duration": f"{movie.duration or 0} min",
             "video": {},
             "audio": {},
             "bitrate": 0,
-            "rating": float(vod.rating or 0),
+            "rating": float(movie.rating or 0),
         },
         "movie_data": {
-            "stream_id": vod.id,
-            "name": vod.name,
+            "stream_id": movie.id,
+            "name": movie.name,
             "added": int(time.time()),
-            "category_id": str(vod.category.id) if vod.category else "0",
-            "container_extension": vod.container_extension or "mp4",
+            "category_id": str(movie.category.id) if movie.category else "0",
+            "container_extension": movie.container_extension or "mp4",
             "custom_sid": "",
-            "direct_source": vod.url,
+            "direct_source": movie.url,
         }
     }
 
+    return info
     return info

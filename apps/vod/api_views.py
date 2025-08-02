@@ -9,39 +9,38 @@ from apps.accounts.permissions import (
     Authenticated,
     permission_classes_by_action,
 )
-from .models import VOD, Series, VODCategory, VODConnection
+from .models import Series, VODCategory, VODConnection, Movie, Episode
 from .serializers import (
-    VODSerializer,
+    MovieSerializer,
+    EpisodeSerializer,
     SeriesSerializer,
     VODCategorySerializer,
     VODConnectionSerializer
 )
 
 
-class VODFilter(django_filters.FilterSet):
+class MovieFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr="icontains")
-    type = django_filters.ChoiceFilter(choices=VOD.TYPE_CHOICES)
     category = django_filters.CharFilter(field_name="category__name", lookup_expr="icontains")
-    series = django_filters.NumberFilter(field_name="series__id")
     m3u_account = django_filters.NumberFilter(field_name="m3u_account__id")
     year = django_filters.NumberFilter()
     year_gte = django_filters.NumberFilter(field_name="year", lookup_expr="gte")
     year_lte = django_filters.NumberFilter(field_name="year", lookup_expr="lte")
 
     class Meta:
-        model = VOD
-        fields = ['name', 'type', 'category', 'series', 'm3u_account', 'year']
+        model = Movie
+        fields = ['name', 'category', 'm3u_account', 'year']
 
 
-class VODViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for VOD content (Movies and Episodes)"""
-    queryset = VOD.objects.all()
-    serializer_class = VODSerializer
+class MovieViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for Movie content"""
+    queryset = Movie.objects.all()
+    serializer_class = MovieSerializer
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = VODFilter
+    filterset_class = MovieFilter
     search_fields = ['name', 'description', 'genre']
-    ordering_fields = ['name', 'year', 'created_at', 'season_number', 'episode_number']
+    ordering_fields = ['name', 'year', 'created_at']
     ordering = ['name']
 
     def get_permissions(self):
@@ -51,37 +50,44 @@ class VODViewSet(viewsets.ReadOnlyModelViewSet):
             return [Authenticated()]
 
     def get_queryset(self):
-        return VOD.objects.select_related(
-            'series', 'category', 'logo', 'm3u_account'
+        return Movie.objects.select_related(
+            'category', 'logo', 'm3u_account'
         ).filter(m3u_account__is_active=True)
 
-    @action(detail=False, methods=['get'])
-    def movies(self, request):
-        """Get only movie content"""
-        movies = self.get_queryset().filter(type='movie')
-        movies = self.filter_queryset(movies)
 
-        page = self.paginate_queryset(movies)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+class EpisodeFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_expr="icontains")
+    series = django_filters.NumberFilter(field_name="series__id")
+    m3u_account = django_filters.NumberFilter(field_name="m3u_account__id")
+    season_number = django_filters.NumberFilter()
+    episode_number = django_filters.NumberFilter()
 
-        serializer = self.get_serializer(movies, many=True)
-        return Response(serializer.data)
+    class Meta:
+        model = Episode
+        fields = ['name', 'series', 'm3u_account', 'season_number', 'episode_number']
 
-    @action(detail=False, methods=['get'])
-    def episodes(self, request):
-        """Get only episode content"""
-        episodes = self.get_queryset().filter(type='episode')
-        episodes = self.filter_queryset(episodes)
 
-        page = self.paginate_queryset(episodes)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+class EpisodeViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for Episode content"""
+    queryset = Episode.objects.all()
+    serializer_class = EpisodeSerializer
 
-        serializer = self.get_serializer(episodes, many=True)
-        return Response(serializer.data)
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = EpisodeFilter
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'season_number', 'episode_number', 'created_at']
+    ordering = ['series__name', 'season_number', 'episode_number']
+
+    def get_permissions(self):
+        try:
+            return [perm() for perm in permission_classes_by_action[self.action]]
+        except KeyError:
+            return [Authenticated()]
+
+    def get_queryset(self):
+        return Episode.objects.select_related(
+            'series', 'm3u_account'
+        ).filter(m3u_account__is_active=True)
 
 
 class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
@@ -113,10 +119,10 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
 
         page = self.paginate_queryset(episodes)
         if page is not None:
-            serializer = VODSerializer(page, many=True)
+            serializer = EpisodeSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
-        serializer = VODSerializer(episodes, many=True)
+        serializer = EpisodeSerializer(episodes, many=True)
         return Response(serializer.data)
 
 
@@ -162,4 +168,4 @@ class VODConnectionViewSet(viewsets.ReadOnlyModelViewSet):
             return [Authenticated()]
 
     def get_queryset(self):
-        return VODConnection.objects.select_related('vod', 'm3u_profile')
+        return VODConnection.objects.select_related('m3u_profile')
