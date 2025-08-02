@@ -100,12 +100,17 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           badge: `(${Object.keys(channels).length})`,
         },
         {
+          label: 'VODs',
+          path: '/vods',
+          icon: <Video size={20} />,
+        },
+        {
           label: 'M3U & EPG Manager',
           icon: <Play size={20} />,
           path: '/sources',
         },
         { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
-        { label: 'DVR', icon: <Video size={20} />, path: '/dvr' },
+        { label: 'DVR', icon: <Database size={20} />, path: '/dvr' },
         { label: 'Stats', icon: <ChartLine size={20} />, path: '/stats' },
         {
           label: 'Users',

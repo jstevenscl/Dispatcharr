@@ -1689,4 +1689,76 @@ export default class API {
       errorNotification('Failed to retrieve streams by IDs', e);
     }
   }
+
+  // VOD Methods
+  static async getVODs(params = {}) {
+    try {
+      const searchParams = new URLSearchParams(params);
+      const response = await request(`${host}/api/vod/vods/?${searchParams.toString()}`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve VODs', e);
+    }
+  }
+
+  static async getVODCategories() {
+    try {
+      const response = await request(`${host}/api/vod/categories/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve VOD categories', e);
+    }
+  }
+
+  static async getSeries(params = {}) {
+    try {
+      const searchParams = new URLSearchParams(params);
+      const response = await request(`${host}/api/vod/series/?${searchParams.toString()}`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve series', e);
+    }
+  }
+
+  static async getSeriesEpisodes(seriesId, params = {}) {
+    try {
+      const searchParams = new URLSearchParams(params);
+      const response = await request(`${host}/api/vod/series/${seriesId}/episodes/?${searchParams.toString()}`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve series episodes', e);
+    }
+  }
+
+  static async getVODConnections() {
+    try {
+      const response = await request(`${host}/api/vod/connections/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve VOD connections', e);
+    }
+  }
+
+  static async refreshVODContent(accountId) {
+    try {
+      const response = await request(`${host}/api/m3u/accounts/${accountId}/refresh-vod/`, {
+        method: 'POST'
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to refresh VOD content', e);
+    }
+  }
+
+  static async updateVODPosition(vodUuid, clientId, position) {
+    try {
+      const response = await request(`${host}/proxy/vod/stream/${vodUuid}/position/`, {
+        method: 'POST',
+        body: { client_id: clientId, position }
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update playback position', e);
+    }
+  }
 }
