@@ -789,7 +789,20 @@ def xc_player_api(request, full=False):
         "get_series_info",
         "get_vod_info",
     ]:
-        return JsonResponse([], safe=False)
+        if action == "get_vod_categories":
+            return JsonResponse(xc_get_vod_categories(user), safe=False)
+        elif action == "get_vod_streams":
+            return JsonResponse(xc_get_vod_streams(request, user, request.GET.get("category_id")), safe=False)
+        elif action == "get_series_categories":
+            return JsonResponse(xc_get_series_categories(user), safe=False)
+        elif action == "get_series":
+            return JsonResponse(xc_get_series(request, user, request.GET.get("category_id")), safe=False)
+        elif action == "get_series_info":
+            return JsonResponse(xc_get_series_info(request, user, request.GET.get("series_id")), safe=False)
+        elif action == "get_vod_info":
+            return JsonResponse(xc_get_vod_info(request, user, request.GET.get("vod_id")), safe=False)
+        else:
+            return JsonResponse([], safe=False)
 
     raise Http404()
 
@@ -986,3 +999,362 @@ def xc_get_epg(request, user, short=False):
         output['epg_listings'].append(program_output)
 
     return output
+
+
+def xc_get_vod_categories(user):
+    """Get VOD categories for XtreamCodes API"""
+    from apps.vod.models import VODCategory
+
+    response = []
+
+    # Filter categories based on user's M3U accounts
+    if user.user_level == 0:
+        # For regular users, get categories from their accessible M3U accounts
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            # Get M3U accounts accessible through user's profiles
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+        else:
+            m3u_accounts = []
+
+        categories = VODCategory.objects.filter(
+            m3u_account__in=m3u_accounts
+        ).distinct()
+    else:
+        # Admins can see all categories
+        categories = VODCategory.objects.filter(
+            m3u_account__is_active=True
+        ).distinct()
+
+    for category in categories:
+        response.append({
+            "category_id": str(category.id),
+            "category_name": category.name,
+            "parent_id": 0,
+        })
+
+    return response
+
+
+def xc_get_vod_streams(request, user, category_id=None):
+    """Get VOD streams (movies) for XtreamCodes API"""
+    from apps.vod.models import VOD
+
+    streams = []
+
+    # Build filters based on user access
+    filters = {"type": "movie", "m3u_account__is_active": True}
+
+    if user.user_level == 0:
+        # For regular users, filter by accessible M3U accounts
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+            filters["m3u_account__in"] = m3u_accounts
+        else:
+            return []  # No accessible accounts
+
+    if category_id:
+        filters["category_id"] = category_id
+
+    vods = VOD.objects.filter(**filters).select_related('category', 'logo', 'm3u_account')
+
+    for vod in vods:
+        streams.append({
+            "num": vod.id,
+            "name": vod.name,
+            "stream_type": "movie",
+            "stream_id": vod.id,
+            "stream_icon": (
+                None if not vod.logo
+                else request.build_absolute_uri(
+                    reverse("api:channels:logo-cache", args=[vod.logo.id])
+                )
+            ),
+            "rating": vod.rating or "0",
+            "rating_5based": float(vod.rating or 0) / 2 if vod.rating else 0,
+            "added": int(time.time()),  # TODO: use actual created date
+            "is_adult": 0,
+            "category_id": str(vod.category.id) if vod.category else "0",
+            "container_extension": vod.container_extension or "mp4",
+            "custom_sid": None,
+            "direct_source": vod.url,
+        })
+
+    return streams
+
+
+def xc_get_series_categories(user):
+    """Get series categories for XtreamCodes API"""
+    from apps.vod.models import VODCategory
+
+    response = []
+
+    # Similar filtering as VOD categories but for series
+    if user.user_level == 0:
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+        else:
+            m3u_accounts = []
+
+        categories = VODCategory.objects.filter(
+            m3u_account__in=m3u_accounts,
+            series__isnull=False  # Only categories that have series
+        ).distinct()
+    else:
+        categories = VODCategory.objects.filter(
+            m3u_account__is_active=True,
+            series__isnull=False
+        ).distinct()
+
+    for category in categories:
+        response.append({
+            "category_id": str(category.id),
+            "category_name": category.name,
+            "parent_id": 0,
+        })
+
+    return response
+
+
+def xc_get_series(request, user, category_id=None):
+    """Get series list for XtreamCodes API"""
+    from apps.vod.models import Series
+
+    series_list = []
+
+    # Build filters based on user access
+    filters = {"m3u_account__is_active": True}
+
+    if user.user_level == 0:
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+            filters["m3u_account__in"] = m3u_accounts
+        else:
+            return []
+
+    if category_id:
+        filters["category_id"] = category_id
+
+    series = Series.objects.filter(**filters).select_related('category', 'logo', 'm3u_account')
+
+    for serie in series:
+        series_list.append({
+            "num": serie.id,
+            "name": serie.name,
+            "series_id": serie.id,
+            "cover": (
+                None if not serie.logo
+                else request.build_absolute_uri(
+                    reverse("api:channels:logo-cache", args=[serie.logo.id])
+                )
+            ),
+            "plot": serie.description or "",
+            "cast": "",
+            "director": "",
+            "genre": serie.genre or "",
+            "release_date": str(serie.year) if serie.year else "",
+            "last_modified": int(time.time()),
+            "rating": serie.rating or "0",
+            "rating_5based": float(serie.rating or 0) / 2 if serie.rating else 0,
+            "backdrop_path": [],
+            "youtube_trailer": "",
+            "episode_run_time": "",
+            "category_id": str(serie.category.id) if serie.category else "0",
+        })
+
+    return series_list
+
+
+def xc_get_series_info(request, user, series_id):
+    """Get detailed series information including episodes"""
+    from apps.vod.models import Series, VOD
+
+    if not series_id:
+        raise Http404()
+
+    # Get series with user access filtering
+    filters = {"id": series_id, "m3u_account__is_active": True}
+
+    if user.user_level == 0:
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+            filters["m3u_account__in"] = m3u_accounts
+        else:
+            raise Http404()
+
+    try:
+        serie = Series.objects.get(**filters)
+    except Series.DoesNotExist:
+        raise Http404()
+
+    # Get episodes grouped by season
+    episodes = VOD.objects.filter(
+        series=serie,
+        type="episode"
+    ).order_by('season_number', 'episode_number')
+
+    # Group episodes by season
+    seasons = {}
+    for episode in episodes:
+        season_num = episode.season_number or 1
+        if season_num not in seasons:
+            seasons[season_num] = []
+
+        seasons[season_num].append({
+            "id": episode.stream_id,
+            "episode_num": episode.episode_number or 0,
+            "title": episode.name,
+            "container_extension": episode.container_extension or "mp4",
+            "info": {
+                "air_date": f"{episode.year}-01-01" if episode.year else "",
+                "crew": "",
+                "directed_by": "",
+                "episode_num": episode.episode_number or 0,
+                "id": episode.stream_id,
+                "imdb_id": episode.imdb_id or "",
+                "name": episode.name,
+                "overview": episode.description or "",
+                "production_code": "",
+                "season_number": episode.season_number or 1,
+                "still_path": "",
+                "vote_average": float(episode.rating or 0),
+                "vote_count": 0,
+                "writer": "",
+                "release_date": f"{episode.year}-01-01" if episode.year else "",
+                "duration_secs": (episode.duration or 0) * 60,
+                "duration": f"{episode.duration or 0} min",
+                "video": {},
+                "audio": {},
+                "bitrate": 0,
+            }
+        })
+
+    # Build response
+    info = {
+        "seasons": list(seasons.keys()),
+        "info": {
+            "name": serie.name,
+            "cover": (
+                None if not serie.logo
+                else request.build_absolute_uri(
+                    reverse("api:channels:logo-cache", args=[serie.logo.id])
+                )
+            ),
+            "plot": serie.description or "",
+            "cast": "",
+            "director": "",
+            "genre": serie.genre or "",
+            "release_date": str(serie.year) if serie.year else "",
+            "last_modified": int(time.time()),
+            "rating": serie.rating or "0",
+            "rating_5based": float(serie.rating or 0) / 2 if serie.rating else 0,
+            "backdrop_path": [],
+            "youtube_trailer": "",
+            "episode_run_time": "",
+            "category_id": str(serie.category.id) if serie.category else "0",
+        },
+        "episodes": dict(seasons)
+    }
+
+    return info
+
+
+def xc_get_vod_info(request, user, vod_id):
+    """Get detailed VOD (movie) information"""
+    from apps.vod.models import VOD
+
+    if not vod_id:
+        raise Http404()
+
+    # Get VOD with user access filtering
+    filters = {"id": vod_id, "type": "movie", "m3u_account__is_active": True}
+
+    if user.user_level == 0:
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+            filters["m3u_account__in"] = m3u_accounts
+        else:
+            raise Http404()
+
+    try:
+        vod = VOD.objects.get(**filters)
+    except VOD.DoesNotExist:
+        raise Http404()
+
+    info = {
+        "info": {
+            "tmdb_id": vod.tmdb_id or "",
+            "name": vod.name,
+            "o_name": vod.name,
+            "cover_big": (
+                None if not vod.logo
+                else request.build_absolute_uri(
+                    reverse("api:channels:logo-cache", args=[vod.logo.id])
+                )
+            ),
+            "movie_image": (
+                None if not vod.logo
+                else request.build_absolute_uri(
+                    reverse("api:channels:logo-cache", args=[vod.logo.id])
+                )
+            ),
+            "releasedate": f"{vod.year}-01-01" if vod.year else "",
+            "episode_run_time": (vod.duration or 0) * 60,
+            "youtube_trailer": "",
+            "director": "",
+            "actors": "",
+            "cast": "",
+            "description": vod.description or "",
+            "plot": vod.description or "",
+            "age": "",
+            "country": "",
+            "genre": vod.genre or "",
+            "backdrop_path": [],
+            "duration_secs": (vod.duration or 0) * 60,
+            "duration": f"{vod.duration or 0} min",
+            "video": {},
+            "audio": {},
+            "bitrate": 0,
+            "rating": float(vod.rating or 0),
+        },
+        "movie_data": {
+            "stream_id": vod.id,
+            "name": vod.name,
+            "added": int(time.time()),
+            "category_id": str(vod.category.id) if vod.category else "0",
+            "container_extension": vod.container_extension or "mp4",
+            "custom_sid": "",
+            "direct_source": vod.url,
+        }
+    }
+
+    return info

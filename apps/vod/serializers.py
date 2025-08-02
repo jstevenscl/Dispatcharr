@@ -1,0 +1,47 @@
+from rest_framework import serializers
+from .models import VOD, Series, VODCategory, VODConnection
+from apps.channels.serializers import LogoSerializer
+from apps.m3u.serializers import M3UAccountSerializer
+
+
+class VODCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VODCategory
+        fields = '__all__'
+
+
+class SeriesSerializer(serializers.ModelSerializer):
+    logo = LogoSerializer(read_only=True)
+    category = VODCategorySerializer(read_only=True)
+    m3u_account = M3UAccountSerializer(read_only=True)
+    episode_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Series
+        fields = '__all__'
+
+    def get_episode_count(self, obj):
+        return obj.episodes.count()
+
+
+class VODSerializer(serializers.ModelSerializer):
+    logo = LogoSerializer(read_only=True)
+    category = VODCategorySerializer(read_only=True)
+    series = SeriesSerializer(read_only=True)
+    m3u_account = M3UAccountSerializer(read_only=True)
+    stream_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VOD
+        fields = '__all__'
+
+    def get_stream_url(self, obj):
+        return obj.get_stream_url()
+
+
+class VODConnectionSerializer(serializers.ModelSerializer):
+    vod = VODSerializer(read_only=True)
+
+    class Meta:
+        model = VODConnection
+        fields = '__all__'

@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "apps.output",
     "apps.proxy.apps.ProxyConfig",
     "apps.proxy.ts_proxy",
+    "apps.vod.apps.VODConfig",
     "core",
     "daphne",
     "drf_yasg",
