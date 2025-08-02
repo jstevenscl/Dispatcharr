@@ -1,6 +1,7 @@
 import logging
 import requests
 import json
+import re
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
@@ -30,6 +31,61 @@ def refresh_vod_content(self, account_id):
         logger.error(f"M3U Account {account_id} not found")
     except Exception as e:
         logger.error(f"Error refreshing VOD content for account {account_id}: {e}")
+
+
+def extract_year_from_title(title):
+    """Extract year from movie title if present"""
+    if not title:
+        return None
+
+    # Pattern for (YYYY) format
+    pattern1 = r'\((\d{4})\)'
+    # Pattern for - YYYY format
+    pattern2 = r'\s-\s(\d{4})'
+    # Pattern for YYYY at the end
+    pattern3 = r'\s(\d{4})$'
+
+    for pattern in [pattern1, pattern2, pattern3]:
+        match = re.search(pattern, title)
+        if match:
+            year = int(match.group(1))
+            # Validate year is reasonable (between 1900 and current year + 5)
+            if 1900 <= year <= 2030:
+                return year
+
+    return None
+
+
+def extract_year_from_data(data, title_key='name'):
+    """Extract year from various data sources with fallback options"""
+    try:
+        # First try the year field
+        year = data.get('year')
+        if year:
+            return year
+
+        # Try releaseDate or release_date fields
+        for date_field in ['releaseDate', 'release_date']:
+            date_value = data.get(date_field)
+            if date_value and isinstance(date_value, str):
+                # Extract year from date format like "2011-09-19"
+                try:
+                    year = int(date_value.split('-')[0])
+                    if 1900 <= year <= 2030:
+                        return year
+                except (ValueError, IndexError):
+                    continue
+
+        # Finally try extracting from title
+        title = data.get(title_key, '')
+        if title:
+            return extract_year_from_title(title)
+
+    except Exception:
+        # Don't fail processing if year extraction fails
+        pass
+
+    return None
 
 
 def refresh_movies(account):
@@ -95,12 +151,15 @@ def refresh_movies(account):
                 # Create/update movie
                 stream_url = f"{account.server_url}/movie/{account.username}/{account.password}/{movie_data['stream_id']}.{movie_data.get('container_extension', 'mp4')}"
 
+                # Extract year from title if not provided in API
+                year = extract_year_from_data(movie_data, 'name')
+
                 vod_data = {
                     'name': movie_data['name'],
                     'type': 'movie',
                     'url': stream_url,
                     'category': category,
-                    'year': movie_data.get('year'),
+                    'year': year,
                     'rating': movie_data.get('rating'),
                     'genre': movie_data.get('genre'),
                     'duration': movie_data.get('duration_secs', 0) // 60 if movie_data.get('duration_secs') else None,
@@ -194,10 +253,13 @@ def refresh_series(account):
                         category = None
 
                 # Create/update series
+                # Extract year from series data
+                year = extract_year_from_data(series_item, 'name')
+
                 series_data_dict = {
                     'name': series_item['name'],
                     'description': series_item.get('plot'),
-                    'year': series_item.get('year'),
+                    'year': year,
                     'rating': series_item.get('rating'),
                     'genre': series_item.get('genre'),
                     'category': category,
