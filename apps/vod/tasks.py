@@ -61,24 +61,31 @@ def extract_year_from_data(data, title_key='name'):
     try:
         # First try the year field
         year = data.get('year')
-        if year:
-            return year
+        if year and str(year).strip() and str(year).strip() != '':
+            try:
+                year_int = int(year)
+                if 1900 <= year_int <= 2030:
+                    return year_int
+            except (ValueError, TypeError):
+                pass
 
         # Try releaseDate or release_date fields
         for date_field in ['releaseDate', 'release_date']:
             date_value = data.get(date_field)
-            if date_value and isinstance(date_value, str):
+            if date_value and isinstance(date_value, str) and date_value.strip():
                 # Extract year from date format like "2011-09-19"
                 try:
-                    year = int(date_value.split('-')[0])
-                    if 1900 <= year <= 2030:
-                        return year
+                    year_str = date_value.split('-')[0].strip()
+                    if year_str:
+                        year = int(year_str)
+                        if 1900 <= year <= 2030:
+                            return year
                 except (ValueError, IndexError):
                     continue
 
         # Finally try extracting from title
         title = data.get(title_key, '')
-        if title:
+        if title and title.strip():
             return extract_year_from_title(title)
 
     except Exception:
@@ -158,7 +165,7 @@ def refresh_movies(account):
                     'name': movie_data['name'],
                     'type': 'movie',
                     'url': stream_url,
-                    'category': category,
+                    'category_id': category,
                     'year': year,
                     'rating': movie_data.get('rating'),
                     'genre': movie_data.get('genre'),
