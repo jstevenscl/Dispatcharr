@@ -126,6 +126,10 @@ export default function M3URefreshNotification() {
       case 'processing_groups':
         message = 'Group parsing';
         break;
+        
+      case 'vod_refresh':
+        message = 'VOD content refresh';
+        break;
     }
 
     if (taskProgress == 0) {
@@ -143,6 +147,9 @@ export default function M3URefreshNotification() {
         fetchChannelGroups();
         fetchEPGData();
         fetchPlaylists();
+      } else if (data.action == 'vod_refresh') {
+        // VOD refresh completed, could trigger additional UI updates if needed
+        fetchPlaylists(); // Refresh playlist data to show updated VOD info
       }
     }
 

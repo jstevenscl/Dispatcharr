@@ -52,7 +52,11 @@ def refresh_movies(account):
             VODCategory.objects.get_or_create(
                 name=cat_data['category_name'],
                 m3u_account=account,
-                defaults={'name': cat_data['category_name']}
+                category_type='movie',
+                defaults={
+                    'name': cat_data['category_name'],
+                    'category_type': 'movie'
+                }
             )
 
         # Get movies
@@ -69,12 +73,24 @@ def refresh_movies(account):
                 category = None
                 if movie_data.get('category_id'):
                     try:
-                        category = VODCategory.objects.get(
-                            name__icontains=movie_data.get('category_name', ''),
-                            m3u_account=account
-                        )
-                    except VODCategory.DoesNotExist:
-                        pass
+                        # First try exact match by category_id if available
+                        category = VODCategory.objects.filter(
+                            m3u_account=account,
+                            category_type='movie'
+                        ).filter(
+                            name__iexact=movie_data.get('category_name', '')
+                        ).first()
+
+                        # If no exact match, try contains but limit to first result
+                        if not category and movie_data.get('category_name'):
+                            category = VODCategory.objects.filter(
+                                name__icontains=movie_data.get('category_name', ''),
+                                m3u_account=account,
+                                category_type='movie'
+                            ).first()
+                    except Exception as e:
+                        logger.warning(f"Error finding category for movie {movie_data.get('name', 'Unknown')}: {e}")
+                        category = None
 
                 # Create/update movie
                 stream_url = f"{account.server_url}/movie/{account.username}/{account.password}/{movie_data['stream_id']}.{movie_data.get('container_extension', 'mp4')}"
@@ -137,7 +153,11 @@ def refresh_series(account):
             VODCategory.objects.get_or_create(
                 name=cat_data['category_name'],
                 m3u_account=account,
-                defaults={'name': cat_data['category_name']}
+                category_type='series',
+                defaults={
+                    'name': cat_data['category_name'],
+                    'category_type': 'series'
+                }
             )
 
         # Get series list
@@ -154,12 +174,24 @@ def refresh_series(account):
                 category = None
                 if series_item.get('category_id'):
                     try:
-                        category = VODCategory.objects.get(
-                            name__icontains=series_item.get('category_name', ''),
-                            m3u_account=account
-                        )
-                    except VODCategory.DoesNotExist:
-                        pass
+                        # First try exact match
+                        category = VODCategory.objects.filter(
+                            m3u_account=account,
+                            category_type='series'
+                        ).filter(
+                            name__iexact=series_item.get('category_name', '')
+                        ).first()
+
+                        # If no exact match, try contains but limit to first result
+                        if not category and series_item.get('category_name'):
+                            category = VODCategory.objects.filter(
+                                name__icontains=series_item.get('category_name', ''),
+                                m3u_account=account,
+                                category_type='series'
+                            ).first()
+                    except Exception as e:
+                        logger.warning(f"Error finding category for series {series_item.get('name', 'Unknown')}: {e}")
+                        category = None
 
                 # Create/update series
                 series_data_dict = {

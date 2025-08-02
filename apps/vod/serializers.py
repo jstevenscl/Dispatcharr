@@ -5,6 +5,8 @@ from apps.m3u.serializers import M3UAccountSerializer
 
 
 class VODCategorySerializer(serializers.ModelSerializer):
+    category_type_display = serializers.CharField(source='get_category_type_display', read_only=True)
+
     class Meta:
         model = VODCategory
         fields = '__all__'

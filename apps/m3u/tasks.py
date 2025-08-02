@@ -1265,6 +1265,16 @@ def refresh_single_m3u_account(account_id):
         account.save(update_fields=['status'])
 
         filters = list(account.filters.all())
+        
+        # Check if VOD is enabled for this account
+        vod_enabled = False
+        if account.custom_properties:
+            try:
+                custom_props = json.loads(account.custom_properties)
+                vod_enabled = custom_props.get('enable_vod', False)
+            except (json.JSONDecodeError, TypeError):
+                vod_enabled = False
+                
     except M3UAccount.DoesNotExist:
         # The M3U account doesn't exist, so delete the periodic task if it exists
         logger.warning(f"M3U account with ID {account_id} not found, but task was triggered. Cleaning up orphaned task.")
@@ -1531,6 +1541,16 @@ def refresh_single_m3u_account(account_id):
             streams_deleted=streams_deleted,
             message=account.last_message
         )
+        
+        # Trigger VOD refresh if enabled and account is XtreamCodes type
+        if vod_enabled and account.account_type == M3UAccount.Types.XC:
+            logger.info(f"VOD is enabled for account {account_id}, triggering VOD refresh")
+            try:
+                from apps.vod.tasks import refresh_vod_content
+                refresh_vod_content.delay(account_id)
+                logger.info(f"VOD refresh task queued for account {account_id}")
+            except Exception as e:
+                logger.error(f"Failed to queue VOD refresh for account {account_id}: {str(e)}")
 
     except Exception as e:
         logger.error(f"Error processing M3U for account {account_id}: {str(e)}")

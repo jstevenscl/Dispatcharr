@@ -7,7 +7,19 @@ import uuid
 
 class VODCategory(models.Model):
     """Categories for organizing VODs (e.g., Action, Comedy, Drama)"""
+    
+    CATEGORY_TYPE_CHOICES = [
+        ('movie', 'Movie'),
+        ('series', 'Series'),
+    ]
+    
     name = models.CharField(max_length=255, unique=True)
+    category_type = models.CharField(
+        max_length=10, 
+        choices=CATEGORY_TYPE_CHOICES, 
+        default='movie',
+        help_text="Type of content this category contains"
+    )
     m3u_account = models.ForeignKey(
         M3UAccount,
         on_delete=models.CASCADE,
@@ -22,9 +34,10 @@ class VODCategory(models.Model):
         verbose_name = "VOD Category"
         verbose_name_plural = "VOD Categories"
         ordering = ['name']
+        unique_together = ['name', 'm3u_account', 'category_type']
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.get_category_type_display()})"
 
 
 class Series(models.Model):

@@ -4,8 +4,8 @@ from .models import VOD, Series, VODCategory, VODConnection
 
 @admin.register(VODCategory)
 class VODCategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'm3u_account', 'created_at']
-    list_filter = ['m3u_account', 'created_at']
+    list_display = ['name', 'category_type', 'm3u_account', 'created_at']
+    list_filter = ['category_type', 'm3u_account', 'created_at']
     search_fields = ['name']
 
 

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import M3UAccount, M3UFilter, ServerGroup, UserAgent
+import json
 
 class M3UFilterInline(admin.TabularInline):
     model = M3UFilter
@@ -10,8 +11,8 @@ class M3UFilterInline(admin.TabularInline):
 
 @admin.register(M3UAccount)
 class M3UAccountAdmin(admin.ModelAdmin):
-    list_display = ('name', 'server_url', 'server_group', 'max_streams', 'is_active', 'user_agent_display', 'uploaded_file_link', 'created_at', 'updated_at')
-    list_filter = ('is_active', 'server_group')
+    list_display = ('name', 'server_url', 'server_group', 'max_streams', 'is_active', 'user_agent_display', 'vod_enabled_display', 'uploaded_file_link', 'created_at', 'updated_at')
+    list_filter = ('is_active', 'server_group', 'account_type')
     search_fields = ('name', 'server_url', 'server_group__name')
     inlines = [M3UFilterInline]
     actions = ['activate_accounts', 'deactivate_accounts']
@@ -24,6 +25,18 @@ class M3UAccountAdmin(admin.ModelAdmin):
             return ", ".join([ua.user_agent for ua in obj.user_agents.all()]) or "None"
         return "None"
     user_agent_display.short_description = "User Agent(s)"
+
+    def vod_enabled_display(self, obj):
+        """Display whether VOD is enabled for this account"""
+        if obj.custom_properties:
+            try:
+                custom_props = json.loads(obj.custom_properties)
+                return "Yes" if custom_props.get('enable_vod', False) else "No"
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return "No"
+    vod_enabled_display.short_description = "VOD Enabled"
+    vod_enabled_display.boolean = True
 
     def uploaded_file_link(self, obj):
         if obj.uploaded_file:

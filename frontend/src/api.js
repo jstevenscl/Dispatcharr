@@ -789,7 +789,6 @@ export default class API {
       errorNotification('Failed to refresh M3U account', e);
     }
   }
-
   static async refreshAllPlaylist() {
     try {
       const response = await request(`${host}/api/m3u/refresh/`, {
@@ -799,6 +798,16 @@ export default class API {
       return response;
     } catch (e) {
       errorNotification('Failed to refresh all M3U accounts', e);
+    }
+  }
+  static async refreshVODContent(accountId) {
+    try {
+      const response = await request(`${host}/api/m3u/accounts/${accountId}/refresh-vod/`, {
+        method: 'POST'
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to refresh VOD content', e);
     }
   }
 

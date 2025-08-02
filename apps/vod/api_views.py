@@ -120,12 +120,23 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+class VODCategoryFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_expr="icontains")
+    category_type = django_filters.ChoiceFilter(choices=VODCategory.CATEGORY_TYPE_CHOICES)
+    m3u_account = django_filters.NumberFilter(field_name="m3u_account__id")
+
+    class Meta:
+        model = VODCategory
+        fields = ['name', 'category_type', 'm3u_account']
+
+
 class VODCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for VOD Categories"""
     queryset = VODCategory.objects.all()
     serializer_class = VODCategorySerializer
 
-    filter_backends = [SearchFilter, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = VODCategoryFilter
     search_fields = ['name']
     ordering = ['name']
 

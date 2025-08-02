@@ -62,6 +62,7 @@ const M3U = ({
       username: '',
       password: '',
       stale_stream_days: 7,
+      enable_vod: false,
     },
 
     validate: {
@@ -86,6 +87,7 @@ const M3U = ({
         username: m3uAccount.username ?? '',
         password: '',
         stale_stream_days: m3uAccount.stale_stream_days !== undefined && m3uAccount.stale_stream_days !== null ? m3uAccount.stale_stream_days : 7,
+        enable_vod: m3uAccount.enable_vod || false,
       });
 
       if (m3uAccount.account_type == 'XC') {
@@ -255,6 +257,19 @@ const M3U = ({
                     />
                   </Group>
                 )}
+
+                <Group justify="space-between">
+                  <Box>Enable VOD Scanning</Box>
+                  <Switch
+                    id="enable_vod"
+                    name="enable_vod"
+                    description="Scan and import VOD content (movies/series) from this Xtream account"
+                    key={form.key('enable_vod')}
+                    {...form.getInputProps('enable_vod', {
+                      type: 'checkbox',
+                    })}
+                  />
+                </Group>
 
                 <TextInput
                   id="username"
