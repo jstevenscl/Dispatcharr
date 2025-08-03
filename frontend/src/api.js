@@ -857,7 +857,6 @@ export default class API {
         body = { ...payload };
         delete body.file;
       }
-      console.log(body);
 
       const response = await request(`${host}/api/m3u/accounts/${id}/`, {
         method: 'PATCH',

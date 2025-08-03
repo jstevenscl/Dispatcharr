@@ -1,5 +1,5 @@
 // Modal.js
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import API from '../../api';
 import {
   TextInput,
@@ -7,24 +7,15 @@ import {
   Modal,
   Flex,
   Select,
-  PasswordInput,
   Group,
   Stack,
-  MultiSelect,
-  ActionIcon,
   Switch,
   Box,
 } from '@mantine/core';
-import { RotateCcwKey, X } from 'lucide-react';
 import { useForm } from '@mantine/form';
-import useChannelsStore from '../../store/channels';
-import {
-  M3U_FILTER_TYPES,
-  USER_LEVELS,
-  USER_LEVEL_LABELS,
-} from '../../constants';
-import useAuthStore from '../../store/auth';
+import { M3U_FILTER_TYPES } from '../../constants';
 import usePlaylistsStore from '../../store/playlists';
+import { setCustomProperty } from '../../utils';
 
 const M3UFilter = ({ filter = null, m3u, isOpen, onClose }) => {
   const fetchPlaylist = usePlaylistsStore((s) => s.fetchPlaylist);
@@ -35,6 +26,7 @@ const M3UFilter = ({ filter = null, m3u, isOpen, onClose }) => {
       filter_type: 'group',
       regex_pattern: '',
       exclude: true,
+      case_sensitive: true,
     },
 
     validate: (values) => ({}),
@@ -46,6 +38,8 @@ const M3UFilter = ({ filter = null, m3u, isOpen, onClose }) => {
         filter_type: filter.filter_type,
         regex_pattern: filter.regex_pattern,
         exclude: filter.exclude,
+        case_sensitive:
+          JSON.parse(filter.custom_properties || '{}').case_sensitive ?? true,
       });
     } else {
       form.reset();
@@ -54,6 +48,15 @@ const M3UFilter = ({ filter = null, m3u, isOpen, onClose }) => {
 
   const onSubmit = async () => {
     const values = form.getValues();
+
+    values.custom_properties = setCustomProperty(
+      filter ? filter.custom_properties : {},
+      'case_sensitive',
+      values.case_sensitive,
+      true
+    );
+
+    delete values.case_sensitive;
 
     if (!filter) {
       // By default, new rule will go at the end
@@ -102,6 +105,19 @@ const M3UFilter = ({ filter = null, m3u, isOpen, onClose }) => {
               description="Specify if this is an exclusion or inclusion rule"
               key={form.key('exclude')}
               {...form.getInputProps('exclude', {
+                type: 'checkbox',
+              })}
+            />
+          </Group>
+
+          <Group justify="space-between">
+            <Box>Case Sensitive</Box>
+            <Switch
+              id="case_sensitive"
+              name="case_sensitive"
+              description="If the regex should be case sensitive or not"
+              key={form.key('case_sensitive')}
+              {...form.getInputProps('case_sensitive', {
                 type: 'checkbox',
               })}
             />

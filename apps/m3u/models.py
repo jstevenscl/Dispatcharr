@@ -180,6 +180,7 @@ class M3UFilter(models.Model):
         help_text="If True, matching items are excluded; if False, only matches are included.",
     )
     order = models.PositiveIntegerField(default=0)
+    custom_properties = models.TextField(null=True, blank=True)
 
     def applies_to(self, stream_name, group_name):
         target = group_name if self.filter_type == "group" else stream_name

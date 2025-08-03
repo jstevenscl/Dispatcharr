@@ -6,7 +6,6 @@ from core.models import UserAgent
 from apps.channels.models import ChannelGroup, ChannelGroupM3UAccount
 from apps.channels.serializers import (
     ChannelGroupM3UAccountSerializer,
-    ChannelGroupSerializer,
 )
 import logging
 
@@ -18,7 +17,14 @@ class M3UFilterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = M3UFilter
-        fields = ["id", "filter_type", "regex_pattern", "exclude", "order"]
+        fields = [
+            "id",
+            "filter_type",
+            "regex_pattern",
+            "exclude",
+            "order",
+            "custom_properties",
+        ]
 
 
 class M3UAccountProfileSerializer(serializers.ModelSerializer):

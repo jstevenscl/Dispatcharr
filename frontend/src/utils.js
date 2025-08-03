@@ -89,3 +89,30 @@ export const copyToClipboard = async (value) => {
     return false;
   }
 };
+
+export const setCustomProperty = (input, key, value, serialize = false) => {
+  let obj;
+
+  if (input == null) {
+    // matches null or undefined
+    obj = {};
+  } else if (typeof input === 'string') {
+    try {
+      obj = JSON.parse(input);
+    } catch (e) {
+      obj = {};
+    }
+  } else if (typeof input === 'object' && !Array.isArray(input)) {
+    obj = { ...input }; // shallow copy
+  } else {
+    obj = {};
+  }
+
+  obj[key] = value;
+
+  if (serialize === true) {
+    return JSON.stringify(obj);
+  }
+
+  return obj;
+};

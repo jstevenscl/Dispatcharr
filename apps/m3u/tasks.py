@@ -279,7 +279,17 @@ def process_groups(account, groups):
     logger.info(f"Currently {len(existing_groups)} existing groups")
 
     compiled_filters = [
-        (re.compile(f.regex_pattern), f)
+        (
+            re.compile(
+                f.regex_pattern,
+                (
+                    re.IGNORECASE
+                    if json.loads(f.custom_properties or "{}").get("case_sensitive", True) == False
+                    else 0
+                ),
+            ),
+            f,
+        )
         for f in account.filters.order_by("order")
         if f.filter_type == "group"
     ]
@@ -510,7 +520,17 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     account = M3UAccount.objects.get(id=account_id)
 
     compiled_filters = [
-        (re.compile(f.regex_pattern), f)
+        (
+            re.compile(
+                f.regex_pattern,
+                (
+                    re.IGNORECASE
+                    if json.loads(f.custom_properties or "{}").get("case_sensitive", True) == False
+                    else 0
+                ),
+            ),
+            f,
+        )
         for f in account.filters.order_by("order")
         if f.filter_type != "group"
     ]
@@ -519,7 +539,6 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     streams_to_update = []
     stream_hashes = {}
 
-    # compiled_filters = [(f.filter_type, re.compile(f.regex_pattern, re.IGNORECASE)) for f in filters]
     logger.debug(f"Processing batch of {len(batch)} for M3U account {account_id}")
     for stream_info in batch:
         try:
