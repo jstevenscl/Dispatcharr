@@ -110,8 +110,12 @@ def refresh_movies(account):
         response.raise_for_status()
         categories_data = response.json()
 
-        # Create/update categories
+        # Create a mapping of category_id to category name for lookup
+        category_id_to_name = {}
         for cat_data in categories_data:
+            category_id_to_name[cat_data.get('category_id')] = cat_data['category_name']
+
+            # Create/update categories
             VODCategory.objects.get_or_create(
                 name=cat_data['category_name'],
                 m3u_account=account,
@@ -134,26 +138,25 @@ def refresh_movies(account):
             try:
                 # Get category
                 category = None
-                if movie_data.get('category_id'):
-                    try:
-                        # First try exact match by category_id if available
-                        category = VODCategory.objects.filter(
-                            m3u_account=account,
-                            category_type='movie'
-                        ).filter(
-                            name__iexact=movie_data.get('category_name', '')
-                        ).first()
+                category_id = movie_data.get('category_id')
 
-                        # If no exact match, try contains but limit to first result
-                        if not category and movie_data.get('category_name'):
+                if category_id:
+                    # First try to get category name from our mapping
+                    category_name = category_id_to_name.get(category_id)
+                    if not category_name:
+                        # Fallback to category_name from movie data
+                        category_name = movie_data.get('category_name', '')
+
+                    if category_name:
+                        try:
                             category = VODCategory.objects.filter(
-                                name__icontains=movie_data.get('category_name', ''),
+                                name=category_name,
                                 m3u_account=account,
                                 category_type='movie'
                             ).first()
-                    except Exception as e:
-                        logger.warning(f"Error finding category for movie {movie_data.get('name', 'Unknown')}: {e}")
-                        category = None
+                        except Exception as e:
+                            logger.warning(f"Error finding category for movie {movie_data.get('name', 'Unknown')}: {e}")
+                            category = None
 
                 # Create/update movie
                 stream_url = f"{account.server_url}/movie/{account.username}/{account.password}/{movie_data['stream_id']}.{movie_data.get('container_extension', 'mp4')}"
@@ -172,7 +175,7 @@ def refresh_movies(account):
                     'container_extension': movie_data.get('container_extension'),
                     'tmdb_id': movie_data.get('tmdb_id'),
                     'imdb_id': movie_data.get('imdb_id'),
-                    'custom_properties': json.dumps(movie_data) if movie_data else None
+                    'custom_properties': movie_data if movie_data else None
                 }
 
                 # Use new Movie model
@@ -214,8 +217,12 @@ def refresh_series(account):
         response.raise_for_status()
         categories_data = response.json()
 
-        # Create/update series categories
+        # Create a mapping of category_id to category name for lookup
+        category_id_to_name = {}
         for cat_data in categories_data:
+            category_id_to_name[cat_data.get('category_id')] = cat_data['category_name']
+
+            # Create/update series categories
             VODCategory.objects.get_or_create(
                 name=cat_data['category_name'],
                 m3u_account=account,
@@ -238,26 +245,25 @@ def refresh_series(account):
             try:
                 # Get category
                 category = None
-                if series_item.get('category_id'):
-                    try:
-                        # First try exact match
-                        category = VODCategory.objects.filter(
-                            m3u_account=account,
-                            category_type='series'
-                        ).filter(
-                            name__iexact=series_item.get('category_name', '')
-                        ).first()
+                category_id = series_item.get('category_id')
 
-                        # If no exact match, try contains but limit to first result
-                        if not category and series_item.get('category_name'):
+                if category_id:
+                    # First try to get category name from our mapping
+                    category_name = category_id_to_name.get(category_id)
+                    if not category_name:
+                        # Fallback to category_name from series data
+                        category_name = series_item.get('category_name', '')
+
+                    if category_name:
+                        try:
                             category = VODCategory.objects.filter(
-                                name__icontains=series_item.get('category_name', ''),
+                                name=category_name,
                                 m3u_account=account,
                                 category_type='series'
                             ).first()
-                    except Exception as e:
-                        logger.warning(f"Error finding category for series {series_item.get('name', 'Unknown')}: {e}")
-                        category = None
+                        except Exception as e:
+                            logger.warning(f"Error finding category for series {series_item.get('name', 'Unknown')}: {e}")
+                            category = None
 
                 # Create/update series
                 # Extract year from series data
@@ -272,7 +278,7 @@ def refresh_series(account):
                     'category': category,
                     'tmdb_id': series_item.get('tmdb_id'),
                     'imdb_id': series_item.get('imdb_id'),
-                    'custom_properties': json.dumps(series_item) if series_item else None
+                    'custom_properties': series_item if series_item else None
                 }
 
                 series, created = Series.objects.update_or_create(
@@ -337,7 +343,7 @@ def refresh_series_episodes(account, series, series_id):
                             'container_extension': episode_data.get('container_extension'),
                             'tmdb_id': episode_data.get('tmdb_id'),
                             'imdb_id': episode_data.get('imdb_id'),
-                            'custom_properties': json.dumps(episode_data) if episode_data else None
+                            'custom_properties': episode_data if episode_data else None
                         }
 
                         # Use new Episode model
