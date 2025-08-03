@@ -1,131 +1,182 @@
 import { create } from 'zustand';
-import API from '../api';
-
-const host = window.location.origin;
+import api from '../api';
 
 const useVODStore = create((set, get) => ({
-    // State
     vods: {},
     series: {},
     categories: {},
     loading: false,
     error: null,
-
-    // Filters and pagination
-    currentPage: 1,
-    pageSize: 50,
-    totalCount: 0,
     filters: {
         type: 'all', // 'all', 'movies', 'series'
-        category: '',
         search: '',
-        year: null,
-        seriesId: null
+        category: '',
     },
+    currentPage: 1,
+    totalCount: 0,
+    pageSize: 20,
 
-    // Actions
-    setLoading: (loading) => set({ loading }),
-    setError: (error) => set({ error }),
+    setFilters: (newFilters) =>
+        set((state) => ({
+            filters: { ...state.filters, ...newFilters },
+            currentPage: 1, // Reset to first page when filters change
+        })),
 
-    setFilters: (newFilters) => set((state) => ({
-        filters: { ...state.filters, ...newFilters },
-        currentPage: 1 // Reset to first page when filters change
-    })),
-
-    setPage: (page) => set({ currentPage: page }),
+    setPage: (page) =>
+        set(() => ({
+            currentPage: page,
+        })),
 
     fetchVODs: async () => {
-        const { filters, currentPage, pageSize } = get();
         set({ loading: true, error: null });
-
         try {
-            const params = new URLSearchParams({
-                page: currentPage.toString(),
-                page_size: pageSize.toString(),
-                ...Object.fromEntries(
-                    Object.entries(filters).filter(([_, value]) =>
-                        value !== null && value !== '' && value !== 'all'
-                    )
-                )
-            });
+            const state = get();
+            const params = new URLSearchParams();
 
-            const response = await API.request(`${host}/api/vod/vods/?${params}`);
+            params.append('page', state.currentPage);
+            params.append('page_size', state.pageSize);
+
+            if (state.filters.search) {
+                params.append('search', state.filters.search);
+            }
+
+            if (state.filters.category) {
+                params.append('category', state.filters.category);
+            }
+
+            if (state.filters.type === 'movies') {
+                params.append('type', 'movie');
+            }
+
+            const response = await api.getVODs(params);
+
+            // Handle both paginated and non-paginated responses
+            const results = response.results || response;
+            const count = response.count || results.length;
 
             set({
-                vods: response.results || response,
-                totalCount: response.count || response.length || 0,
-                loading: false
+                vods: results.reduce((acc, vod) => {
+                    acc[vod.id] = vod;
+                    return acc;
+                }, {}),
+                totalCount: count,
+                loading: false,
             });
         } catch (error) {
-            set({ error: error.message, loading: false });
+            console.error('Failed to fetch VODs:', error);
+            set({ error: 'Failed to load VODs.', loading: false });
         }
     },
 
     fetchSeries: async () => {
-        const { filters, currentPage, pageSize } = get();
         set({ loading: true, error: null });
-
         try {
-            const params = new URLSearchParams({
-                page: currentPage.toString(),
-                page_size: pageSize.toString(),
-                search: filters.search || ''
-            });
+            const state = get();
+            const params = new URLSearchParams();
 
-            const response = await API.request(`${host}/api/vod/series/?${params}`);
+            params.append('page', state.currentPage);
+            params.append('page_size', state.pageSize);
+
+            if (state.filters.search) {
+                params.append('search', state.filters.search);
+            }
+
+            if (state.filters.category) {
+                params.append('category', state.filters.category);
+            }
+
+            const response = await api.getVODSeries(params);
+
+            // Handle both paginated and non-paginated responses
+            const results = response.results || response;
+            const count = response.count || results.length;
 
             set({
-                series: response.results || response,
-                totalCount: response.count || response.length || 0,
-                loading: false
+                series: results.reduce((acc, series) => {
+                    acc[series.id] = series;
+                    return acc;
+                }, {}),
+                totalCount: count,
+                loading: false,
             });
         } catch (error) {
-            set({ error: error.message, loading: false });
-        }
-    },
-
-    fetchCategories: async () => {
-        set({ loading: true, error: null });
-
-        try {
-            const response = await API.request(`${host}/api/vod/categories/`);
-            set({
-                categories: response.results || response,
-                loading: false
-            });
-        } catch (error) {
-            set({ error: error.message, loading: false });
+            console.error('Failed to fetch series:', error);
+            set({ error: 'Failed to load series.', loading: false });
         }
     },
 
     fetchSeriesEpisodes: async (seriesId) => {
         set({ loading: true, error: null });
-
         try {
-            const response = await API.request(`${host}/api/vod/series/${seriesId}/episodes/`);
-            set({
-                vods: response.results || response,
-                totalCount: response.count || response.length || 0,
-                loading: false
-            });
+            const response = await api.getSeriesEpisodes(seriesId);
+
+            set((state) => ({
+                vods: {
+                    ...state.vods,
+                    ...response.reduce((acc, episode) => {
+                        acc[episode.id] = episode;
+                        return acc;
+                    }, {}),
+                },
+                loading: false,
+            }));
         } catch (error) {
-            set({ error: error.message, loading: false });
+            console.error('Failed to fetch series episodes:', error);
+            set({ error: 'Failed to load episodes.', loading: false });
         }
     },
 
-    // Clear data
-    clearVODs: () => set({ vods: {}, totalCount: 0 }),
-    clearSeries: () => set({ series: {} }),
-    clearFilters: () => set({
-        filters: {
-            type: 'all',
-            category: '',
-            search: '',
-            year: null,
-            seriesId: null
-        },
-        currentPage: 1
-    })
+    fetchCategories: async () => {
+        try {
+            const response = await api.getVODCategories();
+            // Handle both array and paginated responses
+            const results = response.results || response;
+
+            set({
+                categories: results.reduce((acc, category) => {
+                    acc[category.id] = category;
+                    return acc;
+                }, {}),
+            });
+        } catch (error) {
+            console.error('Failed to fetch VOD categories:', error);
+            set({ error: 'Failed to load categories.' });
+        }
+    },
+
+    addVOD: (vod) =>
+        set((state) => ({
+            vods: { ...state.vods, [vod.id]: vod },
+        })),
+
+    updateVOD: (vod) =>
+        set((state) => ({
+            vods: { ...state.vods, [vod.id]: vod },
+        })),
+
+    removeVOD: (vodId) =>
+        set((state) => {
+            const updatedVODs = { ...state.vods };
+            delete updatedVODs[vodId];
+            return { vods: updatedVODs };
+        }),
+
+    addSeries: (series) =>
+        set((state) => ({
+            series: { ...state.series, [series.id]: series },
+        })),
+
+    updateSeries: (series) =>
+        set((state) => ({
+            series: { ...state.series, [series.id]: series },
+        })),
+
+    removeSeries: (seriesId) =>
+        set((state) => {
+            const updatedSeries = { ...state.series };
+            delete updatedSeries[seriesId];
+            return { series: updatedSeries };
+        }),
 }));
 
 export default useVODStore;

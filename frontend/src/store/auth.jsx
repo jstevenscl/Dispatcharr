@@ -9,6 +9,7 @@ import useUserAgentsStore from './userAgents';
 import useUsersStore from './users';
 import API from '../api';
 import { USER_LEVELS } from '../constants';
+import useVODStore from './useVODStore';
 
 const decodeToken = (token) => {
   if (!token) return null;
@@ -57,6 +58,7 @@ const useAuthStore = create((set, get) => ({
         useChannelsStore.getState().fetchLogos(),
         useStreamProfilesStore.getState().fetchProfiles(),
         useUserAgentsStore.getState().fetchUserAgents(),
+        useVODStore.getState().fetchCategories(), // Add VOD categories
       ]);
 
       if (user.user_level >= USER_LEVELS.ADMIN) {

@@ -1700,13 +1700,36 @@ export default class API {
   }
 
   // VOD Methods
-  static async getVODs(params = {}) {
+  static async getVODs(params = new URLSearchParams()) {
     try {
-      const searchParams = new URLSearchParams(params);
-      const response = await request(`${host}/api/vod/movies/?${searchParams.toString()}`);
+      const response = await request(
+        `${host}/api/vod/movies/?${params.toString()}`
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve VODs', e);
+    }
+  }
+
+  static async getVODSeries(params = new URLSearchParams()) {
+    try {
+      const response = await request(
+        `${host}/api/vod/series/?${params.toString()}`
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve VOD series', e);
+    }
+  }
+
+  static async getSeriesEpisodes(seriesId) {
+    try {
+      const response = await request(
+        `${host}/api/vod/series/${seriesId}/episodes/`
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve series episodes', e);
     }
   }
 
@@ -1719,43 +1742,21 @@ export default class API {
     }
   }
 
-  static async getSeries(params = {}) {
+  static async getVODInfo(vodId) {
     try {
-      const searchParams = new URLSearchParams(params);
-      const response = await request(`${host}/api/vod/series/?${searchParams.toString()}`);
+      const response = await request(`${host}/api/vod/movies/${vodId}/`);
       return response;
     } catch (e) {
-      errorNotification('Failed to retrieve series', e);
+      errorNotification('Failed to retrieve VOD info', e);
     }
   }
 
-  static async getSeriesEpisodes(seriesId, params = {}) {
+  static async getSeriesInfo(seriesId) {
     try {
-      const searchParams = new URLSearchParams(params);
-      const response = await request(`${host}/api/vod/series/${seriesId}/episodes/?${searchParams.toString()}`);
+      const response = await request(`${host}/api/vod/series/${seriesId}/`);
       return response;
     } catch (e) {
-      errorNotification('Failed to retrieve series episodes', e);
-    }
-  }
-
-  static async getVODConnections() {
-    try {
-      const response = await request(`${host}/api/vod/connections/`);
-      return response;
-    } catch (e) {
-      errorNotification('Failed to retrieve VOD connections', e);
-    }
-  }
-
-  static async refreshVODContent(accountId) {
-    try {
-      const response = await request(`${host}/api/m3u/accounts/${accountId}/refresh-vod/`, {
-        method: 'POST'
-      });
-      return response;
-    } catch (e) {
-      errorNotification('Failed to refresh VOD content', e);
+      errorNotification('Failed to retrieve series info', e);
     }
   }
 
