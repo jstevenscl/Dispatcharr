@@ -274,6 +274,29 @@ const SeriesModal = ({ series, opened, onClose }) => {
     );
 };
 
+const MIN_CARD_WIDTH = 260;
+const MAX_CARD_WIDTH = 320;
+
+const useCardColumns = () => {
+    const [columns, setColumns] = useState(4);
+
+    useEffect(() => {
+        const calcColumns = () => {
+            const container = document.getElementById('vods-container');
+            const width = container ? container.offsetWidth : window.innerWidth;
+            let colCount = Math.floor(width / MIN_CARD_WIDTH);
+            if (colCount < 1) colCount = 1;
+            if (colCount > 6) colCount = 6;
+            setColumns(colCount);
+        };
+        calcColumns();
+        window.addEventListener('resize', calcColumns);
+        return () => window.removeEventListener('resize', calcColumns);
+    }, []);
+
+    return columns;
+};
+
 const VODsPage = () => {
     const {
         vods,
@@ -294,6 +317,7 @@ const VODsPage = () => {
     const showVideo = useVideoStore((s) => s.showVideo);
     const [selectedSeries, setSelectedSeries] = useState(null);
     const [seriesModalOpened, { open: openSeriesModal, close: closeSeriesModal }] = useDisclosure(false);
+    const columns = useCardColumns();
 
     useEffect(() => {
         fetchCategories();
@@ -306,10 +330,6 @@ const VODsPage = () => {
             fetchVODs();
         }
     }, [filters, currentPage, fetchVODs, fetchSeries]);
-
-
-
-
 
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
     const handlePlayVOD = (vod) => {
@@ -338,7 +358,7 @@ const VODsPage = () => {
     const totalPages = Math.ceil(totalCount / pageSize);
 
     return (
-        <Box p="md">
+        <Box p="md" id="vods-container">
             <Stack spacing="md">
                 <Group position="apart">
                     <Title order={2}>Video on Demand</Title>
@@ -382,9 +402,13 @@ const VODsPage = () => {
                 ) : (
                     <>
                         {filters.type === 'series' ? (
-                            <Grid>
+                            <Grid gutter="md">
                                 {Object.values(series).map(seriesItem => (
-                                    <Grid.Col span={3} key={seriesItem.id}>
+                                    <Grid.Col
+                                        span={12 / columns}
+                                        key={seriesItem.id}
+                                        style={{ minWidth: MIN_CARD_WIDTH, maxWidth: MAX_CARD_WIDTH, margin: '0 auto' }}
+                                    >
                                         <SeriesCard
                                             series={seriesItem}
                                             onClick={handleSeriesClick}
@@ -393,9 +417,13 @@ const VODsPage = () => {
                                 ))}
                             </Grid>
                         ) : (
-                            <Grid>
+                            <Grid gutter="md">
                                 {Object.values(vods).map(vod => (
-                                    <Grid.Col span={3} key={vod.id}>
+                                    <Grid.Col
+                                        span={12 / columns}
+                                        key={vod.id}
+                                        style={{ minWidth: MIN_CARD_WIDTH, maxWidth: MAX_CARD_WIDTH, margin: '0 auto' }}
+                                    >
                                         <VODCard vod={vod} onClick={handlePlayVOD} />
                                     </Grid.Col>
                                 ))}
