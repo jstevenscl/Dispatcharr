@@ -148,8 +148,9 @@ const useVODStore = create((set, get) => ({
                 country: response.country || '',
                 tmdb_id: response.tmdb_id || '',
                 youtube_trailer: response.youtube_trailer || '',
+                m3u_account: response.m3u_account || '',
             };
-
+            console.log('Fetched VOD Details:', vodDetails);
             set((state) => ({
                 vods: {
                     ...state.vods,

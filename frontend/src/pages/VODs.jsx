@@ -345,7 +345,7 @@ const VODModal = ({ vod, opened, onClose }) => {
         >
             <Stack spacing="md">
                 {loadingDetails && (
-                    <Group spacing="xs" mb="sm">
+                    <Group spacing="xs" mb={8}>
                         <Loader size="xs" />
                         <Text size="xs" color="dimmed">Loading additional details...</Text>
                     </Group>
@@ -443,67 +443,123 @@ const VODModal = ({ vod, opened, onClose }) => {
                             </Text>
                         )}
 
-                        {/* Technical info */}
-                        {(displayVOD.bitrate || displayVOD.video || displayVOD.audio) && (
-                            <Stack spacing={4}>
-                                <Text size="sm" weight={500}>Technical Details:</Text>
-                                {displayVOD.bitrate && displayVOD.bitrate > 0 && (
-                                    <Text size="xs" color="dimmed">
-                                        Bitrate: {displayVOD.bitrate} kbps
-                                    </Text>
-                                )}
-                                {displayVOD.video && Object.keys(displayVOD.video).length > 0 && (
-                                    <Text size="xs" color="dimmed">
-                                        Video: {JSON.stringify(displayVOD.video)}
-                                    </Text>
-                                )}
-                                {displayVOD.audio && Object.keys(displayVOD.audio).length > 0 && (
-                                    <Text size="xs" color="dimmed">
-                                        Audio: {JSON.stringify(displayVOD.audio)}
-                                    </Text>
-                                )}
-                            </Stack>
+                        {/* Description */}
+                        {displayVOD.description && (
+                            <Box>
+                                <Text size="sm" weight={500} mb={8}>Description</Text>
+                                <Text size="sm">
+                                    {displayVOD.description}
+                                </Text>
+                            </Box>
                         )}
 
+                        {/* Watch Trailer button at top */}
+                        {displayVOD.youtube_trailer && (
+                            <Button
+                                component="a"
+                                href={displayVOD.youtube_trailer}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                variant="outline"
+                                color="red"
+                                style={{ marginTop: 'auto', alignSelf: 'flex-start' }}
+                            >
+                                Watch Trailer on YouTube
+                            </Button>
+                        )}
+                        {/* Removed Play Movie button from here */}
+                    </Stack>
+                </Flex>
+                {/* Provider Information & Play Button Row */}
+                {(vod?.m3u_account || true) && (
+                    <Group spacing="md" align="center" mt="md">
+                        {vod?.m3u_account && (
+                            <Box>
+                                <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
+                                <Group spacing="md">
+                                    <Badge color="blue" variant="light">
+                                        {vod.m3u_account.name}
+                                    </Badge>
+                                    {vod.m3u_account.account_type && (
+                                        <Badge color="gray" variant="outline" size="xs">
+                                            {vod.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
+                                        </Badge>
+                                    )}
+                                </Group>
+                            </Box>
+                        )}
                         <Button
                             leftSection={<Play size={16} />}
                             variant="filled"
                             color="blue"
                             size="md"
                             onClick={handlePlayVOD}
-                            style={{ marginTop: 'auto', alignSelf: 'flex-start' }}
+                            style={{ alignSelf: 'flex-start' }}
                         >
                             Play Movie
+                            {vod?.m3u_account && (
+                                <span style={{ fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
+                                    {`(via ${vod.m3u_account.name}${displayVOD.bitrate ? `, ~${displayVOD.bitrate} kbps` : ''})`}
+                                </span>
+                            )}
                         </Button>
+                    </Group>
+                )}
+                {/* Technical Details */}
+                {(displayVOD.bitrate || displayVOD.video || displayVOD.audio) && (
+                    <Stack spacing={4} mt="xs">
+                        <Text size="sm" weight={500}>Technical Details:</Text>
+                        {displayVOD.bitrate && displayVOD.bitrate > 0 && (
+                            <Text size="xs" color="dimmed">
+                                <strong>Bitrate:</strong> {displayVOD.bitrate} kbps
+                            </Text>
+                        )}
+                        {displayVOD.video && Object.keys(displayVOD.video).length > 0 && (
+                            <Text size="xs" color="dimmed">
+                                <strong>Video:</strong>{' '}
+                                {displayVOD.video.codec_long_name || displayVOD.video.codec_name}
+                                {displayVOD.video.profile ? ` (${displayVOD.video.profile})` : ''}
+                                {displayVOD.video.width && displayVOD.video.height
+                                    ? `, ${displayVOD.video.width}x${displayVOD.video.height}`
+                                    : ''}
+                                {displayVOD.video.display_aspect_ratio
+                                    ? `, Aspect Ratio: ${displayVOD.video.display_aspect_ratio}`
+                                    : ''}
+                                {displayVOD.video.bit_rate
+                                    ? `, Bitrate: ${Math.round(Number(displayVOD.video.bit_rate) / 1000)} kbps`
+                                    : ''}
+                                {displayVOD.video.r_frame_rate
+                                    ? `, Frame Rate: ${displayVOD.video.r_frame_rate.replace('/', '/')} fps`
+                                    : ''}
+                                {displayVOD.video.tags?.encoder
+                                    ? `, Encoder: ${displayVOD.video.tags.encoder}`
+                                    : ''}
+                            </Text>
+                        )}
+                        {displayVOD.audio && Object.keys(displayVOD.audio).length > 0 && (
+                            <Text size="xs" color="dimmed">
+                                <strong>Audio:</strong>{' '}
+                                {displayVOD.audio.codec_long_name || displayVOD.audio.codec_name}
+                                {displayVOD.audio.profile ? ` (${displayVOD.audio.profile})` : ''}
+                                {displayVOD.audio.channel_layout
+                                    ? `, Channels: ${displayVOD.audio.channel_layout}`
+                                    : displayVOD.audio.channels
+                                        ? `, Channels: ${displayVOD.audio.channels}`
+                                        : ''}
+                                {displayVOD.audio.sample_rate
+                                    ? `, Sample Rate: ${displayVOD.audio.sample_rate} Hz`
+                                    : ''}
+                                {displayVOD.audio.bit_rate
+                                    ? `, Bitrate: ${Math.round(Number(displayVOD.audio.bit_rate) / 1000)} kbps`
+                                    : ''}
+                                {displayVOD.audio.tags?.handler_name
+                                    ? `, Handler: ${displayVOD.audio.tags.handler_name}`
+                                    : ''}
+                            </Text>
+                        )}
                     </Stack>
-                </Flex>
-
-                {/* Description */}
-                {displayVOD.description && (
-                    <Box>
-                        <Text size="sm" weight={500} mb={8}>Description</Text>
-                        <Text size="sm">
-                            {displayVOD.description}
-                        </Text>
-                    </Box>
                 )}
-
                 {/* YouTube trailer if available */}
-                {displayVOD.youtube_trailer && (
-                    <Box>
-                        <Text size="sm" weight={500} mb={8}>Trailer</Text>
-                        <Button
-                            variant="outline"
-                            color="red"
-                            component="a"
-                            href={displayVOD.youtube_trailer}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            Watch Trailer on YouTube
-                        </Button>
-                    </Box>
-                )}
             </Stack>
         </Modal>
     );
