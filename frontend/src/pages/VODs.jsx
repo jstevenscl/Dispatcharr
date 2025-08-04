@@ -314,11 +314,11 @@ const VODModal = ({ vod, opened, onClose }) => {
         const vodToPlay = detailedVOD || vod;
         if (!vodToPlay) return;
 
-        let streamUrl = vodToPlay.stream_url;
+        let streamUrl = `/proxy/vod/movie/${vod.uuid}`;
         if (env_mode === 'dev') {
-            streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${vodToPlay.stream_url}`;
+            streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${streamUrl}`;
         } else {
-            streamUrl = `${window.location.origin}${vodToPlay.stream_url}`;
+            streamUrl = `${window.location.origin}${streamUrl}`;
         }
         showVideo(streamUrl, 'vod', vodToPlay);
     };
@@ -568,17 +568,6 @@ const VODsPage = () => {
             fetchVODs().finally(() => setInitialLoad(false));
         }
     }, [filters, currentPage, fetchVODs, fetchSeries]);
-
-    const env_mode = useSettingsStore((s) => s.environment.env_mode);
-    const handlePlayVOD = (vod) => {
-        let streamUrl = vod.stream_url;
-        if (env_mode === 'dev') {
-            streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${vod.stream_url}`;
-        } else {
-            streamUrl = `${window.location.origin}${vod.stream_url}`;
-        }
-        showVideo(streamUrl, 'vod', vod);
-    };
 
     const handleVODCardClick = (vod) => {
         setSelectedVOD(vod);
