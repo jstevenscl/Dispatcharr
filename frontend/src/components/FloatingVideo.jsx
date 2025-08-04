@@ -8,41 +8,35 @@ import { CloseButton, Flex, Loader, Text, Box } from '@mantine/core';
 export default function FloatingVideo() {
   const isVisible = useVideoStore((s) => s.isVisible);
   const streamUrl = useVideoStore((s) => s.streamUrl);
+  const contentType = useVideoStore((s) => s.contentType);
   const hideVideo = useVideoStore((s) => s.hideVideo);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const videoContainerRef = useRef(null);
-  // Convert ref to state so we can use it for rendering
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
 
-  // Safely destroy the player to prevent errors
+  // Safely destroy the mpegts player to prevent errors
   const safeDestroyPlayer = () => {
     try {
       if (playerRef.current) {
-        // Set loading to false when destroying player
         setIsLoading(false);
         setLoadError(null);
 
-        // First unload the source to stop any in-progress fetches
         if (videoRef.current) {
-          // Remove src attribute and force a load to clear any pending requests
           videoRef.current.removeAttribute('src');
           videoRef.current.load();
         }
 
-        // Pause the player first
         try {
           playerRef.current.pause();
         } catch (e) {
           // Ignore pause errors
         }
 
-        // Use a try-catch block specifically for the destroy call
         try {
           playerRef.current.destroy();
         } catch (error) {
-          // Ignore expected abort errors
           if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
             console.log("Error during player destruction:", error.message);
           }
@@ -56,39 +50,111 @@ export default function FloatingVideo() {
     }
   };
 
-  useEffect(() => {
-    if (!isVisible || !streamUrl) {
-      safeDestroyPlayer();
-      return;
-    }
+  // Initialize VOD player (native HTML5 with enhanced controls)
+  const initializeVODPlayer = () => {
+    if (!videoRef.current || !streamUrl) return;
 
-    // Check if we have an existing player and clean it up
-    safeDestroyPlayer();
-
-    // Set loading state to true when starting a new stream
     setIsLoading(true);
     setLoadError(null);
 
-    // Debug log to help diagnose stream issues
-    console.log("Attempting to play stream:", streamUrl);
+    console.log("Initializing VOD player for:", streamUrl);
+
+    const video = videoRef.current;
+
+    // Enhanced video element configuration for VOD
+    video.preload = 'metadata';
+    video.crossOrigin = 'anonymous';
+
+    // Set up event listeners
+    const handleLoadStart = () => setIsLoading(true);
+    const handleLoadedData = () => setIsLoading(false);
+    const handleCanPlay = () => {
+      setIsLoading(false);
+      // Auto-play for VOD content
+      video.play().catch(e => {
+        console.log("Auto-play prevented:", e);
+        setLoadError("Auto-play was prevented. Click play to start.");
+      });
+    };
+    const handleError = (e) => {
+      setIsLoading(false);
+      const error = e.target.error;
+      let errorMessage = "Video playback error";
+
+      if (error) {
+        switch (error.code) {
+          case error.MEDIA_ERR_ABORTED:
+            errorMessage = "Video playback was aborted";
+            break;
+          case error.MEDIA_ERR_NETWORK:
+            errorMessage = "Network error while loading video";
+            break;
+          case error.MEDIA_ERR_DECODE:
+            errorMessage = "Video codec not supported by your browser";
+            break;
+          case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMessage = "Video format not supported by your browser";
+            break;
+          default:
+            errorMessage = error.message || "Unknown video error";
+        }
+      }
+
+      setLoadError(errorMessage);
+    };
+
+    // Enhanced progress tracking for VOD
+    const handleProgress = () => {
+      if (video.buffered.length > 0) {
+        const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+        const duration = video.duration;
+        if (duration > 0) {
+          const bufferedPercent = (bufferedEnd / duration) * 100;
+          // You could emit this to a store for UI feedback
+        }
+      }
+    };
+
+    // Add event listeners
+    video.addEventListener('loadstart', handleLoadStart);
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('error', handleError);
+    video.addEventListener('progress', handleProgress);
+
+    // Set the source
+    video.src = streamUrl;
+    video.load();
+
+    // Store cleanup function
+    playerRef.current = {
+      destroy: () => {
+        video.removeEventListener('loadstart', handleLoadStart);
+        video.removeEventListener('loadeddata', handleLoadedData);
+        video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('error', handleError);
+        video.removeEventListener('progress', handleProgress);
+        video.removeAttribute('src');
+        video.load();
+      }
+    };
+  };
+
+  // Initialize live stream player (mpegts.js)
+  const initializeLivePlayer = () => {
+    if (!videoRef.current || !streamUrl) return;
+
+    setIsLoading(true);
+    setLoadError(null);
+
+    console.log("Initializing live stream player for:", streamUrl);
 
     try {
-      // Check for MSE support first
       if (!mpegts.getFeatureList().mseLivePlayback) {
         setIsLoading(false);
         setLoadError("Your browser doesn't support live video streaming. Please try Chrome or Edge.");
         return;
       }
-
-      // Check for basic codec support
-      const video = document.createElement('video');
-      const h264Support = video.canPlayType('video/mp4; codecs="avc1.42E01E"');
-      const aacSupport = video.canPlayType('audio/mp4; codecs="mp4a.40.2"');
-
-      console.log("Browser codec support - H264:", h264Support, "AAC:", aacSupport);
-
-      // If the browser supports MSE for live playback, initialize mpegts.js
-      setIsLoading(true);
 
       const player = mpegts.createPlayer({
         type: 'mpegts',
@@ -107,7 +173,6 @@ export default function FloatingVideo() {
 
       player.attachMediaElement(videoRef.current);
 
-      // Add events to track loading state
       player.on(mpegts.Events.LOADING_COMPLETE, () => {
         setIsLoading(false);
       });
@@ -116,19 +181,15 @@ export default function FloatingVideo() {
         setIsLoading(false);
       });
 
-      // Enhanced error event handler with codec-specific messages
       player.on(mpegts.Events.ERROR, (errorType, errorDetail) => {
         setIsLoading(false);
 
-        // Filter out aborted errors
         if (errorType !== 'NetworkError' || !errorDetail?.includes('aborted')) {
           console.error('Player error:', errorType, errorDetail);
 
-          // Provide specific error messages based on error type
           let errorMessage = `Error: ${errorType}`;
 
           if (errorType === 'MediaError') {
-            // Try to determine if it's an audio or video codec issue
             const errorString = errorDetail?.toLowerCase() || '';
 
             if (errorString.includes('audio') || errorString.includes('ac3') || errorString.includes('ac-3')) {
@@ -150,7 +211,6 @@ export default function FloatingVideo() {
 
       player.load();
 
-      // Don't auto-play until we've loaded properly
       player.on(mpegts.Events.MEDIA_INFO, () => {
         setIsLoading(false);
         try {
@@ -164,35 +224,48 @@ export default function FloatingVideo() {
         }
       });
 
-      // Store player instance so we can clean up later
       playerRef.current = player;
     } catch (error) {
       setIsLoading(false);
       console.error("Error initializing player:", error);
 
-      // Provide helpful error message based on the error
       if (error.message?.includes('codec') || error.message?.includes('format')) {
         setLoadError("Codec not supported by your browser. Please try a different browser (Chrome/Edge recommended).");
       } else {
         setLoadError(`Initialization error: ${error.message}`);
       }
     }
+  };
+
+  useEffect(() => {
+    if (!isVisible || !streamUrl) {
+      safeDestroyPlayer();
+      return;
+    }
+
+    // Clean up any existing player
+    safeDestroyPlayer();
+
+    // Initialize the appropriate player based on content type
+    if (contentType === 'vod') {
+      initializeVODPlayer();
+    } else {
+      initializeLivePlayer();
+    }
 
     // Cleanup when component unmounts or streamUrl changes
     return () => {
       safeDestroyPlayer();
     };
-  }, [isVisible, streamUrl]);
+  }, [isVisible, streamUrl, contentType]);
 
   // Modified hideVideo handler to clean up player first
   const handleClose = (e) => {
-    // Prevent event propagation to avoid triggering drag events
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
     safeDestroyPlayer();
-    // Small delay before hiding the video component to ensure cleanup is complete
     setTimeout(() => {
       hideVideo();
     }, 50);
@@ -242,11 +315,24 @@ export default function FloatingVideo() {
 
         {/* Video container with relative positioning for the overlay */}
         <Box style={{ position: 'relative' }}>
-          {/* The <video> element used by mpegts.js */}
+          {/* Enhanced video element with better controls for VOD */}
           <video
             ref={videoRef}
             controls
-            style={{ width: '100%', height: '180px', backgroundColor: '#000' }}
+            style={{
+              width: '100%',
+              height: '180px',
+              backgroundColor: '#000',
+              // Better controls styling for VOD
+              ...(contentType === 'vod' && {
+                controlsList: 'nodownload',
+                playsInline: true,
+              })
+            }}
+            // Add poster for VOD if available
+            {...(contentType === 'vod' && {
+              poster: undefined, // Could add poster support later
+            })}
           />
 
           {/* Loading overlay - only show when loading */}
@@ -268,7 +354,7 @@ export default function FloatingVideo() {
             >
               <Loader color="cyan" size="md" />
               <Text color="white" size="sm" mt={10}>
-                Loading stream...
+                Loading {contentType === 'vod' ? 'video' : 'stream'}...
               </Text>
             </Box>
           )}
