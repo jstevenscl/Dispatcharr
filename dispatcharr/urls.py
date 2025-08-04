@@ -65,8 +65,7 @@ urlpatterns = [
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     # Optionally, serve the raw Swagger JSON
     path("swagger.json", schema_view.without_ui(cache_timeout=0), name="schema-json"),
-    # VOD
-    path("api/vod/", include("apps.vod.urls")),
+
     path("proxy/vod/", include("apps.proxy.vod_proxy.urls")),
     # Catch-all routes should always be last
     path("", TemplateView.as_view(template_name="index.html")),  # React entry point

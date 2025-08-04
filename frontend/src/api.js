@@ -1751,6 +1751,15 @@ export default class API {
     }
   }
 
+  static async getVODInfoFromProvider(vodId) {
+    try {
+      const response = await request(`${host}/api/vod/movies/${vodId}/provider-info/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve VOD info from provider', e);
+    }
+  }
+
   static async getSeriesInfo(seriesId) {
     try {
       const response = await request(`${host}/api/vod/series/${seriesId}/`);

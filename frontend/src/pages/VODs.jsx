@@ -50,6 +50,11 @@ const VODCard = ({ vod, onClick }) => {
         return <Text weight={500}>{vod.name}</Text>;
     };
 
+    const handleCardClick = async () => {
+        // Just pass the basic vod info to the parent handler
+        onClick(vod);
+    };
+
     return (
         <Card
             shadow="sm"
@@ -57,7 +62,7 @@ const VODCard = ({ vod, onClick }) => {
             radius="md"
             withBorder
             style={{ cursor: 'pointer', backgroundColor: '#27272A' }}
-            onClick={() => onClick(vod)}
+            onClick={handleCardClick}
         >
             <Card.Section>
                 <Box style={{ position: 'relative', height: 300 }}>
@@ -274,6 +279,236 @@ const SeriesModal = ({ series, opened, onClose }) => {
     );
 };
 
+const VODModal = ({ vod, opened, onClose }) => {
+    const [detailedVOD, setDetailedVOD] = useState(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const { fetchVODDetailsFromProvider } = useVODStore();
+    const showVideo = useVideoStore((s) => s.showVideo);
+    const env_mode = useSettingsStore((s) => s.environment.env_mode);
+
+    useEffect(() => {
+        if (opened && vod && !detailedVOD) {
+            setLoadingDetails(true);
+            fetchVODDetailsFromProvider(vod.id)
+                .then((details) => {
+                    setDetailedVOD(details);
+                })
+                .catch((error) => {
+                    console.warn('Failed to fetch provider details, using basic info:', error);
+                    setDetailedVOD(vod); // Fallback to basic data
+                })
+                .finally(() => {
+                    setLoadingDetails(false);
+                });
+        }
+    }, [opened, vod, detailedVOD, fetchVODDetailsFromProvider]);
+
+    useEffect(() => {
+        if (!opened) {
+            setDetailedVOD(null);
+            setLoadingDetails(false);
+        }
+    }, [opened]);
+
+    const handlePlayVOD = () => {
+        const vodToPlay = detailedVOD || vod;
+        if (!vodToPlay) return;
+
+        let streamUrl = vodToPlay.stream_url;
+        if (env_mode === 'dev') {
+            streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${vodToPlay.stream_url}`;
+        } else {
+            streamUrl = `${window.location.origin}${vodToPlay.stream_url}`;
+        }
+        showVideo(streamUrl, 'vod', vodToPlay);
+    };
+
+    const formatDuration = (minutes) => {
+        if (!minutes) return '';
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    };
+
+    if (!vod) return null;
+
+    // Use detailed data if available, otherwise use basic vod data
+    const displayVOD = detailedVOD || vod;
+
+    return (
+        <Modal
+            opened={opened}
+            onClose={onClose}
+            title={displayVOD.name}
+            size="xl"
+            centered
+        >
+            <Stack spacing="md">
+                {loadingDetails && (
+                    <Group spacing="xs" mb="sm">
+                        <Loader size="xs" />
+                        <Text size="xs" color="dimmed">Loading additional details...</Text>
+                    </Group>
+                )}
+
+                {/* Backdrop image if available */}
+                {displayVOD.backdrop_path && displayVOD.backdrop_path.length > 0 && (
+                    <Box style={{ position: 'relative', height: 200, borderRadius: '8px', overflow: 'hidden' }}>
+                        <Image
+                            src={displayVOD.backdrop_path[0]}
+                            height={200}
+                            alt={`${displayVOD.name} backdrop`}
+                            fit="cover"
+                        />
+                    </Box>
+                )}
+
+                {/* Movie poster and basic info */}
+                <Flex gap="md">
+                    {/* Use movie_image or logo */}
+                    {(displayVOD.movie_image || displayVOD.logo?.url) ? (
+                        <Box style={{ flexShrink: 0 }}>
+                            <Image
+                                src={displayVOD.movie_image || displayVOD.logo.url}
+                                width={200}
+                                height={300}
+                                alt={displayVOD.name}
+                                fit="contain"
+                                style={{ borderRadius: '8px' }}
+                            />
+                        </Box>
+                    ) : (
+                        <Box
+                            style={{
+                                width: 200,
+                                height: 300,
+                                backgroundColor: '#404040',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '8px',
+                                flexShrink: 0
+                            }}
+                        >
+                            <Play size={48} color="#666" />
+                        </Box>
+                    )}
+
+                    <Stack spacing="md" style={{ flex: 1 }}>
+                        <Title order={3}>{displayVOD.name}</Title>
+
+                        {/* Original name if different */}
+                        {displayVOD.o_name && displayVOD.o_name !== displayVOD.name && (
+                            <Text size="sm" color="dimmed" style={{ fontStyle: 'italic' }}>
+                                Original: {displayVOD.o_name}
+                            </Text>
+                        )}
+
+                        <Group spacing="md">
+                            {displayVOD.year && <Badge color="blue">{displayVOD.year}</Badge>}
+                            {displayVOD.duration && <Badge color="gray">{formatDuration(displayVOD.duration)}</Badge>}
+                            {displayVOD.rating && <Badge color="yellow">{displayVOD.rating}</Badge>}
+                            {displayVOD.age && <Badge color="orange">{displayVOD.age}</Badge>}
+                            <Badge color="green">Movie</Badge>
+                        </Group>
+
+                        {/* Release date */}
+                        {displayVOD.release_date && (
+                            <Text size="sm" color="dimmed">
+                                <strong>Release Date:</strong> {displayVOD.release_date}
+                            </Text>
+                        )}
+
+                        {displayVOD.genre && (
+                            <Text size="sm" color="dimmed">
+                                <strong>Genre:</strong> {displayVOD.genre}
+                            </Text>
+                        )}
+
+                        {displayVOD.director && (
+                            <Text size="sm" color="dimmed">
+                                <strong>Director:</strong> {displayVOD.director}
+                            </Text>
+                        )}
+
+                        {displayVOD.actors && (
+                            <Text size="sm" color="dimmed">
+                                <strong>Cast:</strong> {displayVOD.actors}
+                            </Text>
+                        )}
+
+                        {displayVOD.country && (
+                            <Text size="sm" color="dimmed">
+                                <strong>Country:</strong> {displayVOD.country}
+                            </Text>
+                        )}
+
+                        {/* Technical info */}
+                        {(displayVOD.bitrate || displayVOD.video || displayVOD.audio) && (
+                            <Stack spacing={4}>
+                                <Text size="sm" weight={500}>Technical Details:</Text>
+                                {displayVOD.bitrate && displayVOD.bitrate > 0 && (
+                                    <Text size="xs" color="dimmed">
+                                        Bitrate: {displayVOD.bitrate} kbps
+                                    </Text>
+                                )}
+                                {displayVOD.video && Object.keys(displayVOD.video).length > 0 && (
+                                    <Text size="xs" color="dimmed">
+                                        Video: {JSON.stringify(displayVOD.video)}
+                                    </Text>
+                                )}
+                                {displayVOD.audio && Object.keys(displayVOD.audio).length > 0 && (
+                                    <Text size="xs" color="dimmed">
+                                        Audio: {JSON.stringify(displayVOD.audio)}
+                                    </Text>
+                                )}
+                            </Stack>
+                        )}
+
+                        <Button
+                            leftSection={<Play size={16} />}
+                            variant="filled"
+                            color="blue"
+                            size="md"
+                            onClick={handlePlayVOD}
+                            style={{ marginTop: 'auto', alignSelf: 'flex-start' }}
+                        >
+                            Play Movie
+                        </Button>
+                    </Stack>
+                </Flex>
+
+                {/* Description */}
+                {displayVOD.description && (
+                    <Box>
+                        <Text size="sm" weight={500} mb={8}>Description</Text>
+                        <Text size="sm">
+                            {displayVOD.description}
+                        </Text>
+                    </Box>
+                )}
+
+                {/* YouTube trailer if available */}
+                {displayVOD.youtube_trailer && (
+                    <Box>
+                        <Text size="sm" weight={500} mb={8}>Trailer</Text>
+                        <Button
+                            variant="outline"
+                            color="red"
+                            component="a"
+                            href={displayVOD.youtube_trailer}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Watch Trailer on YouTube
+                        </Button>
+                    </Box>
+                )}
+            </Stack>
+        </Modal>
+    );
+};
+
 const MIN_CARD_WIDTH = 260;
 const MAX_CARD_WIDTH = 320;
 
@@ -316,7 +551,10 @@ const VODsPage = () => {
 
     const showVideo = useVideoStore((s) => s.showVideo);
     const [selectedSeries, setSelectedSeries] = useState(null);
+    const [selectedVOD, setSelectedVOD] = useState(null);
     const [seriesModalOpened, { open: openSeriesModal, close: closeSeriesModal }] = useDisclosure(false);
+    const [vodModalOpened, { open: openVODModal, close: closeVODModal }] = useDisclosure(false);
+    const [initialLoad, setInitialLoad] = useState(true);
     const columns = useCardColumns();
 
     useEffect(() => {
@@ -325,9 +563,9 @@ const VODsPage = () => {
 
     useEffect(() => {
         if (filters.type === 'series') {
-            fetchSeries();
+            fetchSeries().finally(() => setInitialLoad(false));
         } else {
-            fetchVODs();
+            fetchVODs().finally(() => setInitialLoad(false));
         }
     }, [filters, currentPage, fetchVODs, fetchSeries]);
 
@@ -339,7 +577,12 @@ const VODsPage = () => {
         } else {
             streamUrl = `${window.location.origin}${vod.stream_url}`;
         }
-        showVideo(streamUrl, 'vod'); // Specify VOD content type
+        showVideo(streamUrl, 'vod', vod);
+    };
+
+    const handleVODCardClick = (vod) => {
+        setSelectedVOD(vod);
+        openVODModal();
     };
 
     const handleSeriesClick = (series) => {
@@ -395,7 +638,7 @@ const VODsPage = () => {
                 </Group>
 
                 {/* Content */}
-                {loading ? (
+                {initialLoad ? (
                     <Flex justify="center" py="xl">
                         <Loader size="lg" />
                     </Flex>
@@ -424,7 +667,7 @@ const VODsPage = () => {
                                         key={vod.id}
                                         style={{ minWidth: MIN_CARD_WIDTH, maxWidth: MAX_CARD_WIDTH, margin: '0 auto' }}
                                     >
-                                        <VODCard vod={vod} onClick={handlePlayVOD} />
+                                        <VODCard vod={vod} onClick={handleVODCardClick} />
                                     </Grid.Col>
                                 ))}
                             </Grid>
@@ -449,6 +692,13 @@ const VODsPage = () => {
                 series={selectedSeries}
                 opened={seriesModalOpened}
                 onClose={closeSeriesModal}
+            />
+
+            {/* VOD Details Modal */}
+            <VODModal
+                vod={selectedVOD}
+                opened={vodModalOpened}
+                onClose={closeVODModal}
             />
         </Box>
     );

@@ -8,6 +8,7 @@ from datetime import timedelta
 from .models import Series, VODCategory, VODConnection, Movie, Episode
 from apps.m3u.models import M3UAccount
 from apps.channels.models import Logo
+from core.xtream_codes import Client as XtreamCodesClient
 
 logger = logging.getLogger(__name__)
 

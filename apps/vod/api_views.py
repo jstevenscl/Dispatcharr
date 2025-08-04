@@ -5,6 +5,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 import django_filters
+import logging
 from apps.accounts.permissions import (
     Authenticated,
     permission_classes_by_action,
@@ -17,6 +18,9 @@ from .serializers import (
     VODCategorySerializer,
     VODConnectionSerializer
 )
+from core.xtream_codes import Client as XtreamCodesClient
+
+logger = logging.getLogger(__name__)
 
 
 class MovieFilter(django_filters.FilterSet):
@@ -53,6 +57,105 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
         return Movie.objects.select_related(
             'category', 'logo', 'm3u_account'
         ).filter(m3u_account__is_active=True)
+
+    def _extract_year(self, date_string):
+        """Extract year from date string"""
+        if not date_string:
+            return None
+        try:
+            return int(date_string.split('-')[0])
+        except (ValueError, IndexError):
+            return None
+
+    def _convert_duration_to_minutes(self, duration_secs):
+        """Convert duration from seconds to minutes"""
+        if not duration_secs:
+            return 0
+        try:
+            return int(duration_secs) // 60
+        except (ValueError, TypeError):
+            return 0
+
+    @action(detail=True, methods=['get'], url_path='provider-info')
+    def provider_info(self, request, pk=None):
+        """Get detailed movie information from the original provider"""
+        logger.debug(f"MovieViewSet.provider_info called for movie ID: {pk}")
+        movie = self.get_object()
+        logger.debug(f"Retrieved movie: {movie.name} (ID: {movie.id})")
+
+        if not movie.m3u_account:
+            return Response(
+                {'error': 'No M3U account associated with this movie'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Create XtreamCodes client
+            with XtreamCodesClient(
+                server_url=movie.m3u_account.server_url,
+                username=movie.m3u_account.username,
+                password=movie.m3u_account.password,
+                user_agent=movie.m3u_account.user_agent
+            ) as client:
+                # Get detailed VOD info from provider
+                logger.debug(f"Fetching VOD info for movie {movie.id} with stream ID {movie.stream_id} from provider")
+                vod_info = client.get_vod_info(movie.stream_id)
+
+                if not vod_info or 'info' not in vod_info:
+                    return Response(
+                        {'error': 'No information available from provider'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+
+                # Extract and format the info
+                info = vod_info.get('info', {})
+                movie_data = vod_info.get('movie_data', {})
+
+                # Build response with all available fields
+                response_data = {
+                    'id': movie.id,
+                    'stream_id': movie.stream_id,
+                    'name': info.get('name', movie.name),
+                    'o_name': info.get('o_name', ''),
+                    'description': info.get('description', info.get('plot', '')),
+                    'plot': info.get('plot', info.get('description', '')),
+                    'year': self._extract_year(info.get('releasedate', '')),
+                    'release_date': info.get('releasedate', ''),
+                    'releasedate': info.get('releasedate', ''),
+                    'genre': info.get('genre', ''),
+                    'director': info.get('director', ''),
+                    'actors': info.get('actors', info.get('cast', '')),
+                    'cast': info.get('cast', info.get('actors', '')),
+                    'country': info.get('country', ''),
+                    'rating': info.get('rating', 0),
+                    'tmdb_id': info.get('tmdb_id', ''),
+                    'youtube_trailer': info.get('youtube_trailer', ''),
+                    'duration': self._convert_duration_to_minutes(info.get('duration_secs', 0)),
+                    'duration_secs': info.get('duration_secs', 0),
+                    'episode_run_time': info.get('episode_run_time', 0),
+                    'age': info.get('age', ''),
+                    'backdrop_path': info.get('backdrop_path', []),
+                    'cover': info.get('cover_big', ''),
+                    'cover_big': info.get('cover_big', ''),
+                    'movie_image': info.get('movie_image', ''),
+                    'bitrate': info.get('bitrate', 0),
+                    'video': info.get('video', {}),
+                    'audio': info.get('audio', {}),
+                    # Include movie_data fields
+                    'container_extension': movie_data.get('container_extension', 'mp4'),
+                    'direct_source': movie_data.get('direct_source', ''),
+                    'category_id': movie_data.get('category_id', ''),
+                    'added': movie_data.get('added', ''),
+                }
+
+                return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"Error fetching VOD info from provider for movie {pk}: {str(e)}")
+            return Response(
+                {'error': f'Failed to fetch information from provider: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class EpisodeFilter(django_filters.FilterSet):

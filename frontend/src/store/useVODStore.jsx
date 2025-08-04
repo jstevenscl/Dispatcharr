@@ -28,8 +28,8 @@ const useVODStore = create((set, get) => ({
         })),
 
     fetchVODs: async () => {
-        set({ loading: true, error: null });
         try {
+            set({ loading: true, error: null });
             const state = get();
             const params = new URLSearchParams();
 
@@ -123,6 +123,96 @@ const useVODStore = create((set, get) => ({
         } catch (error) {
             console.error('Failed to fetch series episodes:', error);
             set({ error: 'Failed to load episodes.', loading: false });
+        }
+    },
+
+    fetchVODDetails: async (vodId) => {
+        set({ loading: true, error: null });
+        try {
+            const response = await api.getVODInfo(vodId);
+
+            // Transform the response data to match our expected format
+            const vodDetails = {
+                id: response.id || vodId,
+                name: response.name || '',
+                description: response.description || '',
+                year: response.year || null,
+                genre: response.genre || '',
+                rating: response.rating || '',
+                duration: response.duration || null,
+                stream_url: response.stream_url || '',
+                logo: response.logo || null,
+                type: 'movie',
+                director: response.director || '',
+                actors: response.actors || '',
+                country: response.country || '',
+                tmdb_id: response.tmdb_id || '',
+                youtube_trailer: response.youtube_trailer || '',
+            };
+
+            set((state) => ({
+                vods: {
+                    ...state.vods,
+                    [vodDetails.id]: vodDetails,
+                },
+                loading: false,
+            }));
+
+            return vodDetails;
+        } catch (error) {
+            console.error('Failed to fetch VOD details:', error);
+            set({ error: 'Failed to load VOD details.', loading: false });
+            throw error;
+        }
+    },
+
+    fetchVODDetailsFromProvider: async (vodId) => {
+        set({ loading: true, error: null });
+        try {
+            const response = await api.getVODInfoFromProvider(vodId);
+
+            // Transform the response data to match our expected format
+            const vodDetails = {
+                id: response.id || vodId,
+                name: response.name || '',
+                description: response.description || response.plot || '',
+                year: response.year || null,
+                genre: response.genre || '',
+                rating: response.rating || '',
+                duration: response.duration || null,
+                stream_url: response.stream_url || '',
+                logo: response.logo || response.cover || null,
+                type: 'movie',
+                director: response.director || '',
+                actors: response.actors || response.cast || '',
+                country: response.country || '',
+                tmdb_id: response.tmdb_id || '',
+                youtube_trailer: response.youtube_trailer || '',
+                // Additional provider fields
+                backdrop_path: response.backdrop_path || [],
+                release_date: response.release_date || response.releasedate || '',
+                movie_image: response.movie_image || null,
+                o_name: response.o_name || '',
+                age: response.age || '',
+                episode_run_time: response.episode_run_time || null,
+                bitrate: response.bitrate || 0,
+                video: response.video || {},
+                audio: response.audio || {},
+            };
+
+            set((state) => ({
+                vods: {
+                    ...state.vods,
+                    [vodDetails.id]: vodDetails,
+                },
+                loading: false,
+            }));
+
+            return vodDetails;
+        } catch (error) {
+            console.error('Failed to fetch VOD details from provider:', error);
+            set({ error: 'Failed to load VOD details from provider.', loading: false });
+            throw error;
         }
     },
 

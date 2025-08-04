@@ -9,6 +9,7 @@ export default function FloatingVideo() {
   const isVisible = useVideoStore((s) => s.isVisible);
   const streamUrl = useVideoStore((s) => s.streamUrl);
   const contentType = useVideoStore((s) => s.contentType);
+  const metadata = useVideoStore((s) => s.metadata);
   const hideVideo = useVideoStore((s) => s.hideVideo);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
@@ -331,9 +332,33 @@ export default function FloatingVideo() {
             }}
             // Add poster for VOD if available
             {...(contentType === 'vod' && {
-              poster: undefined, // Could add poster support later
+              poster: metadata?.logo?.url, // Use VOD poster if available
             })}
           />
+
+          {/* VOD title overlay when not loading */}
+          {!isLoading && metadata && contentType === 'vod' && (
+            <Box
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+                padding: '20px 10px 10px',
+                color: 'white',
+              }}
+            >
+              <Text size="sm" weight={500} style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+                {metadata.name}
+              </Text>
+              {metadata.year && (
+                <Text size="xs" color="dimmed" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+                  {metadata.year}
+                </Text>
+              )}
+            </Box>
+          )}
 
           {/* Loading overlay - only show when loading */}
           {isLoading && (
