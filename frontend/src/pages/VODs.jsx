@@ -510,7 +510,7 @@ const VODModal = ({ vod, opened, onClose }) => {
                                 </Stack>
                             </Flex>
                             {/* Provider Information & Play Button Row */}
-                            {(vod?.m3u_account || true) && (
+                            {(vod?.m3u_account) && (
                                 <Group spacing="md" align="center" mt="md">
                                     {vod?.m3u_account && (
                                         <Box>
