@@ -23,6 +23,7 @@ import { Search, Play, Calendar, Clock, Star } from 'lucide-react';
 import { useDisclosure } from '@mantine/hooks';
 import useVODStore from '../store/useVODStore';
 import useVideoStore from '../store/useVideoStore';
+import useSettingsStore from '../store/settings';
 
 const VODCard = ({ vod, onClick }) => {
     const isEpisode = vod.type === 'episode';
@@ -59,18 +60,18 @@ const VODCard = ({ vod, onClick }) => {
             onClick={() => onClick(vod)}
         >
             <Card.Section>
-                <Box style={{ position: 'relative', height: 200 }}>
+                <Box style={{ position: 'relative', height: 300 }}>
                     {vod.logo?.url ? (
                         <Image
                             src={vod.logo.url}
-                            height={200}
+                            height={300}
                             alt={vod.name}
-                            fit="cover"
+                            fit="contain"
                         />
                     ) : (
                         <Box
                             style={{
-                                height: 200,
+                                height: 300,
                                 backgroundColor: '#404040',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -156,18 +157,18 @@ const SeriesCard = ({ series, onClick }) => {
             onClick={() => onClick(series)}
         >
             <Card.Section>
-                <Box style={{ position: 'relative', height: 200 }}>
+                <Box style={{ position: 'relative', height: 300 }}>
                     {series.logo?.url ? (
                         <Image
                             src={series.logo.url}
-                            height={200}
+                            height={300}
                             alt={series.name}
-                            fit="cover"
+                            fit="contain"
                         />
                     ) : (
                         <Box
                             style={{
-                                height: 200,
+                                height: 300,
                                 backgroundColor: '#404040',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -227,7 +228,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
 
     const handlePlayEpisode = (episode) => {
         const streamUrl = `${window.location.origin}${episode.stream_url}`;
-        showVideo(streamUrl);
+        showVideo(streamUrl, 'vod'); // Specify VOD content type
     };
 
     if (!series) return null;
@@ -306,9 +307,19 @@ const VODsPage = () => {
         }
     }, [filters, currentPage, fetchVODs, fetchSeries]);
 
+
+
+
+
+    const env_mode = useSettingsStore((s) => s.environment.env_mode);
     const handlePlayVOD = (vod) => {
-        const streamUrl = `${window.location.origin}${vod.stream_url}`;
-        showVideo(streamUrl);
+        let streamUrl = vod.stream_url;
+        if (env_mode === 'dev') {
+            streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${vod.stream_url}`;
+        } else {
+            streamUrl = `${window.location.origin}${vod.stream_url}`;
+        }
+        showVideo(streamUrl, 'vod'); // Specify VOD content type
     };
 
     const handleSeriesClick = (series) => {
