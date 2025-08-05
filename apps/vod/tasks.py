@@ -297,8 +297,6 @@ def refresh_series(account):
                     series.logo = logo
                     series.save()
 
-                # Get series episodes
-                refresh_series_episodes(account, series, series_item['series_id'])
 
             except Exception as e:
                 logger.error(f"Error processing series {series_item.get('name', 'Unknown')}: {e}")
@@ -357,6 +355,10 @@ def refresh_series_episodes(account, series, series_id):
                     except Exception as e:
                         logger.error(f"Error processing episode {episode_data.get('title', 'Unknown')}: {e}")
                         continue
+
+        # Update last_episode_refresh timestamp
+        series.last_episode_refresh = timezone.now()
+        series.save(update_fields=['last_episode_refresh'])
 
     except Exception as e:
         logger.error(f"Error refreshing episodes for series {series_id}: {e}")

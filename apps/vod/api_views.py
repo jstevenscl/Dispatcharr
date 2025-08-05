@@ -19,6 +19,7 @@ from .serializers import (
     VODConnectionSerializer
 )
 from core.xtream_codes import Client as XtreamCodesClient
+from .tasks import refresh_series_episodes
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +228,20 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
 
         serializer = EpisodeSerializer(episodes, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='refresh-episodes')
+    def refresh_episodes(self, request, pk=None):
+        """Fetch and save episodes for this series from provider (on demand)"""
+        series = self.get_object()
+        account = series.m3u_account
+        if not account or not account.is_active:
+            return Response({'error': 'No active M3U account for this series'}, status=400)
+        try:
+            refresh_series_episodes(account, series, series.series_id)
+            return Response({'status': 'Episodes refreshed'})
+        except Exception as e:
+            logger.error(f"Error refreshing episodes for series {series.id}: {e}")
+            return Response({'error': str(e)}, status=500)
 
 
 class VODCategoryFilter(django_filters.FilterSet):

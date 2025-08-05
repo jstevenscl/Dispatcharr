@@ -63,6 +63,7 @@ class Series(models.Model):
     custom_properties = models.JSONField(blank=True, null=True, help_text="JSON data for additional properties")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    last_episode_refresh = models.DateTimeField(blank=True, null=True, help_text="Last time episodes were refreshed")
 
     class Meta:
         verbose_name = "Series"
