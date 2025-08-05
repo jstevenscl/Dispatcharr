@@ -221,7 +221,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
     const [detailedSeries, setDetailedSeries] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
-    const [activeTab, setActiveTab] = useState('season-1');
+    const [activeTab, setActiveTab] = useState(null);
 
     useEffect(() => {
         if (opened && series) {
@@ -291,12 +291,21 @@ const SeriesModal = ({ series, opened, onClose }) => {
         return Object.keys(episodesBySeason).map(Number).sort((a, b) => a - b);
     }, [episodesBySeason]);
 
-    // Update active tab when seasons change
+    // Update active tab when seasons change or modal opens
     React.useEffect(() => {
-        if (seasons.length > 0 && !seasons.includes(parseInt(activeTab.replace('season-', '')))) {
-            setActiveTab(`season-${seasons[0]}`);
+        if (seasons.length > 0) {
+            if (!activeTab || !seasons.includes(parseInt(activeTab.replace('season-', '')))) {
+                setActiveTab(`season-${seasons[0]}`);
+            }
         }
     }, [seasons, activeTab]);
+
+    // Reset tab when modal closes
+    React.useEffect(() => {
+        if (!opened) {
+            setActiveTab(null);
+        }
+    }, [opened]);
 
     const handlePlayEpisode = (episode) => {
         let streamUrl = `/proxy/vod/episode/${episode.uuid}`;
@@ -507,7 +516,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                 <Loader />
                             </Flex>
                         ) : seasons.length > 0 ? (
-                            <Tabs value={activeTab} onTabChange={setActiveTab}>
+                            <Tabs value={activeTab} onChange={setActiveTab}>
                                 <Tabs.List>
                                     {seasons.map(season => (
                                         <Tabs.Tab key={season} value={`season-${season}`}>
@@ -529,7 +538,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                 </Table.Tr>
                                             </Table.Thead>
                                             <Table.Tbody>
-                                                {episodesBySeason[season].map(episode => (
+                                                {episodesBySeason[season]?.map(episode => (
                                                     <Table.Tr
                                                         key={episode.id}
                                                         style={{ cursor: 'pointer' }}
