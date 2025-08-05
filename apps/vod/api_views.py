@@ -220,7 +220,9 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'], url_path='provider-info')
     def series_info(self, request, pk=None):
         """Get detailed series information, refreshing from provider if needed"""
+        logger.debug(f"SeriesViewSet.series_info called for series ID: {pk}")
         series = self.get_object()
+        logger.debug(f"Retrieved series: {series.name} (ID: {series.id})")
 
         if not series.m3u_account:
             return Response(
@@ -234,9 +236,17 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
             refresh_interval_hours = int(request.query_params.get("refresh_interval", 24))  # Default to 24 hours
 
             now = timezone.now()
-            last_refreshed = series.updated_at or series.created_at or now - timedelta(days=1)
+            last_refreshed = series.last_episode_refresh
 
-            if force_refresh or (now - last_refreshed) > timedelta(hours=refresh_interval_hours):
+            # Force refresh if episodes have never been populated (last_episode_refresh is null)
+            if last_refreshed is None:
+                force_refresh = True
+                logger.debug(f"Series {series.id} has never been refreshed, forcing refresh")
+            else:
+                logger.debug(f"Series {series.id} last refreshed at {last_refreshed}, now is {now}")
+
+            if force_refresh or (last_refreshed and (now - last_refreshed) > timedelta(hours=refresh_interval_hours)):
+                logger.debug(f"Refreshing series {series.id} data from provider")
                 # Use existing refresh logic
                 from .tasks import refresh_series_episodes
                 account = series.m3u_account
@@ -260,30 +270,48 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                 'cover': series.logo.url if series.logo else None,
                 'last_refreshed': series.updated_at,
                 'custom_properties': series.custom_properties or {},
+                'm3u_account': {
+                    'id': series.m3u_account.id,
+                    'name': series.m3u_account.name,
+                    'account_type': series.m3u_account.account_type
+                } if series.m3u_account else None,
             }
 
             # Always include episodes for series info
             include_episodes = request.query_params.get('include_episodes', 'true').lower() == 'true'
             if include_episodes:
+                logger.debug(f"Including episodes for series {series.id}")
                 episodes_by_season = {}
                 for episode in series.episodes.all().order_by('season_number', 'episode_number'):
                     season_key = str(episode.season_number or 0)
                     if season_key not in episodes_by_season:
                         episodes_by_season[season_key] = []
 
-                    episodes_by_season[season_key].append({
-                        'id': episode.stream_id,
+                    episode_data = {
+                        'id': episode.id,
+                        'uuid': episode.uuid,
+                        'name': episode.name,
                         'title': episode.name,
-                        'episode_num': episode.episode_number,
+                        'episode_number': episode.episode_number,
                         'season_number': episode.season_number,
+                        'description': episode.description,
                         'plot': episode.description,
+                        'duration': episode.duration,
                         'duration_secs': episode.duration * 60 if episode.duration else None,
                         'rating': episode.rating,
                         'container_extension': episode.container_extension,
-                    })
+                        'type': 'episode',
+                        'series': {
+                            'id': series.id,
+                            'name': series.name
+                        }
+                    }
+                    episodes_by_season[season_key].append(episode_data)
 
                 response_data['episodes'] = episodes_by_season
+                logger.debug(f"Added {len(episodes_by_season)} seasons of episodes to response")
 
+            logger.debug(f"Returning series info response for series {series.id}")
             return Response(response_data)
 
         except Exception as e:

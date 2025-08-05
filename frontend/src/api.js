@@ -1752,7 +1752,8 @@ export default class API {
 
   static async getSeriesInfo(seriesId) {
     try {
-      const response = await request(`${host}/api/vod/series/${seriesId}/?include_episodes=true`);
+      // Call the provider-info endpoint that includes episodes
+      const response = await request(`${host}/api/vod/series/${seriesId}/provider-info/?include_episodes=true`);
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve series info', e);

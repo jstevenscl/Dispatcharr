@@ -213,7 +213,7 @@ const SeriesCard = ({ series, onClick }) => {
 };
 
 const SeriesModal = ({ series, opened, onClose }) => {
-    const { fetchSeriesInfo, episodes, loading } = useVODStore();
+    const { fetchSeriesInfo, loading } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
     const [detailedSeries, setDetailedSeries] = useState(null);
@@ -244,14 +244,14 @@ const SeriesModal = ({ series, opened, onClose }) => {
         }
     }, [opened]);
 
-    const seriesEpisodes = Object.values(episodes).filter(
-        episode => episode.series?.id === series?.id
-    ).sort((a, b) => {
-        if (a.season_number !== b.season_number) {
-            return (a.season_number || 0) - (b.season_number || 0);
-        }
-        return (a.episode_number || 0) - (b.episode_number || 0);
-    });
+    // Get episodes from the detailed series response
+    const seriesEpisodes = detailedSeries?.episodes ? 
+        Object.values(detailedSeries.episodes).flat().sort((a, b) => {
+            if (a.season_number !== b.season_number) {
+                return (a.season_number || 0) - (b.season_number || 0);
+            }
+            return (a.episode_number || 0) - (b.episode_number || 0);
+        }) : [];
 
     const handlePlayEpisode = (episode) => {
         let streamUrl = `/proxy/vod/episode/${episode.uuid}`;
@@ -448,7 +448,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
 
                         <Title order={4}>Episodes</Title>
 
-                        {loading ? (
+                        {loadingDetails ? (
                             <Flex justify="center" py="xl">
                                 <Loader />
                             </Flex>
