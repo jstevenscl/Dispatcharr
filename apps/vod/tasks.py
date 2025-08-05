@@ -329,22 +329,24 @@ def refresh_series_episodes(account, series, series_id):
                         # Build episode stream URL
                         stream_url = f"{account.server_url}/series/{account.username}/{account.password}/{episode_data['id']}.{episode_data.get('container_extension', 'mp4')}"
 
+                        # Get episode info (metadata is nested in 'info' object)
+                        episode_info = episode_data.get('info', {})
+
                         episode_dict = {
                             'name': episode_data.get('title', f"Episode {episode_data.get('episode_num', '')}"),
                             'series': series,
                             'season_number': int(season_num) if season_num.isdigit() else None,
                             'episode_number': episode_data.get('episode_num'),
                             'url': stream_url,
-                            'description': episode_data.get('plot'),
-                            'year': episode_data.get('air_date', '').split('-')[0] if episode_data.get('air_date') else None,
-                            'rating': episode_data.get('rating'),
-                            'duration': episode_data.get('duration_secs', 0) // 60 if episode_data.get('duration_secs') else None,
+                            'description': episode_info.get('plot') or episode_info.get('overview'),
+                            'release_date': episode_info.get('release_date') or episode_info.get('releasedate'),
+                            'rating': episode_info.get('rating'),
+                            'duration': episode_info.get('duration_secs'),
                             'container_extension': episode_data.get('container_extension'),
-                            'tmdb_id': episode_data.get('tmdb_id'),
-                            'imdb_id': episode_data.get('imdb_id'),
+                            'tmdb_id': episode_info.get('tmdb_id'),
+                            'imdb_id': episode_info.get('imdb_id'),
                             'custom_properties': episode_data if episode_data else None
                         }
-
                         # Use new Episode model
                         episode, created = Episode.objects.update_or_create(
                             stream_id=episode_data['id'],

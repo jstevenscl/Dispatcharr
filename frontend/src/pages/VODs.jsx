@@ -533,7 +533,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                     <Table.Th style={{ width: '60px' }}>Ep</Table.Th>
                                                     <Table.Th>Title</Table.Th>
                                                     <Table.Th style={{ width: '80px' }}>Duration</Table.Th>
-                                                    <Table.Th style={{ width: '60px' }}>Year</Table.Th>
+                                                    <Table.Th style={{ width: '60px' }}>Date</Table.Th>
                                                     <Table.Th style={{ width: '80px' }}>Action</Table.Th>
                                                 </Table.Tr>
                                             </Table.Thead>
@@ -568,7 +568,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                         </Table.Td>
                                                         <Table.Td>
                                                             <Text size="xs" color="dimmed">
-                                                                {episode.year}
+                                                                {episode.release_date ? new Date(episode.release_date).toLocaleDateString() : 'N/A'}
                                                             </Text>
                                                         </Table.Td>
                                                         <Table.Td>
