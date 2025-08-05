@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import api from '../api';
 
 const useVODStore = create((set, get) => ({
-    vods: {},
+    movies: {},
     series: {},
+    episodes: {},
     categories: {},
     loading: false,
     error: null,
@@ -27,7 +28,7 @@ const useVODStore = create((set, get) => ({
             currentPage: page,
         })),
 
-    fetchVODs: async () => {
+    fetchMovies: async () => {
         try {
             set({ loading: true, error: null });
             const state = get();
@@ -44,27 +45,23 @@ const useVODStore = create((set, get) => ({
                 params.append('category', state.filters.category);
             }
 
-            if (state.filters.type === 'movies') {
-                params.append('type', 'movie');
-            }
-
-            const response = await api.getVODs(params);
+            const response = await api.getMovies(params);
 
             // Handle both paginated and non-paginated responses
             const results = response.results || response;
             const count = response.count || results.length;
 
             set({
-                vods: results.reduce((acc, vod) => {
-                    acc[vod.id] = vod;
+                movies: results.reduce((acc, movie) => {
+                    acc[movie.id] = movie;
                     return acc;
                 }, {}),
                 totalCount: count,
                 loading: false,
             });
         } catch (error) {
-            console.error('Failed to fetch VODs:', error);
-            set({ error: 'Failed to load VODs.', loading: false });
+            console.error('Failed to fetch movies:', error);
+            set({ error: 'Failed to load movies.', loading: false });
         }
     },
 
@@ -85,7 +82,7 @@ const useVODStore = create((set, get) => ({
                 params.append('category', state.filters.category);
             }
 
-            const response = await api.getVODSeries(params);
+            const response = await api.getSeries(params);
 
             // Handle both paginated and non-paginated responses
             const results = response.results || response;
@@ -111,8 +108,8 @@ const useVODStore = create((set, get) => ({
             const response = await api.getSeriesEpisodes(seriesId);
 
             set((state) => ({
-                vods: {
-                    ...state.vods,
+                episodes: {
+                    ...state.episodes,
                     ...response.reduce((acc, episode) => {
                         acc[episode.id] = episode;
                         return acc;
@@ -120,61 +117,64 @@ const useVODStore = create((set, get) => ({
                 },
                 loading: false,
             }));
+
+            return response;
         } catch (error) {
             console.error('Failed to fetch series episodes:', error);
             set({ error: 'Failed to load episodes.', loading: false });
+            throw error; // Re-throw to allow calling component to handle
         }
     },
 
-    fetchVODDetails: async (vodId) => {
+    fetchMovieDetails: async (movieId) => {
         set({ loading: true, error: null });
         try {
-            const response = await api.getVODInfo(vodId);
+            const response = await api.getMovieDetails(movieId);
 
             // Transform the response data to match our expected format
-            const vodDetails = {
-                id: response.id || vodId,
+            const movieDetails = {
+                id: response.id || movieId,
                 name: response.name || '',
                 description: response.description || '',
                 year: response.year || null,
                 genre: response.genre || '',
                 rating: response.rating || '',
                 duration: response.duration || null,
-                stream_url: response.stream_url || '',
-                logo: response.logo || null,
+                stream_url: response.url || '',
+                logo: response.logo_url || null,
                 type: 'movie',
                 director: response.director || '',
                 actors: response.actors || '',
                 country: response.country || '',
                 tmdb_id: response.tmdb_id || '',
-                youtube_trailer: response.youtube_trailer || '',
+                imdb_id: response.imdb_id || '',
                 m3u_account: response.m3u_account || '',
             };
-            console.log('Fetched VOD Details:', vodDetails);
+            console.log('Fetched Movie Details:', movieDetails);
             set((state) => ({
-                vods: {
-                    ...state.vods,
-                    [vodDetails.id]: vodDetails,
+                movies: {
+                    ...state.movies,
+                    [movieDetails.id]: movieDetails,
                 },
                 loading: false,
             }));
 
-            return vodDetails;
+            return movieDetails;
         } catch (error) {
-            console.error('Failed to fetch VOD details:', error);
-            set({ error: 'Failed to load VOD details.', loading: false });
+            console.error('Failed to fetch movie details:', error);
+            set({ error: 'Failed to load movie details.', loading: false });
             throw error;
         }
     },
 
-    fetchVODDetailsFromProvider: async (vodId) => {
+    fetchMovieDetailsFromProvider: async (movieId) => {
         set({ loading: true, error: null });
         try {
-            const response = await api.getVODInfoFromProvider(vodId);
+            const response = await api.getMovieProviderInfo(movieId);
 
             // Transform the response data to match our expected format
-            const vodDetails = {
-                id: response.id || vodId,
+            const movieDetails = {
+                id: response.id || movieId,
                 name: response.name || '',
                 description: response.description || response.plot || '',
                 year: response.year || null,
@@ -201,13 +201,13 @@ const useVODStore = create((set, get) => ({
                 audio: response.audio || {},
             };
 
-            set({ loading: false }); // Only update loading state, do not update vods{
+            set({ loading: false }); // Only update loading state
 
-            // Do NOT merge or overwrite the store VOD entry
-            return vodDetails;
+            // Do NOT merge or overwrite the store entry
+            return movieDetails;
         } catch (error) {
-            console.error('Failed to fetch VOD details from provider:', error);
-            set({ error: 'Failed to load VOD details from provider.', loading: false });
+            console.error('Failed to fetch movie details from provider:', error);
+            set({ error: 'Failed to load movie details from provider.', loading: false });
             throw error;
         }
     },
@@ -230,21 +230,21 @@ const useVODStore = create((set, get) => ({
         }
     },
 
-    addVOD: (vod) =>
+    addMovie: (movie) =>
         set((state) => ({
-            vods: { ...state.vods, [vod.id]: vod },
+            movies: { ...state.movies, [movie.id]: movie },
         })),
 
-    updateVOD: (vod) =>
+    updateMovie: (movie) =>
         set((state) => ({
-            vods: { ...state.vods, [vod.id]: vod },
+            movies: { ...state.movies, [movie.id]: movie },
         })),
 
-    removeVOD: (vodId) =>
+    removeMovie: (movieId) =>
         set((state) => {
-            const updatedVODs = { ...state.vods };
-            delete updatedVODs[vodId];
-            return { vods: updatedVODs };
+            const updatedMovies = { ...state.movies };
+            delete updatedMovies[movieId];
+            return { movies: updatedMovies };
         }),
 
     addSeries: (series) =>
@@ -263,6 +263,8 @@ const useVODStore = create((set, get) => ({
             delete updatedSeries[seriesId];
             return { series: updatedSeries };
         }),
+
+
 }));
 
 export default useVODStore;

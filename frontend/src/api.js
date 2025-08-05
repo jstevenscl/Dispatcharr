@@ -1700,27 +1700,46 @@ export default class API {
   }
 
   // VOD Methods
-  static async getVODs(params = new URLSearchParams()) {
+  static async getMovies(params = new URLSearchParams()) {
     try {
       const response = await request(
         `${host}/api/vod/movies/?${params.toString()}`
       );
       return response;
     } catch (e) {
-      errorNotification('Failed to retrieve VODs', e);
+      errorNotification('Failed to retrieve movies', e);
     }
   }
 
-  static async getVODSeries(params = new URLSearchParams()) {
+  static async getSeries(params = new URLSearchParams()) {
     try {
       const response = await request(
         `${host}/api/vod/series/?${params.toString()}`
       );
       return response;
     } catch (e) {
-      errorNotification('Failed to retrieve VOD series', e);
+      errorNotification('Failed to retrieve series', e);
     }
   }
+
+  static async getMovieDetails(movieId) {
+    try {
+      const response = await request(`${host}/api/vod/movies/${movieId}/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve movie details', e);
+    }
+  }
+
+  static async getMovieProviderInfo(movieId) {
+    try {
+      const response = await request(`${host}/api/vod/movies/${movieId}/provider-info/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve movie provider info', e);
+    }
+  }
+
 
   static async getSeriesEpisodes(seriesId) {
     try {
@@ -1742,23 +1761,6 @@ export default class API {
     }
   }
 
-  static async getVODInfo(vodId) {
-    try {
-      const response = await request(`${host}/api/vod/movies/${vodId}/`);
-      return response;
-    } catch (e) {
-      errorNotification('Failed to retrieve VOD info', e);
-    }
-  }
-
-  static async getVODInfoFromProvider(vodId) {
-    try {
-      const response = await request(`${host}/api/vod/movies/${vodId}/provider-info/`);
-      return response;
-    } catch (e) {
-      errorNotification('Failed to retrieve VOD info from provider', e);
-    }
-  }
 
   static async getSeriesInfo(seriesId) {
     try {

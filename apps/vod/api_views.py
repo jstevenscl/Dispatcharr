@@ -245,6 +245,82 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = EpisodeSerializer(episodes, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='provider-info')
+    def series_info(self, request, pk=None):
+        """Get detailed series information, refreshing from provider if needed"""
+        series = self.get_object()
+
+        if not series.m3u_account:
+            return Response(
+                {'error': 'No M3U account associated with this series'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Check if we should refresh data (optional force refresh parameter)
+            force_refresh = request.query_params.get('force_refresh', 'false').lower() == 'true'
+            refresh_interval_hours = int(request.query_params.get("refresh_interval", 24))  # Default to 24 hours
+
+            now = timezone.now()
+            last_refreshed = series.updated_at or series.created_at or now - timedelta(days=1)
+
+            if force_refresh or (now - last_refreshed) > timedelta(hours=refresh_interval_hours):
+                # Use existing refresh logic
+                from .tasks import refresh_series_episodes
+                account = series.m3u_account
+                if account and account.is_active:
+                    refresh_series_episodes(account, series, series.series_id)
+                    series.refresh_from_db()  # Reload from database after refresh
+
+            # Return the database data (which should now be fresh)
+            response_data = {
+                'id': series.id,
+                'series_id': series.series_id,
+                'name': series.name,
+                'description': series.description,
+                'year': series.year,
+                'genre': series.genre,
+                'rating': series.rating,
+                'tmdb_id': series.tmdb_id,
+                'imdb_id': series.imdb_id,
+                'category_id': series.category.id if series.category else None,
+                'category_name': series.category.name if series.category else None,
+                'cover': series.logo.url if series.logo else None,
+                'last_refreshed': series.updated_at,
+                'custom_properties': series.custom_properties or {},
+            }
+
+            # Add episodes info if requested
+            include_episodes = request.query_params.get('include_episodes', 'false').lower() == 'true'
+            if include_episodes:
+                episodes_by_season = {}
+                for episode in series.episodes.all().order_by('season_number', 'episode_number'):
+                    season_key = str(episode.season_number or 0)
+                    if season_key not in episodes_by_season:
+                        episodes_by_season[season_key] = []
+
+                    episodes_by_season[season_key].append({
+                        'id': episode.stream_id,
+                        'title': episode.name,
+                        'episode_num': episode.episode_number,
+                        'season_number': episode.season_number,
+                        'plot': episode.description,
+                        'duration_secs': episode.duration * 60 if episode.duration else None,
+                        'rating': episode.rating,
+                        'container_extension': episode.container_extension,
+                    })
+
+                response_data['episodes'] = episodes_by_season
+
+            return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"Error fetching series info for series {pk}: {str(e)}")
+            return Response(
+                {'error': f'Failed to fetch series information: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class VODCategoryFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr="icontains")

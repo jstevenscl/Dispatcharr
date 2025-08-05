@@ -213,8 +213,9 @@ const SeriesCard = ({ series, onClick }) => {
 };
 
 const SeriesModal = ({ series, opened, onClose }) => {
-    const { fetchSeriesEpisodes, vods, loading } = useVODStore();
+    const { fetchSeriesEpisodes, episodes, loading } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
+    const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
     useEffect(() => {
         if (opened && series) {
@@ -222,8 +223,8 @@ const SeriesModal = ({ series, opened, onClose }) => {
         }
     }, [opened, series, fetchSeriesEpisodes]);
 
-    const episodes = Object.values(vods).filter(
-        vod => vod.type === 'episode' && vod.series?.id === series?.id
+    const seriesEpisodes = Object.values(episodes).filter(
+        episode => episode.series?.id === series?.id
     ).sort((a, b) => {
         if (a.season_number !== b.season_number) {
             return (a.season_number || 0) - (b.season_number || 0);
@@ -232,8 +233,13 @@ const SeriesModal = ({ series, opened, onClose }) => {
     });
 
     const handlePlayEpisode = (episode) => {
-        const streamUrl = `${window.location.origin}${episode.stream_url}`;
-        showVideo(streamUrl, 'vod'); // Specify VOD content type
+        let streamUrl = `/proxy/vod/episode/${episode.uuid}`;
+        if (env_mode === 'dev') {
+            streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${streamUrl}`;
+        } else {
+            streamUrl = `${window.location.origin}${streamUrl}`;
+        }
+        showVideo(streamUrl, 'vod', episode);
     };
 
     if (!series) return null;
@@ -267,7 +273,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                     </Flex>
                 ) : (
                     <Grid>
-                        {episodes.map(episode => (
+                        {seriesEpisodes.map(episode => (
                             <Grid.Col span={6} key={episode.id}>
                                 <VODCard vod={episode} onClick={handlePlayEpisode} />
                             </Grid.Col>
@@ -284,14 +290,14 @@ const VODModal = ({ vod, opened, onClose }) => {
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [trailerModalOpened, setTrailerModalOpened] = useState(false);
     const [trailerUrl, setTrailerUrl] = useState('');
-    const { fetchVODDetailsFromProvider } = useVODStore();
+    const { fetchMovieDetailsFromProvider } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
     useEffect(() => {
         if (opened && vod && !detailedVOD) {
             setLoadingDetails(true);
-            fetchVODDetailsFromProvider(vod.id)
+            fetchMovieDetailsFromProvider(vod.id)
                 .then((details) => {
                     setDetailedVOD(details);
                 })
@@ -303,7 +309,7 @@ const VODModal = ({ vod, opened, onClose }) => {
                     setLoadingDetails(false);
                 });
         }
-    }, [opened, vod, detailedVOD, fetchVODDetailsFromProvider]);
+    }, [opened, vod, detailedVOD, fetchMovieDetailsFromProvider]);
 
     useEffect(() => {
         if (!opened) {
@@ -661,8 +667,9 @@ const useCardColumns = () => {
 
 const VODsPage = () => {
     const {
-        vods,
+        movies,
         series,
+        episodes,
         categories,
         loading,
         filters,
@@ -671,7 +678,7 @@ const VODsPage = () => {
         pageSize,
         setFilters,
         setPage,
-        fetchVODs,
+        fetchMovies,
         fetchSeries,
         fetchCategories
     } = useVODStore();
@@ -684,6 +691,18 @@ const VODsPage = () => {
     const [initialLoad, setInitialLoad] = useState(true);
     const columns = useCardColumns();
 
+    // Helper function to get display data based on current filters
+    const getDisplayData = () => {
+        if (filters.type === 'series') {
+            return Object.values(series);
+        } else if (filters.type === 'movies') {
+            return Object.values(movies);
+        } else {
+            // 'all' - combine movies and series
+            return [...Object.values(movies), ...Object.values(series)];
+        }
+    };
+
     useEffect(() => {
         fetchCategories();
     }, [fetchCategories]);
@@ -692,9 +711,9 @@ const VODsPage = () => {
         if (filters.type === 'series') {
             fetchSeries().finally(() => setInitialLoad(false));
         } else {
-            fetchVODs().finally(() => setInitialLoad(false));
+            fetchMovies().finally(() => setInitialLoad(false));
         }
-    }, [filters, currentPage, fetchVODs, fetchSeries]);
+    }, [filters, currentPage, fetchMovies, fetchSeries]);
 
     const handleVODCardClick = (vod) => {
         setSelectedVOD(vod);
@@ -777,7 +796,7 @@ const VODsPage = () => {
                             </Grid>
                         ) : (
                             <Grid gutter="md">
-                                {Object.values(vods).map(vod => (
+                                {getDisplayData().map(vod => (
                                     <Grid.Col
                                         span={12 / columns}
                                         key={vod.id}
