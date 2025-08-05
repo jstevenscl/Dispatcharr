@@ -284,7 +284,10 @@ def process_groups(account, groups):
                 f.regex_pattern,
                 (
                     re.IGNORECASE
-                    if json.loads(f.custom_properties or "{}").get("case_sensitive", True) == False
+                    if json.loads(f.custom_properties or "{}").get(
+                        "case_sensitive", True
+                    )
+                    == False
                     else 0
                 ),
             ),
@@ -525,7 +528,10 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
                 f.regex_pattern,
                 (
                     re.IGNORECASE
-                    if json.loads(f.custom_properties or "{}").get("case_sensitive", True) == False
+                    if json.loads(f.custom_properties or "{}").get(
+                        "case_sensitive", True
+                    )
+                    == False
                     else 0
                 ),
             ),
@@ -1177,6 +1183,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
             name_match_regex = None
             channel_profile_ids = None
             channel_sort_order = None
+            channel_sort_reverse = False
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
@@ -1189,6 +1196,9 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     name_match_regex = group_custom_props.get("name_match_regex")
                     channel_profile_ids = group_custom_props.get("channel_profile_ids")
                     channel_sort_order = group_custom_props.get("channel_sort_order")
+                    channel_sort_reverse = group_custom_props.get(
+                        "channel_sort_reverse", False
+                    )
                 except Exception:
                     force_dummy_epg = False
                     override_group_id = None
@@ -1197,6 +1207,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     name_match_regex = None
                     channel_profile_ids = None
                     channel_sort_order = None
+                    channel_sort_reverse = False
 
             # Determine which group to use for created channels
             target_group = channel_group
@@ -1240,21 +1251,28 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     # Use natural sorting for names to handle numbers correctly
                     current_streams = list(current_streams)
                     current_streams.sort(
-                        key=lambda stream: natural_sort_key(stream.name)
+                        key=lambda stream: natural_sort_key(stream.name),
+                        reverse=channel_sort_reverse,
                     )
                     streams_is_list = True
                 elif channel_sort_order == "tvg_id":
-                    current_streams = current_streams.order_by("tvg_id")
+                    order_prefix = "-" if channel_sort_reverse else ""
+                    current_streams = current_streams.order_by(f"{order_prefix}tvg_id")
                 elif channel_sort_order == "updated_at":
-                    current_streams = current_streams.order_by("updated_at")
+                    order_prefix = "-" if channel_sort_reverse else ""
+                    current_streams = current_streams.order_by(
+                        f"{order_prefix}updated_at"
+                    )
                 else:
                     logger.warning(
                         f"Unknown channel_sort_order '{channel_sort_order}' for group '{channel_group.name}'. Using provider order."
                     )
-                    current_streams = current_streams.order_by("id")
+                    order_prefix = "-" if channel_sort_reverse else ""
+                    current_streams = current_streams.order_by(f"{order_prefix}id")
             else:
-                current_streams = current_streams.order_by("id")
-            # If channel_sort_order is empty or None, use provider order (no additional sorting)
+                # Provider order (default) - can still be reversed
+                order_prefix = "-" if channel_sort_reverse else ""
+                current_streams = current_streams.order_by(f"{order_prefix}id")
 
             # Get existing auto-created channels for this account (regardless of current group)
             # We'll find them by their stream associations instead of just group location
