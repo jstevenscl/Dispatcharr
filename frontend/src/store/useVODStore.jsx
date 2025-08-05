@@ -264,6 +264,86 @@ const useVODStore = create((set, get) => ({
             return { series: updatedSeries };
         }),
 
+    fetchSeriesInfo: async (seriesId) => {
+        set({ loading: true, error: null });
+        try {
+            const response = await api.getSeriesInfo(seriesId);
+
+            // Transform the response data to match our expected format
+            const seriesInfo = {
+                id: response.id || seriesId,
+                name: response.name || '',
+                description: response.description || response.plot || '',
+                year: response.year || null,
+                genre: response.genre || '',
+                rating: response.rating || '',
+                logo: response.logo_url || response.logo || null,
+                type: 'series',
+                director: response.director || '',
+                actors: response.actors || response.cast || '',
+                country: response.country || '',
+                tmdb_id: response.tmdb_id || '',
+                episode_count: response.episode_count || 0,
+                // Additional provider fields
+                backdrop_path: response.backdrop_path || [],
+                release_date: response.release_date || response.releasedate || '',
+                series_image: response.series_image || null,
+                o_name: response.o_name || '',
+                age: response.age || '',
+                m3u_account: response.m3u_account || '',
+                youtube_trailer: response.youtube_trailer || '',
+            };
+
+            // Also update episodes if they're included in the response
+            if (response.episodes) {
+                const episodesData = {};
+                Object.entries(response.episodes).forEach(([seasonNumber, seasonEpisodes]) => {
+                    seasonEpisodes.forEach((episode) => {
+                        const episodeData = {
+                            id: episode.id,
+                            stream_id: episode.id,
+                            name: episode.title || '',
+                            description: episode.plot || '',
+                            season_number: parseInt(seasonNumber) || 0,
+                            episode_number: episode.episode_num || 0,
+                            duration: episode.duration_secs ? Math.floor(episode.duration_secs / 60) : null,
+                            rating: episode.rating || '',
+                            container_extension: episode.container_extension || '',
+                            series: {
+                                id: seriesInfo.id,
+                                name: seriesInfo.name
+                            },
+                            type: 'episode',
+                            uuid: episode.id, // Use the stream ID as UUID for playback
+                        };
+                        episodesData[episode.id] = episodeData;
+                    });
+                });
+
+                // Update episodes in the store
+                set((state) => ({
+                    episodes: {
+                        ...state.episodes,
+                        ...episodesData,
+                    },
+                }));
+            }
+
+            set((state) => ({
+                series: {
+                    ...state.series,
+                    [seriesInfo.id]: seriesInfo,
+                },
+                loading: false,
+            }));
+
+            return seriesInfo;
+        } catch (error) {
+            console.error('Failed to fetch series info:', error);
+            set({ error: 'Failed to load series details.', loading: false });
+            throw error;
+        }
+    },
 
 }));
 

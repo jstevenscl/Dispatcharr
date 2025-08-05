@@ -213,15 +213,36 @@ const SeriesCard = ({ series, onClick }) => {
 };
 
 const SeriesModal = ({ series, opened, onClose }) => {
-    const { fetchSeriesEpisodes, episodes, loading } = useVODStore();
+    const { fetchSeriesInfo, episodes, loading } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
+    const [detailedSeries, setDetailedSeries] = useState(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
 
     useEffect(() => {
         if (opened && series) {
-            fetchSeriesEpisodes(series.id);
+            // Fetch detailed series info which now includes episodes
+            setLoadingDetails(true);
+            fetchSeriesInfo(series.id)
+                .then((details) => {
+                    setDetailedSeries(details);
+                })
+                .catch((error) => {
+                    console.warn('Failed to fetch series details, using basic info:', error);
+                    setDetailedSeries(series); // Fallback to basic data
+                })
+                .finally(() => {
+                    setLoadingDetails(false);
+                });
         }
-    }, [opened, series, fetchSeriesEpisodes]);
+    }, [opened, series, fetchSeriesInfo]);
+
+    useEffect(() => {
+        if (!opened) {
+            setDetailedSeries(null);
+            setLoadingDetails(false);
+        }
+    }, [opened]);
 
     const seriesEpisodes = Object.values(episodes).filter(
         episode => episode.series?.id === series?.id
@@ -244,43 +265,205 @@ const SeriesModal = ({ series, opened, onClose }) => {
 
     if (!series) return null;
 
+    // Use detailed data if available, otherwise use basic series data
+    const displaySeries = detailedSeries || series;
+
     return (
         <Modal
             opened={opened}
             onClose={onClose}
-            title={series.name}
+            title={displaySeries.name}
             size="xl"
             centered
         >
-            <Stack spacing="md">
-                {series.description && (
-                    <Text size="sm" color="dimmed">
-                        {series.description}
-                    </Text>
+            <Box style={{ position: 'relative', minHeight: 400 }}>
+                {/* Backdrop image as background */}
+                {displaySeries.backdrop_path && displaySeries.backdrop_path.length > 0 && (
+                    <>
+                        <Image
+                            src={displaySeries.backdrop_path[0]}
+                            alt={`${displaySeries.name} backdrop`}
+                            fit="cover"
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                zIndex: 0,
+                                borderRadius: 8,
+                                filter: 'blur(2px) brightness(0.5)'
+                            }}
+                        />
+                        {/* Overlay for readability */}
+                        <Box
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                background: 'linear-gradient(180deg, rgba(24,24,27,0.85) 60%, rgba(24,24,27,1) 100%)',
+                                zIndex: 1,
+                                borderRadius: 8
+                            }}
+                        />
+                    </>
                 )}
 
-                <Group spacing="md">
-                    {series.year && <Badge color="blue">{series.year}</Badge>}
-                    {series.rating && <Badge color="yellow">{series.rating}</Badge>}
-                    {series.genre && <Badge color="gray">{series.genre}</Badge>}
-                </Group>
+                {/* Modal content above backdrop */}
+                <Box style={{ position: 'relative', zIndex: 2 }}>
+                    <Stack spacing="md">
+                        {loadingDetails && (
+                            <Group spacing="xs" mb={8}>
+                                <Loader size="xs" />
+                                <Text size="xs" color="dimmed">Loading series details and episodes...</Text>
+                            </Group>
+                        )}
 
-                <Title order={4}>Episodes</Title>
+                        {/* Series poster and basic info */}
+                        <Flex gap="md">
+                            {(displaySeries.series_image || displaySeries.logo?.url) ? (
+                                <Box style={{ flexShrink: 0 }}>
+                                    <Image
+                                        src={displaySeries.series_image || displaySeries.logo.url}
+                                        width={200}
+                                        height={300}
+                                        alt={displaySeries.name}
+                                        fit="contain"
+                                        style={{ borderRadius: '8px' }}
+                                    />
+                                </Box>
+                            ) : (
+                                <Box
+                                    style={{
+                                        width: 200,
+                                        height: 300,
+                                        backgroundColor: '#404040',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: '8px',
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    <Play size={48} color="#666" />
+                                </Box>
+                            )}
 
-                {loading ? (
-                    <Flex justify="center" py="xl">
-                        <Loader />
-                    </Flex>
-                ) : (
-                    <Grid>
-                        {seriesEpisodes.map(episode => (
-                            <Grid.Col span={6} key={episode.id}>
-                                <VODCard vod={episode} onClick={handlePlayEpisode} />
-                            </Grid.Col>
-                        ))}
-                    </Grid>
-                )}
-            </Stack>
+                            <Stack spacing="md" style={{ flex: 1 }}>
+                                <Title order={3}>{displaySeries.name}</Title>
+
+                                {/* Original name if different */}
+                                {displaySeries.o_name && displaySeries.o_name !== displaySeries.name && (
+                                    <Text size="sm" color="dimmed" style={{ fontStyle: 'italic' }}>
+                                        Original: {displaySeries.o_name}
+                                    </Text>
+                                )}
+
+                                <Group spacing="md">
+                                    {displaySeries.year && <Badge color="blue">{displaySeries.year}</Badge>}
+                                    {displaySeries.rating && <Badge color="yellow">{displaySeries.rating}</Badge>}
+                                    {displaySeries.age && <Badge color="orange">{displaySeries.age}</Badge>}
+                                    <Badge color="purple">Series</Badge>
+                                    {displaySeries.episode_count && (
+                                        <Badge color="gray">{displaySeries.episode_count} episodes</Badge>
+                                    )}
+                                </Group>
+
+                                {/* Release date */}
+                                {displaySeries.release_date && (
+                                    <Text size="sm" color="dimmed">
+                                        <strong>Release Date:</strong> {displaySeries.release_date}
+                                    </Text>
+                                )}
+
+                                {displaySeries.genre && (
+                                    <Text size="sm" color="dimmed">
+                                        <strong>Genre:</strong> {displaySeries.genre}
+                                    </Text>
+                                )}
+
+                                {displaySeries.director && (
+                                    <Text size="sm" color="dimmed">
+                                        <strong>Director:</strong> {displaySeries.director}
+                                    </Text>
+                                )}
+
+                                {displaySeries.actors && (
+                                    <Text size="sm" color="dimmed">
+                                        <strong>Cast:</strong> {displaySeries.actors}
+                                    </Text>
+                                )}
+
+                                {displaySeries.country && (
+                                    <Text size="sm" color="dimmed">
+                                        <strong>Country:</strong> {displaySeries.country}
+                                    </Text>
+                                )}
+
+                                {/* Description */}
+                                {displaySeries.description && (
+                                    <Box>
+                                        <Text size="sm" weight={500} mb={8}>Description</Text>
+                                        <Text size="sm">
+                                            {displaySeries.description}
+                                        </Text>
+                                    </Box>
+                                )}
+
+                                {/* Watch Trailer button if available */}
+                                {displaySeries.youtube_trailer && (
+                                    <Button
+                                        variant="outline"
+                                        color="red"
+                                        style={{ marginTop: 'auto', alignSelf: 'flex-start' }}
+                                        onClick={() => {
+                                            window.open(displaySeries.youtube_trailer, '_blank');
+                                        }}
+                                    >
+                                        Watch Trailer
+                                    </Button>
+                                )}
+                            </Stack>
+                        </Flex>
+
+                        {/* Provider Information */}
+                        {displaySeries.m3u_account && (
+                            <Box mt="md">
+                                <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
+                                <Group spacing="md">
+                                    <Badge color="blue" variant="light">
+                                        {displaySeries.m3u_account.name || displaySeries.m3u_account}
+                                    </Badge>
+                                    {displaySeries.m3u_account.account_type && (
+                                        <Badge color="gray" variant="outline" size="xs">
+                                            {displaySeries.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
+                                        </Badge>
+                                    )}
+                                </Group>
+                            </Box>
+                        )}
+
+                        <Title order={4}>Episodes</Title>
+
+                        {loading ? (
+                            <Flex justify="center" py="xl">
+                                <Loader />
+                            </Flex>
+                        ) : (
+                            <Grid>
+                                {seriesEpisodes.map(episode => (
+                                    <Grid.Col span={6} key={episode.id}>
+                                        <VODCard vod={episode} onClick={handlePlayEpisode} />
+                                    </Grid.Col>
+                                ))}
+                            </Grid>
+                        )}
+                    </Stack>
+                </Box>
+            </Box>
         </Modal>
     );
 };

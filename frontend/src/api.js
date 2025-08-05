@@ -1740,18 +1740,6 @@ export default class API {
     }
   }
 
-
-  static async getSeriesEpisodes(seriesId) {
-    try {
-      const response = await request(
-        `${host}/api/vod/series/${seriesId}/episodes/`
-      );
-      return response;
-    } catch (e) {
-      errorNotification('Failed to retrieve series episodes', e);
-    }
-  }
-
   static async getVODCategories() {
     try {
       const response = await request(`${host}/api/vod/categories/`);
@@ -1764,7 +1752,7 @@ export default class API {
 
   static async getSeriesInfo(seriesId) {
     try {
-      const response = await request(`${host}/api/vod/series/${seriesId}/`);
+      const response = await request(`${host}/api/vod/series/${seriesId}/?include_episodes=true`);
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve series info', e);

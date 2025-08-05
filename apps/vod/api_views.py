@@ -217,34 +217,6 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
             'category', 'logo', 'm3u_account'
         ).prefetch_related('episodes').filter(m3u_account__is_active=True)
 
-    @action(detail=True, methods=['get'])
-    def episodes(self, request, pk=None):
-        """
-        Get episodes for a specific series.
-        If episodes haven't been updated within the last X hours, refresh before responding.
-        """
-        series = self.get_object()
-        refresh_interval_hours = int(request.query_params.get("refresh_interval", 6))  # Default to 6 hours
-        now = timezone.now()
-        last_refreshed = series.last_episode_refresh or series.updated_at or series.created_at or now - timedelta(days=1)
-        if (now - last_refreshed) > timedelta(hours=refresh_interval_hours):
-            account = series.m3u_account
-            if account and account.is_active:
-                try:
-                    refresh_series_episodes(account, series, series.series_id)
-                except Exception as e:
-                    logger.error(f"Error refreshing episodes for series {series.id}: {e}")
-                    # Optionally, you could add a warning to the response
-
-        episodes = series.episodes.all().order_by('season_number', 'episode_number')
-        page = self.paginate_queryset(episodes)
-        if page is not None:
-            serializer = EpisodeSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = EpisodeSerializer(episodes, many=True)
-        return Response(serializer.data)
-
     @action(detail=True, methods=['get'], url_path='provider-info')
     def series_info(self, request, pk=None):
         """Get detailed series information, refreshing from provider if needed"""
@@ -290,8 +262,8 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                 'custom_properties': series.custom_properties or {},
             }
 
-            # Add episodes info if requested
-            include_episodes = request.query_params.get('include_episodes', 'false').lower() == 'true'
+            # Always include episodes for series info
+            include_episodes = request.query_params.get('include_episodes', 'true').lower() == 'true'
             if include_episodes:
                 episodes_by_season = {}
                 for episode in series.episodes.all().order_by('season_number', 'episode_number'):
