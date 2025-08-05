@@ -201,223 +201,225 @@ const M3U = ({
   }
 
   return (
-    <Modal size={700} opened={isOpen} onClose={close} title="M3U Account">
-      <LoadingOverlay
-        visible={form.submitting}
-        overlayBlur={2}
-        loaderProps={loadingText ? { children: loadingText } : {}}
-      />
+    <>
+      <Modal size={700} opened={isOpen} onClose={close} title="M3U Account">
+        <LoadingOverlay
+          visible={form.submitting}
+          overlayBlur={2}
+          loaderProps={loadingText ? { children: loadingText } : {}}
+        />
 
-      <form onSubmit={form.onSubmit(onSubmit)}>
-        <Group justify="space-between" align="top">
-          <Stack gap="5" style={{ flex: 1 }}>
-            <TextInput
-              style={{ width: '100%' }}
-              id="name"
-              name="name"
-              label="Name"
-              description="Unique identifier for this M3U account"
-              {...form.getInputProps('name')}
-              key={form.key('name')}
-            />
-            <TextInput
-              style={{ width: '100%' }}
-              id="server_url"
-              name="server_url"
-              label="URL"
-              description="Direct URL to the M3U playlist or server"
-              {...form.getInputProps('server_url')}
-              key={form.key('server_url')}
-            />
-
-            <Select
-              id="account_type"
-              name="account_type"
-              label="Account Type"
-              description={
-                <>
-                  Standard for direct M3U URLs, <br />
-                  Xtream Codes for panel-based services
-                </>
-              }
-              data={[
-                {
-                  value: 'STD',
-                  label: 'Standard',
-                },
-                {
-                  value: 'XC',
-                  label: 'Xtream Codes',
-                },
-              ]}
-              key={form.key('account_type')}
-              {...form.getInputProps('account_type')}
-            />
-
-            {form.getValues().account_type == 'XC' && (
-              <Box>
-                {!m3uAccount && (
-                  <Group justify="space-between">
-                    <Box>Create EPG</Box>
-                    <Switch
-                      id="create_epg"
-                      name="create_epg"
-                      description="Automatically create matching EPG source for this Xtream account"
-                      key={form.key('create_epg')}
-                      {...form.getInputProps('create_epg', {
-                        type: 'checkbox',
-                      })}
-                    />
-                  </Group>
-                )}
-
-                <TextInput
-                  id="username"
-                  name="username"
-                  label="Username"
-                  description="Username for Xtream Codes authentication"
-                  {...form.getInputProps('username')}
-                />
-
-                <PasswordInput
-                  id="password"
-                  name="password"
-                  label="Password"
-                  description="Password for Xtream Codes authentication (leave empty to keep existing)"
-                  {...form.getInputProps('password')}
-                />
-              </Box>
-            )}
-
-            {form.getValues().account_type != 'XC' && (
-              <FileInput
-                id="file"
-                label="Upload files"
-                placeholder="Upload files"
-                description="Upload a local M3U file instead of using URL"
-                onChange={setFile}
+        <form onSubmit={form.onSubmit(onSubmit)}>
+          <Group justify="space-between" align="top">
+            <Stack gap="5" style={{ flex: 1 }}>
+              <TextInput
+                style={{ width: '100%' }}
+                id="name"
+                name="name"
+                label="Name"
+                description="Unique identifier for this M3U account"
+                {...form.getInputProps('name')}
+                key={form.key('name')}
               />
-            )}
-          </Stack>
+              <TextInput
+                style={{ width: '100%' }}
+                id="server_url"
+                name="server_url"
+                label="URL"
+                description="Direct URL to the M3U playlist or server"
+                {...form.getInputProps('server_url')}
+                key={form.key('server_url')}
+              />
 
-          <Divider size="sm" orientation="vertical" />
+              <Select
+                id="account_type"
+                name="account_type"
+                label="Account Type"
+                description={
+                  <>
+                    Standard for direct M3U URLs, <br />
+                    Xtream Codes for panel-based services
+                  </>
+                }
+                data={[
+                  {
+                    value: 'STD',
+                    label: 'Standard',
+                  },
+                  {
+                    value: 'XC',
+                    label: 'Xtream Codes',
+                  },
+                ]}
+                key={form.key('account_type')}
+                {...form.getInputProps('account_type')}
+              />
 
-          <Stack gap="5" style={{ flex: 1 }}>
-            <TextInput
-              style={{ width: '100%' }}
-              id="max_streams"
-              name="max_streams"
-              label="Max Streams"
-              placeholder="0 = Unlimited"
-              description="Maximum number of concurrent streams (0 for unlimited)"
-              {...form.getInputProps('max_streams')}
-              key={form.key('max_streams')}
-            />
+              {form.getValues().account_type == 'XC' && (
+                <Box>
+                  {!m3uAccount && (
+                    <Group justify="space-between">
+                      <Box>Create EPG</Box>
+                      <Switch
+                        id="create_epg"
+                        name="create_epg"
+                        description="Automatically create matching EPG source for this Xtream account"
+                        key={form.key('create_epg')}
+                        {...form.getInputProps('create_epg', {
+                          type: 'checkbox',
+                        })}
+                      />
+                    </Group>
+                  )}
 
-            <Select
-              id="user_agent"
-              name="user_agent"
-              label="User-Agent"
-              description="User-Agent header to use when accessing this M3U source"
-              {...form.getInputProps('user_agent')}
-              key={form.key('user_agent')}
-              data={[{ value: '0', label: '(Use Default)' }].concat(
-                userAgents.map((ua) => ({
-                  label: ua.name,
-                  value: `${ua.id}`,
-                }))
+                  <TextInput
+                    id="username"
+                    name="username"
+                    label="Username"
+                    description="Username for Xtream Codes authentication"
+                    {...form.getInputProps('username')}
+                  />
+
+                  <PasswordInput
+                    id="password"
+                    name="password"
+                    label="Password"
+                    description="Password for Xtream Codes authentication (leave empty to keep existing)"
+                    {...form.getInputProps('password')}
+                  />
+                </Box>
               )}
-            />
 
-            <NumberInput
-              label="Refresh Interval (hours)"
-              description={
-                <>
-                  How often to automatically refresh M3U data
-                  <br />
-                  (0 to disable automatic refreshes)
-                </>
-              }
-              {...form.getInputProps('refresh_interval')}
-              key={form.key('refresh_interval')}
-            />
+              {form.getValues().account_type != 'XC' && (
+                <FileInput
+                  id="file"
+                  label="Upload files"
+                  placeholder="Upload files"
+                  description="Upload a local M3U file instead of using URL"
+                  onChange={setFile}
+                />
+              )}
+            </Stack>
 
-            <NumberInput
-              min={0}
-              max={365}
-              label="Stale Stream Retention (days)"
-              description="Streams not seen for this many days will be removed"
-              {...form.getInputProps('stale_stream_days')}
-            />
+            <Divider size="sm" orientation="vertical" />
 
-            <Checkbox
-              label="Is Active"
-              description="Enable or disable this M3U account"
-              {...form.getInputProps('is_active', { type: 'checkbox' })}
-              key={form.key('is_active')}
-            />
-          </Stack>
-        </Group>
+            <Stack gap="5" style={{ flex: 1 }}>
+              <TextInput
+                style={{ width: '100%' }}
+                id="max_streams"
+                name="max_streams"
+                label="Max Streams"
+                placeholder="0 = Unlimited"
+                description="Maximum number of concurrent streams (0 for unlimited)"
+                {...form.getInputProps('max_streams')}
+                key={form.key('max_streams')}
+              />
 
-        <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
-          {playlist && (
-            <>
-              <Button
-                variant="filled"
-                size="sm"
-                onClick={() => setFilterModalOpen(true)}
-              >
-                Filters
-              </Button>
-              <Button
-                variant="filled"
-                // color={theme.custom.colors.buttonPrimary}
-                size="sm"
-                onClick={() => setGroupFilterModalOpen(true)}
-              >
-                Groups
-              </Button>
-              <Button
-                variant="filled"
-                // color={theme.custom.colors.buttonPrimary}
-                size="sm"
-                onClick={() => setProfileModalOpen(true)}
-              >
-                Profiles
-              </Button>
-            </>
-          )}
+              <Select
+                id="user_agent"
+                name="user_agent"
+                label="User-Agent"
+                description="User-Agent header to use when accessing this M3U source"
+                {...form.getInputProps('user_agent')}
+                key={form.key('user_agent')}
+                data={[{ value: '0', label: '(Use Default)' }].concat(
+                  userAgents.map((ua) => ({
+                    label: ua.name,
+                    value: `${ua.id}`,
+                  }))
+                )}
+              />
 
-          <Button
-            type="submit"
-            variant="filled"
-            disabled={form.submitting}
-            size="sm"
-          >
-            Save
-          </Button>
-        </Flex>
-        {playlist && (
-          <>
-            <M3UProfiles
-              playlist={playlist}
-              isOpen={profileModalOpen}
-              onClose={() => setProfileModalOpen(false)}
-            />
-            <M3UGroupFilter
-              isOpen={groupFilterModalOpen}
-              playlist={playlist}
-              onClose={closeGroupFilter}
-            />
-            <M3UFilters
-              isOpen={filterModalOpen}
-              playlist={playlist}
-              onClose={closeFilter}
-            />
-          </>
-        )}
-      </form>
-    </Modal>
+              <NumberInput
+                label="Refresh Interval (hours)"
+                description={
+                  <>
+                    How often to automatically refresh M3U data
+                    <br />
+                    (0 to disable automatic refreshes)
+                  </>
+                }
+                {...form.getInputProps('refresh_interval')}
+                key={form.key('refresh_interval')}
+              />
+
+              <NumberInput
+                min={0}
+                max={365}
+                label="Stale Stream Retention (days)"
+                description="Streams not seen for this many days will be removed"
+                {...form.getInputProps('stale_stream_days')}
+              />
+
+              <Checkbox
+                label="Is Active"
+                description="Enable or disable this M3U account"
+                {...form.getInputProps('is_active', { type: 'checkbox' })}
+                key={form.key('is_active')}
+              />
+            </Stack>
+          </Group>
+
+          <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+            {playlist && (
+              <>
+                <Button
+                  variant="filled"
+                  size="sm"
+                  onClick={() => setFilterModalOpen(true)}
+                >
+                  Filters
+                </Button>
+                <Button
+                  variant="filled"
+                  // color={theme.custom.colors.buttonPrimary}
+                  size="sm"
+                  onClick={() => setGroupFilterModalOpen(true)}
+                >
+                  Groups
+                </Button>
+                <Button
+                  variant="filled"
+                  // color={theme.custom.colors.buttonPrimary}
+                  size="sm"
+                  onClick={() => setProfileModalOpen(true)}
+                >
+                  Profiles
+                </Button>
+              </>
+            )}
+
+            <Button
+              type="submit"
+              variant="filled"
+              disabled={form.submitting}
+              size="sm"
+            >
+              Save
+            </Button>
+          </Flex>
+        </form>
+      </Modal>
+      {playlist && (
+        <>
+          <M3UProfiles
+            playlist={playlist}
+            isOpen={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+          />
+          <M3UGroupFilter
+            isOpen={groupFilterModalOpen}
+            playlist={playlist}
+            onClose={closeGroupFilter}
+          />
+          <M3UFilters
+            isOpen={filterModalOpen}
+            playlist={playlist}
+            onClose={closeFilter}
+          />
+        </>
+      )}
+    </>
   );
 };
 

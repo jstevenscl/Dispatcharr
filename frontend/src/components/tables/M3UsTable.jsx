@@ -803,7 +803,12 @@ const M3UTable = () => {
   return (
     <Box>
       <Flex
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingBottom: 10,
+        }}
         gap={15}
       >
         <Text
@@ -853,8 +858,7 @@ const M3UTable = () => {
             padding: 0,
             // gap: 1,
           }}
-        >
-        </Box>
+        ></Box>
       </Paper>
 
       <Box
