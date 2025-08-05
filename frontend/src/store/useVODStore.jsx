@@ -201,14 +201,9 @@ const useVODStore = create((set, get) => ({
                 audio: response.audio || {},
             };
 
-            set((state) => ({
-                vods: {
-                    ...state.vods,
-                    [vodDetails.id]: vodDetails,
-                },
-                loading: false,
-            }));
+            set({ loading: false }); // Only update loading state, do not update vods{
 
+            // Do NOT merge or overwrite the store VOD entry
             return vodDetails;
         } catch (error) {
             console.error('Failed to fetch VOD details from provider:', error);
