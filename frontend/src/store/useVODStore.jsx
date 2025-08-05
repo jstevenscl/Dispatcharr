@@ -291,7 +291,7 @@ const useVODStore = create((set, get) => ({
                 o_name: response.o_name || '',
                 age: response.age || '',
                 m3u_account: response.m3u_account || '',
-                youtube_trailer: response.youtube_trailer || '',
+                youtube_trailer: response.custom_properties?.youtube_trailer || '',
             };
 
             let episodesData = {};
