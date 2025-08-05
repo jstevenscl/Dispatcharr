@@ -306,7 +306,7 @@ const useVODStore = create((set, get) => ({
                             name: episode.title || '',
                             description: episode.plot || '',
                             season_number: parseInt(seasonNumber) || 0,
-                            episode_number: episode.episode_num || 0,
+                            episode_number: episode.episode_number || 0,
                             duration: episode.duration_secs ? Math.floor(episode.duration_secs / 60) : null,
                             rating: episode.rating || '',
                             container_extension: episode.container_extension || '',
