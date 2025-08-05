@@ -222,6 +222,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
     const [detailedSeries, setDetailedSeries] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [activeTab, setActiveTab] = useState(null);
+    const [expandedEpisode, setExpandedEpisode] = useState(null);
 
     useEffect(() => {
         if (opened && series) {
@@ -322,6 +323,10 @@ const SeriesModal = ({ series, opened, onClose }) => {
         const hours = Math.floor(minutes / 60);
         const mins = minutes % 60;
         return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    };
+
+    const handleEpisodeRowClick = (episode) => {
+        setExpandedEpisode(expandedEpisode === episode.id ? null : episode.id);
     };
 
     if (!series) return null;
@@ -539,52 +544,155 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                             </Table.Thead>
                                             <Table.Tbody>
                                                 {episodesBySeason[season]?.map(episode => (
-                                                    <Table.Tr
-                                                        key={episode.id}
-                                                        style={{ cursor: 'pointer' }}
-                                                        onClick={() => handlePlayEpisode(episode)}
-                                                    >
-                                                        <Table.Td>
-                                                            <Badge size="sm" variant="outline">
-                                                                {episode.episode_number || '?'}
-                                                            </Badge>
-                                                        </Table.Td>
-                                                        <Table.Td>
-                                                            <Stack spacing={2}>
-                                                                <Text size="sm" weight={500}>
-                                                                    {episode.name}
-                                                                </Text>
-                                                                {episode.genre && (
-                                                                    <Text size="xs" color="dimmed">
-                                                                        {episode.genre}
+                                                    <React.Fragment key={episode.id}>
+                                                        <Table.Tr
+                                                            style={{ cursor: 'pointer' }}
+                                                            onClick={() => handleEpisodeRowClick(episode)}
+                                                        >
+                                                            <Table.Td>
+                                                                <Badge size="sm" variant="outline">
+                                                                    {episode.episode_number || '?'}
+                                                                </Badge>
+                                                            </Table.Td>
+                                                            <Table.Td>
+                                                                <Stack spacing={2}>
+                                                                    <Text size="sm" weight={500}>
+                                                                        {episode.name}
                                                                     </Text>
-                                                                )}
-                                                            </Stack>
-                                                        </Table.Td>
-                                                        <Table.Td>
-                                                            <Text size="xs" color="dimmed">
-                                                                {formatDuration(episode.duration)}
-                                                            </Text>
-                                                        </Table.Td>
-                                                        <Table.Td>
-                                                            <Text size="xs" color="dimmed">
-                                                                {episode.release_date ? new Date(episode.release_date).toLocaleDateString() : 'N/A'}
-                                                            </Text>
-                                                        </Table.Td>
-                                                        <Table.Td>
-                                                            <ActionIcon
-                                                                variant="filled"
-                                                                color="blue"
-                                                                size="sm"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handlePlayEpisode(episode);
-                                                                }}
-                                                            >
-                                                                <Play size={12} />
-                                                            </ActionIcon>
-                                                        </Table.Td>
-                                                    </Table.Tr>
+                                                                    {episode.genre && (
+                                                                        <Text size="xs" color="dimmed">
+                                                                            {episode.genre}
+                                                                        </Text>
+                                                                    )}
+                                                                </Stack>
+                                                            </Table.Td>
+                                                            <Table.Td>
+                                                                <Text size="xs" color="dimmed">
+                                                                    {formatDuration(episode.duration)}
+                                                                </Text>
+                                                            </Table.Td>
+                                                            <Table.Td>
+                                                                <Text size="xs" color="dimmed">
+                                                                    {episode.release_date ? new Date(episode.release_date).toLocaleDateString() : 'N/A'}
+                                                                </Text>
+                                                            </Table.Td>
+                                                            <Table.Td>
+                                                                <ActionIcon
+                                                                    variant="filled"
+                                                                    color="blue"
+                                                                    size="sm"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handlePlayEpisode(episode);
+                                                                    }}
+                                                                >
+                                                                    <Play size={12} />
+                                                                </ActionIcon>
+                                                            </Table.Td>
+                                                        </Table.Tr>
+                                                        {expandedEpisode === episode.id && (
+                                                            <Table.Tr>
+                                                                <Table.Td colSpan={5} style={{ backgroundColor: '#2A2A2E', padding: '16px' }}>
+                                                                    <Stack spacing="sm">
+                                                                        {/* Episode Image and Description Row */}
+                                                                        <Flex gap="md">
+                                                                            {/* Episode Image */}
+                                                                            {episode.movie_image && (
+                                                                                <Box style={{ flexShrink: 0 }}>
+                                                                                    <Image
+                                                                                        src={episode.movie_image}
+                                                                                        width={120}
+                                                                                        height={160}
+                                                                                        alt={episode.name}
+                                                                                        fit="cover"
+                                                                                        style={{ borderRadius: '4px' }}
+                                                                                    />
+                                                                                </Box>
+                                                                            )}
+
+                                                                            {/* Episode Description */}
+                                                                            <Box style={{ flex: 1 }}>
+                                                                                {episode.description && (
+                                                                                    <Box>
+                                                                                        <Text size="sm" weight={500} mb={4}>Description</Text>
+                                                                                        <Text size="sm" color="dimmed">
+                                                                                            {episode.description}
+                                                                                        </Text>
+                                                                                    </Box>
+                                                                                )}
+                                                                            </Box>
+                                                                        </Flex>
+
+                                                                        {/* Additional Episode Details */}
+                                                                        <Group spacing="xl">
+                                                                            {episode.rating && (
+                                                                                <Box>
+                                                                                    <Text size="xs" weight={500} color="dimmed" mb={2}>Rating</Text>
+                                                                                    <Badge color="yellow" size="sm">{episode.rating}</Badge>
+                                                                                </Box>
+                                                                            )}
+
+                                                                            {episode.director && (
+                                                                                <Box>
+                                                                                    <Text size="xs" weight={500} color="dimmed" mb={2}>Director</Text>
+                                                                                    <Text size="sm">{episode.director}</Text>
+                                                                                </Box>
+                                                                            )}
+
+                                                                            {episode.actors && (
+                                                                                <Box>
+                                                                                    <Text size="xs" weight={500} color="dimmed" mb={2}>Cast</Text>
+                                                                                    <Text size="sm" lineClamp={2}>{episode.actors}</Text>
+                                                                                </Box>
+                                                                            )}
+                                                                        </Group>
+
+                                                                        {/* Technical Details */}
+                                                                        {(episode.bitrate || episode.video || episode.audio) && (
+                                                                            <Box>
+                                                                                <Text size="xs" weight={500} color="dimmed" mb={4}>Technical Details</Text>
+                                                                                <Stack spacing={2}>
+                                                                                    {episode.bitrate && episode.bitrate > 0 && (
+                                                                                        <Text size="xs" color="dimmed">
+                                                                                            <strong>Bitrate:</strong> {episode.bitrate} kbps
+                                                                                        </Text>
+                                                                                    )}
+                                                                                    {episode.video && Object.keys(episode.video).length > 0 && (
+                                                                                        <Text size="xs" color="dimmed">
+                                                                                            <strong>Video:</strong>{' '}
+                                                                                            {episode.video.codec_long_name || episode.video.codec_name}
+                                                                                            {episode.video.width && episode.video.height
+                                                                                                ? `, ${episode.video.width}x${episode.video.height}`
+                                                                                                : ''}
+                                                                                        </Text>
+                                                                                    )}
+                                                                                    {episode.audio && Object.keys(episode.audio).length > 0 && (
+                                                                                        <Text size="xs" color="dimmed">
+                                                                                            <strong>Audio:</strong>{' '}
+                                                                                            {episode.audio.codec_long_name || episode.audio.codec_name}
+                                                                                            {episode.audio.channels
+                                                                                                ? `, ${episode.audio.channels} channels`
+                                                                                                : ''}
+                                                                                        </Text>
+                                                                                    )}
+                                                                                </Stack>
+                                                                            </Box>
+                                                                        )}
+
+                                                                        {/* Provider Information */}
+                                                                        {episode.m3u_account && (
+                                                                            <Group spacing="md">
+                                                                                <Text size="xs" weight={500} color="dimmed">Provider:</Text>
+                                                                                <Badge color="blue" variant="light" size="sm">
+                                                                                    {episode.m3u_account.name || episode.m3u_account}
+                                                                                </Badge>
+                                                                            </Group>
+                                                                        )}
+                                                                    </Stack>
+                                                                </Table.Td>
+                                                            </Table.Tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 ))}
                                             </Table.Tbody>
                                         </Table>

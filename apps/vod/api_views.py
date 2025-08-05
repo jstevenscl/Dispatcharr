@@ -298,8 +298,8 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                         'release_date': episode.release_date,
                         'plot': episode.description,
                         'duration': episode.duration,
-                        'duration_secs': episode.duration * 60 if episode.duration else None,
                         'rating': episode.rating,
+                        'movie_image': episode.custom_properties.get('info', {}).get('movie_image') if episode.custom_properties else None,
                         'container_extension': episode.container_extension,
                         'type': 'episode',
                         'series': {

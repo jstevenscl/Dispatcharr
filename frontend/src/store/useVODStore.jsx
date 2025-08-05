@@ -307,7 +307,7 @@ const useVODStore = create((set, get) => ({
                             description: episode.plot || '',
                             season_number: parseInt(seasonNumber) || 0,
                             episode_number: episode.episode_number || 0,
-                            duration: episode.duration_secs ? Math.floor(episode.duration_secs / 60) : null,
+                            duration: episode.duration ? Math.floor(episode.duration / 60) : null,
                             rating: episode.rating || '',
                             container_extension: episode.container_extension || '',
                             series: {
@@ -318,6 +318,7 @@ const useVODStore = create((set, get) => ({
                             uuid: episode.id, // Use the stream ID as UUID for playback
                             logo: episode.movie_image ? { url: episode.movie_image } : null,
                             release_date: episode.release_date || null,
+                            movie_image: episode.movie_image || null,
                         };
                         episodesData[episode.id] = episodeData;
                     });
