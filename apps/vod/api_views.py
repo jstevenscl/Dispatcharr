@@ -20,6 +20,8 @@ from .serializers import (
 )
 from core.xtream_codes import Client as XtreamCodesClient
 from .tasks import refresh_series_episodes
+from django.utils import timezone
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -217,10 +219,24 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def episodes(self, request, pk=None):
-        """Get episodes for a specific series"""
+        """
+        Get episodes for a specific series.
+        If episodes haven't been updated within the last X hours, refresh before responding.
+        """
         series = self.get_object()
-        episodes = series.episodes.all().order_by('season_number', 'episode_number')
+        refresh_interval_hours = int(request.query_params.get("refresh_interval", 6))  # Default to 6 hours
+        now = timezone.now()
+        last_refreshed = series.last_episode_refresh or series.updated_at or series.created_at or now - timedelta(days=1)
+        if (now - last_refreshed) > timedelta(hours=refresh_interval_hours):
+            account = series.m3u_account
+            if account and account.is_active:
+                try:
+                    refresh_series_episodes(account, series, series.series_id)
+                except Exception as e:
+                    logger.error(f"Error refreshing episodes for series {series.id}: {e}")
+                    # Optionally, you could add a warning to the response
 
+        episodes = series.episodes.all().order_by('season_number', 'episode_number')
         page = self.paginate_queryset(episodes)
         if page is not None:
             serializer = EpisodeSerializer(page, many=True)
@@ -228,20 +244,6 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
 
         serializer = EpisodeSerializer(episodes, many=True)
         return Response(serializer.data)
-
-    @action(detail=True, methods=['post'], url_path='refresh-episodes')
-    def refresh_episodes(self, request, pk=None):
-        """Fetch and save episodes for this series from provider (on demand)"""
-        series = self.get_object()
-        account = series.m3u_account
-        if not account or not account.is_active:
-            return Response({'error': 'No active M3U account for this series'}, status=400)
-        try:
-            refresh_series_episodes(account, series, series.series_id)
-            return Response({'status': 'Episodes refreshed'})
-        except Exception as e:
-            logger.error(f"Error refreshing episodes for series {series.id}: {e}")
-            return Response({'error': str(e)}, status=500)
 
 
 class VODCategoryFilter(django_filters.FilterSet):
