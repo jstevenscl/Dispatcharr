@@ -17,7 +17,10 @@ import {
     Stack,
     SegmentedControl,
     ActionIcon,
-    Modal
+    Modal,
+    Tabs,
+    Table,
+    Divider
 } from '@mantine/core';
 import { Search, Play, Calendar, Clock, Star } from 'lucide-react';
 import { useDisclosure } from '@mantine/hooks';
@@ -213,11 +216,12 @@ const SeriesCard = ({ series, onClick }) => {
 };
 
 const SeriesModal = ({ series, opened, onClose }) => {
-    const { fetchSeriesInfo, loading } = useVODStore();
+    const { fetchSeriesInfo, loading, episodes } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
     const [detailedSeries, setDetailedSeries] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const [activeTab, setActiveTab] = useState('season-1');
 
     useEffect(() => {
         if (opened && series) {
@@ -244,14 +248,55 @@ const SeriesModal = ({ series, opened, onClose }) => {
         }
     }, [opened]);
 
-    // Get episodes from the detailed series response
-    const seriesEpisodes = detailedSeries?.episodes ? 
-        Object.values(detailedSeries.episodes).flat().sort((a, b) => {
-            if (a.season_number !== b.season_number) {
-                return (a.season_number || 0) - (b.season_number || 0);
+    // Get episodes from the store based on the series ID
+    const seriesEpisodes = React.useMemo(() => {
+        if (!detailedSeries) return [];
+
+        // First try to get episodes from the fetched data
+        if (detailedSeries.episodesList) {
+            return detailedSeries.episodesList.sort((a, b) => {
+                if (a.season_number !== b.season_number) {
+                    return (a.season_number || 0) - (b.season_number || 0);
+                }
+                return (a.episode_number || 0) - (b.episode_number || 0);
+            });
+        }
+
+        // Otherwise, filter episodes from the global store
+        return Object.values(episodes)
+            .filter(episode => episode.series?.id === detailedSeries.id)
+            .sort((a, b) => {
+                if (a.season_number !== b.season_number) {
+                    return (a.season_number || 0) - (b.season_number || 0);
+                }
+                return (a.episode_number || 0) - (b.episode_number || 0);
+            });
+    }, [detailedSeries, episodes]);
+
+    // Group episodes by season
+    const episodesBySeason = React.useMemo(() => {
+        const grouped = {};
+        seriesEpisodes.forEach(episode => {
+            const season = episode.season_number || 1;
+            if (!grouped[season]) {
+                grouped[season] = [];
             }
-            return (a.episode_number || 0) - (b.episode_number || 0);
-        }) : [];
+            grouped[season].push(episode);
+        });
+        return grouped;
+    }, [seriesEpisodes]);
+
+    // Get available seasons sorted
+    const seasons = React.useMemo(() => {
+        return Object.keys(episodesBySeason).map(Number).sort((a, b) => a - b);
+    }, [episodesBySeason]);
+
+    // Update active tab when seasons change
+    React.useEffect(() => {
+        if (seasons.length > 0 && !seasons.includes(parseInt(activeTab.replace('season-', '')))) {
+            setActiveTab(`season-${seasons[0]}`);
+        }
+    }, [seasons, activeTab]);
 
     const handlePlayEpisode = (episode) => {
         let streamUrl = `/proxy/vod/episode/${episode.uuid}`;
@@ -261,6 +306,13 @@ const SeriesModal = ({ series, opened, onClose }) => {
             streamUrl = `${window.location.origin}${streamUrl}`;
         }
         showVideo(streamUrl, 'vod', episode);
+    };
+
+    const formatDuration = (minutes) => {
+        if (!minutes) return '';
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
     };
 
     if (!series) return null;
@@ -446,20 +498,94 @@ const SeriesModal = ({ series, opened, onClose }) => {
                             </Box>
                         )}
 
+                        <Divider />
+
                         <Title order={4}>Episodes</Title>
 
                         {loadingDetails ? (
                             <Flex justify="center" py="xl">
                                 <Loader />
                             </Flex>
-                        ) : (
-                            <Grid>
-                                {seriesEpisodes.map(episode => (
-                                    <Grid.Col span={6} key={episode.id}>
-                                        <VODCard vod={episode} onClick={handlePlayEpisode} />
-                                    </Grid.Col>
+                        ) : seasons.length > 0 ? (
+                            <Tabs value={activeTab} onTabChange={setActiveTab}>
+                                <Tabs.List>
+                                    {seasons.map(season => (
+                                        <Tabs.Tab key={season} value={`season-${season}`}>
+                                            Season {season}
+                                        </Tabs.Tab>
+                                    ))}
+                                </Tabs.List>
+
+                                {seasons.map(season => (
+                                    <Tabs.Panel key={season} value={`season-${season}`} pt="md">
+                                        <Table striped highlightOnHover>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th style={{ width: '60px' }}>Ep</Table.Th>
+                                                    <Table.Th>Title</Table.Th>
+                                                    <Table.Th style={{ width: '80px' }}>Duration</Table.Th>
+                                                    <Table.Th style={{ width: '60px' }}>Year</Table.Th>
+                                                    <Table.Th style={{ width: '80px' }}>Action</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {episodesBySeason[season].map(episode => (
+                                                    <Table.Tr
+                                                        key={episode.id}
+                                                        style={{ cursor: 'pointer' }}
+                                                        onClick={() => handlePlayEpisode(episode)}
+                                                    >
+                                                        <Table.Td>
+                                                            <Badge size="sm" variant="outline">
+                                                                {episode.episode_number || '?'}
+                                                            </Badge>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Stack spacing={2}>
+                                                                <Text size="sm" weight={500}>
+                                                                    {episode.name}
+                                                                </Text>
+                                                                {episode.genre && (
+                                                                    <Text size="xs" color="dimmed">
+                                                                        {episode.genre}
+                                                                    </Text>
+                                                                )}
+                                                            </Stack>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="xs" color="dimmed">
+                                                                {formatDuration(episode.duration)}
+                                                            </Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <Text size="xs" color="dimmed">
+                                                                {episode.year}
+                                                            </Text>
+                                                        </Table.Td>
+                                                        <Table.Td>
+                                                            <ActionIcon
+                                                                variant="filled"
+                                                                color="blue"
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handlePlayEpisode(episode);
+                                                                }}
+                                                            >
+                                                                <Play size={12} />
+                                                            </ActionIcon>
+                                                        </Table.Td>
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    </Tabs.Panel>
                                 ))}
-                            </Grid>
+                            </Tabs>
+                        ) : (
+                            <Text color="dimmed" align="center" py="xl">
+                                No episodes found for this series.
+                            </Text>
                         )}
                     </Stack>
                 </Box>

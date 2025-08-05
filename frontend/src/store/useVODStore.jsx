@@ -294,9 +294,10 @@ const useVODStore = create((set, get) => ({
                 youtube_trailer: response.youtube_trailer || '',
             };
 
-            // Also update episodes if they're included in the response
+            let episodesData = {};
+
+            // Handle episodes - check if they're in the response
             if (response.episodes) {
-                const episodesData = {};
                 Object.entries(response.episodes).forEach(([seasonNumber, seasonEpisodes]) => {
                     seasonEpisodes.forEach((episode) => {
                         const episodeData = {
@@ -315,6 +316,7 @@ const useVODStore = create((set, get) => ({
                             },
                             type: 'episode',
                             uuid: episode.id, // Use the stream ID as UUID for playback
+                            logo: episode.movie_image ? { url: episode.movie_image } : null,
                         };
                         episodesData[episode.id] = episodeData;
                     });
@@ -337,7 +339,11 @@ const useVODStore = create((set, get) => ({
                 loading: false,
             }));
 
-            return seriesInfo;
+            // Return series info with episodes array for easy access
+            return {
+                ...seriesInfo,
+                episodesList: Object.values(episodesData)
+            };
         } catch (error) {
             console.error('Failed to fetch series info:', error);
             set({ error: 'Failed to load series details.', loading: false });
