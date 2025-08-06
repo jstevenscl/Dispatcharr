@@ -26,8 +26,8 @@ class VODConnectionManager:
         return f"vod_proxy:connection:{content_type}:{content_uuid}:{client_id}"
 
     def _get_profile_connections_key(self, profile_id: int) -> str:
-        """Get Redis key for tracking connections per profile"""
-        return f"vod_proxy:profile:{profile_id}:connections"
+        """Get Redis key for tracking connections per profile - STANDARDIZED with TS proxy"""
+        return f"profile_connections:{profile_id}"
 
     def _get_content_connections_key(self, content_type: str, content_uuid: str) -> str:
         """Get Redis key for tracking connections per content"""
@@ -47,7 +47,7 @@ class VODConnectionManager:
             return False
 
         try:
-            # Check profile connection limits
+            # Check profile connection limits using standardized key
             if not self._check_profile_limits(m3u_profile):
                 logger.warning(f"Profile {m3u_profile.name} connection limit exceeded")
                 return False
@@ -79,9 +79,8 @@ class VODConnectionManager:
             pipe.hset(connection_key, mapping=connection_data)
             pipe.expire(connection_key, self.connection_ttl)
 
-            # Add to profile connections set
-            pipe.sadd(profile_connections_key, client_id)
-            pipe.expire(profile_connections_key, self.connection_ttl)
+            # Increment profile connections using standardized method
+            pipe.incr(profile_connections_key)
 
             # Add to content connections set
             pipe.sadd(content_connections_key, client_id)
@@ -104,7 +103,7 @@ class VODConnectionManager:
 
         try:
             profile_connections_key = self._get_profile_connections_key(m3u_profile.id)
-            current_connections = self.redis_client.scard(profile_connections_key) or 0
+            current_connections = int(self.redis_client.get(profile_connections_key) or 0)
 
             return current_connections < m3u_profile.max_streams
 
@@ -175,10 +174,12 @@ class VODConnectionManager:
             # Remove connection data
             pipe.delete(connection_key)
 
-            # Remove from profile connections set
+            # Decrement profile connections using standardized key
             if profile_id:
                 profile_connections_key = self._get_profile_connections_key(profile_id)
-                pipe.srem(profile_connections_key, client_id)
+                current_count = int(self.redis_client.get(profile_connections_key) or 0)
+                if current_count > 0:
+                    pipe.decr(profile_connections_key)
 
             # Remove from content connections set
             content_connections_key = self._get_content_connections_key(content_type, content_uuid)
@@ -227,13 +228,13 @@ class VODConnectionManager:
             return None
 
     def get_profile_connections(self, profile_id: int) -> int:
-        """Get current connection count for a profile"""
+        """Get current connection count for a profile using standardized key"""
         if not self.redis_client:
             return 0
 
         try:
             profile_connections_key = self._get_profile_connections_key(profile_id)
-            return self.redis_client.scard(profile_connections_key) or 0
+            return int(self.redis_client.get(profile_connections_key) or 0)
 
         except Exception as e:
             logger.error(f"Error getting profile connections: {e}")

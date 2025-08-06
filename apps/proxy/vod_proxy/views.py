@@ -54,6 +54,7 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
         available_profile = None
 
         for profile in m3u_account.profiles.filter(is_active=True):
+            # Use standardized connection counting method
             current_connections = connection_manager.get_profile_connections(profile.id)
             if profile.max_streams == 0 or current_connections < profile.max_streams:
                 available_profile = profile
