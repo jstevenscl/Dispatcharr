@@ -66,10 +66,10 @@ const M3UFilter = ({ filter = null, m3u, isOpen, onClose }) => {
       await API.updateM3UFilter(m3u.id, filter.id, values);
     }
 
-    fetchPlaylist(m3u.id);
+    const updatedPlaylist = await fetchPlaylist(m3u.id);
 
     form.reset();
-    onClose();
+    onClose(updatedPlaylist);
   };
 
   if (!isOpen) {

@@ -278,41 +278,10 @@ def process_groups(account, groups):
     }
     logger.info(f"Currently {len(existing_groups)} existing groups")
 
-    compiled_filters = [
-        (
-            re.compile(
-                f.regex_pattern,
-                (
-                    re.IGNORECASE
-                    if json.loads(f.custom_properties or "{}").get(
-                        "case_sensitive", True
-                    )
-                    == False
-                    else 0
-                ),
-            ),
-            f,
-        )
-        for f in account.filters.order_by("order")
-        if f.filter_type == "group"
-    ]
-
     group_objs = []
     groups_to_create = []
     for group_name, custom_props in groups.items():
         logger.debug(f"Handling group for M3U account {account.id}: {group_name}")
-
-        include = True
-        for pattern, filter in compiled_filters:
-            if pattern.search(group_name):
-                logger.debug(
-                    f"Group {group_name} matches filter pattern {filter.regex_pattern}"
-                )
-                include = not filter.exclude
-                break
-
-        if not include:
-            continue
 
         if group_name not in existing_groups:
             groups_to_create.append(
@@ -538,7 +507,6 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
             f,
         )
         for f in account.filters.order_by("order")
-        if f.filter_type != "group"
     ]
 
     streams_to_create = []
@@ -549,11 +517,22 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
     for stream_info in batch:
         try:
             name, url = stream_info["name"], stream_info["url"]
+            tvg_id, tvg_logo = get_case_insensitive_attr(
+                stream_info["attributes"], "tvg-id", ""
+            ), get_case_insensitive_attr(stream_info["attributes"], "tvg-logo", "")
+            group_title = get_case_insensitive_attr(
+                stream_info["attributes"], "group-title", "Default Group"
+            )
 
             include = True
             for pattern, filter in compiled_filters:
                 logger.debug(f"Checking filter patterh {pattern}")
-                target = url if filter.filter_type == "url" else name
+                target = name
+                if filter.filter_type == "url":
+                    target = url
+                elif filter.filter_type == "group":
+                    target = group_title
+
                 if pattern.search(target or ""):
                     logger.debug(
                         f"Stream {name} - {url} matches filter pattern {filter.regex_pattern}"
@@ -564,13 +543,6 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
             if not include:
                 logger.debug(f"Stream excluded by filter, skipping.")
                 continue
-
-            tvg_id, tvg_logo = get_case_insensitive_attr(
-                stream_info["attributes"], "tvg-id", ""
-            ), get_case_insensitive_attr(stream_info["attributes"], "tvg-logo", "")
-            group_title = get_case_insensitive_attr(
-                stream_info["attributes"], "group-title", "Default Group"
-            )
 
             # Filter out disabled groups for this account
             if group_title not in groups:

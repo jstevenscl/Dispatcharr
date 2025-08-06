@@ -1,24 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import API from '../../api';
-import M3UProfile from './M3UProfile';
 import usePlaylistsStore from '../../store/playlists';
 import ConfirmationDialog from '../ConfirmationDialog';
 import useWarningsStore from '../../store/warnings';
 import {
-  Card,
-  Checkbox,
   Flex,
   Modal,
   Button,
   Box,
   ActionIcon,
   Text,
-  NumberInput,
   useMantineTheme,
   Center,
   Group,
-  Switch,
-  Stack,
   Alert,
 } from '@mantine/core';
 import { GripHorizontal, Info, SquareMinus, SquarePen } from 'lucide-react';
@@ -210,9 +204,13 @@ const M3UFilters = ({ playlist, isOpen, onClose }) => {
     setFilters(filters.filter((f) => f.id !== id));
   };
 
-  const closeEditor = () => {
+  const closeEditor = (updatedPlaylist = null) => {
     setFilter(null);
     setEditorOpen(false);
+
+    if (updatedPlaylist) {
+      setFilters(updatedPlaylist.filters);
+    }
   };
 
   const handleDragEnd = async ({ active, over }) => {
