@@ -28,6 +28,9 @@ import useVODStore from '../store/useVODStore';
 import useVideoStore from '../store/useVideoStore';
 import useSettingsStore from '../store/settings';
 
+const imdbUrl = (imdb_id) => imdb_id ? `https://www.imdb.com/title/${imdb_id}` : '';
+const tmdbUrl = (tmdb_id, type = 'movie') => tmdb_id ? `https://www.themoviedb.org/${type}/${tmdb_id}` : '';
+
 const VODCard = ({ vod, onClick }) => {
     const isEpisode = vod.type === 'episode';
 
@@ -197,6 +200,12 @@ const SeriesCard = ({ series, onClick }) => {
                         <Group spacing={4}>
                             <Calendar size={14} color="#666" />
                             <Text size="xs" color="dimmed">{series.year}</Text>
+                        </Group>
+                    )}
+                    {series.rating && (
+                        <Group spacing={4}>
+                            <Star size={14} color="#666" />
+                            <Text size="xs" color="dimmed">{series.rating}</Text>
                         </Group>
                     )}
                 </Group>
@@ -444,6 +453,31 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                         {displaySeries.episode_count && (
                                             <Badge color="gray">{displaySeries.episode_count} episodes</Badge>
                                         )}
+                                        {/* imdb_id and tmdb_id badges */}
+                                        {displaySeries.imdb_id && (
+                                            <Badge
+                                                color="yellow"
+                                                component="a"
+                                                href={imdbUrl(displaySeries.imdb_id)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                IMDb
+                                            </Badge>
+                                        )}
+                                        {displaySeries.tmdb_id && (
+                                            <Badge
+                                                color="cyan"
+                                                component="a"
+                                                href={tmdbUrl(displaySeries.tmdb_id, 'tv')}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                TMDb
+                                            </Badge>
+                                        )}
                                     </Group>
 
                                     {/* Release date */}
@@ -465,9 +499,9 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                         </Text>
                                     )}
 
-                                    {displaySeries.actors && (
+                                    {displaySeries.cast && (
                                         <Text size="sm" color="dimmed">
-                                            <strong>Cast:</strong> {displaySeries.actors}
+                                            <strong>Cast:</strong> {displaySeries.cast}
                                         </Text>
                                     )}
 
@@ -926,6 +960,31 @@ const VODModal = ({ vod, opened, onClose }) => {
                                         {displayVOD.rating && <Badge color="yellow">{displayVOD.rating}</Badge>}
                                         {displayVOD.age && <Badge color="orange">{displayVOD.age}</Badge>}
                                         <Badge color="green">Movie</Badge>
+                                        {/* imdb_id and tmdb_id badges */}
+                                        {displayVOD.imdb_id && (
+                                            <Badge
+                                                color="yellow"
+                                                component="a"
+                                                href={imdbUrl(displayVOD.imdb_id)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                IMDb
+                                            </Badge>
+                                        )}
+                                        {displayVOD.tmdb_id && (
+                                            <Badge
+                                                color="cyan"
+                                                component="a"
+                                                href={tmdbUrl(displayVOD.tmdb_id, 'movie')}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                TMDb
+                                            </Badge>
+                                        )}
                                     </Group>
 
                                     {/* Release date */}
