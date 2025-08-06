@@ -66,7 +66,7 @@ urlpatterns = [
     # Optionally, serve the raw Swagger JSON
     path("swagger.json", schema_view.without_ui(cache_timeout=0), name="schema-json"),
 
-    path("proxy/vod/", include("apps.proxy.vod_proxy.urls")),
+    # VOD proxy is now handled by the main proxy URLs above
     # Catch-all routes should always be last
     path("", TemplateView.as_view(template_name="index.html")),  # React entry point
     path("<path:unused_path>", TemplateView.as_view(template_name="index.html")),

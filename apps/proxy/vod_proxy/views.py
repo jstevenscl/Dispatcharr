@@ -5,13 +5,12 @@ import requests
 from django.http import StreamingHttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.contenttypes.models import ContentType
 from rest_framework.decorators import api_view
 
-from apps.vod.models import Movie, Episode, VODConnection
-from apps.m3u.models import M3UAccountProfile
+from apps.vod.models import Movie, Episode
 from dispatcharr.utils import network_access_allowed, get_client_ip
 from core.models import UserAgent, CoreSettings
+from .connection_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +46,15 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
     logger.info(f"[{client_id}] VOD stream request for: {content.name}")
 
     try:
+        # Get connection manager
+        connection_manager = get_connection_manager()
+
         # Get available M3U profile for connection management
         m3u_account = content.m3u_account
         available_profile = None
 
         for profile in m3u_account.profiles.filter(is_active=True):
-            current_connections = VODConnection.objects.filter(m3u_profile=profile).count()
+            current_connections = connection_manager.get_profile_connections(profile.id)
             if profile.max_streams == 0 or current_connections < profile.max_streams:
                 available_profile = profile
                 break
@@ -63,16 +65,22 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
                 status=503
             )
 
-        # Create connection tracking record using generic foreign key
-        content_type = ContentType.objects.get_for_model(content)
-        connection = VODConnection.objects.create(
-            content_type=content_type,
-            object_id=content.id,
-            m3u_profile=available_profile,
+        # Create connection tracking record in Redis
+        connection_created = connection_manager.create_connection(
+            content_type=content_type_name,
+            content_uuid=str(content_uuid),
+            content_name=content.name,
             client_id=client_id,
             client_ip=client_ip,
-            user_agent=client_user_agent
+            user_agent=client_user_agent,
+            m3u_profile=available_profile
         )
+
+        if not connection_created:
+            return JsonResponse(
+                {"error": "Failed to create connection tracking"},
+                status=503
+            )
 
         # Get user agent for upstream request
         try:
@@ -105,7 +113,7 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
 
             if response.status_code not in [200, 206]:
                 logger.error(f"[{client_id}] Upstream error: {response.status_code}")
-                connection.delete()
+                connection_manager.remove_connection(content_type_name, str(content_uuid), client_id)
                 return JsonResponse(
                     {"error": f"Upstream server error: {response.status_code}"},
                     status=response.status_code
@@ -127,21 +135,19 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
 
                             # Update connection activity periodically
                             if bytes_sent % (8192 * 10) == 0:  # Every ~80KB
-                                try:
-                                    connection.update_activity(bytes_sent=len(chunk))
-                                except VODConnection.DoesNotExist:
-                                    # Connection was cleaned up, stop streaming
-                                    break
+                                connection_manager.update_connection_activity(
+                                    content_type_name,
+                                    str(content_uuid),
+                                    client_id,
+                                    bytes_sent=len(chunk)
+                                )
 
                 except Exception as e:
                     logger.error(f"[{client_id}] Streaming error: {e}")
                 finally:
                     # Clean up connection when streaming ends
-                    try:
-                        connection.delete()
-                        logger.info(f"[{client_id}] Connection cleaned up")
-                    except VODConnection.DoesNotExist:
-                        pass
+                    connection_manager.remove_connection(content_type_name, str(content_uuid), client_id)
+                    logger.info(f"[{client_id}] Connection cleaned up")
 
             # Build response with appropriate headers
             streaming_response = StreamingHttpResponse(
@@ -166,7 +172,7 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
 
         except requests.RequestException as e:
             logger.error(f"[{client_id}] Request error: {e}")
-            connection.delete()
+            connection_manager.remove_connection(content_type_name, str(content_uuid), client_id)
             return JsonResponse(
                 {"error": "Failed to connect to upstream server"},
                 status=502
@@ -184,17 +190,17 @@ def _stream_content(request, model_class, content_uuid, content_type_name):
 @api_view(["POST"])
 def update_movie_position(request, movie_uuid):
     """Update playback position for a movie"""
-    return _update_position(request, Movie, movie_uuid)
+    return _update_position(request, Movie, movie_uuid, "movie")
 
 
 @csrf_exempt
 @api_view(["POST"])
 def update_episode_position(request, episode_uuid):
     """Update playback position for an episode"""
-    return _update_position(request, Episode, episode_uuid)
+    return _update_position(request, Episode, episode_uuid, "episode")
 
 
-def _update_position(request, model_class, content_uuid):
+def _update_position(request, model_class, content_uuid, content_type_name):
     """Generic function to update playback position"""
 
     if not network_access_allowed(request, "STREAMS"):
@@ -208,18 +214,21 @@ def _update_position(request, model_class, content_uuid):
 
     try:
         content = get_object_or_404(model_class, uuid=content_uuid)
-        content_type = ContentType.objects.get_for_model(content)
-        connection = VODConnection.objects.get(
-            content_type=content_type,
-            object_id=content.id,
-            client_id=client_id
+        connection_manager = get_connection_manager()
+
+        # Update position in Redis
+        success = connection_manager.update_connection_activity(
+            content_type_name,
+            str(content_uuid),
+            client_id,
+            position_seconds=position
         )
-        connection.update_activity(position=position)
+
+        if not success:
+            return JsonResponse({"error": "Connection not found"}, status=404)
 
         return JsonResponse({"status": "success"})
 
-    except VODConnection.DoesNotExist:
-        return JsonResponse({"error": "Connection not found"}, status=404)
     except Exception as e:
         logger.error(f"Position update error: {e}")
         return JsonResponse({"error": "Internal server error"}, status=500)
