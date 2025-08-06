@@ -267,7 +267,11 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                 'imdb_id': series.imdb_id,
                 'category_id': series.category.id if series.category else None,
                 'category_name': series.category.name if series.category else None,
-                'cover': series.logo.url if series.logo else None,
+                'cover': {
+                    'id': series.logo.id,
+                    'url': series.logo.url,
+                    'name': series.logo.name,
+                } if series.logo else None,
                 'last_refreshed': series.updated_at,
                 'custom_properties': series.custom_properties or {},
                 'm3u_account': {

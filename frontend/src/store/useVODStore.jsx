@@ -277,7 +277,7 @@ const useVODStore = create((set, get) => ({
                 year: response.year || null,
                 genre: response.genre || '',
                 rating: response.rating || '',
-                logo: response.logo_url || response.logo || null,
+                logo: response.cover || null,
                 type: 'series',
                 director: response.director || '',
                 actors: response.actors || response.cast || '',
