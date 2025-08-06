@@ -199,10 +199,6 @@ const SeriesCard = ({ series, onClick }) => {
                             <Text size="xs" color="dimmed">{series.year}</Text>
                         </Group>
                     )}
-
-                    <Text size="xs" color="dimmed">
-                        {series.episode_count} episodes
-                    </Text>
                 </Group>
 
                 {series.genre && (
@@ -527,7 +523,12 @@ const SeriesModal = ({ series, opened, onClose }) => {
 
                             <Divider />
 
-                            <Title order={4}>Episodes</Title>
+                            <Title order={4}>
+                                Episodes
+                                {seriesEpisodes.length > 0 && (
+                                    <> ({seriesEpisodes.length})</>
+                                )}
+                            </Title>
 
                             {loadingDetails ? (
                                 <Flex justify="center" py="xl">
