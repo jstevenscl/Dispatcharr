@@ -287,7 +287,7 @@ const useVODStore = create((set, get) => ({
                 episode_count: response.episode_count || 0,
                 // Additional provider fields
                 backdrop_path: response.custom_properties?.backdrop_path || [],
-                release_date: response.custom_properties?.releasedate || response.custom_properties?.release_date || '',
+                release_date: response.release_date || '',
                 series_image: response.series_image || null,
                 o_name: response.o_name || '',
                 age: response.age || '',

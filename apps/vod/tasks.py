@@ -338,9 +338,13 @@ def process_episode(account, series, episode_data, season_number):
         episode_number = episode_data.get('episode_num', 0)
 
         # Extract metadata
-        description = episode_data.get('info', episode_data.get('plot', ''))
+        description = ''
+        info = episode_data.get('info', {})
+        if info:
+            description = info.get('plot') or info.get('overview', '')
+
         rating = episode_data.get('rating', '')
-        release_date = extract_year_from_data(episode_data)
+        release_date = extract_year_from_data(episode_data.get('info'))
 
         # Create or update episode
         episode, created = Episode.objects.update_or_create(
@@ -362,7 +366,7 @@ def process_episode(account, series, episode_data, season_number):
             account.password,
             account.get_user_agent().user_agent
         ) as client:
-            stream_url = client.get_series_stream_url(episode_id)
+            stream_url = client.get_episode_stream_url(episode_id)
 
         # Create or update episode relation
         relation, created = M3UEpisodeRelation.objects.update_or_create(
