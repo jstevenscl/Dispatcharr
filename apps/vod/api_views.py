@@ -392,7 +392,7 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                     'name': series.logo.name,
                 } if series.logo else None,
                 'last_refreshed': series.updated_at,
-                'custom_properties': custom_props,
+                'custom_properties': series.custom_properties,
                 'm3u_account': {
                     'id': relation.m3u_account.id,
                     'name': relation.m3u_account.name,

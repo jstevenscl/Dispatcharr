@@ -218,14 +218,18 @@ def process_series_basic(client, account, series_data, category):
         genre = series_data.get('genre') or ''
 
         # Extract trailer
-        trailer = series_data.get('trailer') or series_data.get('youtube_trailer') or ''
+        youtube_trailer = series_data.get('trailer') or series_data.get('youtube_trailer') or ''
+
+        # Extract backdrop path
+        backdrop_path = series_data.get('backdrop_path') or ''
 
         # Build info dict with all extracted data
         info = {
             'plot': description,
             'rating': rating,
             'genre': genre,
-            'trailer': trailer,
+            'youtube_trailer': youtube_trailer,
+            'backdrop_path': backdrop_path,
         }
 
         # Use find_or_create_series to handle duplicates properly
@@ -522,13 +526,15 @@ def find_or_create_series(name, year, tmdb_id, imdb_id, info):
         # Update custom_properties with trailer and other metadata
         custom_props = series.custom_properties or {}
         custom_props_updated = False
-        if info.get('trailer') and info.get('trailer') != custom_props.get('trailer'):
-            custom_props['trailer'] = info.get('trailer')
+        if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
+            custom_props['youtube_trailer'] = info.get('trailer')
             custom_props_updated = True
         if info.get('youtube_trailer') and info.get('youtube_trailer') != custom_props.get('youtube_trailer'):
             custom_props['youtube_trailer'] = info.get('youtube_trailer')
             custom_props_updated = True
-
+        if info.get('backdrop_path') and info.get('backdrop_path') != custom_props.get('backdrop_path'):
+            custom_props['backdrop_path'] = info.get('backdrop_path')
+            custom_props_updated = True
         if custom_props_updated:
             series.custom_properties = custom_props
             updated = True
@@ -539,10 +545,10 @@ def find_or_create_series(name, year, tmdb_id, imdb_id, info):
 
     # Create new series if not found
     custom_props = {}
-    if info.get('trailer'):
-        custom_props['trailer'] = info.get('trailer')
     if info.get('youtube_trailer'):
         custom_props['youtube_trailer'] = info.get('youtube_trailer')
+    if info.get('backdrop_path'):
+        custom_props['backdrop_path'] = info.get('backdrop_path')
 
     return Series.objects.create(
         name=name,
