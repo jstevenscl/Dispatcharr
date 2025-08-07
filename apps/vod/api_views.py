@@ -77,6 +77,15 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = M3UMovieRelationSerializer(relations, many=True)
         return Response(serializer.data)
 
+    def _convert_duration_to_minutes(self, duration_secs):
+        """Convert duration from seconds to minutes"""
+        if not duration_secs:
+            return 0
+        try:
+            return int(duration_secs) // 60
+        except (ValueError, TypeError):
+            return 0
+
     @action(detail=True, methods=['get'], url_path='provider-info')
     def provider_info(self, request, pk=None):
         """Get detailed movie information from the original provider"""
@@ -184,7 +193,7 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
                     'country': info.get('country', ''),
                     'rating': info.get('rating', movie.rating or 0),
                     'tmdb_id': info.get('tmdb_id', movie.tmdb_id or ''),
-                    'youtube_trailer': info.get('youtube_trailer', ''),
+                    'youtube_trailer': info.get('youtube_trailer') or info.get('trailer', ''),
                     'duration': movie.duration or self._convert_duration_to_minutes(info.get('duration_secs', 0)),
                     'duration_secs': info.get('duration_secs', (movie.duration or 0) * 60),
                     'episode_run_time': info.get('episode_run_time', 0),
@@ -374,6 +383,7 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                 'rating': series.rating,
                 'tmdb_id': series.tmdb_id,
                 'imdb_id': series.imdb_id,
+                'youtube_trailer': (series.custom_properties or {}).get('trailer') or (series.custom_properties or {}).get('youtube_trailer', ''),
                 'category_id': relation.category.id if relation.category else None,
                 'category_name': relation.category.name if relation.category else None,
                 'cover': {

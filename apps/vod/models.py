@@ -49,6 +49,9 @@ class Series(models.Model):
     tmdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="TMDB ID for metadata", db_index=True)
     imdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="IMDB ID for metadata", db_index=True)
 
+    # Additional metadata and properties
+    custom_properties = models.JSONField(blank=True, null=True, help_text='Additional metadata and properties for the series')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -81,6 +84,9 @@ class Movie(models.Model):
     # Metadata IDs for deduplication
     tmdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="TMDB ID for metadata", db_index=True)
     imdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="IMDB ID for metadata", db_index=True)
+
+    # Additional metadata and properties
+    custom_properties = models.JSONField(blank=True, null=True, help_text='Additional metadata and properties for the movie')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
