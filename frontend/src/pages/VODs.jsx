@@ -238,6 +238,11 @@ const SeriesModal = ({ series, opened, onClose }) => {
             fetchSeriesInfo(series.id)
                 .then((details) => {
                     setDetailedSeries(details);
+                    // Check if episodes were fetched
+                    if (!details.episodes_fetched) {
+                        // Episodes not yet fetched, may need to wait for background fetch
+                        console.log('Episodes not yet fetched for series, may load incrementally');
+                    }
                 })
                 .catch((error) => {
                     console.warn('Failed to fetch series details, using basic info:', error);
@@ -541,10 +546,10 @@ const SeriesModal = ({ series, opened, onClose }) => {
                             {/* Provider Information */}
                             {displaySeries.m3u_account && (
                                 <Box mt="md">
-                                    <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
+                                    <Text size="sm" weight={500} mb={4}>Provider Information</Text>
                                     <Group spacing="md">
                                         <Badge color="blue" variant="light">
-                                            {displaySeries.m3u_account.name || displaySeries.m3u_account}
+                                            {displaySeries.m3u_account.name}
                                         </Badge>
                                         {displaySeries.m3u_account.account_type && (
                                             <Badge color="gray" variant="outline" size="xs">
@@ -764,7 +769,6 @@ const SeriesModal = ({ series, opened, onClose }) => {
                 title="Trailer"
                 size="xl"
                 centered
-                withCloseButton
             >
                 <Box style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
                     {trailerUrl && (

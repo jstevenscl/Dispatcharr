@@ -4,11 +4,14 @@ from . import views
 app_name = 'vod_proxy'
 
 urlpatterns = [
-    # Movie streaming
-    path('movie/<uuid:movie_uuid>', views.stream_movie, name='stream_movie'),
-    path('movie/<uuid:movie_uuid>/position', views.update_movie_position, name='update_movie_position'),
+    # Generic VOD streaming (supports movies, episodes, series)
+    path('<str:content_type>/<uuid:content_id>/', views.VODStreamView.as_view(), name='vod_stream'),
+    path('<str:content_type>/<uuid:content_id>/<int:profile_id>/', views.VODStreamView.as_view(), name='vod_stream_with_profile'),
 
-    # Episode streaming
-    path('episode/<uuid:episode_uuid>', views.stream_episode, name='stream_episode'),
-    path('episode/<uuid:episode_uuid>/position', views.update_episode_position, name='update_episode_position'),
+    # VOD playlist generation
+    path('playlist/', views.VODPlaylistView.as_view(), name='vod_playlist'),
+    path('playlist/<int:profile_id>/', views.VODPlaylistView.as_view(), name='vod_playlist_with_profile'),
+
+    # Position tracking
+    path('position/<uuid:content_id>/', views.VODPositionView.as_view(), name='vod_position'),
 ]

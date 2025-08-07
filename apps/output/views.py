@@ -1003,7 +1003,7 @@ def xc_get_epg(request, user, short=False):
 
 def xc_get_vod_categories(user):
     """Get VOD categories for XtreamCodes API"""
-    from apps.vod.models import VODCategory
+    from apps.vod.models import VODCategory, M3UMovieRelation
 
     response = []
 
@@ -1021,13 +1021,16 @@ def xc_get_vod_categories(user):
         else:
             m3u_accounts = []
 
+        # Get categories that have movie relations with these accounts
         categories = VODCategory.objects.filter(
-            m3u_account__in=m3u_accounts
+            category_type='movie',
+            m3umovierelation__m3u_account__in=m3u_accounts
         ).distinct()
     else:
-        # Admins can see all categories
+        # Admins can see all categories that have active movie relations
         categories = VODCategory.objects.filter(
-            m3u_account__is_active=True
+            category_type='movie',
+            m3umovierelation__m3u_account__is_active=True
         ).distinct()
 
     for category in categories:
@@ -1042,7 +1045,7 @@ def xc_get_vod_categories(user):
 
 def xc_get_vod_streams(request, user, category_id=None):
     """Get VOD streams (movies) for XtreamCodes API"""
-    from apps.vod.models import Movie
+    from apps.vod.models import M3UMovieRelation
 
     streams = []
 
@@ -1065,14 +1068,18 @@ def xc_get_vod_streams(request, user, category_id=None):
     if category_id:
         filters["category_id"] = category_id
 
-    movies = Movie.objects.filter(**filters).select_related('category', 'logo', 'm3u_account')
+    # Get movie relations instead of movies directly
+    movie_relations = M3UMovieRelation.objects.filter(**filters).select_related(
+        'movie', 'movie__logo', 'category', 'm3u_account'
+    )
 
-    for movie in movies:
+    for relation in movie_relations:
+        movie = relation.movie
         streams.append({
-            "num": movie.id,
+            "num": relation.id,  # Use relation ID as num
             "name": movie.name,
             "stream_type": "movie",
-            "stream_id": movie.id,
+            "stream_id": relation.id,  # Use relation ID
             "stream_icon": (
                 None if not movie.logo
                 else request.build_absolute_uri(
@@ -1081,12 +1088,12 @@ def xc_get_vod_streams(request, user, category_id=None):
             ),
             "rating": movie.rating or "0",
             "rating_5based": float(movie.rating or 0) / 2 if movie.rating else 0,
-            "added": int(time.time()),  # TODO: use actual created date
+            "added": int(relation.created_at.timestamp()),
             "is_adult": 0,
-            "category_id": str(movie.category.id) if movie.category else "0",
-            "container_extension": movie.container_extension or "mp4",
+            "category_id": str(relation.category.id) if relation.category else "0",
+            "container_extension": relation.container_extension or "mp4",
             "custom_sid": None,
-            "direct_source": movie.url,
+            "direct_source": relation.url,
         })
 
     return streams
@@ -1094,7 +1101,7 @@ def xc_get_vod_streams(request, user, category_id=None):
 
 def xc_get_series_categories(user):
     """Get series categories for XtreamCodes API"""
-    from apps.vod.models import VODCategory
+    from apps.vod.models import VODCategory, M3USeriesRelation
 
     response = []
 
@@ -1110,14 +1117,15 @@ def xc_get_series_categories(user):
         else:
             m3u_accounts = []
 
+        # Get categories that have series relations with these accounts
         categories = VODCategory.objects.filter(
-            m3u_account__in=m3u_accounts,
-            series__isnull=False  # Only categories that have series
+            category_type='series',
+            m3useriesrelation__m3u_account__in=m3u_accounts
         ).distinct()
     else:
         categories = VODCategory.objects.filter(
-            m3u_account__is_active=True,
-            series__isnull=False
+            category_type='series',
+            m3useriesrelation__m3u_account__is_active=True
         ).distinct()
 
     for category in categories:
@@ -1132,7 +1140,7 @@ def xc_get_series_categories(user):
 
 def xc_get_series(request, user, category_id=None):
     """Get series list for XtreamCodes API"""
-    from apps.vod.models import Series
+    from apps.vod.models import M3USeriesRelation
 
     series_list = []
 
@@ -1154,31 +1162,35 @@ def xc_get_series(request, user, category_id=None):
     if category_id:
         filters["category_id"] = category_id
 
-    series = Series.objects.filter(**filters).select_related('category', 'logo', 'm3u_account')
+    # Get series relations instead of series directly
+    series_relations = M3USeriesRelation.objects.filter(**filters).select_related(
+        'series', 'series__logo', 'category', 'm3u_account'
+    )
 
-    for serie in series:
+    for relation in series_relations:
+        series = relation.series
         series_list.append({
-            "num": serie.id,
-            "name": serie.name,
-            "series_id": serie.id,
+            "num": relation.id,  # Use relation ID
+            "name": series.name,
+            "series_id": relation.id,  # Use relation ID
             "cover": (
-                None if not serie.logo
+                None if not series.logo
                 else request.build_absolute_uri(
-                    reverse("api:channels:logo-cache", args=[serie.logo.id])
+                    reverse("api:channels:logo-cache", args=[series.logo.id])
                 )
             ),
-            "plot": serie.description or "",
+            "plot": series.description or "",
             "cast": "",
             "director": "",
-            "genre": serie.genre or "",
-            "release_date": str(serie.year) if serie.year else "",
-            "last_modified": int(time.time()),
-            "rating": serie.rating or "0",
-            "rating_5based": float(serie.rating or 0) / 2 if serie.rating else 0,
+            "genre": series.genre or "",
+            "release_date": str(series.year) if series.year else "",
+            "last_modified": int(relation.updated_at.timestamp()),
+            "rating": series.rating or "0",
+            "rating_5based": float(series.rating or 0) / 2 if series.rating else 0,
             "backdrop_path": [],
             "youtube_trailer": "",
             "episode_run_time": "",
-            "category_id": str(serie.category.id) if serie.category else "0",
+            "category_id": str(relation.category.id) if relation.category else "0",
         })
 
     return series_list
@@ -1186,12 +1198,12 @@ def xc_get_series(request, user, category_id=None):
 
 def xc_get_series_info(request, user, series_id):
     """Get detailed series information including episodes"""
-    from apps.vod.models import Series, Episode
+    from apps.vod.models import M3USeriesRelation, M3UEpisodeRelation
 
     if not series_id:
         raise Http404()
 
-    # Get series with user access filtering
+    # Get series relation with user access filtering
     filters = {"id": series_id, "m3u_account__is_active": True}
 
     if user.user_level == 0:
@@ -1207,33 +1219,36 @@ def xc_get_series_info(request, user, series_id):
             raise Http404()
 
     try:
-        serie = Series.objects.get(**filters)
-    except Series.DoesNotExist:
+        series_relation = M3USeriesRelation.objects.select_related('series', 'series__logo').get(**filters)
+        series = series_relation.series
+    except M3USeriesRelation.DoesNotExist:
         raise Http404()
 
-    # Get episodes grouped by season
-    episodes = Episode.objects.filter(
-        series=serie
-    ).order_by('season_number', 'episode_number')
+    # Get episodes for this series from the same M3U account
+    episode_relations = M3UEpisodeRelation.objects.filter(
+        episode__series=series,
+        m3u_account=series_relation.m3u_account
+    ).select_related('episode').order_by('episode__season_number', 'episode__episode_number')
 
     # Group episodes by season
     seasons = {}
-    for episode in episodes:
+    for relation in episode_relations:
+        episode = relation.episode
         season_num = episode.season_number or 1
         if season_num not in seasons:
             seasons[season_num] = []
 
         seasons[season_num].append({
-            "id": episode.stream_id,
+            "id": relation.stream_id,
             "episode_num": episode.episode_number or 0,
             "title": episode.name,
-            "container_extension": episode.container_extension or "mp4",
+            "container_extension": relation.container_extension or "mp4",
             "info": {
-                "air_date": f"{episode.year}-01-01" if episode.year else "",
+                "air_date": f"{episode.release_date}" if episode.release_date else "",
                 "crew": "",
                 "directed_by": "",
                 "episode_num": episode.episode_number or 0,
-                "id": episode.stream_id,
+                "id": relation.stream_id,
                 "imdb_id": episode.imdb_id or "",
                 "name": episode.name,
                 "overview": episode.description or "",
@@ -1243,7 +1258,7 @@ def xc_get_series_info(request, user, series_id):
                 "vote_average": float(episode.rating or 0),
                 "vote_count": 0,
                 "writer": "",
-                "release_date": f"{episode.year}-01-01" if episode.year else "",
+                "release_date": f"{episode.release_date}" if episode.release_date else "",
                 "duration_secs": (episode.duration or 0) * 60,
                 "duration": f"{episode.duration or 0} min",
                 "video": {},
@@ -1256,25 +1271,25 @@ def xc_get_series_info(request, user, series_id):
     info = {
         "seasons": list(seasons.keys()),
         "info": {
-            "name": serie.name,
+            "name": series.name,
             "cover": (
-                None if not serie.logo
+                None if not series.logo
                 else request.build_absolute_uri(
-                    reverse("api:channels:logo-cache", args=[serie.logo.id])
+                    reverse("api:channels:logo-cache", args=[series.logo.id])
                 )
             ),
-            "plot": serie.description or "",
+            "plot": series.description or "",
             "cast": "",
             "director": "",
-            "genre": serie.genre or "",
-            "release_date": str(serie.year) if serie.year else "",
-            "last_modified": int(time.time()),
-            "rating": serie.rating or "0",
-            "rating_5based": float(serie.rating or 0) / 2 if serie.rating else 0,
+            "genre": series.genre or "",
+            "release_date": str(series.year) if series.year else "",
+            "last_modified": int(series_relation.updated_at.timestamp()),
+            "rating": series.rating or "0",
+            "rating_5based": float(series.rating or 0) / 2 if series.rating else 0,
             "backdrop_path": [],
             "youtube_trailer": "",
             "episode_run_time": "",
-            "category_id": str(serie.category.id) if serie.category else "0",
+            "category_id": str(series_relation.category.id) if series_relation.category else "0",
         },
         "episodes": dict(seasons)
     }
@@ -1284,12 +1299,12 @@ def xc_get_series_info(request, user, series_id):
 
 def xc_get_vod_info(request, user, vod_id):
     """Get detailed VOD (movie) information"""
-    from apps.vod.models import Movie
+    from apps.vod.models import M3UMovieRelation
 
     if not vod_id:
         raise Http404()
 
-    # Get Movie with user access filtering
+    # Get movie relation with user access filtering
     filters = {"id": vod_id, "m3u_account__is_active": True}
 
     if user.user_level == 0:
@@ -1305,8 +1320,9 @@ def xc_get_vod_info(request, user, vod_id):
             raise Http404()
 
     try:
-        movie = Movie.objects.get(**filters)
-    except Movie.DoesNotExist:
+        movie_relation = M3UMovieRelation.objects.select_related('movie', 'movie__logo').get(**filters)
+        movie = movie_relation.movie
+    except M3UMovieRelation.DoesNotExist:
         raise Http404()
 
     info = {
@@ -1346,15 +1362,14 @@ def xc_get_vod_info(request, user, vod_id):
             "rating": float(movie.rating or 0),
         },
         "movie_data": {
-            "stream_id": movie.id,
+            "stream_id": movie_relation.id,  # Use relation ID
             "name": movie.name,
-            "added": int(time.time()),
-            "category_id": str(movie.category.id) if movie.category else "0",
-            "container_extension": movie.container_extension or "mp4",
+            "added": int(movie_relation.created_at.timestamp()),
+            "category_id": str(movie_relation.category.id) if movie_relation.category else "0",
+            "container_extension": movie_relation.container_extension or "mp4",
             "custom_sid": "",
-            "direct_source": movie.url,
+            "direct_source": movie_relation.url,
         }
     }
 
-    return info
     return info

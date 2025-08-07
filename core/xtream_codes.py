@@ -370,6 +370,14 @@ class Client:
         """Get the playback URL for a VOD"""
         return f"{self.server_url}/movie/{self.username}/{self.password}/{vod_id}.{container_extension}"
 
+    def get_movie_stream_url(self, vod_id, container_extension="mp4"):
+        """Get the playback URL for a movie (alias for get_vod_stream_url)"""
+        return self.get_vod_stream_url(vod_id, container_extension)
+
+    def get_episode_stream_url(self, episode_id, container_extension="mp4"):
+        """Get the playback URL for an episode"""
+        return f"{self.server_url}/series/{self.username}/{self.password}/{episode_id}.{container_extension}"
+
     def close(self):
         """Close the session and cleanup resources"""
         if hasattr(self, 'session') and self.session:
