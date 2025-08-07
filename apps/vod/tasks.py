@@ -330,6 +330,64 @@ def refresh_series_episodes(account, series, external_series_id, episodes_data=N
         logger.error(f"Error refreshing episodes for series {series.name}: {str(e)}")
 
 
+def process_episode(account, series, episode_data, season_number):
+    """Process a single episode"""
+    try:
+        episode_id = episode_data.get('id')
+        episode_name = episode_data.get('title', 'Unknown Episode')
+        episode_number = episode_data.get('episode_num', 0)
+
+        # Extract metadata
+        description = episode_data.get('info', episode_data.get('plot', ''))
+        rating = episode_data.get('rating', '')
+        release_date = extract_year_from_data(episode_data)
+
+        # Create or update episode
+        episode, created = Episode.objects.update_or_create(
+            series=series,
+            season_number=season_number,
+            episode_number=episode_number,
+            defaults={
+                'name': episode_name,
+                'description': description,
+                'rating': rating,
+                'release_date': release_date,
+            }
+        )
+
+        # Create stream URL
+        with XtreamCodesClient(
+            account.server_url,
+            account.username,
+            account.password,
+            account.get_user_agent().user_agent
+        ) as client:
+            stream_url = client.get_series_stream_url(episode_id)
+
+        # Create or update episode relation
+        relation, created = M3UEpisodeRelation.objects.update_or_create(
+            m3u_account=account,
+            episode=episode,
+            defaults={
+                'stream_id': str(episode_id),
+                'url': stream_url,
+                'container_extension': episode_data.get('container_extension', 'mp4'),
+                'custom_properties': {
+                    'info': episode_data,
+                    'season_number': season_number
+                }
+            }
+        )
+
+        if created:
+            logger.debug(f"Created new episode: {episode_name} S{season_number}E{episode_number}")
+        else:
+            logger.debug(f"Updated episode: {episode_name} S{season_number}E{episode_number}")
+
+    except Exception as e:
+        logger.error(f"Error processing episode {episode_data.get('title', 'Unknown')}: {str(e)}")
+
+
 def find_or_create_movie(name, year, tmdb_id, imdb_id, info):
     """Find existing movie or create new one based on metadata"""
     movie = None
@@ -573,7 +631,6 @@ def convert_duration_to_minutes(duration_secs):
         return int(duration_secs) // 60
     except (ValueError, TypeError):
         return None
-
 
 @shared_task
 def cleanup_orphaned_vod_content():
