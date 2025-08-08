@@ -1373,3 +1373,101 @@ def xc_get_vod_info(request, user, vod_id):
     }
 
     return info
+
+
+def xc_movie_stream(request, username, password, stream_id, extension):
+    """Handle XtreamCodes movie streaming requests"""
+    from apps.vod.models import M3UMovieRelation
+
+    user = get_object_or_404(User, username=username)
+
+    custom_properties = (
+        json.loads(user.custom_properties) if user.custom_properties else {}
+    )
+
+    if "xc_password" not in custom_properties:
+        return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+    if custom_properties["xc_password"] != password:
+        return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+    # Get movie relation based on user access level
+    filters = {"id": stream_id, "m3u_account__is_active": True}
+
+    if user.user_level < 10:
+        # For regular users, filter by accessible M3U accounts
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+            filters["m3u_account__in"] = m3u_accounts
+        else:
+            return JsonResponse({"error": "No accessible content"}, status=403)
+
+    try:
+        movie_relation = M3UMovieRelation.objects.select_related('movie').get(**filters)
+    except M3UMovieRelation.DoesNotExist:
+        return JsonResponse({"error": "Movie not found"}, status=404)
+
+    # Redirect to the VOD proxy endpoint
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+
+    vod_url = reverse('proxy:vod_proxy:vod_stream', kwargs={
+        'content_type': 'movie',
+        'content_id': movie_relation.movie.uuid
+    })
+
+    return HttpResponseRedirect(vod_url)
+
+
+def xc_series_stream(request, username, password, stream_id, extension):
+    """Handle XtreamCodes series/episode streaming requests"""
+    from apps.vod.models import M3UEpisodeRelation
+
+    user = get_object_or_404(User, username=username)
+
+    custom_properties = (
+        json.loads(user.custom_properties) if user.custom_properties else {}
+    )
+
+    if "xc_password" not in custom_properties:
+        return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+    if custom_properties["xc_password"] != password:
+        return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+    # Get episode relation based on user access level
+    filters = {"stream_id": stream_id, "m3u_account__is_active": True}
+
+    if user.user_level < 10:
+        # For regular users, filter by accessible M3U accounts
+        if user.channel_profiles.count() > 0:
+            channel_profiles = user.channel_profiles.all()
+            from apps.m3u.models import M3UAccount
+            m3u_accounts = M3UAccount.objects.filter(
+                is_active=True,
+                profiles__in=channel_profiles
+            ).distinct()
+            filters["m3u_account__in"] = m3u_accounts
+        else:
+            return JsonResponse({"error": "No accessible content"}, status=403)
+
+    try:
+        episode_relation = M3UEpisodeRelation.objects.select_related('episode').get(**filters)
+    except M3UEpisodeRelation.DoesNotExist:
+        return JsonResponse({"error": "Episode not found"}, status=404)
+
+    # Redirect to the VOD proxy endpoint
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+
+    vod_url = reverse('proxy:vod_proxy:vod_stream', kwargs={
+        'content_type': 'episode',
+        'content_id': episode_relation.episode.uuid
+    })
+
+    return HttpResponseRedirect(vod_url)

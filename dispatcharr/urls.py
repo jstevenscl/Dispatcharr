@@ -9,6 +9,7 @@ from drf_yasg import openapi
 from .routing import websocket_urlpatterns
 from apps.output.views import xc_player_api, xc_panel_api, xc_get, xc_xmltv
 from apps.proxy.ts_proxy.views import stream_xc
+from apps.output.views import xc_movie_stream, xc_series_stream
 
 # Define schema_view for Swagger
 schema_view = get_schema_view(
@@ -54,6 +55,17 @@ urlpatterns = [
         "<str:username>/<str:password>/<str:channel_id>",
         stream_xc,
         name="xc_stream_endpoint",
+    ),
+    # XC VOD endpoints
+    path(
+        "movie/<str:username>/<str:password>/<str:stream_id>.<str:extension>",
+        xc_movie_stream,
+        name="xc_movie_stream",
+    ),
+    path(
+        "series/<str:username>/<str:password>/<str:stream_id>.<str:extension>",
+        xc_series_stream,
+        name="xc_series_stream",
     ),
     # Swagger UI
     path(
