@@ -31,6 +31,8 @@ const usePlaylistsStore = create((set) => ({
           [id]: playlist.profiles,
         },
       }));
+
+      return playlist;
     } catch (error) {
       console.error('Failed to fetch playlists:', error);
       set({ error: 'Failed to load playlists.', isLoading: false });
