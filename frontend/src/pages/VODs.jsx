@@ -1093,44 +1093,46 @@ const VODModal = ({ vod, opened, onClose }) => {
                                             Watch Trailer
                                         </Button>
                                     )}
-                                    {/* Removed Play Movie button from here */}
                                 </Stack>
                             </Flex>
+
                             {/* Provider Information & Play Button Row */}
-                            {(vod?.m3u_account) && (
-                                <Group spacing="md" align="center" mt="md">
-                                    {vod?.m3u_account && (
-                                        <Box>
-                                            <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
-                                            <Group spacing="md">
-                                                <Badge color="blue" variant="light">
-                                                    {vod.m3u_account.name}
+                            <Group spacing="md" align="center" mt="md">
+                                {/* Provider Information (conditional) */}
+                                {vod?.m3u_account && (
+                                    <Box>
+                                        <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
+                                        <Group spacing="md">
+                                            <Badge color="blue" variant="light">
+                                                {vod.m3u_account.name}
+                                            </Badge>
+                                            {vod.m3u_account.account_type && (
+                                                <Badge color="gray" variant="outline" size="xs">
+                                                    {vod.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
                                                 </Badge>
-                                                {vod.m3u_account.account_type && (
-                                                    <Badge color="gray" variant="outline" size="xs">
-                                                        {vod.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
-                                                    </Badge>
-                                                )}
-                                            </Group>
-                                        </Box>
+                                            )}
+                                        </Group>
+                                    </Box>
+                                )}
+
+                                {/* Play Button (always shown) */}
+                                <Button
+                                    leftSection={<Play size={16} />}
+                                    variant="filled"
+                                    color="blue"
+                                    size="md"
+                                    onClick={handlePlayVOD}
+                                    style={{ alignSelf: 'flex-start' }}
+                                >
+                                    Play Movie
+                                    {vod?.m3u_account && (
+                                        <span style={{ fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
+                                            {`(via ${vod.m3u_account.name}${displayVOD.bitrate ? `, ~${displayVOD.bitrate} kbps` : ''})`}
+                                        </span>
                                     )}
-                                    <Button
-                                        leftSection={<Play size={16} />}
-                                        variant="filled"
-                                        color="blue"
-                                        size="md"
-                                        onClick={handlePlayVOD}
-                                        style={{ alignSelf: 'flex-start' }}
-                                    >
-                                        Play Movie
-                                        {vod?.m3u_account && (
-                                            <span style={{ fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
-                                                {`(via ${vod.m3u_account.name}${displayVOD.bitrate ? `, ~${displayVOD.bitrate} kbps` : ''})`}
-                                            </span>
-                                        )}
-                                    </Button>
-                                </Group>
-                            )}
+                                </Button>
+                            </Group>
+
                             {/* Technical Details */}
                             {(displayVOD.bitrate || displayVOD.video || displayVOD.audio) && (
                                 <Stack spacing={4} mt="xs">
