@@ -626,7 +626,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                                 </Table.Td>
                                                                 <Table.Td>
                                                                     <Text size="xs" color="dimmed">
-                                                                        {episode.release_date ? new Date(episode.release_date).toLocaleDateString() : 'N/A'}
+                                                                        {episode.air_date ? new Date(episode.air_date).toLocaleDateString() : 'N/A'}
                                                                     </Text>
                                                                 </Table.Td>
                                                                 <Table.Td>

@@ -383,7 +383,6 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                 'rating': series.rating,
                 'tmdb_id': series.tmdb_id,
                 'imdb_id': series.imdb_id,
-                'youtube_trailer': (series.custom_properties or {}).get('trailer') or (series.custom_properties or {}).get('youtube_trailer', ''),
                 'category_id': relation.category.id if relation.category else None,
                 'category_name': relation.category.name if relation.category else None,
                 'cover': {
@@ -426,11 +425,13 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                         'episode_number': episode.episode_number,
                         'season_number': episode.season_number,
                         'description': episode.description,
-                        'release_date': episode.release_date,
+                        'air_date': episode.air_date,
                         'plot': episode.description,
                         'duration': episode.duration,
                         'rating': episode.rating,
-                        'movie_image': episode_relation.custom_properties.get('info', {}).get('movie_image') if episode_relation and episode_relation.custom_properties else None,
+                        'tmdb_id': episode.tmdb_id,
+                        'imdb_id': episode.imdb_id,
+                        'movie_image': episode_relation.custom_properties.get("info", {}).get('info', {}).get('movie_image') if episode_relation and episode_relation.custom_properties else None,
                         'container_extension': episode_relation.container_extension if episode_relation else 'mp4',
                         'type': 'episode',
                         'series': {

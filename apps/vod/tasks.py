@@ -8,6 +8,7 @@ from .models import (
     M3USeriesRelation, M3UMovieRelation, M3UEpisodeRelation
 )
 from apps.channels.models import Logo
+from datetime import datetime
 import logging
 import json
 import re
@@ -298,8 +299,7 @@ def refresh_series_episodes(account, series, external_series_id, episodes_data=N
                         series.description = info.get('plot', series.description)
                         series.rating = info.get('rating', series.rating)
                         series.genre = info.get('genre', series.genre)
-                        if info.get('releasedate'):
-                            series.year = extract_year(info.get('releasedate'))
+                        series.year = extract_year_from_data(info)
                         series.save()
 
                     episodes_data = series_info.get('episodes', {})
@@ -347,8 +347,10 @@ def process_episode(account, series, episode_data, season_number):
         if info:
             description = info.get('plot') or info.get('overview', '')
 
-        rating = episode_data.get('rating', '')
-        release_date = extract_year_from_data(episode_data.get('info'))
+        rating = info.get('rating', '')
+
+        # Use helper function to parse air_date
+        air_date = extract_date_from_data(info)
 
         # Create or update episode
         episode, created = Episode.objects.update_or_create(
@@ -359,7 +361,10 @@ def process_episode(account, series, episode_data, season_number):
                 'name': episode_name,
                 'description': description,
                 'rating': rating,
-                'release_date': release_date,
+                'air_date': air_date,
+                'duration': convert_duration_to_minutes(info.get('duration_secs')),
+                'tmdb_id': info.get('tmdb_id'),
+                'imdb_id': info.get('imdb_id'),
             }
         )
 
@@ -659,3 +664,31 @@ def cleanup_orphaned_vod_content():
 
     logger.info(f"Cleaned up {movie_count} orphaned movies and {series_count} orphaned series")
     return f"Cleaned up {movie_count} movies and {series_count} series"
+
+def extract_date_from_data(data):
+    """Extract date from various data sources with fallback options"""
+    try:
+        for date_field in ['air_date', 'releaseDate', 'release_date']:
+            date_value = data.get(date_field)
+            if date_value and isinstance(date_value, str) and date_value.strip():
+                parsed = parse_date(date_value)
+                if parsed:
+                    return parsed
+    except Exception:
+        # Don't fail processing if date extraction fails
+        pass
+    return None
+
+def parse_date(date_string):
+    """Parse date string into a datetime object"""
+    if not date_string:
+        return None
+    try:
+        # Try to parse ISO format first
+        return datetime.fromisoformat(date_string)
+    except ValueError:
+        # Fallback to parsing with strptime for common formats
+        try:
+            return datetime.strptime(date_string, '%Y-%m-%d')
+        except ValueError:
+            return None  # Return None if parsing fails
