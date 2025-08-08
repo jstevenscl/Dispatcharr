@@ -684,6 +684,42 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                                                         <Badge color="yellow" size="sm">{episode.rating}</Badge>
                                                                                     </Box>
                                                                                 )}
+                                                                                {/* IMDb and TMDb badges for episode */}
+                                                                                {(episode.imdb_id || displaySeries.tmdb_id) && (
+
+                                                                                    <Box>
+                                                                                        <Text size="xs" weight={500} color="dimmed" mb={2}>Links</Text>
+                                                                                        {episode.imdb_id && (
+                                                                                            <Badge
+                                                                                                color="yellow"
+                                                                                                component="a"
+                                                                                                href={imdbUrl(episode.imdb_id)}
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
+                                                                                                style={{ cursor: 'pointer' }}
+                                                                                            >
+                                                                                                IMDb
+                                                                                            </Badge>
+                                                                                        )}
+                                                                                        {displaySeries.tmdb_id && (
+                                                                                            <Badge
+                                                                                                color="cyan"
+                                                                                                component="a"
+                                                                                                href={
+                                                                                                    tmdbUrl(displaySeries.tmdb_id, 'tv') +
+                                                                                                    (episode.season_number && episode.episode_number
+                                                                                                        ? `/season/${episode.season_number}/episode/${episode.episode_number}`
+                                                                                                        : '')
+                                                                                                }
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
+                                                                                                style={{ cursor: 'pointer' }}
+                                                                                            >
+                                                                                                TMDb
+                                                                                            </Badge>
+                                                                                        )}
+                                                                                    </Box>
+                                                                                )}
 
                                                                                 {episode.director && (
                                                                                     <Box>
