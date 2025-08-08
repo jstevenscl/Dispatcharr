@@ -183,6 +183,7 @@ class M3UMovieRelation(models.Model):
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    last_advanced_refresh = models.DateTimeField(blank=True, null=True, help_text="Last time advanced data was fetched from provider")
 
     class Meta:
         verbose_name = 'M3U Movie Relation'

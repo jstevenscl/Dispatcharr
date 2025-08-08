@@ -23,7 +23,7 @@ from .serializers import (
     M3USeriesRelationSerializer,
     M3UEpisodeRelationSerializer
 )
-from .tasks import refresh_series_episodes
+from .tasks import refresh_series_episodes, refresh_movie_advanced_data
 from django.utils import timezone
 from datetime import timedelta
 
@@ -88,7 +88,7 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='provider-info')
     def provider_info(self, request, pk=None):
-        """Get detailed movie information from the original provider"""
+        """Get detailed movie information from the original provider, throttled to 24h."""
         movie = self.get_object()
 
         # Get the first active relation
@@ -103,130 +103,62 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check if detailed data has been fetched
+        force_refresh = request.query_params.get('force_refresh', 'false').lower() == 'true'
+        now = timezone.now()
+        needs_refresh = (
+            force_refresh or
+            not relation.last_advanced_refresh or
+            (now - relation.last_advanced_refresh).total_seconds() > 86400
+        )
+
+        if needs_refresh:
+            # Trigger advanced data refresh
+            logger.debug(f"Refreshing advanced data for movie {movie.id} (relation ID: {relation.id})")
+            refresh_movie_advanced_data(relation.id, force_refresh=force_refresh)
+
+        # Use cached advanced data
         custom_props = relation.custom_properties or {}
-        detailed_fetched = custom_props.get('detailed_fetched', False)
+        info = custom_props.get('detailed_info', {})
+        movie_data = custom_props.get('movie_data', {})
 
-        # If detailed data hasn't been fetched, fetch it now
-        if not detailed_fetched:
-            try:
-                from core.xtream_codes import Client as XtreamCodesClient
-
-                with XtreamCodesClient(
-                    server_url=relation.m3u_account.server_url,
-                    username=relation.m3u_account.username,
-                    password=relation.m3u_account.password,
-                    user_agent=relation.m3u_account.get_user_agent().user_agent
-                ) as client:
-                    # Get detailed VOD info from provider
-                    vod_info = client.get_vod_info(relation.stream_id)
-
-                    if vod_info and 'info' in vod_info:
-                        # Update movie with detailed info
-                        info = vod_info.get('info', {})
-                        movie_data = vod_info.get('movie_data', {})
-
-                        movie.description = info.get('plot', movie.description)
-                        movie.rating = info.get('rating', movie.rating)
-                        movie.genre = info.get('genre', movie.genre)
-                        movie.duration = self._convert_duration_to_minutes(info.get('duration_secs'))
-                        if info.get('releasedate'):
-                            movie.year = self._extract_year(info.get('releasedate'))
-                        movie.save()
-
-                        # Update relation with detailed data
-                        custom_props['detailed_info'] = info
-                        custom_props['movie_data'] = movie_data
-                        custom_props['detailed_fetched'] = True
-                        relation.custom_properties = custom_props
-                        relation.save()
-
-            except Exception as e:
-                logger.error(f"Error fetching detailed VOD info for movie {pk}: {str(e)}")
-                # Continue with available data
-
-        try:
-            from core.xtream_codes import Client as XtreamCodesClient
-
-            # Create XtreamCodes client for final response (minimal call)
-            with XtreamCodesClient(
-                server_url=relation.m3u_account.server_url,
-                username=relation.m3u_account.username,
-                password=relation.m3u_account.password,
-                user_agent=relation.m3u_account.get_user_agent().user_agent
-            ) as client:
-
-                # Use cached detailed data if available
-                custom_props = relation.custom_properties or {}
-                info = custom_props.get('detailed_info', {})
-                movie_data = custom_props.get('movie_data', {})
-
-                # If no cached data, use basic data
-                if not info:
-                    basic_data = custom_props.get('basic_data', {})
-                    info = {
-                        'name': movie.name,
-                        'plot': movie.description,
-                        'rating': movie.rating,
-                        'genre': movie.genre,
-                    }
-                    movie_data = {
-                        'container_extension': basic_data.get('container_extension', 'mp4'),
-                        'added': basic_data.get('added', ''),
-                    }
-
-                # Build response with available data
-                response_data = {
-                    'id': movie.id,
-                    'stream_id': relation.stream_id,
-                    'name': info.get('name', movie.name),
-                    'o_name': info.get('o_name', ''),
-                    'description': info.get('description', info.get('plot', movie.description)),
-                    'plot': info.get('plot', info.get('description', movie.description)),
-                    'year': movie.year or self._extract_year(info.get('releasedate', '')),
-                    'release_date': info.get('release_date', ''),
-                    'releasedate': info.get('releasedate', ''),
-                    'genre': info.get('genre', movie.genre),
-                    'director': info.get('director', ''),
-                    'actors': info.get('actors', info.get('cast', '')),
-                    'cast': info.get('cast', info.get('actors', '')),
-                    'country': info.get('country', ''),
-                    'rating': info.get('rating', movie.rating or 0),
-                    'tmdb_id': info.get('tmdb_id', movie.tmdb_id or ''),
-                    'youtube_trailer': info.get('youtube_trailer') or info.get('trailer', ''),
-                    'duration': movie.duration or self._convert_duration_to_minutes(info.get('duration_secs', 0)),
-                    'duration_secs': info.get('duration_secs', (movie.duration or 0) * 60),
-                    'episode_run_time': info.get('episode_run_time', 0),
-                    'age': info.get('age', ''),
-                    'backdrop_path': info.get('backdrop_path', []),
-                    'cover': info.get('cover_big', ''),
-                    'cover_big': info.get('cover_big', ''),
-                    'movie_image': info.get('movie_image', ''),
-                    'bitrate': info.get('bitrate', 0),
-                    'video': info.get('video', {}),
-                    'audio': info.get('audio', {}),
-                    # Include movie_data fields
-                    'container_extension': movie_data.get('container_extension', 'mp4'),
-                    'direct_source': movie_data.get('direct_source', ''),
-                    'category_id': movie_data.get('category_id', ''),
-                    'added': movie_data.get('added', ''),
-                    # Include M3U account info
-                    'm3u_account': {
-                        'id': relation.m3u_account.id,
-                        'name': relation.m3u_account.name,
-                        'account_type': relation.m3u_account.account_type
-                    }
-                }
-
-                return Response(response_data)
-
-        except Exception as e:
-            logger.error(f"Error in provider info for movie {pk}: {str(e)}")
-            return Response(
-                {'error': f'Failed to fetch information from provider: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
+        # Build response with available data
+        response_data = {
+            'id': movie.id,
+            'stream_id': relation.stream_id,
+            'name': info.get('name', movie.name),
+            'o_name': info.get('o_name', ''),
+            'description': info.get('description', info.get('plot', movie.description)),
+            'plot':info.get('plot', info.get('description', movie.description)),
+            'year': movie.year or info.get('year'),
+            'release_date': (movie.custom_properties or {}).get('release_date') or info.get('release_date') or info.get('releasedate', ''),
+            'genre': movie.genre or info.get('genre', ''),
+            'director': (movie.custom_properties or {}).get('director') or info.get('director', ''),
+            'actors': (movie.custom_properties or {}).get('actors') or info.get('actors', ''),
+            'country': (movie.custom_properties or {}).get('country') or info.get('country', ''),
+            'rating': movie.rating or info.get('rating', movie.rating or 0),
+            'tmdb_id': movie.tmdb_id or info.get('tmdb_id', ''),
+            'youtube_trailer': (movie.custom_properties or {}).get('youtube_trailer') or info.get('youtube_trailer') or info.get('trailer', ''),
+            'duration': movie.duration or (int(info.get('duration_secs', 0)) // 60 if info.get('duration_secs') else None),
+            'duration_secs': info.get('duration_secs', (movie.duration or 0) * 60),
+            'age': info.get('age', ''),
+            'backdrop_path': (movie.custom_properties or {}).get('backdrop_path') or info.get('backdrop_path', []),
+            'cover': info.get('cover_big', ''),
+            'cover_big': info.get('cover_big', ''),
+            'movie_image': movie.logo.url or info.get('movie_image', ''),
+            'bitrate': info.get('bitrate', 0),
+            'video': info.get('video', {}),
+            'audio': info.get('audio', {}),
+            'container_extension': movie_data.get('container_extension', 'mp4'),
+            'direct_source': movie_data.get('direct_source', ''),
+            'category_id': movie_data.get('category_id', ''),
+            'added': movie_data.get('added', ''),
+            'm3u_account': {
+                'id': relation.m3u_account.id,
+                'name': relation.m3u_account.name,
+                'account_type': relation.m3u_account.account_type
+            }
+        }
+        return Response(response_data)
 
 class EpisodeFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr="icontains")

@@ -424,8 +424,8 @@ def find_or_create_movie(name, year, tmdb_id, imdb_id, info):
     # If we found an existing movie, update it
     if movie:
         updated = False
-        if info.get('plot') and info.get('plot') != movie.description:
-            movie.description = info.get('plot')
+        if (info.get('plot') or info.get('description')) and (info.get('plot') or info.get('description')) != movie.description:
+            movie.description = info.get('plot') or info.get('description')
             updated = True
         if info.get('rating') and info.get('rating') != movie.rating:
             movie.rating = info.get('rating')
@@ -478,7 +478,7 @@ def find_or_create_movie(name, year, tmdb_id, imdb_id, info):
         year=year,
         tmdb_id=tmdb_id,
         imdb_id=imdb_id,
-        description=info.get('plot', ''),
+        description=info.get('plot') or info.get('description', ''),
         rating=info.get('rating', ''),
         genre=info.get('genre', ''),
         duration=convert_duration_to_minutes(info.get('duration_secs')),
@@ -692,3 +692,103 @@ def parse_date(date_string):
             return datetime.strptime(date_string, '%Y-%m-%d')
         except ValueError:
             return None  # Return None if parsing fails
+
+from django.utils import timezone
+from apps.vod.models import M3UMovieRelation, Movie
+
+@shared_task
+def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
+    """
+    Fetch advanced movie data from provider and update Movie and M3UMovieRelation.
+    Only fetch if last_advanced_refresh > 24h ago, unless force_refresh is True.
+    """
+    try:
+        relation = M3UMovieRelation.objects.select_related('movie', 'm3u_account').get(id=m3u_movie_relation_id)
+        now = timezone.now()
+        if not force_refresh and relation.last_advanced_refresh and (now - relation.last_advanced_refresh).total_seconds() < 86400:
+            return "Advanced data recently fetched, skipping."
+
+        account = relation.m3u_account
+        movie = relation.movie
+
+        from core.xtream_codes import Client as XtreamCodesClient
+
+        with XtreamCodesClient(
+            server_url=account.server_url,
+            username=account.username,
+            password=account.password,
+            user_agent=account.get_user_agent().user_agent
+        ) as client:
+            vod_info = client.get_vod_info(relation.stream_id)
+            if vod_info and 'info' in vod_info:
+                info = vod_info.get('info', {})
+                movie_data = vod_info.get('movie_data', {})
+
+                # Update Movie fields if changed
+                updated = False
+                custom_props = movie.custom_properties or {}
+                if info.get('plot') and info.get('plot') != movie.description:
+                    movie.description = info.get('plot')
+                    updated = True
+                if info.get('rating') and info.get('rating') != movie.rating:
+                    movie.rating = info.get('rating')
+                    updated = True
+                if info.get('genre') and info.get('genre') != movie.genre:
+                    movie.genre = info.get('genre')
+                    updated = True
+                if info.get('duration_secs'):
+                    duration = int(info.get('duration_secs')) // 60
+                    if duration != movie.duration:
+                        movie.duration = duration
+                        updated = True
+                # Check for releasedate or release_date
+                release_date_value = info.get('releasedate') or info.get('release_date')
+                if release_date_value:
+                    try:
+                        year = int(str(release_date_value).split('-')[0])
+                        if year != movie.year:
+                            movie.year = year
+                            updated = True
+                    except Exception:
+                        pass
+                if info.get('tmdb_id') and info.get('tmdb_id') != movie.tmdb_id:
+                    movie.tmdb_id = info.get('tmdb_id')
+                    updated = True
+                if info.get('imdb_id') and info.get('imdb_id') != movie.imdb_id:
+                    movie.imdb_id = info.get('imdb_id')
+                    updated = True
+                if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
+                    custom_props['youtube_trailer'] = info.get('trailer')
+                    updated = True
+                if info.get('youtube_trailer') and info.get('youtube_trailer') != custom_props.get('youtube_trailer'):
+                    custom_props['youtube_trailer'] = info.get('youtube_trailer')
+                    updated = True
+                if info.get('backdrop_path') and info.get('backdrop_path') != custom_props.get('backdrop_path'):
+                    custom_props['backdrop_path'] = info.get('backdrop_path')
+                    updated = True
+                if info.get('actors') and info.get('actors') != custom_props.get('actors'):
+                    custom_props['actors'] = info.get('actors')
+                    updated = True
+                if info.get('cast') and info.get('cast') != custom_props.get('actors'):
+                    custom_props['actors'] = info.get('cast')
+                    updated = True
+                if info.get('director') and info.get('director') != custom_props.get('director'):
+                    custom_props['director'] = info.get('director')
+                    updated = True
+                if updated:
+                    movie.custom_properties = custom_props
+                    movie.save()
+
+                # Update relation custom_properties and last_advanced_refresh
+                custom_props = relation.custom_properties or {}
+                custom_props['detailed_info'] = info
+                custom_props['movie_data'] = movie_data
+                custom_props['detailed_fetched'] = True
+                relation.custom_properties = custom_props
+                relation.last_advanced_refresh = now
+                relation.save(update_fields=['custom_properties', 'last_advanced_refresh'])
+
+        return "Advanced data refreshed."
+    except Exception as e:
+        logger.error(f"Error refreshing advanced movie data for relation {m3u_movie_relation_id}: {str(e)}")
+        return f"Error: {str(e)}"
