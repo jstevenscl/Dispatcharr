@@ -1094,6 +1094,7 @@ def xc_get_vod_streams(request, user, category_id=None):
                         reverse("api:channels:logo-cache", args=[movie.logo.id])
                     )
                 ),
+                #'stream_icon': movie.logo.url if movie.logo else '',
                 "rating": movie.rating or "0",
                 "rating_5based": float(movie.rating or 0) / 2 if movie.rating else 0,
                 "added": str(movie.created_at.timestamp()),
@@ -1385,8 +1386,8 @@ def xc_get_vod_info(request, user, vod_id):
                     custom_data = json.loads(movie.custom_properties)
 
                 # Extract detailed info
-                detailed_info = custom_data.get('detailed_info', {})
-
+                #detailed_info = custom_data.get('detailed_info', {})
+                detailed_info = movie_relation.custom_properties.get('detailed_info', {})
                 # Update movie_data with detailed info
                 movie_data.update({
                     'director': custom_data.get('director') or detailed_info.get('director', ''),
@@ -1421,7 +1422,6 @@ def xc_get_vod_info(request, user, vod_id):
     # Transform API response to XtreamCodes format
     info = {
         "info": {
-            "tmdb_id": movie_data.get('tmdb_id', ''),
             "name": movie_data.get('name', movie.name),
             "o_name": movie_data.get('name', movie.name),
             "cover_big": (
@@ -1436,6 +1436,7 @@ def xc_get_vod_info(request, user, vod_id):
                     reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
+            #'movie_image': movie.logo.url if movie.logo else '',
             'description': movie_data.get('description', ''),
             'plot': movie_data.get('description', ''),
             'year': movie_data.get('year', ''),
@@ -1443,9 +1444,11 @@ def xc_get_vod_info(request, user, vod_id):
             'genre': movie_data.get('genre', ''),
             'director': movie_data.get('director', ''),
             'actors': movie_data.get('actors', ''),
+            'cast': movie_data.get('actors', ''),
             'country': movie_data.get('country', ''),
             'rating': movie_data.get('rating', 0),
             'imdb_id': movie_data.get('imdb_id', ''),
+            "tmdb_id": movie_data.get('tmdb_id', ''),
             'youtube_trailer': movie_data.get('youtube_trailer', ''),
             'backdrop_path': movie_data.get('backdrop_path', []),
             'cover': movie_data.get('cover_big', ''),
@@ -1458,9 +1461,9 @@ def xc_get_vod_info(request, user, vod_id):
             "name": movie.name,
             "added": int(movie_relation.created_at.timestamp()),
             "category_id": str(movie_relation.category.id) if movie_relation.category else "0",
-            "category_ids": [str(movie_relation.category.id)] if movie_relation.category else [],
+            "category_ids": [int(movie_relation.category.id)] if movie_relation.category else [],
             "container_extension": movie_relation.container_extension or "mp4",
-            "custom_sid": "",
+            "custom_sid": None,
             "direct_source": "",
         }
     }
