@@ -18,6 +18,9 @@ import time  # Add this import for keep-alive delays
 from tzlocal import get_localzone
 from urllib.parse import urlparse
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 def m3u_endpoint(request, profile_name=None, user=None):
     if not network_access_allowed(request, "M3U_EPG"):
@@ -1300,6 +1303,8 @@ def xc_get_series_info(request, user, series_id):
 def xc_get_vod_info(request, user, vod_id):
     """Get detailed VOD (movie) information"""
     from apps.vod.models import M3UMovieRelation
+    from django.utils import timezone
+    from datetime import timedelta
 
     if not vod_id:
         raise Http404()
@@ -1325,11 +1330,91 @@ def xc_get_vod_info(request, user, vod_id):
     except M3UMovieRelation.DoesNotExist:
         raise Http404()
 
+    # Initialize basic movie data first
+    movie_data = {
+        'name': movie.name,
+        'description': movie.description or '',
+        'year': movie.year,
+        'genre': movie.genre or '',
+        'rating': movie.rating or 0,
+        'tmdb_id': movie.tmdb_id or '',
+        'imdb_id': movie.imdb_id or '',
+        'director': '',
+        'actors': '',
+        'country': '',
+        'release_date': '',
+        'youtube_trailer': '',
+        'backdrop_path': [],
+        'cover_big': '',
+        'bitrate': 0,
+        'video': {},
+        'audio': {},
+    }
+
+    # Duplicate the provider_info logic for detailed information
+    try:
+        # Check if we need to refresh detailed info (same logic as provider_info)
+        should_refresh = (
+            not movie_relation.last_advanced_refresh or
+            movie_relation.last_advanced_refresh < timezone.now() - timedelta(hours=24)
+        )
+
+        if should_refresh:
+            # Trigger refresh of detailed info
+            from apps.vod.tasks import refresh_movie_advanced_data
+            refresh_movie_advanced_data(movie_relation.id)
+            # Refresh objects from database after task completion
+            movie.refresh_from_db()
+            movie_relation.refresh_from_db()
+
+        # Add detailed info from custom_properties if available
+        if movie.custom_properties:
+            try:
+                if isinstance(movie.custom_properties, dict):
+                    custom_data = movie.custom_properties
+                else:
+                    custom_data = json.loads(movie.custom_properties)
+
+                # Extract detailed info
+                detailed_info = custom_data.get('detailed_info', {})
+
+                # Update movie_data with detailed info
+                movie_data.update({
+                    'director': custom_data.get('director') or detailed_info.get('director', ''),
+                    'actors': custom_data.get('actors') or detailed_info.get('actors', ''),
+                    'country': custom_data.get('country') or detailed_info.get('country', ''),
+                    'release_date': custom_data.get('release_date') or detailed_info.get('release_date') or detailed_info.get('releasedate', ''),
+                    'youtube_trailer': custom_data.get('youtube_trailer') or detailed_info.get('youtube_trailer') or detailed_info.get('trailer', ''),
+                    'backdrop_path': custom_data.get('backdrop_path') or detailed_info.get('backdrop_path', []),
+                    'cover_big': detailed_info.get('cover_big', ''),
+                    'bitrate': detailed_info.get('bitrate', 0),
+                    'video': detailed_info.get('video', {}),
+                    'audio': detailed_info.get('audio', {}),
+                })
+
+                # Override with detailed_info values where available
+                for key in ['name', 'description', 'year', 'genre', 'rating', 'tmdb_id', 'imdb_id']:
+                    if detailed_info.get(key):
+                        movie_data[key] = detailed_info[key]
+
+                # Handle plot vs description
+                if detailed_info.get('plot'):
+                    movie_data['description'] = detailed_info['plot']
+                elif detailed_info.get('description'):
+                    movie_data['description'] = detailed_info['description']
+
+            except (json.JSONDecodeError, AttributeError, TypeError) as e:
+                logger.warning(f"Error parsing custom_properties for movie {movie.id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Failed to process movie data: {e}")
+
+    # Transform API response to XtreamCodes format
     info = {
         "info": {
-            "tmdb_id": movie.tmdb_id or "",
-            "name": movie.name,
-            "o_name": movie.name,
+            "tmdb_id": movie_data.get('tmdb_id', ''),
+            "name": movie_data.get('name', movie.name),
+            "o_name": movie_data.get('name', movie.name),
             "cover_big": (
                 None if not movie.logo
                 else request.build_absolute_uri(
@@ -1342,33 +1427,32 @@ def xc_get_vod_info(request, user, vod_id):
                     reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
-            "releasedate": f"{movie.year}-01-01" if movie.year else "",
-            "episode_run_time": (movie.duration or 0) * 60,
-            "youtube_trailer": "",
-            "director": "",
-            "actors": "",
-            "cast": "",
-            "description": movie.description or "",
-            "plot": movie.description or "",
-            "age": "",
-            "country": "",
-            "genre": movie.genre or "",
-            "backdrop_path": [],
-            "duration_secs": (movie.duration or 0) * 60,
-            "duration": f"{movie.duration or 0} min",
-            "video": {},
-            "audio": {},
-            "bitrate": 0,
-            "rating": float(movie.rating or 0),
+            'description': movie_data.get('description', ''),
+            'plot': movie_data.get('description', ''),
+            'year': movie_data.get('year', ''),
+            'release_date': movie_data.get('release_date', ''),
+            'genre': movie_data.get('genre', ''),
+            'director': movie_data.get('director', ''),
+            'actors': movie_data.get('actors', ''),
+            'country': movie_data.get('country', ''),
+            'rating': movie_data.get('rating', 0),
+            'imdb_id': movie_data.get('imdb_id', ''),
+            'youtube_trailer': movie_data.get('youtube_trailer', ''),
+            'backdrop_path': movie_data.get('backdrop_path', []),
+            'cover': movie_data.get('cover_big', ''),
+            'bitrate': movie_data.get('bitrate', 0),
+            'video': movie_data.get('video', {}),
+            'audio': movie_data.get('audio', {}),
         },
         "movie_data": {
-            "stream_id": movie_relation.id,  # Use relation ID
+            "stream_id": movie.id,
             "name": movie.name,
             "added": int(movie_relation.created_at.timestamp()),
             "category_id": str(movie_relation.category.id) if movie_relation.category else "0",
+            "category_ids": [str(movie_relation.category.id)] if movie_relation.category else [],
             "container_extension": movie_relation.container_extension or "mp4",
             "custom_sid": "",
-            "direct_source": movie_relation.url,
+            "direct_source": "",
         }
     }
 
