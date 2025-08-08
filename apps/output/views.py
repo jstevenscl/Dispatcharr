@@ -1048,12 +1048,12 @@ def xc_get_vod_categories(user):
 
 def xc_get_vod_streams(request, user, category_id=None):
     """Get VOD streams (movies) for XtreamCodes API"""
-    from apps.vod.models import M3UMovieRelation
+    from apps.vod.models import Movie
 
     streams = []
 
-    # Build filters based on user access
-    filters = {"m3u_account__is_active": True}
+    # Build filters for movies based on user access
+    filters = {"m3u_relations__m3u_account__is_active": True}
 
     if user.user_level == 0:
         # For regular users, filter by accessible M3U accounts
@@ -1064,40 +1064,49 @@ def xc_get_vod_streams(request, user, category_id=None):
                 is_active=True,
                 profiles__in=channel_profiles
             ).distinct()
-            filters["m3u_account__in"] = m3u_accounts
+            filters["m3u_relations__m3u_account__in"] = m3u_accounts
         else:
             return []  # No accessible accounts
 
     if category_id:
-        filters["category_id"] = category_id
+        filters["m3u_relations__category_id"] = category_id
 
-    # Get movie relations instead of movies directly
-    movie_relations = M3UMovieRelation.objects.filter(**filters).select_related(
-        'movie', 'movie__logo', 'category', 'm3u_account'
-    )
+    # Get movies directly with their relations
+    movies = Movie.objects.filter(**filters).select_related('logo').distinct()
 
-    for relation in movie_relations:
-        movie = relation.movie
-        streams.append({
-            "num": relation.id,  # Use relation ID as num
-            "name": movie.name,
-            "stream_type": "movie",
-            "stream_id": relation.id,  # Use relation ID
-            "stream_icon": (
-                None if not movie.logo
-                else request.build_absolute_uri(
-                    reverse("api:channels:logo-cache", args=[movie.logo.id])
-                )
-            ),
-            "rating": movie.rating or "0",
-            "rating_5based": float(movie.rating or 0) / 2 if movie.rating else 0,
-            "added": int(relation.created_at.timestamp()),
-            "is_adult": 0,
-            "category_id": str(relation.category.id) if relation.category else "0",
-            "container_extension": relation.container_extension or "mp4",
-            "custom_sid": None,
-            "direct_source": relation.url,
-        })
+    for movie in movies:
+        # Get the first relation for this movie (for metadata like container_extension)
+        relation = movie.m3u_relations.filter(
+            m3u_account__is_active=True
+        ).first()
+
+        if relation:
+            relation_custom = relation.custom_properties or {}
+            relation_info = relation_custom.get('basic_data', {})
+            streams.append({
+                "num": movie.id,
+                "name": movie.name,
+                "stream_type": "movie",
+                "stream_id": movie.id,
+                "stream_icon": (
+                    None if not movie.logo
+                    else request.build_absolute_uri(
+                        reverse("api:channels:logo-cache", args=[movie.logo.id])
+                    )
+                ),
+                "rating": movie.rating or "0",
+                "rating_5based": float(movie.rating or 0) / 2 if movie.rating else 0,
+                "added": str(movie.created_at.timestamp()),
+                "is_adult": 0,
+                "tmdb_id": movie.tmdb_id or "",
+                "imdb_id": movie.imdb_id or "",
+                "trailer": (movie.custom_properties or {}).get('youtube_trailer') or relation_info.get('youtube_trailer') or relation_info.get('trailer', ''),
+                "category_id": str(relation.category.id) if relation.category else "0",
+                "category_ids": [int(relation.category.id)] if relation.category else [],
+                "container_extension": relation.container_extension or "mp4",
+                "custom_sid": None,
+                "direct_source": "",
+            })
 
     return streams
 
@@ -1309,8 +1318,8 @@ def xc_get_vod_info(request, user, vod_id):
     if not vod_id:
         raise Http404()
 
-    # Get movie relation with user access filtering
-    filters = {"id": vod_id, "m3u_account__is_active": True}
+    # Get movie relation with user access filtering - use movie ID instead of relation ID
+    filters = {"movie_id": vod_id, "m3u_account__is_active": True}
 
     if user.user_level == 0:
         if user.channel_profiles.count() > 0:
@@ -1475,8 +1484,8 @@ def xc_movie_stream(request, username, password, stream_id, extension):
     if custom_properties["xc_password"] != password:
         return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-    # Get movie relation based on user access level
-    filters = {"id": stream_id, "m3u_account__is_active": True}
+    # Get movie relation based on user access level - use movie ID instead of relation ID
+    filters = {"movie_id": stream_id, "m3u_account__is_active": True}
 
     if user.user_level < 10:
         # For regular users, filter by accessible M3U accounts
@@ -1524,8 +1533,8 @@ def xc_series_stream(request, username, password, stream_id, extension):
     if custom_properties["xc_password"] != password:
         return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-    # Get episode relation based on user access level
-    filters = {"stream_id": stream_id, "m3u_account__is_active": True}
+    # Get episode relation based on user access level - use episode ID instead of stream_id
+    filters = {"episode_id": stream_id, "m3u_account__is_active": True}
 
     if user.user_level < 10:
         # For regular users, filter by accessible M3U accounts
