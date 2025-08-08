@@ -189,6 +189,17 @@ const SeriesCard = ({ series, onClick }) => {
                             <Play size={48} color="#666" />
                         </Box>
                     )}
+                    {/* Add Series badge in the same position as Movie badge */}
+                    <Badge
+                        style={{
+                            position: 'absolute',
+                            bottom: 8,
+                            left: 8
+                        }}
+                        color="purple"
+                    >
+                        Series
+                    </Badge>
                 </Box>
             </Card.Section>
 
@@ -1264,12 +1275,15 @@ const VODsPage = () => {
     // Helper function to get display data based on current filters
     const getDisplayData = () => {
         if (filters.type === 'series') {
-            return Object.values(series);
+            return Object.values(series).map(item => ({ ...item, _vodType: 'series' }));
         } else if (filters.type === 'movies') {
-            return Object.values(movies);
+            return Object.values(movies).map(item => ({ ...item, _vodType: 'movie' }));
         } else {
-            // 'all' - combine movies and series
-            return [...Object.values(movies), ...Object.values(series)];
+            // 'all' - combine movies and series, tagging each with its type
+            return [
+                ...Object.values(movies).map(item => ({ ...item, _vodType: 'movie' })),
+                ...Object.values(series).map(item => ({ ...item, _vodType: 'series' }))
+            ];
         }
     };
 
@@ -1366,13 +1380,20 @@ const VODsPage = () => {
                             </Grid>
                         ) : (
                             <Grid gutter="md">
-                                {getDisplayData().map(vod => (
+                                {getDisplayData().map(item => (
                                     <Grid.Col
                                         span={12 / columns}
-                                        key={vod.id}
+                                        key={item.id}
                                         style={{ minWidth: MIN_CARD_WIDTH, maxWidth: MAX_CARD_WIDTH, margin: '0 auto' }}
                                     >
-                                        <VODCard vod={vod} onClick={handleVODCardClick} />
+                                        {item._vodType === 'series' ? (
+                                            <SeriesCard
+                                                series={item}
+                                                onClick={handleSeriesClick}
+                                            />
+                                        ) : (
+                                            <VODCard vod={item} onClick={handleVODCardClick} />
+                                        )}
                                     </Grid.Col>
                                 ))}
                             </Grid>
