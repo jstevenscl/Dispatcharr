@@ -116,7 +116,11 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
             logger.debug(f"Refreshing advanced data for movie {movie.id} (relation ID: {relation.id})")
             refresh_movie_advanced_data(relation.id, force_refresh=force_refresh)
 
-        # Use cached advanced data
+            # Refresh objects from database after task completion
+            movie.refresh_from_db()
+            relation.refresh_from_db()
+
+        # Use refreshed data from database
         custom_props = relation.custom_properties or {}
         info = custom_props.get('detailed_info', {})
         movie_data = custom_props.get('movie_data', {})
