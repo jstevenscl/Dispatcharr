@@ -209,16 +209,16 @@ class VODStreamView(View):
                     m3u_account=m3u_profile.m3u_account
                 ).first()
                 if relation:
-                    original_url = relation.url
+                    original_url = relation.url if hasattr(relation, 'url') else relation.get_stream_url()
             elif hasattr(content_obj, 'series'):
                 # This is an Episode, get URL from episode relation
-                from .models import M3UEpisodeRelation
+                from apps.vod.models import M3UEpisodeRelation
                 relation = M3UEpisodeRelation.objects.filter(
                     episode=content_obj,
                     m3u_account=m3u_profile.m3u_account
                 ).first()
                 if relation:
-                    original_url = relation.url
+                    original_url = relation.get_stream_url()
 
             if not original_url:
                 logger.error("No URL found for content object")

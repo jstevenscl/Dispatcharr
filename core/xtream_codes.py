@@ -196,6 +196,14 @@ class Client:
         """Get the playback URL for a stream"""
         return f"{self.server_url}/live/{self.username}/{self.password}/{stream_id}.ts"
 
+    def get_episode_stream_url(self, stream_id, container_extension='mp4'):
+        """Get the playback URL for an episode stream"""
+        return f"{self.server_url}/series/{self.username}/{self.password}/{stream_id}.{container_extension}"
+
+    def get_vod_stream_url(self, stream_id, container_extension='mp4'):
+        """Get the playback URL for a VOD stream"""
+        return f"{self.server_url}/movie/{self.username}/{self.password}/{stream_id}.{container_extension}"
+
     def get_vod_categories(self):
         """Get VOD categories"""
         try:
@@ -365,18 +373,6 @@ class Client:
             logger.error(f"Failed to get series info for series_id {series_id}: {str(e)}")
             logger.error(traceback.format_exc())
             raise
-
-    def get_vod_stream_url(self, vod_id, container_extension="mp4"):
-        """Get the playback URL for a VOD"""
-        return f"{self.server_url}/movie/{self.username}/{self.password}/{vod_id}.{container_extension}"
-
-    def get_movie_stream_url(self, vod_id, container_extension="mp4"):
-        """Get the playback URL for a movie (alias for get_vod_stream_url)"""
-        return self.get_vod_stream_url(vod_id, container_extension)
-
-    def get_episode_stream_url(self, episode_id, container_extension="mp4"):
-        """Get the playback URL for an episode"""
-        return f"{self.server_url}/series/{self.username}/{self.password}/{episode_id}.{container_extension}"
 
     def close(self):
         """Close the session and cleanup resources"""

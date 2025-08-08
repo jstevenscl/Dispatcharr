@@ -1244,7 +1244,7 @@ def xc_get_series_info(request, user, series_id):
             "title": episode.name,
             "container_extension": relation.container_extension or "mp4",
             "info": {
-                "air_date": f"{episode.release_date}" if episode.release_date else "",
+                "air_date": f"{episode.air_date}" if episode.air_date else "",
                 "crew": "",
                 "directed_by": "",
                 "episode_num": episode.episode_number or 0,
@@ -1258,7 +1258,7 @@ def xc_get_series_info(request, user, series_id):
                 "vote_average": float(episode.rating or 0),
                 "vote_count": 0,
                 "writer": "",
-                "release_date": f"{episode.release_date}" if episode.release_date else "",
+                "release_date": f"{episode.air_date}" if episode.air_date else "",
                 "duration_secs": (episode.duration or 0) * 60,
                 "duration": f"{episode.duration or 0} min",
                 "video": {},

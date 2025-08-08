@@ -204,7 +204,6 @@ class M3UEpisodeRelation(models.Model):
     episode = models.ForeignKey(Episode, on_delete=models.CASCADE, related_name='m3u_relations')
 
     # Streaming information (provider-specific)
-    url = models.URLField(max_length=2048)
     stream_id = models.CharField(max_length=255, help_text="External stream ID from M3U provider")
     container_extension = models.CharField(max_length=10, blank=True, null=True)
 
@@ -225,4 +224,15 @@ class M3UEpisodeRelation(models.Model):
 
     def get_stream_url(self):
         """Get the full stream URL for this episode from this provider"""
-        return self.url
+        from core.xtream_codes import Client as XtreamCodesClient
+
+        if self.m3u_account.account_type == 'XC':
+            # For XtreamCodes accounts, build the URL dynamically
+            server_url = self.m3u_account.server_url.rstrip('/')
+            username = self.m3u_account.username
+            password = self.m3u_account.password
+            return f"{server_url}/series/{username}/{password}/{self.stream_id}.{self.container_extension or 'mp4'}"
+        else:
+            # We might support non XC accounts in the future
+            # For now, return None
+            return None

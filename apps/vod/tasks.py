@@ -368,22 +368,12 @@ def process_episode(account, series, episode_data, season_number):
             }
         )
 
-        # Create stream URL
-        with XtreamCodesClient(
-            account.server_url,
-            account.username,
-            account.password,
-            account.get_user_agent().user_agent
-        ) as client:
-            stream_url = client.get_episode_stream_url(episode_id)
-
         # Create or update episode relation
         relation, created = M3UEpisodeRelation.objects.update_or_create(
             m3u_account=account,
             episode=episode,
             defaults={
                 'stream_id': str(episode_id),
-                'url': stream_url,
                 'container_extension': episode_data.get('container_extension', 'mp4'),
                 'custom_properties': {
                     'info': episode_data,
