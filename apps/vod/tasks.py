@@ -668,7 +668,7 @@ def cleanup_orphaned_vod_content():
 def extract_date_from_data(data):
     """Extract date from various data sources with fallback options"""
     try:
-        for date_field in ['air_date', 'releaseDate', 'release_date']:
+        for date_field in ['air_date', 'releasedate', 'release_date']:
             date_value = data.get(date_field)
             if date_value and isinstance(date_value, str) and date_value.strip():
                 parsed = parse_date(date_value)

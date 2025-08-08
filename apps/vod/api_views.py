@@ -357,9 +357,9 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
             if not episodes_fetched or not detailed_fetched or force_refresh:
                 force_refresh = True
                 logger.debug(f"Series {series.id} needs detailed/episode refresh, forcing refresh")
-            elif last_refreshed and (now - last_refreshed) > timedelta(hours=refresh_interval_hours):
+            elif last_refreshed is None or (now - last_refreshed) > timedelta(hours=refresh_interval_hours):
                 force_refresh = True
-                logger.debug(f"Series {series.id} refresh interval exceeded, forcing refresh")
+                logger.debug(f"Series {series.id} refresh interval exceeded or never refreshed, forcing refresh")
 
             if force_refresh:
                 logger.debug(f"Refreshing series {series.id} data from provider")
