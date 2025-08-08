@@ -128,6 +128,7 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
         # Build response with available data
         response_data = {
             'id': movie.id,
+            'uuid': movie.uuid,
             'stream_id': relation.stream_id,
             'name': info.get('name', movie.name),
             'o_name': info.get('o_name', ''),
@@ -149,7 +150,7 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
             'backdrop_path': (movie.custom_properties or {}).get('backdrop_path') or info.get('backdrop_path', []),
             'cover': info.get('cover_big', ''),
             'cover_big': info.get('cover_big', ''),
-            'movie_image': movie.logo.url or info.get('movie_image', ''),
+            'movie_image': movie.logo.url if movie.logo else info.get('movie_image', ''),
             'bitrate': info.get('bitrate', 0),
             'video': info.get('video', {}),
             'audio': info.get('audio', {}),

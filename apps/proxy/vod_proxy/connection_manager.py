@@ -17,6 +17,15 @@ logger = logging.getLogger("vod_proxy")
 class VODConnectionManager:
     """Manages VOD connections using Redis for tracking"""
 
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        """Get the singleton instance of VODConnectionManager"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     def __init__(self):
         self.redis_client = RedisClient.get_client()
         self.connection_ttl = 3600  # 1 hour TTL for connections
@@ -295,6 +304,109 @@ class VODConnectionManager:
         except Exception as e:
             logger.error(f"Error during connection cleanup: {e}")
 
+    def stream_content(self, content_obj, stream_url, m3u_profile, client_ip, user_agent, request):
+        """
+        Stream VOD content with connection tracking
+
+        Args:
+            content_obj: Movie or Episode object
+            stream_url: Final stream URL to proxy
+            m3u_profile: M3UAccountProfile instance
+            client_ip: Client IP address
+            user_agent: Client user agent
+            request: Django request object
+
+        Returns:
+            StreamingHttpResponse or HttpResponse with error
+        """
+        import time
+        import random
+        import requests
+        from django.http import StreamingHttpResponse, HttpResponse
+
+        try:
+            # Generate unique client ID
+            client_id = f"vod_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+
+            # Determine content type and get content info
+            if hasattr(content_obj, 'episodes'):  # Series
+                content_type = 'series'
+            elif hasattr(content_obj, 'series'):  # Episode
+                content_type = 'episode'
+            else:  # Movie
+                content_type = 'movie'
+
+            content_uuid = str(content_obj.uuid)
+            content_name = getattr(content_obj, 'name', getattr(content_obj, 'title', 'Unknown'))
+
+            # Create connection tracking
+            connection_created = self.create_connection(
+                content_type=content_type,
+                content_uuid=content_uuid,
+                content_name=content_name,
+                client_id=client_id,
+                client_ip=client_ip,
+                user_agent=user_agent,
+                m3u_profile=m3u_profile
+            )
+
+            if not connection_created:
+                logger.error(f"Failed to create connection tracking for {content_type} {content_uuid}")
+                return HttpResponse("Connection limit exceeded", status=503)
+
+            # Create streaming generator
+            def stream_generator():
+                try:
+                    logger.info(f"[{client_id}] Starting VOD stream for {content_type} {content_name}")
+
+                    # Make request to actual stream URL
+                    headers = {'User-Agent': user_agent} if user_agent else {}
+
+                    with requests.get(stream_url, headers=headers, stream=True, timeout=(10, 30)) as response:
+                        response.raise_for_status()
+
+                        bytes_sent = 0
+                        chunk_count = 0
+
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                yield chunk
+                                bytes_sent += len(chunk)
+                                chunk_count += 1
+
+                                # Update connection activity every 100 chunks
+                                if chunk_count % 100 == 0:
+                                    self.update_connection_activity(
+                                        content_type=content_type,
+                                        content_uuid=content_uuid,
+                                        client_id=client_id,
+                                        bytes_sent=len(chunk)
+                                    )
+
+                        logger.info(f"[{client_id}] VOD stream completed: {bytes_sent} bytes sent")
+
+                except requests.RequestException as e:
+                    logger.error(f"[{client_id}] Error streaming from source: {e}")
+                    yield b"Error: Unable to stream content"
+                except Exception as e:
+                    logger.error(f"[{client_id}] Error in stream generator: {e}")
+                finally:
+                    # Clean up connection tracking
+                    self.remove_connection(content_type, content_uuid, client_id)
+
+            # Create streaming response
+            response = StreamingHttpResponse(
+                streaming_content=stream_generator(),
+                content_type='video/mp4'
+            )
+            response['Cache-Control'] = 'no-cache'
+            response['Accept-Ranges'] = 'none'
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in stream_content: {e}", exc_info=True)
+            return HttpResponse(f"Streaming error: {str(e)}", status=500)
 
 # Global instance
 _connection_manager = None

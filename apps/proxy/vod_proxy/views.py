@@ -41,19 +41,27 @@ class VODStreamView(View):
             client_ip, user_agent = get_client_info(request)
             logger.info(f"[VOD-CLIENT] Client info - IP: {client_ip}, User-Agent: {user_agent[:100]}...")
 
-            # Get the content object
-            content_obj = self._get_content_object(content_type, content_id)
-            if not content_obj:
-                logger.error(f"[VOD-ERROR] Content not found: {content_type} {content_id}")
+            # Get the content object and its relation
+            content_obj, relation = self._get_content_and_relation(content_type, content_id)
+            if not content_obj or not relation:
+                logger.error(f"[VOD-ERROR] Content or relation not found: {content_type} {content_id}")
                 raise Http404(f"Content not found: {content_type} {content_id}")
 
-            logger.info(f"[VOD-CONTENT] Found content: {content_obj.title if hasattr(content_obj, 'title') else getattr(content_obj, 'name', 'Unknown')}")
-            logger.info(f"[VOD-CONTENT] Content URL: {getattr(content_obj, 'url', 'No URL found')}")
+            logger.info(f"[VOD-CONTENT] Found content: {getattr(content_obj, 'name', 'Unknown')}")
 
-            # Get M3U account and profile
-            m3u_account = content_obj.m3u_account
+            # Get M3U account from relation
+            m3u_account = relation.m3u_account
             logger.info(f"[VOD-ACCOUNT] Using M3U account: {m3u_account.name}")
 
+            # Get stream URL from relation
+            stream_url = self._get_stream_url_from_relation(relation)
+            logger.info(f"[VOD-CONTENT] Content URL: {stream_url or 'No URL found'}")
+
+            if not stream_url:
+                logger.error(f"[VOD-ERROR] No stream URL available for {content_type} {content_id}")
+                return HttpResponse("No stream URL available", status=503)
+
+            # Get M3U profile
             m3u_profile = self._get_m3u_profile(m3u_account, profile_id, user_agent)
 
             if not m3u_profile:
@@ -73,12 +81,12 @@ class VODStreamView(View):
                 logger.error(f"Error tracking connection in Redis: {e}")
 
             # Transform URL based on profile
-            stream_url = self._transform_url(content_obj, m3u_profile)
-            logger.info(f"[VOD-URL] Final stream URL: {stream_url}")
+            final_stream_url = self._transform_url(stream_url, m3u_profile)
+            logger.info(f"[VOD-URL] Final stream URL: {final_stream_url}")
 
             # Validate stream URL
-            if not stream_url or not stream_url.startswith(('http://', 'https://')):
-                logger.error(f"[VOD-ERROR] Invalid stream URL: {stream_url}")
+            if not final_stream_url or not final_stream_url.startswith(('http://', 'https://')):
+                logger.error(f"[VOD-ERROR] Invalid stream URL: {final_stream_url}")
                 return HttpResponse("Invalid stream URL", status=500)
 
             # Get connection manager
@@ -88,7 +96,7 @@ class VODStreamView(View):
             logger.info("[VOD-STREAM] Calling connection manager to stream content")
             response = connection_manager.stream_content(
                 content_obj=content_obj,
-                stream_url=stream_url,
+                stream_url=final_stream_url,
                 m3u_profile=m3u_profile,
                 client_ip=client_ip,
                 user_agent=user_agent,
@@ -102,18 +110,27 @@ class VODStreamView(View):
             logger.error(f"[VOD-EXCEPTION] Error streaming {content_type} {content_id}: {e}", exc_info=True)
             return HttpResponse(f"Streaming error: {str(e)}", status=500)
 
-    def _get_content_object(self, content_type, content_id):
-        """Get the content object based on type and UUID"""
+    def _get_content_and_relation(self, content_type, content_id):
+        """Get the content object and its M3U relation"""
         try:
             logger.info(f"[CONTENT-LOOKUP] Looking up {content_type} with UUID {content_id}")
+
             if content_type == 'movie':
-                obj = get_object_or_404(Movie, uuid=content_id)
-                logger.info(f"[CONTENT-FOUND] Movie: {obj.name} (ID: {obj.id})")
-                return obj
+                content_obj = get_object_or_404(Movie, uuid=content_id)
+                logger.info(f"[CONTENT-FOUND] Movie: {content_obj.name} (ID: {content_obj.id})")
+
+                # Get the first active relation
+                relation = content_obj.m3u_relations.filter(m3u_account__is_active=True).first()
+                return content_obj, relation
+
             elif content_type == 'episode':
-                obj = get_object_or_404(Episode, uuid=content_id)
-                logger.info(f"[CONTENT-FOUND] Episode: {obj.name} (ID: {obj.id}, Series: {obj.series.name})")
-                return obj
+                content_obj = get_object_or_404(Episode, uuid=content_id)
+                logger.info(f"[CONTENT-FOUND] Episode: {content_obj.name} (ID: {content_obj.id}, Series: {content_obj.series.name})")
+
+                # Get the first active relation
+                relation = content_obj.m3u_relations.filter(m3u_account__is_active=True).first()
+                return content_obj, relation
+
             elif content_type == 'series':
                 # For series, get the first episode
                 series = get_object_or_404(Series, uuid=content_id)
@@ -121,37 +138,36 @@ class VODStreamView(View):
                 episode = series.episodes.first()
                 if not episode:
                     logger.error(f"[CONTENT-ERROR] No episodes found for series {series.name}")
-                    raise Http404("No episodes found for series")
+                    return None, None
+
                 logger.info(f"[CONTENT-FOUND] First episode: {episode.name} (ID: {episode.id})")
-                return episode
+                relation = episode.m3u_relations.filter(m3u_account__is_active=True).first()
+                return episode, relation
             else:
                 logger.error(f"[CONTENT-ERROR] Invalid content type: {content_type}")
-                raise Http404(f"Invalid content type: {content_type}")
+                return None, None
+
         except Exception as e:
             logger.error(f"Error getting content object: {e}")
+            return None, None
+
+    def _get_stream_url_from_relation(self, relation):
+        """Get stream URL from the M3U relation"""
+        try:
+            if hasattr(relation, 'url') and relation.url:
+                return relation.url
+            elif hasattr(relation, 'get_stream_url'):
+                return relation.get_stream_url()
+            else:
+                logger.error("Relation has no URL or get_stream_url method")
+                return None
+        except Exception as e:
+            logger.error(f"Error getting stream URL from relation: {e}")
             return None
 
-    def _get_m3u_profile(self, content_obj, profile_id, user_agent):
+    def _get_m3u_profile(self, m3u_account, profile_id, user_agent):
         """Get appropriate M3U profile for streaming"""
         try:
-            # Get M3U account from content object's relations
-            m3u_account = None
-
-            if hasattr(content_obj, 'm3u_relations'):
-                # This is a Movie or Episode with relations
-                relation = content_obj.m3u_relations.filter(m3u_account__is_active=True).first()
-                if relation:
-                    m3u_account = relation.m3u_account
-            elif hasattr(content_obj, 'series'):
-                # This is an Episode, get relation through series
-                relation = content_obj.series.m3u_relations.filter(m3u_account__is_active=True).first()
-                if relation:
-                    m3u_account = relation.m3u_account
-
-            if not m3u_account:
-                logger.error("No M3U account found for content object")
-                return None
-
             # If specific profile requested, try to use it
             if profile_id:
                 try:
@@ -195,33 +211,12 @@ class VODStreamView(View):
         except Exception:
             return True
 
-    def _transform_url(self, content_obj, m3u_profile):
+    def _transform_url(self, original_url, m3u_profile):
         """Transform URL based on M3U profile settings"""
         try:
             import re
 
-            # Get URL from the content object's relations
-            original_url = None
-
-            if hasattr(content_obj, 'm3u_relations'):
-                # This is a Movie or Episode with relations
-                relation = content_obj.m3u_relations.filter(
-                    m3u_account=m3u_profile.m3u_account
-                ).first()
-                if relation:
-                    original_url = relation.url if hasattr(relation, 'url') else relation.get_stream_url()
-            elif hasattr(content_obj, 'series'):
-                # This is an Episode, get URL from episode relation
-                from apps.vod.models import M3UEpisodeRelation
-                relation = M3UEpisodeRelation.objects.filter(
-                    episode=content_obj,
-                    m3u_account=m3u_profile.m3u_account
-                ).first()
-                if relation:
-                    original_url = relation.get_stream_url()
-
             if not original_url:
-                logger.error("No URL found for content object")
                 return None
 
             search_pattern = m3u_profile.search_pattern
@@ -237,7 +232,7 @@ class VODStreamView(View):
 
         except Exception as e:
             logger.error(f"Error transforming URL: {e}")
-            return None
+            return original_url
 
 @method_decorator(csrf_exempt, name='dispatch')
 class VODPlaylistView(View):
