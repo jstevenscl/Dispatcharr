@@ -77,14 +77,6 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = M3UMovieRelationSerializer(relations, many=True)
         return Response(serializer.data)
 
-    def _convert_duration_to_minutes(self, duration_secs):
-        """Convert duration from seconds to minutes"""
-        if not duration_secs:
-            return 0
-        try:
-            return int(duration_secs) // 60
-        except (ValueError, TypeError):
-            return 0
 
     @action(detail=True, methods=['get'], url_path='provider-info')
     def provider_info(self, request, pk=None):
@@ -144,8 +136,7 @@ class MovieViewSet(viewsets.ReadOnlyModelViewSet):
             'tmdb_id': movie.tmdb_id or info.get('tmdb_id', ''),
             'imdb_id': movie.imdb_id or info.get('imdb_id', ''),
             'youtube_trailer': (movie.custom_properties or {}).get('youtube_trailer') or info.get('youtube_trailer') or info.get('trailer', ''),
-            'duration': movie.duration or (int(info.get('duration_secs', 0)) // 60 if info.get('duration_secs') else None),
-            'duration_secs': info.get('duration_secs', (movie.duration or 0) * 60),
+            'duration_secs': movie.duration_secs or info.get('duration_secs'),
             'age': info.get('age', ''),
             'backdrop_path': (movie.custom_properties or {}).get('backdrop_path') or info.get('backdrop_path', []),
             'cover': info.get('cover_big', ''),
@@ -365,7 +356,7 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                         'description': episode.description,
                         'air_date': episode.air_date,
                         'plot': episode.description,
-                        'duration': episode.duration,
+                        'duration_secs': episode.duration_secs,
                         'rating': episode.rating,
                         'tmdb_id': episode.tmdb_id,
                         'imdb_id': episode.imdb_id,

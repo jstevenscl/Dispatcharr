@@ -78,7 +78,7 @@ class Movie(models.Model):
     year = models.IntegerField(blank=True, null=True)
     rating = models.CharField(max_length=10, blank=True, null=True)
     genre = models.CharField(max_length=255, blank=True, null=True)
-    duration = models.IntegerField(blank=True, null=True, help_text="Duration in minutes")
+    duration_secs = models.IntegerField(blank=True, null=True, help_text="Duration in seconds")
     logo = models.ForeignKey(Logo, on_delete=models.SET_NULL, null=True, blank=True)
 
     # Metadata IDs for deduplication
@@ -113,7 +113,7 @@ class Episode(models.Model):
     description = models.TextField(blank=True, null=True)
     air_date = models.DateField(blank=True, null=True)
     rating = models.CharField(max_length=10, blank=True, null=True)
-    duration = models.IntegerField(blank=True, null=True, help_text="Duration in minutes")
+    duration_secs = models.IntegerField(blank=True, null=True, help_text="Duration in seconds")
 
     # Episode specific fields
     series = models.ForeignKey(Series, on_delete=models.CASCADE, related_name='episodes')
@@ -123,6 +123,9 @@ class Episode(models.Model):
     # Metadata IDs
     tmdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="TMDB ID for metadata", db_index=True)
     imdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="IMDB ID for metadata", db_index=True)
+
+    # Custom properties for episode
+    custom_properties = models.JSONField(blank=True, null=True, help_text="Custom properties for this episode")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

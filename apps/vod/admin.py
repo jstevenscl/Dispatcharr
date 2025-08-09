@@ -22,7 +22,7 @@ class SeriesAdmin(admin.ModelAdmin):
 
 @admin.register(Movie)
 class MovieAdmin(admin.ModelAdmin):
-    list_display = ['name', 'year', 'genre', 'duration', 'created_at']
+    list_display = ['name', 'year', 'genre', 'duration_secs', 'created_at']
     list_filter = ['year', 'created_at']
     search_fields = ['name', 'description', 'tmdb_id', 'imdb_id']
     readonly_fields = ['uuid', 'created_at', 'updated_at']
@@ -33,7 +33,7 @@ class MovieAdmin(admin.ModelAdmin):
 
 @admin.register(Episode)
 class EpisodeAdmin(admin.ModelAdmin):
-    list_display = ['name', 'series', 'season_number', 'episode_number', 'duration', 'created_at']
+    list_display = ['name', 'series', 'season_number', 'episode_number', 'duration_secs', 'created_at']
     list_filter = ['series', 'season_number', 'created_at']
     search_fields = ['name', 'description', 'series__name']
     readonly_fields = ['uuid', 'created_at', 'updated_at']

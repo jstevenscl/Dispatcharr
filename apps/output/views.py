@@ -1099,7 +1099,7 @@ def xc_get_vod_streams(request, user, category_id=None):
                 ),
                 #'stream_icon': movie.logo.url if movie.logo else '',
                 "rating": movie.rating or "0",
-                "rating_5based": float(movie.rating or 0) / 2 if movie.rating else 0,
+                "rating_5based": round(float(movie.rating or 0) / 2, 2) if movie.rating else 0,
                 "added": str(movie.created_at.timestamp()),
                 "is_adult": 0,
                 "tmdb_id": movie.tmdb_id or "",
@@ -1197,17 +1197,18 @@ def xc_get_series(request, user, category_id=None):
                 )
             ),
             "plot": series.description or "",
-            "cast": "",
-            "director": "",
+            "cast": series.custom_properties.get('cast', '') if series.custom_properties else "",
+            "director": series.custom_properties.get('director', '') if series.custom_properties else "",
             "genre": series.genre or "",
-            "release_date": str(series.year) if series.year else "",
+            "release_date": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
             "last_modified": int(relation.updated_at.timestamp()),
             "rating": series.rating or "0",
-            "rating_5based": float(series.rating or 0) / 2 if series.rating else 0,
-            "backdrop_path": [],
-            "youtube_trailer": "",
-            "episode_run_time": "",
+            "rating_5based": round(float(series.rating or 0) / 2, 2) if series.rating else 0,
+            "backdrop_path": series.custom_properties.get('backdrop_path', []) if series.custom_properties else [],
+            "youtube_trailer": series.custom_properties.get('youtube_trailer', '') if series.custom_properties else "",
+            "episode_run_time": series.custom_properties.get('episode_run_time', '') if series.custom_properties else "",
             "category_id": str(relation.category.id) if relation.category else "0",
+            "category_ids": [int(relation.category.id)] if relation.category else [],
         })
 
     return series_list
@@ -1240,6 +1241,31 @@ def xc_get_series_info(request, user, series_id):
         series = series_relation.series
     except M3USeriesRelation.DoesNotExist:
         raise Http404()
+
+    # Check if we need to refresh detailed info (similar to vod api_views pattern)
+    try:
+        should_refresh = (
+            not series_relation.last_episode_refresh or
+            series_relation.last_episode_refresh < timezone.now() - timedelta(hours=24)
+        )
+
+        # Check if detailed data has been fetched
+        custom_props = series_relation.custom_properties or {}
+        episodes_fetched = custom_props.get('episodes_fetched', False)
+        detailed_fetched = custom_props.get('detailed_fetched', False)
+
+        # Force refresh if episodes/details have never been fetched or time interval exceeded
+        if not episodes_fetched or not detailed_fetched or should_refresh:
+            from apps.vod.tasks import refresh_series_episodes
+            account = series_relation.m3u_account
+            if account and account.is_active:
+                refresh_series_episodes(account, series, series_relation.external_series_id)
+                # Refresh objects from database after task completion
+                series.refresh_from_db()
+                series_relation.refresh_from_db()
+
+    except Exception as e:
+        logger.error(f"Error refreshing series data for relation {series_relation.id}: {str(e)}")
 
     # Get episodes for this series from the same M3U account
     episode_relations = M3UEpisodeRelation.objects.filter(
@@ -1284,11 +1310,63 @@ def xc_get_series_info(request, user, series_id):
             }
         })
 
-    # Build response
+    # Build response using potentially refreshed data
+    series_data = {
+        'name': series.name,
+        'description': series.description or '',
+        'year': series.year,
+        'genre': series.genre or '',
+        'rating': series.rating or '0',
+        'cast': '',
+        'director': '',
+        'youtube_trailer': '',
+        'episode_run_time': '',
+        'backdrop_path': [],
+    }
+
+    # Add detailed info from custom_properties if available
+    try:
+        if series.custom_properties:
+            custom_data = series.custom_properties
+            series_data.update({
+                'cast': custom_data.get('cast', ''),
+                'director': custom_data.get('director', ''),
+                'youtube_trailer': custom_data.get('youtube_trailer', ''),
+                'episode_run_time': custom_data.get('episode_run_time', ''),
+                'backdrop_path': custom_data.get('backdrop_path', []),
+            })
+
+        # Check relation custom_properties for detailed_info
+        if series_relation.custom_properties and 'detailed_info' in series_relation.custom_properties:
+            detailed_info = series_relation.custom_properties['detailed_info']
+
+            # Override with detailed_info values where available
+            for key in ['name', 'description', 'year', 'genre', 'rating']:
+                if detailed_info.get(key):
+                    series_data[key] = detailed_info[key]
+
+            # Handle plot vs description
+            if detailed_info.get('plot'):
+                series_data['description'] = detailed_info['plot']
+            elif detailed_info.get('description'):
+                series_data['description'] = detailed_info['description']
+
+            # Update additional fields from detailed info
+            series_data.update({
+                'cast': detailed_info.get('cast', series_data['cast']),
+                'director': detailed_info.get('director', series_data['director']),
+                'youtube_trailer': detailed_info.get('youtube_trailer', series_data['youtube_trailer']),
+                'episode_run_time': detailed_info.get('episode_run_time', series_data['episode_run_time']),
+                'backdrop_path': detailed_info.get('backdrop_path', series_data['backdrop_path']),
+            })
+
+    except Exception as e:
+        logger.error(f"Error parsing series custom_properties: {str(e)}")
+
     info = {
         "seasons": list(seasons.keys()),
         "info": {
-            "name": series.name,
+            "name": series_data['name'],
             "cover": (
                 None if not series.logo
                 else build_absolute_uri_with_port(
@@ -1296,17 +1374,17 @@ def xc_get_series_info(request, user, series_id):
                     reverse("api:channels:logo-cache", args=[series.logo.id])
                 )
             ),
-            "plot": series.description or "",
-            "cast": "",
-            "director": "",
-            "genre": series.genre or "",
-            "release_date": str(series.year) if series.year else "",
+            "plot": series_data['description'],
+            "cast": series_data['cast'],
+            "director": series_data['director'],
+            "genre": series_data['genre'],
+            "release_date": str(series_data['year']) if series_data['year'] else "",
             "last_modified": int(series_relation.updated_at.timestamp()),
-            "rating": series.rating or "0",
-            "rating_5based": float(series.rating or 0) / 2 if series.rating else 0,
-            "backdrop_path": [],
-            "youtube_trailer": "",
-            "episode_run_time": "",
+            "rating": series_data['rating'],
+            "rating_5based": round(float(series_data['rating'] or 0) / 2, 2) if series_data['rating'] else 0,
+            "backdrop_path": series_data['backdrop_path'],
+            "youtube_trailer": series_data['youtube_trailer'],
+            "episode_run_time": series_data['episode_run_time'],
             "category_id": str(series_relation.category.id) if series_relation.category else "0",
         },
         "episodes": dict(seasons)

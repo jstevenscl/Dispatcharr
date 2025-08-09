@@ -120,26 +120,26 @@ def process_movie_basic(client, account, movie_data, category):
         # Extract trailer
         trailer = movie_data.get('trailer') or movie_data.get('youtube_trailer') or ''
 
-        duration_minutes = None
+        duration_secs = None
 
         # Try to extract duration from various possible fields
         if movie_data.get('duration_secs'):
-            duration_minutes = convert_duration_to_minutes(movie_data.get('duration_secs'))
+            duration_secs = int(movie_data.get('duration_secs'))
         elif movie_data.get('duration'):
             # Handle duration that might be in different formats
             duration_str = str(movie_data.get('duration'))
             if duration_str.isdigit():
-                duration_minutes = int(duration_str)  # Assume minutes if just a number
+                duration_secs = int(duration_str) * 60  # Assume minutes if just a number
             else:
                 # Try to parse time format like "01:30:00"
                 try:
                     time_parts = duration_str.split(':')
                     if len(time_parts) == 3:
                         hours, minutes, seconds = map(int, time_parts)
-                        duration_minutes = (hours * 60) + minutes
+                        duration_secs = (hours * 3600) + (minutes * 60) + seconds
                     elif len(time_parts) == 2:
                         minutes, seconds = map(int, time_parts)
-                        duration_minutes = minutes
+                        duration_secs = minutes * 60 + seconds
                 except (ValueError, AttributeError):
                     pass
 
@@ -148,7 +148,7 @@ def process_movie_basic(client, account, movie_data, category):
             'plot': description,
             'rating': rating,
             'genre': genre,
-            'duration_secs': movie_data.get('duration_secs'),
+            'duration_secs': duration_secs,
             'trailer': trailer,
         }
 
@@ -213,35 +213,15 @@ def process_series_basic(client, account, series_data, category):
         tmdb_id = series_data.get('tmdb') or series_data.get('tmdb_id')
         imdb_id = series_data.get('imdb') or series_data.get('imdb_id')
 
-        # Extract additional metadata that matches the actual API response
-        description = series_data.get('plot') or series_data.get('description') or series_data.get('overview') or ''
-        rating = series_data.get('rating') or series_data.get('vote_average') or ''
-        genre = series_data.get('genre') or ''
-
-        # Extract trailer
-        youtube_trailer = series_data.get('trailer') or series_data.get('youtube_trailer') or ''
-
-        # Extract backdrop path
-        backdrop_path = series_data.get('backdrop_path') or ''
-
-        # Build info dict with all extracted data
-        info = {
-            'plot': description,
-            'rating': rating,
-            'genre': genre,
-            'youtube_trailer': youtube_trailer,
-            'backdrop_path': backdrop_path,
-        }
-
         # Use find_or_create_series to handle duplicates properly
+        logger.debug(f"Processing series: {name} ({year})")
         series = find_or_create_series(
             name=name,
             year=year,
             tmdb_id=tmdb_id,
             imdb_id=imdb_id,
-            info=info
+            info=series_data
         )
-
         # Handle logo from basic data if available
         if series_data.get('cover'):
             logo, _ = Logo.objects.get_or_create(
@@ -362,7 +342,7 @@ def process_episode(account, series, episode_data, season_number):
                 'description': description,
                 'rating': rating,
                 'air_date': air_date,
-                'duration': convert_duration_to_minutes(info.get('duration_secs')),
+                'duration_secs': info.get('duration_secs'),
                 'tmdb_id': info.get('tmdb_id'),
                 'imdb_id': info.get('imdb_id'),
             }
@@ -433,9 +413,9 @@ def find_or_create_movie(name, year, tmdb_id, imdb_id, info):
             movie.imdb_id = imdb_id
             updated = True
 
-        duration = convert_duration_to_minutes(info.get('duration_secs'))
-        if duration and duration != movie.duration:
-            movie.duration = duration
+        duration_secs = info.get('duration_secs')
+        if duration_secs and duration_secs != movie.duration_secs:
+            movie.duration_secs = duration_secs
             updated = True
 
         # Update custom_properties with trailer and other metadata
@@ -471,7 +451,7 @@ def find_or_create_movie(name, year, tmdb_id, imdb_id, info):
         description=info.get('plot') or info.get('description', ''),
         rating=info.get('rating', ''),
         genre=info.get('genre', ''),
-        duration=convert_duration_to_minutes(info.get('duration_secs')),
+        duration_secs=info.get('duration_secs'),
         custom_properties=custom_props if custom_props else None
     )
 
@@ -479,7 +459,7 @@ def find_or_create_movie(name, year, tmdb_id, imdb_id, info):
 def find_or_create_series(name, year, tmdb_id, imdb_id, info):
     """Find existing series or create new one based on metadata"""
     series = None
-
+    updated = False
     # Try to find by TMDB ID first
     if tmdb_id:
         series = Series.objects.filter(tmdb_id=tmdb_id).first()
@@ -496,56 +476,9 @@ def find_or_create_series(name, year, tmdb_id, imdb_id, info):
     if not series:
         series = Series.objects.filter(name=name).first()
 
-    # If we found an existing series, update it
-    if series:
-        updated = False
-        if info.get('plot') and info.get('plot') != series.description:
-            series.description = info.get('plot')
-            updated = True
-        if info.get('rating') and info.get('rating') != series.rating:
-            series.rating = info.get('rating')
-            updated = True
-        if info.get('genre') and info.get('genre') != series.genre:
-            series.genre = info.get('genre')
-            updated = True
-        if year and year != series.year:
-            series.year = year
-            updated = True
-        if tmdb_id and tmdb_id != series.tmdb_id:
-            series.tmdb_id = tmdb_id
-            updated = True
-        if imdb_id and imdb_id != series.imdb_id:
-            series.imdb_id = imdb_id
-            updated = True
-
-        # Update custom_properties with trailer and other metadata
-        custom_props = series.custom_properties or {}
-        custom_props_updated = False
-        if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
-            custom_props['youtube_trailer'] = info.get('trailer')
-            custom_props_updated = True
-        if info.get('youtube_trailer') and info.get('youtube_trailer') != custom_props.get('youtube_trailer'):
-            custom_props['youtube_trailer'] = info.get('youtube_trailer')
-            custom_props_updated = True
-        if info.get('backdrop_path') and info.get('backdrop_path') != custom_props.get('backdrop_path'):
-            custom_props['backdrop_path'] = info.get('backdrop_path')
-            custom_props_updated = True
-        if custom_props_updated:
-            series.custom_properties = custom_props
-            updated = True
-
-        if updated:
-            series.save()
-        return series
-
-    # Create new series if not found
-    custom_props = {}
-    if info.get('youtube_trailer'):
-        custom_props['youtube_trailer'] = info.get('youtube_trailer')
-    if info.get('backdrop_path'):
-        custom_props['backdrop_path'] = info.get('backdrop_path')
-
-    return Series.objects.create(
+    # If still not found, create a new series
+    if not series:
+        series = Series.objects.create(
         name=name,
         year=year,
         tmdb_id=tmdb_id,
@@ -553,8 +486,71 @@ def find_or_create_series(name, year, tmdb_id, imdb_id, info):
         description=info.get('plot', ''),
         rating=info.get('rating', ''),
         genre=info.get('genre', ''),
-        custom_properties=custom_props if custom_props else None
     )
+
+    # Update series metadata
+    if info.get('plot') and info.get('plot') != series.description:
+        series.description = info.get('plot')
+        updated = True
+    if info.get('rating') and info.get('rating') != series.rating:
+        series.rating = info.get('rating')
+        updated = True
+    if info.get('genre') and info.get('genre') != series.genre:
+        series.genre = info.get('genre')
+        updated = True
+    if year and year != series.year:
+        series.year = year
+        updated = True
+    if tmdb_id and tmdb_id != series.tmdb_id:
+        series.tmdb_id = tmdb_id
+        updated = True
+    if imdb_id and imdb_id != series.imdb_id:
+        series.imdb_id = imdb_id
+        updated = True
+
+    # Update custom_properties with trailer and other metadata
+    custom_props = series.custom_properties or {}
+    custom_props_updated = False
+    if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
+        custom_props['youtube_trailer'] = info.get('trailer')
+        custom_props_updated = True
+    if info.get('youtube_trailer') and info.get('youtube_trailer') != custom_props.get('youtube_trailer'):
+        custom_props['youtube_trailer'] = info.get('youtube_trailer')
+        custom_props_updated = True
+    if info.get('backdrop_path') and info.get('backdrop_path') != custom_props.get('backdrop_path'):
+        custom_props['backdrop_path'] = info.get('backdrop_path')
+        custom_props_updated = True
+    if info.get('episode_run_time') and info.get('episode_run_time') != custom_props.get('episode_run_time'):
+        custom_props['episode_run_time'] = info.get('episode_run_time')
+        custom_props_updated = True
+    if info.get('cast') and info.get('cast') != custom_props.get('cast'):
+        custom_props['cast'] = info.get('cast')
+        custom_props_updated = True
+    if info.get('director') and info.get('director') != custom_props.get('director'):
+        custom_props['director'] = info.get('director')
+        custom_props_updated = True
+    if (
+        (info.get('release_date') and info.get('release_date') != custom_props.get('release_date')) or
+        (info.get('releaseDate') and info.get('releaseDate') != custom_props.get('release_date')) or
+        (info.get('releasedate') and info.get('releasedate') != custom_props.get('release_date'))
+    ):
+        # Prefer release_date, then releaseDate, then releasedate
+        release_date_val = (
+            info.get('release_date') or
+            info.get('releaseDate') or
+            info.get('releasedate')
+        )
+        custom_props['release_date'] = release_date_val
+        custom_props_updated = True
+    if not year and custom_props.get('release_date'):
+        year = extract_year(custom_props.get('release_date'))
+        updated = True
+    if custom_props_updated:
+        series.custom_properties = custom_props
+        updated = True
+    if updated:
+        series.save()
+    return series
 
 
 def extract_year(date_string):
@@ -628,14 +624,6 @@ def extract_year_from_data(data, title_key='name'):
     return None
 
 
-def convert_duration_to_minutes(duration_secs):
-    """Convert duration from seconds to minutes"""
-    if not duration_secs:
-        return None
-    try:
-        return int(duration_secs) // 60
-    except (ValueError, TypeError):
-        return None
 
 @shared_task
 def cleanup_orphaned_vod_content():
@@ -727,9 +715,9 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                     movie.genre = info.get('genre')
                     updated = True
                 if info.get('duration_secs'):
-                    duration = int(info.get('duration_secs')) // 60
-                    if duration != movie.duration:
-                        movie.duration = duration
+                    duration_secs = int(info.get('duration_secs'))
+                    if duration_secs != movie.duration_secs:
+                        movie.duration_secs = duration_secs
                         updated = True
                 # Check for releasedate or release_date
                 release_date_value = info.get('releasedate') or info.get('release_date')
