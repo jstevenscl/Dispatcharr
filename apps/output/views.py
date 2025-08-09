@@ -19,6 +19,7 @@ from tzlocal import get_localzone
 from urllib.parse import urlparse
 import base64
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ def generate_m3u(request, profile_name=None, user=None):
         if channel.logo:
             if use_cached_logos:
                 # Use cached logo as before
-                tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+                tvg_logo = build_absolute_uri_with_port(request, reverse('api:channels:logo-cache', args=[channel.logo.id]))
             else:
                 # Try to find direct logo URL from channel's streams
                 direct_logo = channel.logo.url if channel.logo.url.startswith(('http://', 'https://')) else None
@@ -128,7 +129,7 @@ def generate_m3u(request, profile_name=None, user=None):
                 if direct_logo:
                     tvg_logo = direct_logo
                 else:
-                    tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+                    tvg_logo = build_absolute_uri_with_port(request, reverse('api:channels:logo-cache', args=[channel.logo.id]))
 
         # create possible gracenote id insertion
         tvc_guide_stationid = ""
@@ -372,7 +373,7 @@ def generate_epg(request, profile_name=None, user=None):
             if channel.logo:
                 if use_cached_logos:
                     # Use cached logo as before
-                    tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+                    tvg_logo = build_absolute_uri_with_port(request, reverse('api:channels:logo-cache', args=[channel.logo.id]))
                 else:
                     # Try to find direct logo URL from channel's streams
                     direct_logo = channel.logo.url if channel.logo.url.startswith(('http://', 'https://')) else None
@@ -380,7 +381,7 @@ def generate_epg(request, profile_name=None, user=None):
                     if direct_logo:
                         tvg_logo = direct_logo
                     else:
-                        tvg_logo = request.build_absolute_uri(reverse('api:channels:logo-cache', args=[channel.logo.id]))
+                        tvg_logo = build_absolute_uri_with_port(request, reverse('api:channels:logo-cache', args=[channel.logo.id]))
             display_name = channel.name
             xml_lines.append(f'  <channel id="{channel_id}">')
             xml_lines.append(f'    <display-name>{html.escape(display_name)}</display-name>')
@@ -917,7 +918,8 @@ def xc_get_live_streams(request, user, category_id=None):
                 "stream_icon": (
                     None
                     if not channel.logo
-                    else request.build_absolute_uri(
+                    else build_absolute_uri_with_port(
+                        request,
                         reverse("api:channels:logo-cache", args=[channel.logo.id])
                     )
                 ),
@@ -1090,7 +1092,8 @@ def xc_get_vod_streams(request, user, category_id=None):
                 "stream_id": movie.id,
                 "stream_icon": (
                     None if not movie.logo
-                    else request.build_absolute_uri(
+                    else build_absolute_uri_with_port(
+                        request,
                         reverse("api:channels:logo-cache", args=[movie.logo.id])
                     )
                 ),
@@ -1188,7 +1191,8 @@ def xc_get_series(request, user, category_id=None):
             "series_id": relation.id,  # Use relation ID
             "cover": (
                 None if not series.logo
-                else request.build_absolute_uri(
+                else build_absolute_uri_with_port(
+                    request,
                     reverse("api:channels:logo-cache", args=[series.logo.id])
                 )
             ),
@@ -1287,7 +1291,8 @@ def xc_get_series_info(request, user, series_id):
             "name": series.name,
             "cover": (
                 None if not series.logo
-                else request.build_absolute_uri(
+                else build_absolute_uri_with_port(
+                    request,
                     reverse("api:channels:logo-cache", args=[series.logo.id])
                 )
             ),
@@ -1426,17 +1431,18 @@ def xc_get_vod_info(request, user, vod_id):
             "o_name": movie_data.get('name', movie.name),
             "cover_big": (
                 None if not movie.logo
-                else request.build_absolute_uri(
+                else build_absolute_uri_with_port(
+                    request,
                     reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
             "movie_image": (
                 None if not movie.logo
-                else request.build_absolute_uri(
+                else build_absolute_uri_with_port(
+                    request,
                     reverse("api:channels:logo-cache", args=[movie.logo.id])
                 )
             ),
-            #'movie_image': movie.logo.url if movie.logo else '',
             'description': movie_data.get('description', ''),
             'plot': movie_data.get('description', ''),
             'year': movie_data.get('year', ''),
@@ -1567,3 +1573,49 @@ def xc_series_stream(request, username, password, stream_id, extension):
     })
 
     return HttpResponseRedirect(vod_url)
+
+
+def get_host_and_port(request):
+    """
+    Returns (host, port) for building absolute URIs.
+    - Prefers X-Forwarded-Host/X-Forwarded-Port (nginx).
+    - Falls back to Host header.
+    - In dev, if missing, uses 5656 or 8000 as a guess.
+    """
+    # 1. Try X-Forwarded-Host (may include port)
+    xfh = request.META.get("HTTP_X_FORWARDED_HOST")
+    if xfh:
+        if ":" in xfh:
+            host, port = xfh.split(":", 1)
+        else:
+            host = xfh
+            port = request.META.get("HTTP_X_FORWARDED_PORT")
+        if port:
+            return host, port
+
+    # 2. Try Host header
+    raw_host = request.get_host()
+    if ":" in raw_host:
+        host, port = raw_host.split(":", 1)
+        return host, port
+    else:
+        host = raw_host
+
+    # 3. Try X-Forwarded-Port
+    port = request.META.get("HTTP_X_FORWARDED_PORT")
+    if port:
+        return host, port
+
+    # 4. Dev fallback: guess port
+    if os.environ.get("DISPATCHARR_ENV") == "dev" or host in ("localhost", "127.0.0.1"):
+       guess = "5656"
+       return host, guess
+
+    # 5. Fallback to scheme default
+    port = "443" if request.is_secure() else "9191"
+    return host, port
+
+def build_absolute_uri_with_port(request, path):
+    host, port = get_host_and_port(request)
+    scheme = request.scheme
+    return f"{scheme}://{host}:{port}{path}"
