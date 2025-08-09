@@ -320,19 +320,21 @@ def process_episode(account, series, episode_data, season_number):
         episode_id = episode_data.get('id')
         episode_name = episode_data.get('title', 'Unknown Episode')
         episode_number = episode_data.get('episode_num', 0)
-
-        # Extract metadata
-        description = ''
         info = episode_data.get('info', {})
+        # Aggregate all relevant info into custom_props
+        custom_props = {}
         if info:
-            description = info.get('plot') or info.get('overview', '')
+            if info.get('crew'):
+                custom_props['crew'] = info.get('crew')
+            if info.get('movie_image'):
+                custom_props['movie_image'] = info.get('movie_image')
+            if info.get('backdrop_path'):
+                custom_props['backdrop_path'] = info.get('backdrop_path')
+            # Add any other relevant fields as needed
+        description = info.get('plot') or info.get('overview', '') if info else ''
+        rating = info.get('rating', '') if info else ''
+        air_date = extract_date_from_data(info) if info else None
 
-        rating = info.get('rating', '')
-
-        # Use helper function to parse air_date
-        air_date = extract_date_from_data(info)
-
-        # Create or update episode
         episode, created = Episode.objects.update_or_create(
             series=series,
             season_number=season_number,
@@ -342,9 +344,10 @@ def process_episode(account, series, episode_data, season_number):
                 'description': description,
                 'rating': rating,
                 'air_date': air_date,
-                'duration_secs': info.get('duration_secs'),
-                'tmdb_id': info.get('tmdb_id'),
-                'imdb_id': info.get('imdb_id'),
+                'duration_secs': info.get('duration_secs') if info else None,
+                'tmdb_id': info.get('tmdb_id') if info else None,
+                'imdb_id': info.get('imdb_id') if info else None,
+                'custom_properties': custom_props if custom_props else None,
             }
         )
 
