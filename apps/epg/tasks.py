@@ -28,6 +28,8 @@ from core.utils import acquire_task_lock, release_task_lock, send_websocket_upda
 
 logger = logging.getLogger(__name__)
 
+MAX_EXTRACT_CHUNK_SIZE = 65536 # 64kb (base2)
+
 
 def send_epg_update(source_id, action, progress, **kwargs):
     """Send WebSocket update about EPG download/parsing progress"""
@@ -641,7 +643,11 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
                     # Reset file pointer and extract the content
                     gz_file.seek(0)
                     with open(extracted_path, 'wb') as out_file:
-                        out_file.write(gz_file.read())
+                        while True:
+                            chunk = gz_file.read(MAX_EXTRACT_CHUNK_SIZE)
+                            if not chunk:
+                                break
+                            out_file.write(chunk)
             except Exception as e:
                 logger.error(f"Error extracting GZIP file: {e}", exc_info=True)
                 return None
@@ -685,9 +691,13 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
                     return None
 
                 # Extract the first XML file
-                xml_content = zip_file.read(xml_files[0])
                 with open(extracted_path, 'wb') as out_file:
-                    out_file.write(xml_content)
+                    with zip_file.open(xml_files[0], "r") as xml_file:
+                        while True:
+                            chunk = xml_file.read(MAX_EXTRACT_CHUNK_SIZE)
+                            if not chunk:
+                                break
+                            out_file.write(chunk)
 
             logger.info(f"Successfully extracted zip file to: {extracted_path}")
 
