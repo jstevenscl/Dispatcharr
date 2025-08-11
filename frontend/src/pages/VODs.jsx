@@ -30,16 +30,17 @@ import useSettingsStore from '../store/settings';
 
 const imdbUrl = (imdb_id) => imdb_id ? `https://www.imdb.com/title/${imdb_id}` : '';
 const tmdbUrl = (tmdb_id, type = 'movie') => tmdb_id ? `https://www.themoviedb.org/${type}/${tmdb_id}` : '';
-
+const formatDuration = (seconds) => {
+    if (!seconds) return '';
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m ${secs}s`;
+};
 const VODCard = ({ vod, onClick }) => {
     const isEpisode = vod.type === 'episode';
 
-    const formatDuration = (minutes) => {
-        if (!minutes) return '';
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-    };
+
 
     const getDisplayTitle = () => {
         if (isEpisode && vod.series) {
@@ -135,7 +136,7 @@ const VODCard = ({ vod, onClick }) => {
                     {vod.duration && (
                         <Group spacing={4}>
                             <Clock size={14} color="#666" />
-                            <Text size="xs" color="dimmed">{formatDuration(vod.duration)}</Text>
+                            <Text size="xs" color="dimmed">{formatDuration(vod.duration_secs)}</Text>
                         </Group>
                     )}
 
@@ -339,13 +340,6 @@ const SeriesModal = ({ series, opened, onClose }) => {
             streamUrl = `${window.location.origin}${streamUrl}`;
         }
         showVideo(streamUrl, 'vod', episode);
-    };
-
-    const formatDuration = (minutes) => {
-        if (!minutes) return '';
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
     };
 
     const handleEpisodeRowClick = (episode) => {
@@ -632,7 +626,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                                 </Table.Td>
                                                                 <Table.Td>
                                                                     <Text size="xs" color="dimmed">
-                                                                        {formatDuration(episode.duration)}
+                                                                        {formatDuration(episode.duration_secs)}
                                                                     </Text>
                                                                 </Table.Td>
                                                                 <Table.Td>
@@ -889,12 +883,6 @@ const VODModal = ({ vod, opened, onClose }) => {
         showVideo(streamUrl, 'vod', vodToPlay);
     };
 
-    const formatDuration = (minutes) => {
-        if (!minutes) return '';
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-    };
 
     // Helper to get embeddable YouTube URL
     const getEmbedUrl = (url) => {
@@ -1007,7 +995,7 @@ const VODModal = ({ vod, opened, onClose }) => {
 
                                     <Group spacing="md">
                                         {displayVOD.year && <Badge color="blue">{displayVOD.year}</Badge>}
-                                        {displayVOD.duration && <Badge color="gray">{formatDuration(displayVOD.duration)}</Badge>}
+                                        {displayVOD.duration_secs && <Badge color="gray">{formatDuration(displayVOD.duration_secs)}</Badge>}
                                         {displayVOD.rating && <Badge color="yellow">{displayVOD.rating}</Badge>}
                                         {displayVOD.age && <Badge color="orange">{displayVOD.age}</Badge>}
                                         <Badge color="green">Movie</Badge>
