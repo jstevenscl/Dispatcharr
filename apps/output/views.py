@@ -1302,7 +1302,7 @@ def xc_get_series_info(request, user, series_id):
             bitrate = episode.custom_properties.get('bitrate', 0) if episode.custom_properties else 0
 
         seasons[season_num].append({
-            "id": relation.stream_id,
+            "id": episode.id,
             "season": season_num,
             "episode_num": episode.episode_number or 0,
             "title": episode.name,
@@ -1312,17 +1312,15 @@ def xc_get_series_info(request, user, series_id):
             "direct_source": "",
             "info": {
                 "id": int(episode.id),
-                "air_date": f"{episode.air_date}" if episode.air_date else "",
-                "crew": episode.custom_properties.get('crew', []) if episode.custom_properties else [],
+                "name": episode.name,
+                "overview": episode.description or "",
+                "crew": str(episode.custom_properties.get('crew', "") if episode.custom_properties else ""),
                 "directed_by": episode.custom_properties.get('director', '') if episode.custom_properties else "",
                 "imdb_id": episode.imdb_id or "",
-                #"name": episode.name,
-                "overview": episode.description or "",
-                #"season": episode.season_number or 1,
+                "air_date": f"{episode.air_date}" if episode.air_date else "",
                 "backdrop_path": episode.custom_properties.get('backdrop_path', []) if episode.custom_properties else [],
                 "movie_image": episode.custom_properties.get('movie_image', '') if episode.custom_properties else "",
                 "rating": float(episode.rating or 0),
-                #"writer": "",
                 "release_date": f"{episode.air_date}" if episode.air_date else "",
                 "duration_secs": (episode.duration_secs or 0),
                 "duration": format_duration_hms(episode.duration_secs),
@@ -1407,6 +1405,7 @@ def xc_get_series_info(request, user, series_id):
             "genre": series_data['genre'],
             "release_date": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
             "releaseDate": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
+            "added": str(int(series_relation.created_at.timestamp())),
             "last_modified": str(int(series_relation.updated_at.timestamp())),
             "rating": str(series_data['rating']),
             "rating_5based": str(round(float(series_data['rating'] or 0) / 2, 2)) if series_data['rating'] else "0",
@@ -1420,7 +1419,6 @@ def xc_get_series_info(request, user, series_id):
         },
         "episodes": dict(seasons)
     }
-
     return info
 
 
