@@ -1201,9 +1201,10 @@ def xc_get_series(request, user, category_id=None):
             "director": series.custom_properties.get('director', '') if series.custom_properties else "",
             "genre": series.genre or "",
             "release_date": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
-            "last_modified": int(relation.updated_at.timestamp()),
-            "rating": series.rating or "0",
-            "rating_5based": round(float(series.rating or 0) / 2, 2) if series.rating else 0,
+            "releaseDate": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
+            "last_modified": str(int(relation.updated_at.timestamp())),
+            "rating": str(series.rating or "0"),
+            "rating_5based": str(round(float(series.rating or 0) / 2, 2)) if series.rating else "0",
             "backdrop_path": series.custom_properties.get('backdrop_path', []) if series.custom_properties else [],
             "youtube_trailer": series.custom_properties.get('youtube_trailer', '') if series.custom_properties else "",
             "episode_run_time": series.custom_properties.get('episode_run_time', '') if series.custom_properties else "",
@@ -1281,32 +1282,53 @@ def xc_get_series_info(request, user, series_id):
         if season_num not in seasons:
             seasons[season_num] = []
 
+        # Try to get the first related M3UEpisodeRelation for this episode (for video/audio/bitrate)
+        from apps.vod.models import M3UEpisodeRelation
+        first_relation = M3UEpisodeRelation.objects.filter(episode=episode).order_by('id').first()
+        video = audio = bitrate = None
+        if first_relation and first_relation.custom_properties:
+            info = first_relation.custom_properties.get('info')
+            if info and isinstance(info, dict):
+                info_info = info.get('info')
+                if info_info and isinstance(info_info, dict):
+                    video = info_info.get('video', {})
+                    audio = info_info.get('audio', {})
+                    bitrate = info_info.get('bitrate', 0)
+        if video is None:
+            video = episode.custom_properties.get('video', {}) if episode.custom_properties else {}
+        if audio is None:
+            audio = episode.custom_properties.get('audio', {}) if episode.custom_properties else {}
+        if bitrate is None:
+            bitrate = episode.custom_properties.get('bitrate', 0) if episode.custom_properties else 0
+
         seasons[season_num].append({
             "id": relation.stream_id,
+            "season": season_num,
             "episode_num": episode.episode_number or 0,
             "title": episode.name,
             "container_extension": relation.container_extension or "mp4",
+            "added": str(int(relation.created_at.timestamp())),
+            "custom_sid": None,
+            "direct_source": "",
             "info": {
+                "id": int(episode.id),
                 "air_date": f"{episode.air_date}" if episode.air_date else "",
-                "crew": "",
-                "directed_by": "",
-                "episode_num": episode.episode_number or 0,
-                "id": relation.stream_id,
+                "crew": episode.custom_properties.get('crew', []) if episode.custom_properties else [],
+                "directed_by": episode.custom_properties.get('director', '') if episode.custom_properties else "",
                 "imdb_id": episode.imdb_id or "",
-                "name": episode.name,
+                #"name": episode.name,
                 "overview": episode.description or "",
-                "production_code": "",
-                "season_number": episode.season_number or 1,
-                "still_path": "",
-                "vote_average": float(episode.rating or 0),
-                "vote_count": 0,
-                "writer": "",
+                #"season": episode.season_number or 1,
+                "backdrop_path": episode.custom_properties.get('backdrop_path', []) if episode.custom_properties else [],
+                "movie_image": episode.custom_properties.get('movie_image', '') if episode.custom_properties else "",
+                "rating": float(episode.rating or 0),
+                #"writer": "",
                 "release_date": f"{episode.air_date}" if episode.air_date else "",
-                "duration_secs": (episode.duration or 0) * 60,
-                "duration": f"{episode.duration or 0} min",
-                "video": {},
-                "audio": {},
-                "bitrate": 0,
+                "duration_secs": (episode.duration_secs or 0),
+                "duration": format_duration_hms(episode.duration_secs),
+                "video": video,
+                "audio": audio,
+                "bitrate": bitrate,
             }
         })
 
@@ -1365,6 +1387,7 @@ def xc_get_series_info(request, user, series_id):
 
     info = {
         "seasons": list(seasons.keys()),
+        #'seasons': [],
         "info": {
             "name": series_data['name'],
             "cover": (
@@ -1378,14 +1401,18 @@ def xc_get_series_info(request, user, series_id):
             "cast": series_data['cast'],
             "director": series_data['director'],
             "genre": series_data['genre'],
-            "release_date": str(series_data['year']) if series_data['year'] else "",
-            "last_modified": int(series_relation.updated_at.timestamp()),
-            "rating": series_data['rating'],
-            "rating_5based": round(float(series_data['rating'] or 0) / 2, 2) if series_data['rating'] else 0,
+            "release_date": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
+            "releaseDate": series.custom_properties.get('release_date', str(series.year) if series.year else "") if series.custom_properties else (str(series.year) if series.year else ""),
+            "last_modified": str(int(series_relation.updated_at.timestamp())),
+            "rating": str(series_data['rating']),
+            "rating_5based": str(round(float(series_data['rating'] or 0) / 2, 2)) if series_data['rating'] else "0",
             "backdrop_path": series_data['backdrop_path'],
             "youtube_trailer": series_data['youtube_trailer'],
-            "episode_run_time": series_data['episode_run_time'],
+            "imdb": str(series.imdb_id) if series.imdb_id else "",
+            "tmdb": str(series.tmdb_id) if series.tmdb_id else "",
+            "episode_run_time": str(series_data['episode_run_time']),
             "category_id": str(series_relation.category.id) if series_relation.category else "0",
+            "category_ids": [int(series_relation.category.id)] if series_relation.category else [],
         },
         "episodes": dict(seasons)
     }
@@ -1697,3 +1724,10 @@ def build_absolute_uri_with_port(request, path):
     host, port = get_host_and_port(request)
     scheme = request.scheme
     return f"{scheme}://{host}:{port}{path}"
+
+def format_duration_hms(seconds):
+    """
+    Format a duration in seconds as HH:MM:SS zero-padded string.
+    """
+    seconds = int(seconds or 0)
+    return f"{seconds//3600:02}:{(seconds%3600)//60:02}:{seconds%60:02}"
