@@ -1385,9 +1385,13 @@ def xc_get_series_info(request, user, series_id):
     except Exception as e:
         logger.error(f"Error parsing series custom_properties: {str(e)}")
 
+    seasons_list = [
+        {"season_number": int(season_num), "name": f"Season {season_num}"}
+        for season_num in sorted(seasons.keys(), key=lambda x: int(x))
+    ]
+
     info = {
-        "seasons": list(seasons.keys()),
-        #'seasons': [],
+        'seasons': seasons_list,
         "info": {
             "name": series_data['name'],
             "cover": (
