@@ -31,6 +31,8 @@ class PersistentVODConnection:
         self.final_url = None
         self.lock = threading.Lock()
         self.request_count = 0  # Track number of requests on this connection
+        self.last_activity = time.time()  # Track last activity for cleanup
+        self.cleanup_timer = None  # Timer for delayed cleanup
 
     def _establish_connection(self, range_header=None):
         """Establish or re-establish connection to provider"""
@@ -151,6 +153,12 @@ class PersistentVODConnection:
     def get_stream(self, range_header=None):
         """Get stream with optional range header - reuses connection for range requests"""
         with self.lock:
+            # Update activity timestamp
+            self.last_activity = time.time()
+
+            # Cancel any pending cleanup since connection is being reused
+            self.cancel_cleanup()
+
             # For range requests, we don't need to close the connection
             # We can make a new request on the same session
             if range_header:
@@ -169,6 +177,31 @@ class PersistentVODConnection:
 
             return self.current_response
 
+    def schedule_delayed_cleanup(self, delay_seconds=5):
+        """Schedule cleanup after a delay to allow for rapid successive requests"""
+        # Cancel any existing cleanup timer
+        if self.cleanup_timer:
+            self.cleanup_timer.cancel()
+            logger.debug(f"[{self.session_id}] Cancelled previous cleanup timer")
+
+        # Schedule new cleanup
+        def delayed_cleanup():
+            logger.info(f"[{self.session_id}] Delayed cleanup triggered - checking if connection is still needed")
+            # Use the VODConnectionManager instance to avoid circular imports
+            manager = VODConnectionManager()
+            manager.cleanup_persistent_connection(self.session_id)
+
+        self.cleanup_timer = threading.Timer(delay_seconds, delayed_cleanup)
+        self.cleanup_timer.start()
+        logger.info(f"[{self.session_id}] Scheduled cleanup in {delay_seconds} seconds (allows for rapid seeks)")
+
+    def cancel_cleanup(self):
+        """Cancel any pending cleanup - called when connection is reused"""
+        if self.cleanup_timer:
+            self.cleanup_timer.cancel()
+            self.cleanup_timer = None
+            logger.info(f"[{self.session_id}] Cancelled pending cleanup - connection being reused for new request")
+
     def get_headers(self):
         """Get headers for response"""
         return {
@@ -180,6 +213,12 @@ class PersistentVODConnection:
     def cleanup(self):
         """Clean up connection resources"""
         with self.lock:
+            # Cancel any pending cleanup timer
+            if self.cleanup_timer:
+                self.cleanup_timer.cancel()
+                self.cleanup_timer = None
+                logger.debug(f"[{self.session_id}] Cancelled cleanup timer during manual cleanup")
+
             if self.current_response:
                 self.current_response.close()
                 self.current_response = None
@@ -873,12 +912,24 @@ class VODConnectionManager:
                                     bytes_sent=len(chunk)
                                 )
 
-                    logger.info(f"[{client_id}] Persistent stream completed: {bytes_sent} bytes sent")
+                    logger.info(f"[{client_id}] Persistent stream completed normally: {bytes_sent} bytes sent")
+                    # Stream completed normally - don't cleanup connection as it may be reused
+
+                except GeneratorExit:
+                    # Client disconnected (most common case) - use delayed cleanup for seeks
+                    logger.info(f"[{client_id}] Client disconnected - scheduling delayed cleanup (allowing for seeks)")
+                    persistent_conn.schedule_delayed_cleanup(delay_seconds=5)
 
                 except Exception as e:
                     logger.error(f"[{client_id}] Error in persistent stream: {e}")
-                    # Don't cleanup connection on error - it might be reusable
+                    # On error, also cleanup the connection as it may be corrupted
+                    logger.info(f"[{client_id}] Cleaning up persistent connection due to error")
+                    self.cleanup_persistent_connection(session_id)
                     yield b"Error: Stream interrupted"
+
+                finally:
+                    # This runs regardless of how the generator exits
+                    logger.debug(f"[{client_id}] Stream generator finished")
 
             # Create streaming response
             response = StreamingHttpResponse(
@@ -1067,17 +1118,29 @@ class VODConnectionManager:
         stale_sessions = []
 
         for session_id, conn in self._persistent_connections.items():
-            session_key = f"vod_session:{session_id}"
             try:
+                # Check connection's last activity time first
+                if hasattr(conn, 'last_activity'):
+                    time_since_last_activity = current_time - conn.last_activity
+                    if time_since_last_activity > max_age_seconds:
+                        logger.info(f"[{session_id}] Connection inactive for {time_since_last_activity:.1f}s (max: {max_age_seconds}s)")
+                        stale_sessions.append(session_id)
+                        continue
+
+                # Fallback to Redis session data if connection doesn't have last_activity
+                session_key = f"vod_session:{session_id}"
                 if self.redis_client:
                     session_data = self.redis_client.hgetall(session_key)
                     if session_data:
                         created_at = float(session_data.get(b'created_at', b'0').decode('utf-8'))
                         if current_time - created_at > max_age_seconds:
+                            logger.info(f"[{session_id}] Session older than {max_age_seconds}s")
                             stale_sessions.append(session_id)
                     else:
                         # Session data missing, connection is stale
+                        logger.info(f"[{session_id}] Session data missing from Redis")
                         stale_sessions.append(session_id)
+
             except Exception as e:
                 logger.error(f"[{session_id}] Error checking session age: {e}")
                 stale_sessions.append(session_id)
@@ -1089,6 +1152,8 @@ class VODConnectionManager:
 
         if stale_sessions:
             logger.info(f"Cleaned up {len(stale_sessions)} stale persistent connections")
+        else:
+            logger.debug(f"No stale persistent connections found (checked {len(self._persistent_connections)} connections)")
 
 
 # Global instance
