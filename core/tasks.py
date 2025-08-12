@@ -633,3 +633,17 @@ def rehash_streams(keys):
         for account_id in acquired_locks:
             release_task_lock('refresh_single_m3u_account', account_id)
         logger.info(f"Released M3U task locks for {len(acquired_locks)} accounts")
+
+
+@shared_task
+def cleanup_vod_persistent_connections():
+    """Clean up stale VOD persistent connections"""
+    try:
+        from apps.proxy.vod_proxy.connection_manager import connection_manager
+
+        # Clean up connections older than 30 minutes
+        connection_manager.cleanup_stale_persistent_connections(max_age_seconds=1800)
+        logger.info("VOD persistent connection cleanup completed")
+
+    except Exception as e:
+        logger.error(f"Error during VOD persistent connection cleanup: {e}")
