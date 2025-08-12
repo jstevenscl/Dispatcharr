@@ -1093,22 +1093,58 @@ class VODConnectionManager:
             self._persistent_connections[session_id].cleanup()
             del self._persistent_connections[session_id]
 
-            # Also remove session tracking
+            # Clean up ALL Redis keys associated with this session
             session_key = f"vod_session:{session_id}"
             if self.redis_client:
                 try:
                     session_data = self.redis_client.hgetall(session_key)
                     if session_data:
-                        # Remove from profile connections if counted
-                        if session_data.get(b'connection_counted') == b'True':
-                            profile_id = session_data.get(b'profile_id')
-                            if profile_id:
-                                profile_key = self._get_profile_connections_key(int(profile_id.decode('utf-8')))
+                        # Get session details for connection cleanup
+                        content_type = session_data.get(b'content_type', b'').decode('utf-8')
+                        content_uuid = session_data.get(b'content_uuid', b'').decode('utf-8')
+                        profile_id = session_data.get(b'profile_id')
+
+                        # Generate client_id from session_id (matches what's used during streaming)
+                        client_id = session_id
+
+                        # Remove individual connection tracking keys created during streaming
+                        if content_type and content_uuid:
+                            logger.info(f"[{session_id}] Cleaning up connection tracking keys")
+                            self.remove_connection(content_type, content_uuid, client_id)
+
+                        # Remove from profile connections if counted (additional safety check)
+                        if session_data.get(b'connection_counted') == b'True' and profile_id:
+                            profile_key = self._get_profile_connections_key(int(profile_id.decode('utf-8')))
+                            current_count = int(self.redis_client.get(profile_key) or 0)
+                            if current_count > 0:
                                 self.redis_client.decr(profile_key)
                                 logger.info(f"[{session_id}] Decremented profile {profile_id.decode('utf-8')} connections")
 
+                    # Remove session tracking key
                     self.redis_client.delete(session_key)
                     logger.info(f"[{session_id}] Removed session tracking")
+
+                    # Clean up any additional session-related keys (pattern cleanup)
+                    try:
+                        # Look for any other keys that might be related to this session
+                        pattern = f"*{session_id}*"
+                        cursor = 0
+                        session_related_keys = []
+                        while True:
+                            cursor, keys = self.redis_client.scan(cursor, match=pattern, count=100)
+                            session_related_keys.extend(keys)
+                            if cursor == 0:
+                                break
+
+                        if session_related_keys:
+                            # Filter out keys we already deleted
+                            remaining_keys = [k for k in session_related_keys if k.decode('utf-8') != session_key]
+                            if remaining_keys:
+                                self.redis_client.delete(*remaining_keys)
+                                logger.info(f"[{session_id}] Cleaned up {len(remaining_keys)} additional session-related keys")
+                    except Exception as scan_error:
+                        logger.warning(f"[{session_id}] Error during pattern cleanup: {scan_error}")
+
                 except Exception as e:
                     logger.error(f"[{session_id}] Error cleaning up session: {e}")
 
