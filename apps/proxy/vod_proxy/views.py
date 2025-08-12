@@ -24,16 +24,17 @@ logger = logging.getLogger(__name__)
 class VODStreamView(View):
     """Handle VOD streaming requests with M3U profile support"""
 
-    def get(self, request, content_type, content_id, profile_id=None):
+    def get(self, request, content_type, content_id, session_id=None, profile_id=None):
         """
         Stream VOD content (movies or series episodes) with session-based connection reuse
 
         Args:
             content_type: 'movie', 'series', or 'episode'
             content_id: ID of the content
+            session_id: Optional session ID from URL path (for persistent connections)
             profile_id: Optional M3U profile ID for authentication
         """
-        logger.info(f"[VOD-REQUEST] Starting VOD stream request: {content_type}/{content_id}, profile: {profile_id}")
+        logger.info(f"[VOD-REQUEST] Starting VOD stream request: {content_type}/{content_id}, session: {session_id}, profile: {profile_id}")
         logger.info(f"[VOD-REQUEST] Full request path: {request.get_full_path()}")
         logger.info(f"[VOD-REQUEST] Request method: {request.method}")
         logger.info(f"[VOD-REQUEST] Request headers: {dict(request.headers)}")
@@ -55,8 +56,8 @@ class VODStreamView(View):
                 elif 'time' in request.GET:
                     offset = request.GET.get('time')
 
-            # Extract session ID for connection reuse
-            session_id = request.GET.get('session_id')
+            # Session ID now comes from URL path parameter
+            # Remove legacy query parameter extraction since we're using path-based routing
 
             # Extract Range header for seeking support
             range_header = request.META.get('HTTP_RANGE')
@@ -108,22 +109,35 @@ class VODStreamView(View):
 
             logger.info(f"[VOD-CLIENT] Client info - IP: {client_ip}, User-Agent: {user_agent[:50]}...")
 
-            # If no session ID, create one and redirect
+            # If no session ID, create one and redirect to path-based URL
             if not session_id:
-                session_id = f"vod_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
-                logger.info(f"[VOD-SESSION] Creating new session: {session_id}")
+                new_session_id = f"vod_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+                logger.info(f"[VOD-SESSION] Creating new session: {new_session_id}")
 
-                # Build redirect URL with session ID and preserve all parameters
-                from urllib.parse import urlencode
+                # Build redirect URL with session ID in path, preserve query parameters
+                path_parts = request.path.rstrip('/').split('/')
+
+                # Construct new path: /vod/movie/UUID/SESSION_ID or /vod/movie/UUID/SESSION_ID/PROFILE_ID/
+                if profile_id:
+                    new_path = f"{'/'.join(path_parts)}/{new_session_id}/{profile_id}/"
+                else:
+                    new_path = f"{'/'.join(path_parts)}/{new_session_id}"
+
+                # Preserve any query parameters (except session_id)
                 query_params = dict(request.GET)
-                query_params['session_id'] = session_id
-                query_string = urlencode(query_params, doseq=True)
+                query_params.pop('session_id', None)  # Remove if present
 
-                redirect_url = f"{request.path}?{query_string}"
-                logger.info(f"[VOD-SESSION] Redirecting to: {redirect_url}")
+                if query_params:
+                    from urllib.parse import urlencode
+                    query_string = urlencode(query_params, doseq=True)
+                    redirect_url = f"{new_path}?{query_string}"
+                else:
+                    redirect_url = new_path
+
+                logger.info(f"[VOD-SESSION] Redirecting to path-based URL: {redirect_url}")
 
                 return HttpResponse(
-                    status=302,
+                    status=301,
                     headers={'Location': redirect_url}
                 )
 
