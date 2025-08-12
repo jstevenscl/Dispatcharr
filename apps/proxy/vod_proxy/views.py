@@ -206,6 +206,122 @@ class VODStreamView(View):
             logger.error(f"[VOD-EXCEPTION] Error streaming {content_type} {content_id}: {e}", exc_info=True)
             return HttpResponse(f"Streaming error: {str(e)}", status=500)
 
+    def head(self, request, content_type, content_id, session_id=None, profile_id=None):
+        """
+        Handle HEAD requests for FUSE filesystem integration
+
+        Returns content length and session URL header for subsequent GET requests
+        """
+        logger.info(f"[VOD-HEAD] HEAD request: {content_type}/{content_id}, session: {session_id}, profile: {profile_id}")
+
+        try:
+            # Get client info for M3U profile selection
+            client_ip, user_agent = get_client_info(request)
+            logger.info(f"[VOD-HEAD] Client info - IP: {client_ip}, User-Agent: {user_agent[:50] if user_agent else 'None'}...")
+
+            # If no session ID, create one (same logic as GET)
+            if not session_id:
+                new_session_id = f"vod_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+                logger.info(f"[VOD-HEAD] Creating new session for HEAD: {new_session_id}")
+
+                # Build session URL for response header
+                path_parts = request.path.rstrip('/').split('/')
+                if profile_id:
+                    session_url = f"{'/'.join(path_parts)}/{new_session_id}/{profile_id}/"
+                else:
+                    session_url = f"{'/'.join(path_parts)}/{new_session_id}"
+
+                session_id = new_session_id
+            else:
+                # Session already in URL, construct the current session URL
+                session_url = request.path
+                logger.info(f"[VOD-HEAD] Using existing session: {session_id}")
+
+            # Get content and relation (same as GET)
+            content_obj, relation = self._get_content_and_relation(content_type, content_id)
+            if not content_obj or not relation:
+                logger.error(f"[VOD-HEAD] Content or relation not found: {content_type} {content_id}")
+                return HttpResponse("Content not found", status=404)
+
+            # Get M3U account and stream URL
+            m3u_account = relation.m3u_account
+            stream_url = self._get_stream_url_from_relation(relation)
+            if not stream_url:
+                logger.error(f"[VOD-HEAD] No stream URL available for {content_type} {content_id}")
+                return HttpResponse("No stream URL available", status=503)
+
+            # Get M3U profile
+            m3u_profile = self._get_m3u_profile(m3u_account, profile_id, user_agent)
+            if not m3u_profile:
+                logger.error(f"[VOD-HEAD] No M3U profile found")
+                return HttpResponse("Profile not found", status=404)
+
+            # Transform URL if needed
+            final_stream_url = self._transform_url(stream_url, m3u_profile)
+
+            # Make a small range GET request to get content length since providers don't support HEAD
+            # We'll use a tiny range to minimize data transfer but get the headers we need
+            headers = {
+                'User-Agent': user_agent or 'Dispatcharr/1.0',
+                'Accept': '*/*',
+                'Range': 'bytes=0-1'  # Request only first 2 bytes
+            }
+
+            logger.info(f"[VOD-HEAD] Making small range GET request to provider: {final_stream_url}")
+            response = requests.get(final_stream_url, headers=headers, timeout=30, allow_redirects=True, stream=True)
+
+            # Check for range support - should be 206 for partial content
+            if response.status_code == 206:
+                # Parse Content-Range header to get total file size
+                content_range = response.headers.get('Content-Range', '')
+                if content_range:
+                    # Content-Range: bytes 0-1/1234567890
+                    total_size = content_range.split('/')[-1]
+                    logger.info(f"[VOD-HEAD] Got file size from Content-Range: {total_size}")
+                else:
+                    logger.warning(f"[VOD-HEAD] No Content-Range header in 206 response")
+                    total_size = response.headers.get('Content-Length', '0')
+            elif response.status_code == 200:
+                # Server doesn't support range requests, use Content-Length from full response
+                total_size = response.headers.get('Content-Length', '0')
+                logger.info(f"[VOD-HEAD] Server doesn't support ranges, got Content-Length: {total_size}")
+            else:
+                logger.error(f"[VOD-HEAD] Provider GET request failed: {response.status_code}")
+                return HttpResponse("Provider error", status=response.status_code)
+
+            # Close the small range request - we don't need to keep this connection
+            response.close()
+
+            # Now create a persistent connection for the session (if one doesn't exist)
+            # This ensures the FUSE GET requests will reuse the same connection
+            connection_manager = VODConnectionManager.get_instance()
+            logger.info(f"[VOD-HEAD] Pre-creating persistent connection for session: {session_id}")
+
+            # We don't actually stream content here, just ensure connection is ready
+            # The actual GET requests from FUSE will use the persistent connection
+
+            # Use the total_size we extracted from the range response
+            content_type_header = response.headers.get('Content-Type', 'video/mp4')
+
+            logger.info(f"[VOD-HEAD] Provider response - Total Size: {total_size}, Type: {content_type_header}")
+
+            # Create response with content length and session URL header
+            head_response = HttpResponse()
+            head_response['Content-Length'] = total_size
+            head_response['Content-Type'] = content_type_header
+            head_response['Accept-Ranges'] = 'bytes'
+
+            # Custom header with session URL for FUSE
+            head_response['X-Session-URL'] = session_url
+            head_response['X-Dispatcharr-Session'] = session_id
+
+            logger.info(f"[VOD-HEAD] Returning HEAD response with session URL: {session_url}")
+            return head_response
+
+        except Exception as e:
+            logger.error(f"[VOD-HEAD] Error in HEAD request: {e}", exc_info=True)
+            return HttpResponse(f"HEAD error: {str(e)}", status=500)
+
     def _get_content_and_relation(self, content_type, content_id):
         """Get the content object and its M3U relation"""
         try:
