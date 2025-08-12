@@ -645,7 +645,7 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
                     with open(extracted_path, 'wb') as out_file:
                         while True:
                             chunk = gz_file.read(MAX_EXTRACT_CHUNK_SIZE)
-                            if not chunk:
+                            if not chunk or len(chunk) == 0:
                                 break
                             out_file.write(chunk)
             except Exception as e:
@@ -695,7 +695,7 @@ def extract_compressed_file(file_path, output_path=None, delete_original=False):
                     with zip_file.open(xml_files[0], "r") as xml_file:
                         while True:
                             chunk = xml_file.read(MAX_EXTRACT_CHUNK_SIZE)
-                            if not chunk:
+                            if not chunk or len(chunk) == 0:
                                 break
                             out_file.write(chunk)
 
