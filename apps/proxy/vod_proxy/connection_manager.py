@@ -33,6 +33,7 @@ class PersistentVODConnection:
         self.request_count = 0  # Track number of requests on this connection
         self.last_activity = time.time()  # Track last activity for cleanup
         self.cleanup_timer = None  # Timer for delayed cleanup
+        self.active_streams = 0  # Count of active stream generators
 
     def _establish_connection(self, range_header=None):
         """Establish or re-establish connection to provider"""
@@ -177,30 +178,54 @@ class PersistentVODConnection:
 
             return self.current_response
 
-    def schedule_delayed_cleanup(self, delay_seconds=30):
-        """Schedule cleanup after a delay to allow for rapid successive requests"""
-        # Cancel any existing cleanup timer
-        if self.cleanup_timer:
-            self.cleanup_timer.cancel()
-            logger.debug(f"[{self.session_id}] Cancelled previous cleanup timer")
-
-        # Schedule new cleanup
-        def delayed_cleanup():
-            logger.info(f"[{self.session_id}] Delayed cleanup triggered - checking if connection is still needed")
-            # Use the VODConnectionManager instance to avoid circular imports
-            manager = VODConnectionManager()
-            manager.cleanup_persistent_connection(self.session_id)
-
-        self.cleanup_timer = threading.Timer(delay_seconds, delayed_cleanup)
-        self.cleanup_timer.start()
-        logger.info(f"[{self.session_id}] Scheduled cleanup in {delay_seconds} seconds (allows for rapid seeks)")
-
     def cancel_cleanup(self):
         """Cancel any pending cleanup - called when connection is reused"""
         if self.cleanup_timer:
             self.cleanup_timer.cancel()
             self.cleanup_timer = None
             logger.info(f"[{self.session_id}] Cancelled pending cleanup - connection being reused for new request")
+
+    def increment_active_streams(self):
+        """Increment the count of active streams"""
+        with self.lock:
+            self.active_streams += 1
+            logger.debug(f"[{self.session_id}] Active streams incremented to {self.active_streams}")
+
+    def decrement_active_streams(self):
+        """Decrement the count of active streams"""
+        with self.lock:
+            if self.active_streams > 0:
+                self.active_streams -= 1
+                logger.debug(f"[{self.session_id}] Active streams decremented to {self.active_streams}")
+            else:
+                logger.warning(f"[{self.session_id}] Attempted to decrement active streams when already at 0")
+
+    def has_active_streams(self) -> bool:
+        """Check if connection has any active streams"""
+        with self.lock:
+            return self.active_streams > 0
+
+    def schedule_cleanup_if_not_streaming(self, delay_seconds: int = 10):
+        """Schedule cleanup only if no active streams"""
+        with self.lock:
+            if self.active_streams > 0:
+                logger.info(f"[{self.session_id}] Connection has {self.active_streams} active streams - NOT scheduling cleanup")
+                return False
+
+            # No active streams, proceed with delayed cleanup
+            if self.cleanup_timer:
+                self.cleanup_timer.cancel()
+
+            def delayed_cleanup():
+                logger.info(f"[{self.session_id}] Delayed cleanup triggered - checking if connection is still needed")
+                # Use the singleton VODConnectionManager instance
+                manager = VODConnectionManager.get_instance()
+                manager.cleanup_persistent_connection(self.session_id)
+
+            self.cleanup_timer = threading.Timer(delay_seconds, delayed_cleanup)
+            self.cleanup_timer.start()
+            logger.info(f"[{self.session_id}] Scheduled cleanup in {delay_seconds} seconds (connection not actively streaming)")
+            return True
 
     def get_headers(self):
         """Get headers for response"""
@@ -218,6 +243,9 @@ class PersistentVODConnection:
                 self.cleanup_timer.cancel()
                 self.cleanup_timer = None
                 logger.debug(f"[{self.session_id}] Cancelled cleanup timer during manual cleanup")
+
+            # Clear active streams count
+            self.active_streams = 0
 
             if self.current_response:
                 self.current_response.close()
@@ -808,6 +836,10 @@ class VODConnectionManager:
             # Check for existing connection or create new one
             persistent_conn = self._persistent_connections.get(session_id)
 
+            # Cancel any pending cleanup timer for this session regardless of new/existing
+            if persistent_conn:
+                persistent_conn.cancel_cleanup()
+
             if not persistent_conn:
                 logger.info(f"[{client_id}] Creating NEW persistent connection for {content_type} {content_name}")
 
@@ -851,7 +883,6 @@ class VODConnectionManager:
                 self.create_connection(content_type, content_uuid, content_name, client_id, client_ip, user_agent, m3u_profile)
             else:
                 logger.info(f"[{client_id}] Using EXISTING persistent connection for {content_type} {content_name}")
-
                 # Update session activity
                 session_key = f"vod_session:{session_id}"
                 if self.redis_client:
@@ -896,10 +927,18 @@ class VODConnectionManager:
 
             connection_headers = persistent_conn.get_headers()
 
+            # Ensure any pending cleanup is cancelled before starting stream
+            persistent_conn.cancel_cleanup()
+
             # Create streaming generator
             def stream_generator():
+                decremented = False  # Track if we've already decremented the counter
+
                 try:
                     logger.info(f"[{client_id}] Starting stream from persistent connection")
+
+                    # Increment active streams counter
+                    persistent_conn.increment_active_streams()
 
                     bytes_sent = 0
                     chunk_count = 0
@@ -920,21 +959,33 @@ class VODConnectionManager:
                                 )
 
                     logger.info(f"[{client_id}] Persistent stream completed normally: {bytes_sent} bytes sent")
-                    # Stream completed normally - don't cleanup connection as it may be reused
+                    # Stream completed normally - decrement counter
+                    persistent_conn.decrement_active_streams()
+                    decremented = True
 
                 except GeneratorExit:
-                    # Client disconnected (most common case) - use delayed cleanup for seeks
-                    logger.info(f"[{client_id}] Client disconnected - scheduling delayed cleanup (allowing for seeks)")
-                    persistent_conn.schedule_delayed_cleanup(delay_seconds=30)
+                    # Client disconnected - decrement counter and schedule cleanup only if no active streams
+                    logger.info(f"[{client_id}] Client disconnected - checking if cleanup should be scheduled")
+                    persistent_conn.decrement_active_streams()
+                    decremented = True
+                    scheduled = persistent_conn.schedule_cleanup_if_not_streaming(delay_seconds=10)
+                    if not scheduled:
+                        logger.info(f"[{client_id}] Cleanup not scheduled - connection still has active streams")
 
                 except Exception as e:
                     logger.error(f"[{client_id}] Error in persistent stream: {e}")
-                    # On error, also cleanup the connection as it may be corrupted
+                    # On error, decrement counter and cleanup the connection as it may be corrupted
+                    persistent_conn.decrement_active_streams()
+                    decremented = True
                     logger.info(f"[{client_id}] Cleaning up persistent connection due to error")
                     self.cleanup_persistent_connection(session_id)
                     yield b"Error: Stream interrupted"
 
                 finally:
+                    # Safety net: only decrement if we haven't already
+                    if not decremented:
+                        logger.warning(f"[{client_id}] Stream generator exited without decrement - applying safety net")
+                        persistent_conn.decrement_active_streams()
                     # This runs regardless of how the generator exits
                     logger.debug(f"[{client_id}] Stream generator finished")
 
