@@ -156,15 +156,7 @@ class VODStreamView(View):
 
             logger.info(f"[VOD-PROFILE] Using M3U profile: {m3u_profile.id} (max_streams: {m3u_profile.max_streams}, current: {m3u_profile.current_viewers})")
 
-            # Track connection in Redis (simplified)
-            try:
-                from core.utils import RedisClient
-                redis_client = RedisClient.get_client()
-                profile_connections_key = f"profile_connections:{m3u_profile.id}"
-                redis_client.incr(profile_connections_key)
-            except Exception as e:
-                logger.error(f"Error tracking connection in Redis: {e}")
-
+            # Connection tracking is handled by the connection manager
             # Transform URL based on profile
             final_stream_url = self._transform_url(stream_url, m3u_profile)
             logger.info(f"[VOD-URL] Final stream URL: {final_stream_url}")

@@ -281,6 +281,13 @@ class VODConnectionManager:
             profile_connections_key = self._get_profile_connections_key(m3u_profile.id)
             content_connections_key = self._get_content_connections_key(content_type, content_uuid)
 
+            # Check if connection already exists to prevent duplicate counting
+            if self.redis_client.exists(connection_key):
+                logger.info(f"Connection already exists for {client_id} - {content_type} {content_name}")
+                # Update activity but don't increment profile counter
+                self.redis_client.hset(connection_key, "last_activity", str(time.time()))
+                return True
+
             # Connection data
             connection_data = {
                 "content_type": content_type,
