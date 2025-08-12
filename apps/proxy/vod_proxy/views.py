@@ -26,7 +26,7 @@ class VODStreamView(View):
 
     def get(self, request, content_type, content_id, profile_id=None):
         """
-        Stream VOD content (movies or series episodes)
+        Stream VOD content (movies or series episodes) with session-based connection reuse
 
         Args:
             content_type: 'movie', 'series', or 'episode'
@@ -36,10 +36,96 @@ class VODStreamView(View):
         logger.info(f"[VOD-REQUEST] Starting VOD stream request: {content_type}/{content_id}, profile: {profile_id}")
         logger.info(f"[VOD-REQUEST] Full request path: {request.get_full_path()}")
         logger.info(f"[VOD-REQUEST] Request method: {request.method}")
+        logger.info(f"[VOD-REQUEST] Request headers: {dict(request.headers)}")
 
         try:
             client_ip, user_agent = get_client_info(request)
-            logger.info(f"[VOD-CLIENT] Client info - IP: {client_ip}, User-Agent: {user_agent[:100]}...")
+
+            # Extract timeshift parameters from query string
+            # Support multiple timeshift parameter formats
+            utc_start = request.GET.get('utc_start') or request.GET.get('start') or request.GET.get('playliststart')
+            utc_end = request.GET.get('utc_end') or request.GET.get('end') or request.GET.get('playlistend')
+            offset = request.GET.get('offset') or request.GET.get('seek') or request.GET.get('t')
+
+            # VLC specific timeshift parameters
+            if not utc_start and not offset:
+                # Check for VLC-style timestamp parameters
+                if 'timestamp' in request.GET:
+                    offset = request.GET.get('timestamp')
+                elif 'time' in request.GET:
+                    offset = request.GET.get('time')
+
+            # Extract session ID for connection reuse
+            session_id = request.GET.get('session_id')
+
+            # Extract Range header for seeking support
+            range_header = request.META.get('HTTP_RANGE')
+
+            logger.info(f"[VOD-TIMESHIFT] Timeshift params - utc_start: {utc_start}, utc_end: {utc_end}, offset: {offset}")
+            logger.info(f"[VOD-SESSION] Session ID: {session_id}")
+
+            # Log all query parameters for debugging
+            if request.GET:
+                logger.debug(f"[VOD-PARAMS] All query params: {dict(request.GET)}")
+
+            if range_header:
+                logger.info(f"[VOD-RANGE] Range header: {range_header}")
+
+                # Parse the range to understand what position VLC is seeking to
+                try:
+                    if 'bytes=' in range_header:
+                        range_part = range_header.replace('bytes=', '')
+                        if '-' in range_part:
+                            start_byte, end_byte = range_part.split('-', 1)
+                            if start_byte:
+                                start_pos_mb = int(start_byte) / (1024 * 1024)
+                                logger.info(f"[VOD-SEEK] Seeking to byte position: {start_byte} (~{start_pos_mb:.1f} MB)")
+                                if int(start_byte) > 0:
+                                    logger.info(f"[VOD-SEEK] *** ACTUAL SEEK DETECTED *** Position: {start_pos_mb:.1f} MB")
+                            else:
+                                logger.info(f"[VOD-SEEK] Open-ended range request (from start)")
+                            if end_byte:
+                                end_pos_mb = int(end_byte) / (1024 * 1024)
+                                logger.info(f"[VOD-SEEK] End position: {end_byte} bytes (~{end_pos_mb:.1f} MB)")
+                except Exception as e:
+                    logger.warning(f"[VOD-SEEK] Could not parse range header: {e}")
+
+                # Simple seek detection - track rapid requests
+                current_time = time.time()
+                request_key = f"{client_ip}:{content_type}:{content_id}"
+
+                if not hasattr(self.__class__, '_request_times'):
+                    self.__class__._request_times = {}
+
+                if request_key in self.__class__._request_times:
+                    time_diff = current_time - self.__class__._request_times[request_key]
+                    if time_diff < 5.0:
+                        logger.info(f"[VOD-SEEK] Rapid request detected ({time_diff:.1f}s) - likely seeking")
+
+                self.__class__._request_times[request_key] = current_time
+            else:
+                logger.info(f"[VOD-RANGE] No Range header - full content request")
+
+            logger.info(f"[VOD-CLIENT] Client info - IP: {client_ip}, User-Agent: {user_agent[:50]}...")
+
+            # If no session ID, create one and redirect
+            if not session_id:
+                session_id = f"vod_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+                logger.info(f"[VOD-SESSION] Creating new session: {session_id}")
+
+                # Build redirect URL with session ID and preserve all parameters
+                from urllib.parse import urlencode
+                query_params = dict(request.GET)
+                query_params['session_id'] = session_id
+                query_string = urlencode(query_params, doseq=True)
+
+                redirect_url = f"{request.path}?{query_string}"
+                logger.info(f"[VOD-SESSION] Redirecting to: {redirect_url}")
+
+                return HttpResponse(
+                    status=302,
+                    headers={'Location': redirect_url}
+                )
 
             # Get the content object and its relation
             content_obj, relation = self._get_content_and_relation(content_type, content_id)
@@ -70,13 +156,12 @@ class VODStreamView(View):
 
             logger.info(f"[VOD-PROFILE] Using M3U profile: {m3u_profile.id} (max_streams: {m3u_profile.max_streams}, current: {m3u_profile.current_viewers})")
 
-            # Track connection start in Redis
+            # Track connection in Redis (simplified)
             try:
                 from core.utils import RedisClient
                 redis_client = RedisClient.get_client()
                 profile_connections_key = f"profile_connections:{m3u_profile.id}"
-                current_count = redis_client.incr(profile_connections_key)
-                logger.debug(f"Incremented VOD profile {m3u_profile.id} connections to {current_count}")
+                redis_client.incr(profile_connections_key)
             except Exception as e:
                 logger.error(f"Error tracking connection in Redis: {e}")
 
@@ -92,15 +177,20 @@ class VODStreamView(View):
             # Get connection manager
             connection_manager = VODConnectionManager.get_instance()
 
-            # Stream the content
+            # Stream the content with session-based connection reuse
             logger.info("[VOD-STREAM] Calling connection manager to stream content")
-            response = connection_manager.stream_content(
+            response = connection_manager.stream_content_with_session(
+                session_id=session_id,
                 content_obj=content_obj,
                 stream_url=final_stream_url,
                 m3u_profile=m3u_profile,
                 client_ip=client_ip,
                 user_agent=user_agent,
-                request=request
+                request=request,
+                utc_start=utc_start,
+                utc_end=utc_end,
+                offset=offset,
+                range_header=range_header
             )
 
             logger.info(f"[VOD-SUCCESS] Stream response created successfully, type: {type(response)}")
@@ -225,7 +315,6 @@ class VODStreamView(View):
 
             if search_pattern and replace_pattern:
                 transformed_url = re.sub(search_pattern, safe_replace_pattern, original_url)
-                logger.debug(f"URL transformed from {original_url} to {transformed_url}")
                 return transformed_url
 
             return original_url
