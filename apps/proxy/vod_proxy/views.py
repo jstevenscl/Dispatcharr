@@ -292,6 +292,16 @@ class VODStreamView(View):
             # Close the small range request - we don't need to keep this connection
             response.close()
 
+            # Store the total content length in Redis for the persistent connection to use
+            try:
+                import redis
+                r = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
+                content_length_key = f"vod_content_length:{session_id}"
+                r.set(content_length_key, total_size, ex=1800)  # Store for 30 minutes
+                logger.info(f"[VOD-HEAD] Stored total content length {total_size} for session {session_id}")
+            except Exception as e:
+                logger.error(f"[VOD-HEAD] Failed to store content length in Redis: {e}")
+
             # Now create a persistent connection for the session (if one doesn't exist)
             # This ensures the FUSE GET requests will reuse the same connection
             connection_manager = VODConnectionManager.get_instance()

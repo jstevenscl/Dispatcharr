@@ -93,7 +93,24 @@ class PersistentVODConnection:
 
             # Capture headers from final URL
             if not self.content_length:
-                self.content_length = response.headers.get('content-length')
+                # First check if we have a pre-stored content length from HEAD request
+                try:
+                    import redis
+                    r = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
+                    content_length_key = f"vod_content_length:{self.session_id}"
+                    stored_length = r.get(content_length_key)
+                    if stored_length:
+                        self.content_length = stored_length
+                        logger.info(f"[{self.session_id}] *** USING PRE-STORED CONTENT LENGTH: {self.content_length} ***")
+                    else:
+                        # Fallback to response headers
+                        self.content_length = response.headers.get('content-length')
+                        logger.info(f"[{self.session_id}] *** USING RESPONSE CONTENT LENGTH: {self.content_length} ***")
+                except Exception as e:
+                    logger.error(f"[{self.session_id}] Error checking Redis for content length: {e}")
+                    # Fallback to response headers
+                    self.content_length = response.headers.get('content-length')
+
                 self.content_type = response.headers.get('content-type', 'video/mp4')
                 self.final_url = response.url
                 logger.info(f"[{self.session_id}] *** PERSISTENT CONNECTION - Final URL: {self.final_url} ***")
