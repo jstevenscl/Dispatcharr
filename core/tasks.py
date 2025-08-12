@@ -1,4 +1,3 @@
-# yourapp/tasks.py
 from celery import shared_task
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -639,10 +638,10 @@ def rehash_streams(keys):
 def cleanup_vod_persistent_connections():
     """Clean up stale VOD persistent connections"""
     try:
-        from apps.proxy.vod_proxy.connection_manager import connection_manager
+        from apps.proxy.vod_proxy.connection_manager import VODConnectionManager
 
         # Clean up connections older than 30 minutes
-        connection_manager.cleanup_stale_persistent_connections(max_age_seconds=1800)
+        VODConnectionManager.cleanup_stale_persistent_connections(max_age_seconds=1800)
         logger.info("VOD persistent connection cleanup completed")
 
     except Exception as e:
