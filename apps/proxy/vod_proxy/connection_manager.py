@@ -177,7 +177,7 @@ class PersistentVODConnection:
 
             return self.current_response
 
-    def schedule_delayed_cleanup(self, delay_seconds=5):
+    def schedule_delayed_cleanup(self, delay_seconds=30):
         """Schedule cleanup after a delay to allow for rapid successive requests"""
         # Cancel any existing cleanup timer
         if self.cleanup_timer:
@@ -925,7 +925,7 @@ class VODConnectionManager:
                 except GeneratorExit:
                     # Client disconnected (most common case) - use delayed cleanup for seeks
                     logger.info(f"[{client_id}] Client disconnected - scheduling delayed cleanup (allowing for seeks)")
-                    persistent_conn.schedule_delayed_cleanup(delay_seconds=5)
+                    persistent_conn.schedule_delayed_cleanup(delay_seconds=30)
 
                 except Exception as e:
                     logger.error(f"[{client_id}] Error in persistent stream: {e}")
