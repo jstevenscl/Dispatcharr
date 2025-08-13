@@ -7,6 +7,7 @@ import json
 import logging
 import threading
 import random
+import re
 import requests
 from typing import Optional, Dict, Any
 from django.http import StreamingHttpResponse, HttpResponse
@@ -290,6 +291,134 @@ class VODConnectionManager:
         self.redis_client = RedisClient.get_client()
         self.connection_ttl = 3600  # 1 hour TTL for connections
         self.session_ttl = 1800  # 30 minutes TTL for sessions
+
+    def find_matching_idle_session(self, content_type: str, content_uuid: str,
+                                 client_ip: str, user_agent: str,
+                                 utc_start=None, utc_end=None, offset=None) -> Optional[str]:
+        """
+        Find an existing session that matches content and client criteria with no active streams
+
+        Args:
+            content_type: Type of content (movie, episode, series)
+            content_uuid: UUID of the content
+            client_ip: Client IP address
+            user_agent: Client user agent
+            utc_start: UTC start time for timeshift
+            utc_end: UTC end time for timeshift
+            offset: Offset in seconds
+
+        Returns:
+            Session ID if matching idle session found, None otherwise
+        """
+        if not self.redis_client:
+            return None
+
+        try:
+            # Search for sessions with matching content
+            pattern = "vod_session:*"
+            cursor = 0
+            matching_sessions = []
+
+            while True:
+                cursor, keys = self.redis_client.scan(cursor, match=pattern, count=100)
+
+                for key in keys:
+                    try:
+                        session_data = self.redis_client.hgetall(key)
+                        if not session_data:
+                            continue
+
+                        # Extract session info
+                        stored_content_type = session_data.get(b'content_type', b'').decode('utf-8')
+                        stored_content_uuid = session_data.get(b'content_uuid', b'').decode('utf-8')
+
+                        # Check if content matches
+                        if stored_content_type != content_type or stored_content_uuid != content_uuid:
+                            continue
+
+                        # Extract session ID from key
+                        session_id = key.decode('utf-8').replace('vod_session:', '')
+
+                        # Check if session has an active persistent connection
+                        persistent_conn = self._persistent_connections.get(session_id)
+                        if not persistent_conn:
+                            # No persistent connection exists, skip
+                            continue
+
+                        # Check if connection has no active streams
+                        if persistent_conn.has_active_streams():
+                            logger.debug(f"[{session_id}] Session has active streams - skipping")
+                            continue
+
+                        # Get stored client info for comparison
+                        stored_client_ip = session_data.get(b'client_ip', b'').decode('utf-8')
+                        stored_user_agent = session_data.get(b'user_agent', b'').decode('utf-8')
+
+                        # Check timeshift parameters match
+                        stored_utc_start = session_data.get(b'utc_start', b'').decode('utf-8')
+                        stored_utc_end = session_data.get(b'utc_end', b'').decode('utf-8')
+                        stored_offset = session_data.get(b'offset', b'').decode('utf-8')
+
+                        current_utc_start = utc_start or ""
+                        current_utc_end = utc_end or ""
+                        current_offset = str(offset) if offset else ""
+
+                        # Calculate match score
+                        score = 0
+                        match_reasons = []
+
+                        # Content already matches (required)
+                        score += 10
+                        match_reasons.append("content")
+
+                        # IP match (high priority)
+                        if stored_client_ip and stored_client_ip == client_ip:
+                            score += 5
+                            match_reasons.append("ip")
+
+                        # User-Agent match (medium priority)
+                        if stored_user_agent and stored_user_agent == user_agent:
+                            score += 3
+                            match_reasons.append("user-agent")
+
+                        # Timeshift parameters match (high priority for seeking)
+                        if (stored_utc_start == current_utc_start and
+                            stored_utc_end == current_utc_end and
+                            stored_offset == current_offset):
+                            score += 7
+                            match_reasons.append("timeshift")
+
+                        # Consider it a good match if we have at least content + one other criteria
+                        if score >= 13:  # content(10) + ip(5) or content(10) + user-agent(3) + something else
+                            matching_sessions.append({
+                                'session_id': session_id,
+                                'score': score,
+                                'reasons': match_reasons,
+                                'last_activity': float(session_data.get(b'last_activity', b'0').decode('utf-8'))
+                            })
+
+                    except Exception as e:
+                        logger.debug(f"Error processing session key {key}: {e}")
+                        continue
+
+                if cursor == 0:
+                    break
+
+            # Sort by score (highest first), then by last activity (most recent first)
+            matching_sessions.sort(key=lambda x: (x['score'], x['last_activity']), reverse=True)
+
+            if matching_sessions:
+                best_match = matching_sessions[0]
+                logger.info(f"Found matching idle session: {best_match['session_id']} "
+                          f"(score: {best_match['score']}, reasons: {', '.join(best_match['reasons'])})")
+                return best_match['session_id']
+            else:
+                logger.debug(f"No matching idle sessions found for {content_type} {content_uuid}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error finding matching idle session: {e}")
+            return None
 
     def _get_connection_key(self, content_type: str, content_uuid: str, client_id: str) -> str:
         """Get Redis key for a specific connection"""
@@ -857,6 +986,38 @@ class VODConnectionManager:
             if persistent_conn:
                 persistent_conn.cancel_cleanup()
 
+            # If no existing connection, try to find a matching idle session first
+            if not persistent_conn:
+                # Look for existing idle sessions that match content and client criteria
+                matching_session_id = self.find_matching_idle_session(
+                    content_type, content_uuid, client_ip, user_agent,
+                    utc_start, utc_end, offset
+                )
+
+                if matching_session_id:
+                    logger.info(f"[{client_id}] Found matching idle session {matching_session_id} - redirecting client")
+
+                    # Update the session activity and client info
+                    session_key = f"vod_session:{matching_session_id}"
+                    if self.redis_client:
+                        update_data = {
+                            "last_activity": str(time.time()),
+                            "client_ip": client_ip,  # Update in case IP changed
+                            "user_agent": user_agent  # Update in case user agent changed
+                        }
+                        self.redis_client.hset(session_key, mapping=update_data)
+                        self.redis_client.expire(session_key, self.session_ttl)
+
+                    # Get the existing persistent connection
+                    persistent_conn = self._persistent_connections.get(matching_session_id)
+                    if persistent_conn:
+                        # Update the session_id to use the matching one
+                        client_id = matching_session_id
+                        session_id = matching_session_id
+                        logger.info(f"[{client_id}] Successfully redirected to existing idle session")
+                    else:
+                        logger.warning(f"[{client_id}] Matching session found but no persistent connection - will create new")
+
             if not persistent_conn:
                 logger.info(f"[{client_id}] Creating NEW persistent connection for {content_type} {content_name}")
 
@@ -866,8 +1027,14 @@ class VODConnectionManager:
                     "content_uuid": content_uuid,
                     "content_name": content_name,
                     "created_at": str(time.time()),
+                    "last_activity": str(time.time()),
                     "profile_id": str(m3u_profile.id),
-                    "connection_counted": "True"
+                    "connection_counted": "True",
+                    "client_ip": client_ip,
+                    "user_agent": user_agent,
+                    "utc_start": utc_start or "",
+                    "utc_end": utc_end or "",
+                    "offset": str(offset) if offset else ""
                 }
 
                 session_key = f"vod_session:{session_id}"
@@ -1090,7 +1257,6 @@ class VODConnectionManager:
         """
         try:
             from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-            import re
 
             parsed_url = urlparse(original_url)
             query_params = parse_qs(parsed_url.query)
