@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 import django_filters
@@ -30,22 +31,46 @@ from datetime import timedelta
 logger = logging.getLogger(__name__)
 
 
+class VODPagination(PageNumberPagination):
+    page_size = 20  # Default page size to match frontend default
+    page_size_query_param = "page_size"  # Allow clients to specify page size
+    max_page_size = 100  # Prevent excessive page sizes for VOD content
+
+
 class MovieFilter(django_filters.FilterSet):
     name = django_filters.CharFilter(lookup_expr="icontains")
     m3u_account = django_filters.NumberFilter(field_name="m3u_relations__m3u_account__id")
+    category = django_filters.CharFilter(method='filter_category')
     year = django_filters.NumberFilter()
     year_gte = django_filters.NumberFilter(field_name="year", lookup_expr="gte")
     year_lte = django_filters.NumberFilter(field_name="year", lookup_expr="lte")
 
     class Meta:
         model = Movie
-        fields = ['name', 'm3u_account', 'year']
+        fields = ['name', 'm3u_account', 'category', 'year']
+
+    def filter_category(self, queryset, name, value):
+        """Custom category filter that handles 'name|type' format"""
+        if not value:
+            return queryset
+
+        # Handle the format 'category_name|category_type'
+        if '|' in value:
+            category_name, category_type = value.split('|', 1)
+            return queryset.filter(
+                m3u_relations__category__name=category_name,
+                m3u_relations__category__category_type=category_type
+            )
+        else:
+            # Fallback: treat as category name only
+            return queryset.filter(m3u_relations__category__name=value)
 
 
 class MovieViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for Movie content"""
     queryset = Movie.objects.all()
     serializer_class = MovieSerializer
+    pagination_class = VODPagination
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = MovieFilter
@@ -169,10 +194,40 @@ class EpisodeFilter(django_filters.FilterSet):
         fields = ['name', 'series', 'm3u_account', 'season_number', 'episode_number']
 
 
+class SeriesFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_expr="icontains")
+    m3u_account = django_filters.NumberFilter(field_name="m3u_relations__m3u_account__id")
+    category = django_filters.CharFilter(method='filter_category')
+    year = django_filters.NumberFilter()
+    year_gte = django_filters.NumberFilter(field_name="year", lookup_expr="gte")
+    year_lte = django_filters.NumberFilter(field_name="year", lookup_expr="lte")
+
+    class Meta:
+        model = Series
+        fields = ['name', 'm3u_account', 'category', 'year']
+
+    def filter_category(self, queryset, name, value):
+        """Custom category filter that handles 'name|type' format"""
+        if not value:
+            return queryset
+
+        # Handle the format 'category_name|category_type'
+        if '|' in value:
+            category_name, category_type = value.split('|', 1)
+            return queryset.filter(
+                m3u_relations__category__name=category_name,
+                m3u_relations__category__category_type=category_type
+            )
+        else:
+            # Fallback: treat as category name only
+            return queryset.filter(m3u_relations__category__name=value)
+
+
 class EpisodeViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for Episode content"""
     queryset = Episode.objects.all()
     serializer_class = EpisodeSerializer
+    pagination_class = VODPagination
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = EpisodeFilter
@@ -196,8 +251,10 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for Series management"""
     queryset = Series.objects.all()
     serializer_class = SeriesSerializer
+    pagination_class = VODPagination
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = SeriesFilter
     search_fields = ['name', 'description', 'genre']
     ordering_fields = ['name', 'year', 'created_at']
     ordering = ['name']

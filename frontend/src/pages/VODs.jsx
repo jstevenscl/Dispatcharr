@@ -1302,8 +1302,8 @@ const VODsPage = () => {
     const categoryOptions = [
         { value: '', label: 'All Categories' },
         ...Object.values(categories).map(cat => ({
-            value: cat.name,
-            label: cat.name
+            value: `${cat.name}|${cat.category_type}`, // Combine name and type for uniqueness
+            label: `${cat.name} (${cat.category_type})`  // Show type in label for clarity
         }))
     ];
 
