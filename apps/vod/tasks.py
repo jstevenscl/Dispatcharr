@@ -174,7 +174,7 @@ def batch_process_movies(client, account, movies_data):
     if tmdb_ids:
         for movie in Movie.objects.filter(tmdb_id__in=tmdb_ids):
             existing_movies_by_tmdb[movie.tmdb_id] = movie
-            # Also index by name+year+tmdb_id combination
+            # Also index by name+year+tmdb_id combination for constraint checking
             if movie.name and movie.tmdb_id:
                 key = f"{movie.name}_{movie.year or 'None'}_{movie.tmdb_id}"
                 existing_movies_by_name_year_tmdb[key] = movie
@@ -222,9 +222,11 @@ def batch_process_movies(client, account, movies_data):
     logos_to_create = []
 
     # Track movies being created in this batch to prevent duplicates within the batch
-    batch_movies_by_tmdb_key = {}
-    batch_movies_by_imdb_key = {}
-    batch_movies_by_name_year = {}
+    batch_movies_by_tmdb = {}      # Key: tmdb_id -> Movie object
+    batch_movies_by_imdb = {}      # Key: imdb_id -> Movie object
+    batch_movies_by_name_year = {} # Key: "name_year" -> Movie object
+    batch_movies_by_name_year_tmdb = {} # Key: "name_year_tmdb" -> Movie object (for constraint checking)
+    batch_movies_by_name_year_imdb = {} # Key: "name_year_imdb" -> Movie object (for constraint checking)
 
     for movie_data in movies_data:
         try:
@@ -238,41 +240,42 @@ def batch_process_movies(client, account, movies_data):
             tmdb_id = movie_data.get('tmdb_id') or movie_data.get('tmdb')
             imdb_id = movie_data.get('imdb_id') or movie_data.get('imdb')
 
-            # Find existing movie using comprehensive lookup
+            # Find existing movie using hierarchical lookup (most reliable first)
             movie = None
 
-            # First, check if we're already creating this movie in the current batch
-            if tmdb_id and name:
-                tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                if tmdb_key in batch_movies_by_tmdb_key:
-                    movie = batch_movies_by_tmdb_key[tmdb_key]
-                elif tmdb_key in existing_movies_by_name_year_tmdb:
-                    movie = existing_movies_by_name_year_tmdb[tmdb_key]
+            # Priority 1: Check TMDB ID (most reliable identifier)
+            if tmdb_id:
+                # Check batch first
+                if tmdb_id in batch_movies_by_tmdb:
+                    movie = batch_movies_by_tmdb[tmdb_id]
+                    logger.debug(f"Found movie in batch by TMDB ID {tmdb_id}: {name}")
+                # Then check existing database movies
+                elif tmdb_id in existing_movies_by_tmdb:
+                    movie = existing_movies_by_tmdb[tmdb_id]
+                    logger.debug(f"Found existing movie by TMDB ID {tmdb_id}: {name}")
 
-            if not movie and imdb_id and name:
-                imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                if imdb_key in batch_movies_by_imdb_key:
-                    movie = batch_movies_by_imdb_key[imdb_key]
-                elif imdb_key in existing_movies_by_name_year_imdb:
-                    movie = existing_movies_by_name_year_imdb[imdb_key]
+            # Priority 2: Check IMDB ID (second most reliable)
+            if not movie and imdb_id:
+                # Check batch first
+                if imdb_id in batch_movies_by_imdb:
+                    movie = batch_movies_by_imdb[imdb_id]
+                    logger.debug(f"Found movie in batch by IMDB ID {imdb_id}: {name}")
+                # Then check existing database movies
+                elif imdb_id in existing_movies_by_imdb:
+                    movie = existing_movies_by_imdb[imdb_id]
+                    logger.debug(f"Found existing movie by IMDB ID {imdb_id}: {name}")
 
-            # Check batch tracking for name+year combinations
+            # Priority 3: Fallback to name+year (least reliable)
             if not movie:
                 name_year_key = f"{name}_{year or 'None'}"
+                # Check batch first
                 if name_year_key in batch_movies_by_name_year:
                     movie = batch_movies_by_name_year[name_year_key]
-
-            # Fallback to existing database lookups
-            if not movie and tmdb_id and tmdb_id in existing_movies_by_tmdb:
-                movie = existing_movies_by_tmdb[tmdb_id]
-            elif not movie and imdb_id and imdb_id in existing_movies_by_imdb:
-                movie = existing_movies_by_imdb[imdb_id]
-
-            # Final fallback to name+year lookup in database
-            if not movie:
-                name_year_key = f"{name}_{year or 'None'}"
-                if name_year_key in existing_movies_by_name_year:
+                    logger.debug(f"Found movie in batch by name+year: {name} ({year})")
+                # Then check existing database movies
+                elif name_year_key in existing_movies_by_name_year:
                     movie = existing_movies_by_name_year[name_year_key]
+                    logger.debug(f"Found existing movie by name+year: {name} ({year})")
 
             # Prepare movie data
             description = movie_data.get('description') or movie_data.get('plot') or ''
@@ -301,6 +304,7 @@ def batch_process_movies(client, account, movies_data):
 
             if movie:
                 # Update existing movie if needed
+                logger.debug(f"Reusing existing movie: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
                 updated = False
                 if description and description != movie.description:
                     movie.description = description
@@ -341,34 +345,68 @@ def batch_process_movies(client, account, movies_data):
                 if updated:
                     movies_to_update.append(movie)
             else:
-                # Create new movie
-                custom_props = {'trailer': trailer} if trailer else None
-                movie = Movie(
-                    name=name,
-                    year=year,
-                    tmdb_id=tmdb_id,
-                    imdb_id=imdb_id,
-                    description=description,
-                    rating=rating,
-                    genre=genre,
-                    duration_secs=duration_secs,
-                    custom_properties=custom_props
-                )
-                # Store logo URL temporarily for later assignment
-                if logo_url:
-                    movie._logo_url = logo_url
-                movies_to_create.append(movie)
+                # Before creating new movie, check for unique constraint conflicts
+                constraint_check_movie = None
 
-                # Add to batch tracking to prevent duplicates within the same batch
-                if tmdb_id and name:
-                    tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                    batch_movies_by_tmdb_key[tmdb_key] = movie
-                if imdb_id and name:
-                    imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                    batch_movies_by_imdb_key[imdb_key] = movie
-                # Always track by name+year as fallback
-                name_year_key = f"{name}_{year or 'None'}"
-                batch_movies_by_name_year[name_year_key] = movie
+                # Check if a movie with same (name, year, tmdb_id) already exists
+                if tmdb_id:
+                    name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
+                    if name_year_tmdb_key in existing_movies_by_name_year_tmdb:
+                        constraint_check_movie = existing_movies_by_name_year_tmdb[name_year_tmdb_key]
+                        logger.debug(f"Found constraint conflict movie by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
+                    elif name_year_tmdb_key in batch_movies_by_name_year_tmdb:
+                        constraint_check_movie = batch_movies_by_name_year_tmdb[name_year_tmdb_key]
+                        logger.debug(f"Found constraint conflict movie in batch by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
+
+                # Check if a movie with same (name, year, imdb_id) already exists
+                if not constraint_check_movie and imdb_id:
+                    name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
+                    if name_year_imdb_key in existing_movies_by_name_year_imdb:
+                        constraint_check_movie = existing_movies_by_name_year_imdb[name_year_imdb_key]
+                        logger.debug(f"Found constraint conflict movie by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
+                    elif name_year_imdb_key in batch_movies_by_name_year_imdb:
+                        constraint_check_movie = batch_movies_by_name_year_imdb[name_year_imdb_key]
+                        logger.debug(f"Found constraint conflict movie in batch by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
+
+                if constraint_check_movie:
+                    # Use the existing movie to avoid constraint violation
+                    movie = constraint_check_movie
+                    logger.debug(f"Using constraint conflict movie to avoid duplicate: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
+                else:
+                    # Create new movie
+                    logger.debug(f"Creating new movie: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
+                    custom_props = {'trailer': trailer} if trailer else None
+                    movie = Movie(
+                        name=name,
+                        year=year,
+                        tmdb_id=tmdb_id,
+                        imdb_id=imdb_id,
+                        description=description,
+                        rating=rating,
+                        genre=genre,
+                        duration_secs=duration_secs,
+                        custom_properties=custom_props
+                    )
+                    # Store logo URL temporarily for later assignment
+                    if logo_url:
+                        movie._logo_url = logo_url
+                    movies_to_create.append(movie)
+
+                    # Add to batch tracking to prevent duplicates within the same batch
+                    # Priority order: TMDB ID first, then IMDB ID, finally name+year
+                    if tmdb_id:
+                        batch_movies_by_tmdb[tmdb_id] = movie
+                        # Also track by constraint key for duplicate prevention
+                        name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
+                        batch_movies_by_name_year_tmdb[name_year_tmdb_key] = movie
+                    elif imdb_id:
+                        batch_movies_by_imdb[imdb_id] = movie
+                        # Also track by constraint key for duplicate prevention
+                        name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
+                        batch_movies_by_name_year_imdb[name_year_imdb_key] = movie
+                    else:
+                        name_year_key = f"{name}_{year or 'None'}"
+                        batch_movies_by_name_year[name_year_key] = movie
 
             # Handle relation
             stream_url = client.get_vod_stream_url(stream_id)
@@ -469,14 +507,24 @@ def batch_process_series(client, account, series_data_list):
     existing_series_by_tmdb = {}
     existing_series_by_imdb = {}
     existing_series_by_name = {}
+    existing_series_by_name_year_tmdb = {}
+    existing_series_by_name_year_imdb = {}
 
     if tmdb_ids:
         for series in Series.objects.filter(tmdb_id__in=tmdb_ids):
             existing_series_by_tmdb[series.tmdb_id] = series
+            # Also index by name+year+tmdb_id combination for constraint checking
+            if series.name and series.tmdb_id:
+                key = f"{series.name}_{series.year or 'None'}_{series.tmdb_id}"
+                existing_series_by_name_year_tmdb[key] = series
 
     if imdb_ids:
         for series in Series.objects.filter(imdb_id__in=imdb_ids):
             existing_series_by_imdb[series.imdb_id] = series
+            # Also index by name+year+imdb_id combination for constraint checking
+            if series.name and series.imdb_id:
+                key = f"{series.name}_{series.year or 'None'}_{series.imdb_id}"
+                existing_series_by_name_year_imdb[key] = series
 
     for series in Series.objects.filter(name__in=series_names):
         key = f"{series.name}_{series.year or 'None'}"
@@ -504,9 +552,11 @@ def batch_process_series(client, account, series_data_list):
     logos_to_create = []
 
     # Track series being created in this batch to prevent duplicates within the batch
-    batch_series_by_tmdb_key = {}
-    batch_series_by_imdb_key = {}
-    batch_series_by_name_year = {}
+    batch_series_by_tmdb = {}      # Key: tmdb_id -> Series object
+    batch_series_by_imdb = {}      # Key: imdb_id -> Series object
+    batch_series_by_name_year = {} # Key: "name_year" -> Series object
+    batch_series_by_name_year_tmdb = {} # Key: "name_year_tmdb" -> Series object (for constraint checking)
+    batch_series_by_name_year_imdb = {} # Key: "name_year_imdb" -> Series object (for constraint checking)
 
     for series_data in series_data_list:
         try:
@@ -526,30 +576,32 @@ def batch_process_series(client, account, series_data_list):
             # Find existing series - check batch first, then database
             series = None
 
-            # First, check if we're already creating this series in the current batch
-            if tmdb_id and name:
-                tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                if tmdb_key in batch_series_by_tmdb_key:
-                    series = batch_series_by_tmdb_key[tmdb_key]
+            # Priority 1: Check TMDB ID (most reliable identifier)
+            if tmdb_id:
+                # Check batch first
+                if tmdb_id in batch_series_by_tmdb:
+                    series = batch_series_by_tmdb[tmdb_id]
+                # Then check existing database series
+                elif tmdb_id in existing_series_by_tmdb:
+                    series = existing_series_by_tmdb[tmdb_id]
 
-            if not series and imdb_id and name:
-                imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                if imdb_key in batch_series_by_imdb_key:
-                    series = batch_series_by_imdb_key[imdb_key]
+            # Priority 2: Check IMDB ID (second most reliable)
+            if not series and imdb_id:
+                # Check batch first
+                if imdb_id in batch_series_by_imdb:
+                    series = batch_series_by_imdb[imdb_id]
+                # Then check existing database series
+                elif imdb_id in existing_series_by_imdb:
+                    series = existing_series_by_imdb[imdb_id]
 
+            # Priority 3: Fallback to name+year (least reliable)
             if not series:
                 name_year_key = f"{name}_{year or 'None'}"
+                # Check batch first
                 if name_year_key in batch_series_by_name_year:
                     series = batch_series_by_name_year[name_year_key]
-
-            # Fallback to database lookups
-            if not series and tmdb_id and tmdb_id in existing_series_by_tmdb:
-                series = existing_series_by_tmdb[tmdb_id]
-            elif not series and imdb_id and imdb_id in existing_series_by_imdb:
-                series = existing_series_by_imdb[imdb_id]
-            elif not series:
-                name_year_key = f"{name}_{year or 'None'}"
-                if name_year_key in existing_series_by_name:
+                # Then check existing database series
+                elif name_year_key in existing_series_by_name:
                     series = existing_series_by_name[name_year_key]
 
             # Handle logo
@@ -564,6 +616,7 @@ def batch_process_series(client, account, series_data_list):
 
             if series:
                 # Update existing series if needed
+                logger.debug(f"Reusing existing series: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
                 updated = False
                 description = series_data.get('plot', '')
                 rating = series_data.get('rating', '')
@@ -598,31 +651,65 @@ def batch_process_series(client, account, series_data_list):
                 if updated:
                     series_to_update.append(series)
             else:
-                # Create new series
-                series = Series(
-                    name=name,
-                    year=year,
-                    tmdb_id=tmdb_id,
-                    imdb_id=imdb_id,
-                    description=series_data.get('plot', ''),
-                    rating=series_data.get('rating', ''),
-                    genre=series_data.get('genre', '')
-                )
-                # Store logo URL temporarily for later assignment
-                if logo_url:
-                    series._logo_url = logo_url
-                series_to_create.append(series)
+                # Before creating new series, check for unique constraint conflicts
+                constraint_check_series = None
 
-                # Add to batch tracking to prevent duplicates within the same batch
-                if tmdb_id and name:
-                    tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                    batch_series_by_tmdb_key[tmdb_key] = series
-                if imdb_id and name:
-                    imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                    batch_series_by_imdb_key[imdb_key] = series
-                # Always track by name+year as fallback
-                name_year_key = f"{name}_{year or 'None'}"
-                batch_series_by_name_year[name_year_key] = series
+                # Check if a series with same (name, year, tmdb_id) already exists
+                if tmdb_id:
+                    name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
+                    if name_year_tmdb_key in existing_series_by_name_year_tmdb:
+                        constraint_check_series = existing_series_by_name_year_tmdb[name_year_tmdb_key]
+                        logger.debug(f"Found constraint conflict series by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
+                    elif name_year_tmdb_key in batch_series_by_name_year_tmdb:
+                        constraint_check_series = batch_series_by_name_year_tmdb[name_year_tmdb_key]
+                        logger.debug(f"Found constraint conflict series in batch by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
+
+                # Check if a series with same (name, year, imdb_id) already exists
+                if not constraint_check_series and imdb_id:
+                    name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
+                    if name_year_imdb_key in existing_series_by_name_year_imdb:
+                        constraint_check_series = existing_series_by_name_year_imdb[name_year_imdb_key]
+                        logger.debug(f"Found constraint conflict series by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
+                    elif name_year_imdb_key in batch_series_by_name_year_imdb:
+                        constraint_check_series = batch_series_by_name_year_imdb[name_year_imdb_key]
+                        logger.debug(f"Found constraint conflict series in batch by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
+
+                if constraint_check_series:
+                    # Use the existing series to avoid constraint violation
+                    series = constraint_check_series
+                    logger.debug(f"Using constraint conflict series to avoid duplicate: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
+                else:
+                    # Create new series
+                    logger.debug(f"Creating new series: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
+                    series = Series(
+                        name=name,
+                        year=year,
+                        tmdb_id=tmdb_id,
+                        imdb_id=imdb_id,
+                        description=series_data.get('plot', ''),
+                        rating=series_data.get('rating', ''),
+                        genre=series_data.get('genre', '')
+                    )
+                    # Store logo URL temporarily for later assignment
+                    if logo_url:
+                        series._logo_url = logo_url
+                    series_to_create.append(series)
+
+                    # Add to batch tracking to prevent duplicates within the same batch
+                    # Priority order: TMDB ID first, then IMDB ID, finally name+year
+                    if tmdb_id:
+                        batch_series_by_tmdb[tmdb_id] = series
+                        # Also track by constraint key for duplicate prevention
+                        name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
+                        batch_series_by_name_year_tmdb[name_year_tmdb_key] = series
+                    elif imdb_id:
+                        batch_series_by_imdb[imdb_id] = series
+                        # Also track by constraint key for duplicate prevention
+                        name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
+                        batch_series_by_name_year_imdb[name_year_imdb_key] = series
+                    else:
+                        name_year_key = f"{name}_{year or 'None'}"
+                        batch_series_by_name_year[name_year_key] = series
 
             # Handle relation
             if series_id in existing_relations:
@@ -1162,8 +1249,30 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
         ) as client:
             vod_info = client.get_vod_info(relation.stream_id)
             if vod_info and 'info' in vod_info:
-                info = vod_info.get('info', {})
-                movie_data = vod_info.get('movie_data', {})
+                info_raw = vod_info.get('info', {})
+
+                # Handle case where 'info' might be a list instead of dict
+                if isinstance(info_raw, list):
+                    # If it's a list, try to use the first item or create empty dict
+                    info = info_raw[0] if info_raw and isinstance(info_raw[0], dict) else {}
+                    logger.warning(f"VOD info for stream {relation.stream_id} returned list instead of dict, using first item")
+                elif isinstance(info_raw, dict):
+                    info = info_raw
+                else:
+                    info = {}
+                    logger.warning(f"VOD info for stream {relation.stream_id} returned unexpected type: {type(info_raw)}")
+
+                movie_data_raw = vod_info.get('movie_data', {})
+
+                # Handle case where 'movie_data' might be a list instead of dict
+                if isinstance(movie_data_raw, list):
+                    movie_data = movie_data_raw[0] if movie_data_raw and isinstance(movie_data_raw[0], dict) else {}
+                    logger.warning(f"VOD movie_data for stream {relation.stream_id} returned list instead of dict, using first item")
+                elif isinstance(movie_data_raw, dict):
+                    movie_data = movie_data_raw
+                else:
+                    movie_data = {}
+                    logger.warning(f"VOD movie_data for stream {relation.stream_id} returned unexpected type: {type(movie_data_raw)}")
 
                 # Update Movie fields if changed
                 updated = False
