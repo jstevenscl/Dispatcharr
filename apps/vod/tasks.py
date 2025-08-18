@@ -297,10 +297,16 @@ def batch_process_movies(client, account, movies_data):
             if movie_data.get('stream_icon'):
                 logo_url = movie_data['stream_icon']
                 if logo_url not in existing_logos:
-                    # Queue for batch creation
-                    logo = Logo(url=logo_url, name=name)
-                    logos_to_create.append(logo)
-                    existing_logos[logo_url] = logo  # Temporary placeholder
+                    # Check if URL is too long for PostgreSQL index (conservative limit)
+                    max_url_size = 7000  # Well under 8191 bytes limit
+                    if len(logo_url.encode('utf-8')) > max_url_size:
+                        logger.warning(f"Skipping logo for movie '{name}' - URL too large ({len(logo_url)} chars)")
+                        logo_url = None  # Don't use this logo
+                    else:
+                        # Queue for batch creation
+                        logo = Logo(url=logo_url, name=name)
+                        logos_to_create.append(logo)
+                        existing_logos[logo_url] = logo  # Temporary placeholder
 
             if movie:
                 # Update existing movie if needed
@@ -609,10 +615,16 @@ def batch_process_series(client, account, series_data_list):
             if series_data.get('cover'):
                 logo_url = series_data['cover']
                 if logo_url not in existing_logos:
-                    # Queue for batch creation
-                    logo = Logo(url=logo_url, name=name)
-                    logos_to_create.append(logo)
-                    existing_logos[logo_url] = logo  # Temporary placeholder
+                    # Check if URL is too long for PostgreSQL index (conservative limit)
+                    max_url_size = 7000  # Well under 8191 bytes limit
+                    if len(logo_url.encode('utf-8')) > max_url_size:
+                        logger.warning(f"Skipping logo for series '{name}' - URL too large ({len(logo_url)} chars)")
+                        logo_url = None  # Don't use this logo
+                    else:
+                        # Queue for batch creation
+                        logo = Logo(url=logo_url, name=name)
+                        logos_to_create.append(logo)
+                        existing_logos[logo_url] = logo  # Temporary placeholder
 
             if series:
                 # Update existing series if needed
