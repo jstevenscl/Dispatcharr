@@ -55,7 +55,7 @@ def refresh_vod_content(account_id):
 
 
 def refresh_movies(client, account):
-    """Refresh movie content - only basic list, no detailed calls"""
+    """Refresh movie content using simple batch processing like M3U"""
     logger.info(f"Refreshing movies for account {account.name}")
 
     # Get movie categories and pre-create them in batch
@@ -78,12 +78,23 @@ def refresh_movies(client, account):
             movie_data['_category_name'] = category_name
             all_movies_data.append(movie_data)
 
-    # Process all movies in batch
-    batch_process_movies(client, account, all_movies_data)
+    # Process movies in chunks using the simple approach
+    chunk_size = 1000
+    total_movies = len(all_movies_data)
+
+    for i in range(0, total_movies, chunk_size):
+        chunk = all_movies_data[i:i + chunk_size]
+        chunk_num = (i // chunk_size) + 1
+        total_chunks = (total_movies + chunk_size - 1) // chunk_size
+
+        logger.info(f"Processing movie chunk {chunk_num}/{total_chunks} ({len(chunk)} movies)")
+        process_movie_batch(account, chunk, category_map)
+
+    logger.info(f"Completed processing all {total_movies} movies in {total_chunks} chunks")
 
 
 def refresh_series(client, account):
-    """Refresh series content - only basic list, no detailed calls"""
+    """Refresh series content using simple batch processing like M3U"""
     logger.info(f"Refreshing series for account {account.name}")
 
     # Get series categories and pre-create them in batch
@@ -106,8 +117,19 @@ def refresh_series(client, account):
             series_data['_category_name'] = category_name
             all_series_data.append(series_data)
 
-    # Process all series in batch
-    batch_process_series(client, account, all_series_data)
+    # Process series in chunks using the simple approach
+    chunk_size = 1000
+    total_series = len(all_series_data)
+
+    for i in range(0, total_series, chunk_size):
+        chunk = all_series_data[i:i + chunk_size]
+        chunk_num = (i // chunk_size) + 1
+        total_chunks = (total_series + chunk_size - 1) // chunk_size
+
+        logger.info(f"Processing series chunk {chunk_num}/{total_chunks} ({len(chunk)} series)")
+        process_series_batch(account, chunk, category_map)
+
+    logger.info(f"Completed processing all {total_series} series in {total_chunks} chunks")
 
 
 # Batch processing functions for improved efficiency
@@ -144,63 +166,143 @@ def batch_create_categories(categories_data, category_type):
     return existing_categories
 
 
-def batch_process_movies(client, account, movies_data):
-    """Process movies in batches for better performance"""
-    if not movies_data:
-        return
+@shared_task
+def process_movie_batch(account, batch, category_map):
+    """Process a batch of movies using simple bulk operations like M3U processing"""
+    logger.info(f"Processing movie batch of {len(batch)} movies for account {account.name}")
 
-    logger.info(f"Batch processing {len(movies_data)} movies for account {account.name}")
+    movies_to_create = []
+    movies_to_update = []
+    relations_to_create = []
+    relations_to_update = []
+    movie_keys = {}  # For deduplication like M3U stream_hashes
 
-    # Extract unique identifiers for existing lookups
-    movie_names = [movie.get('name', 'Unknown') for movie in movies_data]
-    tmdb_ids = [movie.get('tmdb_id') or movie.get('tmdb') for movie in movies_data if movie.get('tmdb_id') or movie.get('tmdb')]
-    imdb_ids = [movie.get('imdb_id') or movie.get('imdb') for movie in movies_data if movie.get('imdb_id') or movie.get('imdb')]
-    stream_ids = [str(movie.get('stream_id')) for movie in movies_data]
+    # Process each movie in the batch
+    for movie_data in batch:
+        try:
+            stream_id = str(movie_data.get('stream_id'))
+            name = movie_data.get('name', 'Unknown')
+            category_id = movie_data.get('_category_id')
+            category = VODCategory.objects.get(id=category_id) if category_id else None
 
-    # Pre-fetch categories by ID
-    category_ids = [movie.get('_category_id') for movie in movies_data if movie.get('_category_id')]
-    categories_by_id = {
-        cat.id: cat for cat in VODCategory.objects.filter(id__in=category_ids)
-    } if category_ids else {}
+            # Extract metadata
+            year = extract_year_from_data(movie_data, 'name')
+            tmdb_id = movie_data.get('tmdb_id') or movie_data.get('tmdb')
+            imdb_id = movie_data.get('imdb_id') or movie_data.get('imdb')
 
-    # Pre-fetch existing movies to avoid N+1 queries and duplicates
-    existing_movies_by_tmdb = {}
-    existing_movies_by_imdb = {}
-    existing_movies_by_name_year = {}
-    existing_movies_by_name_year_tmdb = {}
-    existing_movies_by_name_year_imdb = {}
+            # Clean empty string IDs
+            if tmdb_id == '':
+                tmdb_id = None
+            if imdb_id == '':
+                imdb_id = None
 
-    # Create comprehensive lookups to handle all unique constraint combinations
+            # Create a unique key for this movie (priority: TMDB > IMDB > name+year)
+            if tmdb_id:
+                movie_key = f"tmdb_{tmdb_id}"
+            elif imdb_id:
+                movie_key = f"imdb_{imdb_id}"
+            else:
+                movie_key = f"name_{name}_{year or 'None'}"
+
+            # Skip duplicates in this batch
+            if movie_key in movie_keys:
+                continue
+
+            # Prepare movie properties
+            description = movie_data.get('description') or movie_data.get('plot') or ''
+            rating = movie_data.get('rating') or movie_data.get('vote_average') or ''
+            genre = movie_data.get('genre') or movie_data.get('category_name') or ''
+            duration_secs = extract_duration_from_data(movie_data)
+            trailer = movie_data.get('trailer') or movie_data.get('youtube_trailer') or ''
+            logo_url = movie_data.get('stream_icon') or ''
+
+            movie_props = {
+                'name': name,
+                'year': year,
+                'tmdb_id': tmdb_id,
+                'imdb_id': imdb_id,
+                'description': description,
+                'rating': rating,
+                'genre': genre,
+                'duration_secs': duration_secs,
+                'custom_properties': {'trailer': trailer} if trailer else None,
+            }
+
+            movie_keys[movie_key] = {
+                'props': movie_props,
+                'stream_id': stream_id,
+                'category': category,
+                'movie_data': movie_data,
+                'logo_url': logo_url  # Keep logo URL for later processing
+            }
+
+        except Exception as e:
+            logger.error(f"Error preparing movie {movie_data.get('name', 'Unknown')}: {str(e)}")
+
+    # Collect all logo URLs and create logos in batch
+    logo_urls = set()
+    logo_url_to_name = {}  # Map logo URLs to movie names
+    for data in movie_keys.values():
+        logo_url = data.get('logo_url')
+        if logo_url and len(logo_url) <= 500:  # Ignore overly long URLs (likely embedded image data)
+            logo_urls.add(logo_url)
+            # Map this logo URL to the movie name (use first occurrence if multiple movies share same logo)
+            if logo_url not in logo_url_to_name:
+                movie_name = data['props'].get('name', 'Unknown Movie')
+                logo_url_to_name[logo_url] = movie_name
+
+    # Get existing logos
+    existing_logos = {
+        logo.url: logo for logo in Logo.objects.filter(url__in=logo_urls)
+    } if logo_urls else {}
+
+    # Create missing logos
+    logos_to_create = []
+    for logo_url in logo_urls:
+        if logo_url not in existing_logos:
+            movie_name = logo_url_to_name.get(logo_url, 'Unknown Movie')
+            logos_to_create.append(Logo(url=logo_url, name=movie_name))
+
+    if logos_to_create:
+        try:
+            Logo.objects.bulk_create(logos_to_create, ignore_conflicts=True)
+            # Refresh existing_logos with newly created ones
+            new_logo_urls = [logo.url for logo in logos_to_create]
+            newly_created = {
+                logo.url: logo for logo in Logo.objects.filter(url__in=new_logo_urls)
+            }
+            existing_logos.update(newly_created)
+            logger.info(f"Created {len(newly_created)} new logos for movies")
+        except Exception as e:
+            logger.warning(f"Failed to create logos: {e}")
+
+    # Get existing movies based on our keys
+    existing_movies = {}
+
+    # Query by TMDB IDs
+    tmdb_keys = [k for k in movie_keys.keys() if k.startswith('tmdb_')]
+    tmdb_ids = [k.replace('tmdb_', '') for k in tmdb_keys]
     if tmdb_ids:
         for movie in Movie.objects.filter(tmdb_id__in=tmdb_ids):
-            existing_movies_by_tmdb[movie.tmdb_id] = movie
-            # Also index by name+year+tmdb_id combination for constraint checking
-            if movie.name and movie.tmdb_id:
-                key = f"{movie.name}_{movie.year or 'None'}_{movie.tmdb_id}"
-                existing_movies_by_name_year_tmdb[key] = movie
+            existing_movies[f"tmdb_{movie.tmdb_id}"] = movie
 
+    # Query by IMDB IDs
+    imdb_keys = [k for k in movie_keys.keys() if k.startswith('imdb_')]
+    imdb_ids = [k.replace('imdb_', '') for k in imdb_keys]
     if imdb_ids:
         for movie in Movie.objects.filter(imdb_id__in=imdb_ids):
-            existing_movies_by_imdb[movie.imdb_id] = movie
-            # Also index by name+year+imdb_id combination
-            if movie.name and movie.imdb_id:
-                key = f"{movie.name}_{movie.year or 'None'}_{movie.imdb_id}"
-                existing_movies_by_name_year_imdb[key] = movie
+            existing_movies[f"imdb_{movie.imdb_id}"] = movie
 
-    # Get all movies with matching names to check for name+year combinations
-    for movie in Movie.objects.filter(name__in=movie_names):
-        name_year_key = f"{movie.name}_{movie.year or 'None'}"
-        existing_movies_by_name_year[name_year_key] = movie
+    # Query by name+year for movies without external IDs
+    name_year_keys = [k for k in movie_keys.keys() if k.startswith('name_')]
+    if name_year_keys:
+        for movie in Movie.objects.filter(tmdb_id__isnull=True, imdb_id__isnull=True):
+            key = f"name_{movie.name}_{movie.year or 'None'}"
+            if key in name_year_keys:
+                existing_movies[key] = movie
 
-        # Also add to tmdb/imdb specific lookups if they have those IDs
-        if movie.tmdb_id:
-            tmdb_key = f"{movie.name}_{movie.year or 'None'}_{movie.tmdb_id}"
-            existing_movies_by_name_year_tmdb[tmdb_key] = movie
-        if movie.imdb_id:
-            imdb_key = f"{movie.name}_{movie.year or 'None'}_{movie.imdb_id}"
-            existing_movies_by_name_year_imdb[imdb_key] = movie
-
-    # Pre-fetch existing relations
+    # Get existing relations
+    stream_ids = [data['stream_id'] for data in movie_keys.values()]
     existing_relations = {
         rel.stream_id: rel for rel in M3UMovieRelation.objects.filter(
             m3u_account=account,
@@ -208,368 +310,155 @@ def batch_process_movies(client, account, movies_data):
         ).select_related('movie')
     }
 
-    # Pre-fetch existing logos
-    logo_urls = [movie.get('stream_icon') for movie in movies_data if movie.get('stream_icon')]
-    existing_logos = {
-        logo.url: logo for logo in Logo.objects.filter(url__in=logo_urls)
-    }
+    # Process each movie
+    for movie_key, data in movie_keys.items():
+        movie_props = data['props']
+        stream_id = data['stream_id']
+        category = data['category']
+        movie_data = data['movie_data']
+        logo_url = data.get('logo_url')
 
-    # Process movies in batches
-    movies_to_create = []
-    movies_to_update = []
-    relations_to_create = []
-    relations_to_update = []
-    logos_to_create = []
+        if movie_key in existing_movies:
+            # Update existing movie
+            movie = existing_movies[movie_key]
+            updated = False
 
-    # Track movies being created in this batch to prevent duplicates within the batch
-    batch_movies_by_tmdb = {}      # Key: tmdb_id -> Movie object
-    batch_movies_by_imdb = {}      # Key: imdb_id -> Movie object
-    batch_movies_by_name_year = {} # Key: "name_year" -> Movie object
-    batch_movies_by_name_year_tmdb = {} # Key: "name_year_tmdb" -> Movie object (for constraint checking)
-    batch_movies_by_name_year_imdb = {} # Key: "name_year_imdb" -> Movie object (for constraint checking)
-
-    for movie_data in movies_data:
-        try:
-            stream_id = str(movie_data.get('stream_id'))
-            name = movie_data.get('name', 'Unknown')
-            category_id = movie_data.get('_category_id')
-            category = categories_by_id.get(category_id) if category_id else None
-
-            # Extract metadata
-            year = extract_year_from_data(movie_data, 'name')
-            tmdb_id = movie_data.get('tmdb_id') or movie_data.get('tmdb')
-            imdb_id = movie_data.get('imdb_id') or movie_data.get('imdb')
-
-            # Find existing movie using hierarchical lookup (most reliable first)
-            movie = None
-
-            # Priority 1: Check TMDB ID (most reliable identifier)
-            if tmdb_id:
-                # Check batch first
-                if tmdb_id in batch_movies_by_tmdb:
-                    movie = batch_movies_by_tmdb[tmdb_id]
-                    logger.debug(f"Found movie in batch by TMDB ID {tmdb_id}: {name}")
-                # Then check existing database movies
-                elif tmdb_id in existing_movies_by_tmdb:
-                    movie = existing_movies_by_tmdb[tmdb_id]
-                    logger.debug(f"Found existing movie by TMDB ID {tmdb_id}: {name}")
-
-            # Priority 2: Check IMDB ID (second most reliable)
-            if not movie and imdb_id:
-                # Check batch first
-                if imdb_id in batch_movies_by_imdb:
-                    movie = batch_movies_by_imdb[imdb_id]
-                    logger.debug(f"Found movie in batch by IMDB ID {imdb_id}: {name}")
-                # Then check existing database movies
-                elif imdb_id in existing_movies_by_imdb:
-                    movie = existing_movies_by_imdb[imdb_id]
-                    logger.debug(f"Found existing movie by IMDB ID {imdb_id}: {name}")
-
-            # Priority 3: Fallback to name+year (least reliable)
-            if not movie:
-                name_year_key = f"{name}_{year or 'None'}"
-                # Check batch first
-                if name_year_key in batch_movies_by_name_year:
-                    movie = batch_movies_by_name_year[name_year_key]
-                    logger.debug(f"Found movie in batch by name+year: {name} ({year})")
-                # Then check existing database movies
-                elif name_year_key in existing_movies_by_name_year:
-                    movie = existing_movies_by_name_year[name_year_key]
-                    logger.debug(f"Found existing movie by name+year: {name} ({year})")
-
-            # Prepare movie data
-            description = movie_data.get('description') or movie_data.get('plot') or ''
-            rating = movie_data.get('rating') or movie_data.get('vote_average') or ''
-            genre = movie_data.get('genre') or movie_data.get('category_name') or ''
-            duration_secs = extract_duration_from_data(movie_data)
-            trailer = movie_data.get('trailer') or movie_data.get('youtube_trailer') or ''
-
-            info = {
-                'plot': description,
-                'rating': rating,
-                'genre': genre,
-                'duration_secs': duration_secs,
-                'trailer': trailer,
-            }
-
-            # Handle logo
-            logo_url = None
-            if movie_data.get('stream_icon'):
-                logo_url = movie_data['stream_icon']
-                if logo_url not in existing_logos:
-                    # Check if URL is too long for PostgreSQL index (conservative limit)
-                    max_url_size = 7000  # Well under 8191 bytes limit
-                    if len(logo_url.encode('utf-8')) > max_url_size:
-                        logger.warning(f"Skipping logo for movie '{name}' - URL too large ({len(logo_url)} chars)")
-                        logo_url = None  # Don't use this logo
-                    else:
-                        # Queue for batch creation
-                        logo = Logo(url=logo_url, name=name)
-                        logos_to_create.append(logo)
-                        existing_logos[logo_url] = logo  # Temporary placeholder
-
-            if movie:
-                # Update existing movie if needed
-                logger.debug(f"Reusing existing movie: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
-                updated = False
-                if description and description != movie.description:
-                    movie.description = description
-                    updated = True
-                if rating and rating != movie.rating:
-                    movie.rating = rating
-                    updated = True
-                if genre and genre != movie.genre:
-                    movie.genre = genre
-                    updated = True
-                if year and year != movie.year:
-                    movie.year = year
-                    updated = True
-                if tmdb_id and tmdb_id != movie.tmdb_id:
-                    movie.tmdb_id = tmdb_id
-                    updated = True
-                if imdb_id and imdb_id != movie.imdb_id:
-                    movie.imdb_id = imdb_id
-                    updated = True
-                if duration_secs and duration_secs != movie.duration_secs:
-                    movie.duration_secs = duration_secs
-                    updated = True
-
-                # Update custom properties
-                custom_props = movie.custom_properties or {}
-                if trailer and trailer != custom_props.get('trailer'):
-                    custom_props['trailer'] = trailer
-                    movie.custom_properties = custom_props
-                    updated = True
-
-                # Update logo if we have one and it's different
-                if logo_url and logo_url in existing_logos:
-                    new_logo = existing_logos[logo_url]
-                    if movie.logo != new_logo:
-                        movie.logo = new_logo
+            for field, value in movie_props.items():
+                if field == 'custom_properties':
+                    if value != movie.custom_properties:
+                        movie.custom_properties = value
                         updated = True
+                elif getattr(movie, field) != value:
+                    setattr(movie, field, value)
+                    updated = True
 
-                if updated:
-                    movies_to_update.append(movie)
-            else:
-                # Before creating new movie, check for unique constraint conflicts
-                constraint_check_movie = None
+            # Handle logo assignment for existing movies
+            if logo_url and len(logo_url) <= 500 and logo_url in existing_logos:
+                new_logo = existing_logos[logo_url]
+                if movie.logo != new_logo:
+                    movie.logo = new_logo
+                    updated = True
+            elif (not logo_url or len(logo_url) > 500) and movie.logo:
+                # Clear logo if no logo URL provided or URL is too long
+                movie.logo = None
+                updated = True
 
-                # Check if a movie with same (name, year, tmdb_id) already exists
-                if tmdb_id:
-                    name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                    if name_year_tmdb_key in existing_movies_by_name_year_tmdb:
-                        constraint_check_movie = existing_movies_by_name_year_tmdb[name_year_tmdb_key]
-                        logger.debug(f"Found constraint conflict movie by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
-                    elif name_year_tmdb_key in batch_movies_by_name_year_tmdb:
-                        constraint_check_movie = batch_movies_by_name_year_tmdb[name_year_tmdb_key]
-                        logger.debug(f"Found constraint conflict movie in batch by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
+            if updated:
+                movies_to_update.append(movie)
+        else:
+            # Create new movie
+            movie = Movie(**movie_props)
 
-                # Check if a movie with same (name, year, imdb_id) already exists
-                if not constraint_check_movie and imdb_id:
-                    name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                    if name_year_imdb_key in existing_movies_by_name_year_imdb:
-                        constraint_check_movie = existing_movies_by_name_year_imdb[name_year_imdb_key]
-                        logger.debug(f"Found constraint conflict movie by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
-                    elif name_year_imdb_key in batch_movies_by_name_year_imdb:
-                        constraint_check_movie = batch_movies_by_name_year_imdb[name_year_imdb_key]
-                        logger.debug(f"Found constraint conflict movie in batch by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
+            # Assign logo if available
+            if logo_url and len(logo_url) <= 500 and logo_url in existing_logos:
+                movie.logo = existing_logos[logo_url]
 
-                if constraint_check_movie:
-                    # Use the existing movie to avoid constraint violation
-                    movie = constraint_check_movie
-                    logger.debug(f"Using constraint conflict movie to avoid duplicate: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
-                else:
-                    # Create new movie
-                    logger.debug(f"Creating new movie: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
-                    custom_props = {'trailer': trailer} if trailer else None
-                    movie = Movie(
-                        name=name,
-                        year=year,
-                        tmdb_id=tmdb_id,
-                        imdb_id=imdb_id,
-                        description=description,
-                        rating=rating,
-                        genre=genre,
-                        duration_secs=duration_secs,
-                        custom_properties=custom_props
-                    )
-                    # Store logo URL temporarily for later assignment
-                    if logo_url:
-                        movie._logo_url = logo_url
-                    movies_to_create.append(movie)
+            movies_to_create.append(movie)
 
-                    # Add to batch tracking to prevent duplicates within the same batch
-                    # Priority order: TMDB ID first, then IMDB ID, finally name+year
-                    if tmdb_id:
-                        batch_movies_by_tmdb[tmdb_id] = movie
-                        # Also track by constraint key for duplicate prevention
-                        name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                        batch_movies_by_name_year_tmdb[name_year_tmdb_key] = movie
-                    elif imdb_id:
-                        batch_movies_by_imdb[imdb_id] = movie
-                        # Also track by constraint key for duplicate prevention
-                        name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                        batch_movies_by_name_year_imdb[name_year_imdb_key] = movie
-                    else:
-                        name_year_key = f"{name}_{year or 'None'}"
-                        batch_movies_by_name_year[name_year_key] = movie
-
-            # Handle relation
-            stream_url = client.get_vod_stream_url(stream_id)
-
-            if stream_id in existing_relations:
-                # Update existing relation
-                relation = existing_relations[stream_id]
-                relation.movie = movie
-                relation.category = category
-                relation.url = stream_url
-                relation.container_extension = movie_data.get('container_extension', 'mp4')
-                relation.custom_properties = {
+        # Handle relation
+        if stream_id in existing_relations:
+            # Update existing relation
+            relation = existing_relations[stream_id]
+            relation.movie = movie
+            relation.category = category
+            relation.container_extension = movie_data.get('container_extension', 'mp4')
+            relation.custom_properties = {
+                'basic_data': movie_data,
+                'detailed_fetched': False
+            }
+            relations_to_update.append(relation)
+        else:
+            # Create new relation
+            relation = M3UMovieRelation(
+                m3u_account=account,
+                movie=movie,
+                category=category,
+                stream_id=stream_id,
+                url='',  # Will be set later if needed
+                container_extension=movie_data.get('container_extension', 'mp4'),
+                custom_properties={
                     'basic_data': movie_data,
                     'detailed_fetched': False
                 }
-                relations_to_update.append(relation)
-            else:
-                # Create new relation
-                relation = M3UMovieRelation(
-                    m3u_account=account,
-                    movie=movie,
-                    category=category,
-                    stream_id=stream_id,
-                    url=stream_url,
-                    container_extension=movie_data.get('container_extension', 'mp4'),
-                    custom_properties={
-                        'basic_data': movie_data,
-                        'detailed_fetched': False
-                    }
-                )
-                relations_to_create.append(relation)
-
-        except Exception as e:
-            logger.error(f"Error preparing movie {movie_data.get('name', 'Unknown')}: {str(e)}")
+            )
+            relations_to_create.append(relation)
 
     # Execute batch operations
-    with transaction.atomic():
-        # Create logos first and fetch them back
-        if logos_to_create:
-            Logo.objects.bulk_create(logos_to_create, ignore_conflicts=True)
-            # Refresh existing_logos with newly created ones
-            logo_urls_created = [logo.url for logo in logos_to_create]
-            newly_created_logos = {
-                logo.url: logo for logo in Logo.objects.filter(url__in=logo_urls_created)
-            }
-            existing_logos.update(newly_created_logos)
+    logger.info(f"Executing batch operations: {len(movies_to_create)} movies to create, {len(movies_to_update)} to update")
 
-        # Now assign correct logos to movies/series before creating them
-        for movie in movies_to_create:
-            if hasattr(movie, '_logo_url') and movie._logo_url in existing_logos:
-                movie.logo = existing_logos[movie._logo_url]
-                delattr(movie, '_logo_url')  # Clean up temporary attribute
+    try:
+        with transaction.atomic():
+            # First, create new movies and get their IDs
+            created_movies = {}
+            if movies_to_create:
+                Movie.objects.bulk_create(movies_to_create, ignore_conflicts=True)
 
-        # Create new movies
-        if movies_to_create:
-            Movie.objects.bulk_create(movies_to_create)
-            logger.info(f"Created {len(movies_to_create)} new movies")        # Update existing movies
-        if movies_to_update:
-            Movie.objects.bulk_update(movies_to_update, [
-                'description', 'rating', 'genre', 'year', 'tmdb_id', 'imdb_id',
-                'duration_secs', 'custom_properties', 'logo'
-            ])
+                # Get the newly created movies with their IDs
+                # We need to re-fetch them to get the primary keys
+                for movie in movies_to_create:
+                    # Find the movie by its unique identifiers
+                    if movie.tmdb_id:
+                        db_movie = Movie.objects.filter(tmdb_id=movie.tmdb_id).first()
+                    elif movie.imdb_id:
+                        db_movie = Movie.objects.filter(imdb_id=movie.imdb_id).first()
+                    else:
+                        db_movie = Movie.objects.filter(
+                            name=movie.name,
+                            year=movie.year,
+                            tmdb_id__isnull=True,
+                            imdb_id__isnull=True
+                        ).first()
 
-        # Create new relations
-        if relations_to_create:
-            M3UMovieRelation.objects.bulk_create(relations_to_create)
+                    if db_movie:
+                        created_movies[id(movie)] = db_movie
 
-        # Update existing relations
-        if relations_to_update:
-            M3UMovieRelation.objects.bulk_update(relations_to_update, [
-                'movie', 'category', 'url', 'container_extension', 'custom_properties'
-            ])
+            # Update existing movies
+            if movies_to_update:
+                Movie.objects.bulk_update(movies_to_update, [
+                    'description', 'rating', 'genre', 'year', 'tmdb_id', 'imdb_id',
+                    'duration_secs', 'custom_properties', 'logo'
+                ])
 
-    logger.info(f"Batch processed: {len(movies_to_create)} new movies, {len(movies_to_update)} updated movies, "
-                f"{len(relations_to_create)} new relations, {len(relations_to_update)} updated relations")
+            # Update relations to reference the correct movie objects
+            for relation in relations_to_create:
+                if id(relation.movie) in created_movies:
+                    relation.movie = created_movies[id(relation.movie)]
+
+            # Handle relations
+            if relations_to_create:
+                M3UMovieRelation.objects.bulk_create(relations_to_create, ignore_conflicts=True)
+
+            if relations_to_update:
+                M3UMovieRelation.objects.bulk_update(relations_to_update, [
+                    'movie', 'category', 'url', 'container_extension', 'custom_properties'
+                ])
+
+        logger.info("Movie batch processing completed successfully!")
+        return f"Movie batch processed: {len(movies_to_create)} created, {len(movies_to_update)} updated"
+
+    except Exception as e:
+        logger.error(f"Movie batch processing failed: {str(e)}")
+        return f"Movie batch processing failed: {str(e)}"
 
 
-def batch_process_series(client, account, series_data_list):
-    """Process series in batches for better performance"""
-    if not series_data_list:
-        return
+@shared_task
+def process_series_batch(account, batch, category_map):
+    """Process a batch of series using simple bulk operations like M3U processing"""
+    logger.info(f"Processing series batch of {len(batch)} series for account {account.name}")
 
-    logger.info(f"Batch processing {len(series_data_list)} series for account {account.name}")
-
-    # Extract unique identifiers for existing lookups
-    series_names = [series.get('name', 'Unknown') for series in series_data_list]
-    tmdb_ids = [series.get('tmdb') or series.get('tmdb_id') for series in series_data_list if series.get('tmdb') or series.get('tmdb_id')]
-    imdb_ids = [series.get('imdb') or series.get('imdb_id') for series in series_data_list if series.get('imdb') or series.get('imdb_id')]
-    series_ids = [str(series.get('series_id')) for series in series_data_list]
-
-    # Pre-fetch categories by ID
-    category_ids = [series.get('_category_id') for series in series_data_list if series.get('_category_id')]
-    categories_by_id = {
-        cat.id: cat for cat in VODCategory.objects.filter(id__in=category_ids)
-    } if category_ids else {}
-
-    # Pre-fetch existing series to avoid N+1 queries
-    existing_series_by_tmdb = {}
-    existing_series_by_imdb = {}
-    existing_series_by_name = {}
-    existing_series_by_name_year_tmdb = {}
-    existing_series_by_name_year_imdb = {}
-
-    if tmdb_ids:
-        for series in Series.objects.filter(tmdb_id__in=tmdb_ids):
-            existing_series_by_tmdb[series.tmdb_id] = series
-            # Also index by name+year+tmdb_id combination for constraint checking
-            if series.name and series.tmdb_id:
-                key = f"{series.name}_{series.year or 'None'}_{series.tmdb_id}"
-                existing_series_by_name_year_tmdb[key] = series
-
-    if imdb_ids:
-        for series in Series.objects.filter(imdb_id__in=imdb_ids):
-            existing_series_by_imdb[series.imdb_id] = series
-            # Also index by name+year+imdb_id combination for constraint checking
-            if series.name and series.imdb_id:
-                key = f"{series.name}_{series.year or 'None'}_{series.imdb_id}"
-                existing_series_by_name_year_imdb[key] = series
-
-    for series in Series.objects.filter(name__in=series_names):
-        key = f"{series.name}_{series.year or 'None'}"
-        existing_series_by_name[key] = series
-
-    # Pre-fetch existing relations
-    existing_relations = {
-        rel.external_series_id: rel for rel in M3USeriesRelation.objects.filter(
-            m3u_account=account,
-            external_series_id__in=series_ids
-        ).select_related('series')
-    }
-
-    # Pre-fetch existing logos
-    logo_urls = [series.get('cover') for series in series_data_list if series.get('cover')]
-    existing_logos = {
-        logo.url: logo for logo in Logo.objects.filter(url__in=logo_urls)
-    }
-
-    # Process series in batches
     series_to_create = []
     series_to_update = []
     relations_to_create = []
     relations_to_update = []
-    logos_to_create = []
+    series_keys = {}  # For deduplication like M3U stream_hashes
 
-    # Track series being created in this batch to prevent duplicates within the batch
-    batch_series_by_tmdb = {}      # Key: tmdb_id -> Series object
-    batch_series_by_imdb = {}      # Key: imdb_id -> Series object
-    batch_series_by_name_year = {} # Key: "name_year" -> Series object
-    batch_series_by_name_year_tmdb = {} # Key: "name_year_tmdb" -> Series object (for constraint checking)
-    batch_series_by_name_year_imdb = {} # Key: "name_year_imdb" -> Series object (for constraint checking)
-
-    for series_data in series_data_list:
+    # Process each series in the batch
+    for series_data in batch:
         try:
             series_id = str(series_data.get('series_id'))
             name = series_data.get('name', 'Unknown')
             category_id = series_data.get('_category_id')
-            category = categories_by_id.get(category_id) if category_id else None
+            category = VODCategory.objects.get(id=category_id) if category_id else None
 
             # Extract metadata
             year = extract_year(series_data.get('releaseDate', ''))
@@ -579,222 +468,248 @@ def batch_process_series(client, account, series_data_list):
             tmdb_id = series_data.get('tmdb') or series_data.get('tmdb_id')
             imdb_id = series_data.get('imdb') or series_data.get('imdb_id')
 
-            # Find existing series - check batch first, then database
-            series = None
+            # Clean empty string IDs
+            if tmdb_id == '':
+                tmdb_id = None
+            if imdb_id == '':
+                imdb_id = None
 
-            # Priority 1: Check TMDB ID (most reliable identifier)
+            # Create a unique key for this series (priority: TMDB > IMDB > name+year)
             if tmdb_id:
-                # Check batch first
-                if tmdb_id in batch_series_by_tmdb:
-                    series = batch_series_by_tmdb[tmdb_id]
-                # Then check existing database series
-                elif tmdb_id in existing_series_by_tmdb:
-                    series = existing_series_by_tmdb[tmdb_id]
-
-            # Priority 2: Check IMDB ID (second most reliable)
-            if not series and imdb_id:
-                # Check batch first
-                if imdb_id in batch_series_by_imdb:
-                    series = batch_series_by_imdb[imdb_id]
-                # Then check existing database series
-                elif imdb_id in existing_series_by_imdb:
-                    series = existing_series_by_imdb[imdb_id]
-
-            # Priority 3: Fallback to name+year (least reliable)
-            if not series:
-                name_year_key = f"{name}_{year or 'None'}"
-                # Check batch first
-                if name_year_key in batch_series_by_name_year:
-                    series = batch_series_by_name_year[name_year_key]
-                # Then check existing database series
-                elif name_year_key in existing_series_by_name:
-                    series = existing_series_by_name[name_year_key]
-
-            # Handle logo
-            logo_url = None
-            if series_data.get('cover'):
-                logo_url = series_data['cover']
-                if logo_url not in existing_logos:
-                    # Check if URL is too long for PostgreSQL index (conservative limit)
-                    max_url_size = 7000  # Well under 8191 bytes limit
-                    if len(logo_url.encode('utf-8')) > max_url_size:
-                        logger.warning(f"Skipping logo for series '{name}' - URL too large ({len(logo_url)} chars)")
-                        logo_url = None  # Don't use this logo
-                    else:
-                        # Queue for batch creation
-                        logo = Logo(url=logo_url, name=name)
-                        logos_to_create.append(logo)
-                        existing_logos[logo_url] = logo  # Temporary placeholder
-
-            if series:
-                # Update existing series if needed
-                logger.debug(f"Reusing existing series: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
-                updated = False
-                description = series_data.get('plot', '')
-                rating = series_data.get('rating', '')
-                genre = series_data.get('genre', '')
-
-                if description and description != series.description:
-                    series.description = description
-                    updated = True
-                if rating and rating != series.rating:
-                    series.rating = rating
-                    updated = True
-                if genre and genre != series.genre:
-                    series.genre = genre
-                    updated = True
-                if year and year != series.year:
-                    series.year = year
-                    updated = True
-                if tmdb_id and tmdb_id != series.tmdb_id:
-                    series.tmdb_id = tmdb_id
-                    updated = True
-                if imdb_id and imdb_id != series.imdb_id:
-                    series.imdb_id = imdb_id
-                    updated = True
-
-                # Update logo if we have one and it's different
-                if logo_url and logo_url in existing_logos:
-                    new_logo = existing_logos[logo_url]
-                    if series.logo != new_logo:
-                        series.logo = new_logo
-                        updated = True
-
-                if updated:
-                    series_to_update.append(series)
+                series_key = f"tmdb_{tmdb_id}"
+            elif imdb_id:
+                series_key = f"imdb_{imdb_id}"
             else:
-                # Before creating new series, check for unique constraint conflicts
-                constraint_check_series = None
+                series_key = f"name_{name}_{year or 'None'}"
 
-                # Check if a series with same (name, year, tmdb_id) already exists
-                if tmdb_id:
-                    name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                    if name_year_tmdb_key in existing_series_by_name_year_tmdb:
-                        constraint_check_series = existing_series_by_name_year_tmdb[name_year_tmdb_key]
-                        logger.debug(f"Found constraint conflict series by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
-                    elif name_year_tmdb_key in batch_series_by_name_year_tmdb:
-                        constraint_check_series = batch_series_by_name_year_tmdb[name_year_tmdb_key]
-                        logger.debug(f"Found constraint conflict series in batch by name+year+tmdb: {name} ({year}) TMDB:{tmdb_id}")
+            # Skip duplicates in this batch
+            if series_key in series_keys:
+                continue
 
-                # Check if a series with same (name, year, imdb_id) already exists
-                if not constraint_check_series and imdb_id:
-                    name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                    if name_year_imdb_key in existing_series_by_name_year_imdb:
-                        constraint_check_series = existing_series_by_name_year_imdb[name_year_imdb_key]
-                        logger.debug(f"Found constraint conflict series by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
-                    elif name_year_imdb_key in batch_series_by_name_year_imdb:
-                        constraint_check_series = batch_series_by_name_year_imdb[name_year_imdb_key]
-                        logger.debug(f"Found constraint conflict series in batch by name+year+imdb: {name} ({year}) IMDB:{imdb_id}")
+            # Prepare series properties
+            description = series_data.get('plot', '')
+            rating = series_data.get('rating', '')
+            genre = series_data.get('genre', '')
+            logo_url = series_data.get('cover') or ''
 
-                if constraint_check_series:
-                    # Use the existing series to avoid constraint violation
-                    series = constraint_check_series
-                    logger.debug(f"Using constraint conflict series to avoid duplicate: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
-                else:
-                    # Create new series
-                    logger.debug(f"Creating new series: {name} ({year}) TMDB:{tmdb_id} IMDB:{imdb_id}")
-                    series = Series(
-                        name=name,
-                        year=year,
-                        tmdb_id=tmdb_id,
-                        imdb_id=imdb_id,
-                        description=series_data.get('plot', ''),
-                        rating=series_data.get('rating', ''),
-                        genre=series_data.get('genre', '')
-                    )
-                    # Store logo URL temporarily for later assignment
-                    if logo_url:
-                        series._logo_url = logo_url
-                    series_to_create.append(series)
+            series_props = {
+                'name': name,
+                'year': year,
+                'tmdb_id': tmdb_id,
+                'imdb_id': imdb_id,
+                'description': description,
+                'rating': rating,
+                'genre': genre,
+            }
 
-                    # Add to batch tracking to prevent duplicates within the same batch
-                    # Priority order: TMDB ID first, then IMDB ID, finally name+year
-                    if tmdb_id:
-                        batch_series_by_tmdb[tmdb_id] = series
-                        # Also track by constraint key for duplicate prevention
-                        name_year_tmdb_key = f"{name}_{year or 'None'}_{tmdb_id}"
-                        batch_series_by_name_year_tmdb[name_year_tmdb_key] = series
-                    elif imdb_id:
-                        batch_series_by_imdb[imdb_id] = series
-                        # Also track by constraint key for duplicate prevention
-                        name_year_imdb_key = f"{name}_{year or 'None'}_{imdb_id}"
-                        batch_series_by_name_year_imdb[name_year_imdb_key] = series
-                    else:
-                        name_year_key = f"{name}_{year or 'None'}"
-                        batch_series_by_name_year[name_year_key] = series
-
-            # Handle relation
-            if series_id in existing_relations:
-                # Update existing relation
-                relation = existing_relations[series_id]
-                relation.series = series
-                relation.category = category
-                relation.custom_properties = {
-                    'basic_data': series_data,
-                    'detailed_fetched': False,
-                    'episodes_fetched': False
-                }
-                relation.last_episode_refresh = None
-                relations_to_update.append(relation)
-            else:
-                # Create new relation
-                relation = M3USeriesRelation(
-                    m3u_account=account,
-                    series=series,
-                    category=category,
-                    external_series_id=series_id,
-                    custom_properties={
-                        'basic_data': series_data,
-                        'detailed_fetched': False,
-                        'episodes_fetched': False
-                    },
-                    last_episode_refresh=None
-                )
-                relations_to_create.append(relation)
+            series_keys[series_key] = {
+                'props': series_props,
+                'series_id': series_id,
+                'category': category,
+                'series_data': series_data,
+                'logo_url': logo_url  # Keep logo URL for later processing
+            }
 
         except Exception as e:
             logger.error(f"Error preparing series {series_data.get('name', 'Unknown')}: {str(e)}")
 
-    # Execute batch operations
-    with transaction.atomic():
-        # Create logos first and fetch them back
-        if logos_to_create:
+    # Collect all logo URLs and create logos in batch
+    logo_urls = set()
+    logo_url_to_name = {}  # Map logo URLs to series names
+    for data in series_keys.values():
+        logo_url = data.get('logo_url')
+        if logo_url and len(logo_url) <= 500:  # Ignore overly long URLs (likely embedded image data)
+            logo_urls.add(logo_url)
+            # Map this logo URL to the series name (use first occurrence if multiple series share same logo)
+            if logo_url not in logo_url_to_name:
+                series_name = data['props'].get('name', 'Unknown Series')
+                logo_url_to_name[logo_url] = series_name
+
+    # Get existing logos
+    existing_logos = {
+        logo.url: logo for logo in Logo.objects.filter(url__in=logo_urls)
+    } if logo_urls else {}
+
+    # Create missing logos
+    logos_to_create = []
+    for logo_url in logo_urls:
+        if logo_url not in existing_logos:
+            series_name = logo_url_to_name.get(logo_url, 'Unknown Series')
+            logos_to_create.append(Logo(url=logo_url, name=series_name))
+
+    if logos_to_create:
+        try:
             Logo.objects.bulk_create(logos_to_create, ignore_conflicts=True)
             # Refresh existing_logos with newly created ones
-            logo_urls_created = [logo.url for logo in logos_to_create]
-            newly_created_logos = {
-                logo.url: logo for logo in Logo.objects.filter(url__in=logo_urls_created)
+            new_logo_urls = [logo.url for logo in logos_to_create]
+            newly_created = {
+                logo.url: logo for logo in Logo.objects.filter(url__in=new_logo_urls)
             }
-            existing_logos.update(newly_created_logos)
+            existing_logos.update(newly_created)
+            logger.info(f"Created {len(newly_created)} new logos for series")
+        except Exception as e:
+            logger.warning(f"Failed to create logos: {e}")
 
-        # Now assign correct logos to series before creating them
-        for series in series_to_create:
-            if hasattr(series, '_logo_url') and series._logo_url in existing_logos:
-                series.logo = existing_logos[series._logo_url]
-                delattr(series, '_logo_url')  # Clean up temporary attribute
+    # Get existing series based on our keys - same pattern as movies
+    existing_series = {}
 
-        # Create new series
-        if series_to_create:
-            Series.objects.bulk_create(series_to_create)
-            logger.info(f"Created {len(series_to_create)} new series")        # Update existing series
-        if series_to_update:
-            Series.objects.bulk_update(series_to_update, [
-                'description', 'rating', 'genre', 'year', 'tmdb_id', 'imdb_id', 'logo'
-            ])
+    # Query by TMDB IDs
+    tmdb_keys = [k for k in series_keys.keys() if k.startswith('tmdb_')]
+    tmdb_ids = [k.replace('tmdb_', '') for k in tmdb_keys]
+    if tmdb_ids:
+        for series in Series.objects.filter(tmdb_id__in=tmdb_ids):
+            existing_series[f"tmdb_{series.tmdb_id}"] = series
 
-        # Create new relations
-        if relations_to_create:
-            M3USeriesRelation.objects.bulk_create(relations_to_create)
+    # Query by IMDB IDs
+    imdb_keys = [k for k in series_keys.keys() if k.startswith('imdb_')]
+    imdb_ids = [k.replace('imdb_', '') for k in imdb_keys]
+    if imdb_ids:
+        for series in Series.objects.filter(imdb_id__in=imdb_ids):
+            existing_series[f"imdb_{series.imdb_id}"] = series
 
-        # Update existing relations
-        if relations_to_update:
-            M3USeriesRelation.objects.bulk_update(relations_to_update, [
-                'series', 'category', 'custom_properties', 'last_episode_refresh'
-            ])
+    # Query by name+year for series without external IDs
+    name_year_keys = [k for k in series_keys.keys() if k.startswith('name_')]
+    if name_year_keys:
+        for series in Series.objects.filter(tmdb_id__isnull=True, imdb_id__isnull=True):
+            key = f"name_{series.name}_{series.year or 'None'}"
+            if key in name_year_keys:
+                existing_series[key] = series
 
-    logger.info(f"Batch processed: {len(series_to_create)} new series, {len(series_to_update)} updated series, "
-                f"{len(relations_to_create)} new relations, {len(relations_to_update)} updated relations")
+    # Get existing relations
+    series_ids = [data['series_id'] for data in series_keys.values()]
+    existing_relations = {
+        rel.external_series_id: rel for rel in M3USeriesRelation.objects.filter(
+            m3u_account=account,
+            external_series_id__in=series_ids
+        ).select_related('series')
+    }
 
+    # Process each series
+    for series_key, data in series_keys.items():
+        series_props = data['props']
+        series_id = data['series_id']
+        category = data['category']
+        series_data = data['series_data']
+        logo_url = data.get('logo_url')
+
+        if series_key in existing_series:
+            # Update existing series
+            series = existing_series[series_key]
+            updated = False
+
+            for field, value in series_props.items():
+                if getattr(series, field) != value:
+                    setattr(series, field, value)
+                    updated = True
+
+            # Handle logo assignment for existing series
+            if logo_url and len(logo_url) <= 500 and logo_url in existing_logos:
+                new_logo = existing_logos[logo_url]
+                if series.logo != new_logo:
+                    series.logo = new_logo
+                    updated = True
+            elif (not logo_url or len(logo_url) > 500) and series.logo:
+                # Clear logo if no logo URL provided or URL is too long
+                series.logo = None
+                updated = True
+
+            if updated:
+                series_to_update.append(series)
+        else:
+            # Create new series
+            series = Series(**series_props)
+
+            # Assign logo if available
+            if logo_url and len(logo_url) <= 500 and logo_url in existing_logos:
+                series.logo = existing_logos[logo_url]
+
+            series_to_create.append(series)
+
+        # Handle relation
+        if series_id in existing_relations:
+            # Update existing relation
+            relation = existing_relations[series_id]
+            relation.series = series
+            relation.category = category
+            relation.custom_properties = {
+                'basic_data': series_data,
+                'detailed_fetched': False,
+                'episodes_fetched': False
+            }
+            relations_to_update.append(relation)
+        else:
+            # Create new relation
+            relation = M3USeriesRelation(
+                m3u_account=account,
+                series=series,
+                category=category,
+                external_series_id=series_id,
+                custom_properties={
+                    'basic_data': series_data,
+                    'detailed_fetched': False,
+                    'episodes_fetched': False
+                }
+            )
+            relations_to_create.append(relation)
+
+    # Execute batch operations
+    logger.info(f"Executing batch operations: {len(series_to_create)} series to create, {len(series_to_update)} to update")
+
+    try:
+        with transaction.atomic():
+            # First, create new series and get their IDs
+            created_series = {}
+            if series_to_create:
+                Series.objects.bulk_create(series_to_create, ignore_conflicts=True)
+
+                # Get the newly created series with their IDs
+                # We need to re-fetch them to get the primary keys
+                for series in series_to_create:
+                    # Find the series by its unique identifiers
+                    if series.tmdb_id:
+                        db_series = Series.objects.filter(tmdb_id=series.tmdb_id).first()
+                    elif series.imdb_id:
+                        db_series = Series.objects.filter(imdb_id=series.imdb_id).first()
+                    else:
+                        db_series = Series.objects.filter(
+                            name=series.name,
+                            year=series.year,
+                            tmdb_id__isnull=True,
+                            imdb_id__isnull=True
+                        ).first()
+
+                    if db_series:
+                        created_series[id(series)] = db_series
+
+            # Update existing series
+            if series_to_update:
+                Series.objects.bulk_update(series_to_update, [
+                    'description', 'rating', 'genre', 'year', 'tmdb_id', 'imdb_id', 'logo'
+                ])
+
+            # Update relations to reference the correct series objects
+            for relation in relations_to_create:
+                if id(relation.series) in created_series:
+                    relation.series = created_series[id(relation.series)]
+
+            # Handle relations
+            if relations_to_create:
+                M3USeriesRelation.objects.bulk_create(relations_to_create, ignore_conflicts=True)
+
+            if relations_to_update:
+                M3USeriesRelation.objects.bulk_update(relations_to_update, [
+                    'series', 'category', 'custom_properties'
+                ])
+
+        logger.info("Series batch processing completed successfully!")
+        return f"Series batch processed: {len(series_to_create)} created, {len(series_to_update)} updated"
+
+    except Exception as e:
+        logger.error(f"Series batch processing failed: {str(e)}")
+        return f"Series batch processing failed: {str(e)}"
+
+
+# Helper functions for year and date extraction
 
 def extract_duration_from_data(movie_data):
     """Extract duration in seconds from movie data"""
@@ -824,8 +739,109 @@ def extract_duration_from_data(movie_data):
     return duration_secs
 
 
-# Remove the detailed processing functions since they're no longer used during refresh
-# process_movie and process_series are now only called on-demand
+def extract_year(date_string):
+    """Extract year from date string"""
+    if not date_string:
+        return None
+    try:
+        return int(date_string.split('-')[0])
+    except (ValueError, IndexError):
+        return None
+
+
+def extract_year_from_title(title):
+    """Extract year from movie title if present"""
+    if not title:
+        return None
+
+    # Pattern for (YYYY) format
+    pattern1 = r'\((\d{4})\)'
+    # Pattern for - YYYY format
+    pattern2 = r'\s-\s(\d{4})'
+    # Pattern for YYYY at the end
+    pattern3 = r'\s(\d{4})$'
+
+    for pattern in [pattern1, pattern2, pattern3]:
+        match = re.search(pattern, title)
+        if match:
+            year = int(match.group(1))
+            # Validate year is reasonable (between 1900 and current year + 5)
+            if 1900 <= year <= 2030:
+                return year
+
+    return None
+
+
+def extract_year_from_data(data, title_key='name'):
+    """Extract year from various data sources with fallback options"""
+    try:
+        # First try the year field
+        year = data.get('year')
+        if year and str(year).strip() and str(year).strip() != '':
+            try:
+                year_int = int(year)
+                if 1900 <= year_int <= 2030:
+                    return year_int
+            except (ValueError, TypeError):
+                pass
+
+        # Try releaseDate or release_date fields
+        for date_field in ['releaseDate', 'release_date']:
+            date_value = data.get(date_field)
+            if date_value and isinstance(date_value, str) and date_value.strip():
+                # Extract year from date format like "2011-09-19"
+                try:
+                    year_str = date_value.split('-')[0].strip()
+                    if year_str:
+                        year = int(year_str)
+                        if 1900 <= year <= 2030:
+                            return year
+                except (ValueError, IndexError):
+                    continue
+
+        # Finally try extracting from title
+        title = data.get(title_key, '')
+        if title and title.strip():
+            return extract_year_from_title(title)
+
+    except Exception:
+        # Don't fail processing if year extraction fails
+        pass
+
+    return None
+
+
+def extract_date_from_data(data):
+    """Extract date from various data sources with fallback options"""
+    try:
+        for date_field in ['air_date', 'releasedate', 'release_date']:
+            date_value = data.get(date_field)
+            if date_value and isinstance(date_value, str) and date_value.strip():
+                parsed = parse_date(date_value)
+                if parsed:
+                    return parsed
+    except Exception:
+        # Don't fail processing if date extraction fails
+        pass
+    return None
+
+
+def parse_date(date_string):
+    """Parse date string into a datetime object"""
+    if not date_string:
+        return None
+    try:
+        # Try to parse ISO format first
+        return datetime.fromisoformat(date_string)
+    except ValueError:
+        # Fallback to parsing with strptime for common formats
+        try:
+            return datetime.strptime(date_string, '%Y-%m-%d')
+        except ValueError:
+            return None  # Return None if parsing fails
+
+
+# Episode processing and other advanced features
 
 def refresh_series_episodes(account, series, external_series_id, episodes_data=None):
     """Refresh episodes for a series - only called on-demand"""
@@ -1058,79 +1074,6 @@ def batch_process_episodes(account, series, episodes_data):
                 f"{len(relations_to_create)} new relations, {len(relations_to_update)} updated relations")
 
 
-def extract_year(date_string):
-    """Extract year from date string"""
-    if not date_string:
-        return None
-    try:
-        return int(date_string.split('-')[0])
-    except (ValueError, IndexError):
-        return None
-
-
-def extract_year_from_title(title):
-    """Extract year from movie title if present"""
-    if not title:
-        return None
-
-    # Pattern for (YYYY) format
-    pattern1 = r'\((\d{4})\)'
-    # Pattern for - YYYY format
-    pattern2 = r'\s-\s(\d{4})'
-    # Pattern for YYYY at the end
-    pattern3 = r'\s(\d{4})$'
-
-    for pattern in [pattern1, pattern2, pattern3]:
-        match = re.search(pattern, title)
-        if match:
-            year = int(match.group(1))
-            # Validate year is reasonable (between 1900 and current year + 5)
-            if 1900 <= year <= 2030:
-                return year
-
-    return None
-
-
-def extract_year_from_data(data, title_key='name'):
-    """Extract year from various data sources with fallback options"""
-    try:
-        # First try the year field
-        year = data.get('year')
-        if year and str(year).strip() and str(year).strip() != '':
-            try:
-                year_int = int(year)
-                if 1900 <= year_int <= 2030:
-                    return year_int
-            except (ValueError, TypeError):
-                pass
-
-        # Try releaseDate or release_date fields
-        for date_field in ['releaseDate', 'release_date']:
-            date_value = data.get(date_field)
-            if date_value and isinstance(date_value, str) and date_value.strip():
-                # Extract year from date format like "2011-09-19"
-                try:
-                    year_str = date_value.split('-')[0].strip()
-                    if year_str:
-                        year = int(year_str)
-                        if 1900 <= year <= 2030:
-                            return year
-                except (ValueError, IndexError):
-                    continue
-
-        # Finally try extracting from title
-        title = data.get(title_key, '')
-        if title and title.strip():
-            return extract_year_from_title(title)
-
-    except Exception:
-        # Don't fail processing if year extraction fails
-        pass
-
-    return None
-
-
-
 @shared_task
 def batch_refresh_series_episodes(account_id, series_ids=None):
     """
@@ -1205,36 +1148,6 @@ def cleanup_orphaned_vod_content():
     logger.info(f"Cleaned up {movie_count} orphaned movies and {series_count} orphaned series")
     return f"Cleaned up {movie_count} movies and {series_count} series"
 
-def extract_date_from_data(data):
-    """Extract date from various data sources with fallback options"""
-    try:
-        for date_field in ['air_date', 'releasedate', 'release_date']:
-            date_value = data.get(date_field)
-            if date_value and isinstance(date_value, str) and date_value.strip():
-                parsed = parse_date(date_value)
-                if parsed:
-                    return parsed
-    except Exception:
-        # Don't fail processing if date extraction fails
-        pass
-    return None
-
-def parse_date(date_string):
-    """Parse date string into a datetime object"""
-    if not date_string:
-        return None
-    try:
-        # Try to parse ISO format first
-        return datetime.fromisoformat(date_string)
-    except ValueError:
-        # Fallback to parsing with strptime for common formats
-        try:
-            return datetime.strptime(date_string, '%Y-%m-%d')
-        except ValueError:
-            return None  # Return None if parsing fails
-
-from django.utils import timezone
-from apps.vod.models import M3UMovieRelation, Movie
 
 @shared_task
 def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
@@ -1354,3 +1267,33 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
     except Exception as e:
         logger.error(f"Error refreshing advanced movie data for relation {m3u_movie_relation_id}: {str(e)}")
         return f"Error: {str(e)}"
+
+
+def validate_logo_reference(obj, obj_type="object"):
+    """
+    Validate that a logo reference exists in the database.
+    If not, set it to None to prevent foreign key constraint violations.
+
+    Args:
+        obj: Object with a logo attribute
+        obj_type: String description of the object type for logging
+
+    Returns:
+        bool: True if logo was valid or None, False if logo was invalid and cleared
+    """
+    if not hasattr(obj, 'logo') or not obj.logo:
+        return True
+
+    if not obj.logo.pk:
+        # Logo doesn't have a primary key, so it's not saved
+        obj.logo = None
+        return False
+
+    try:
+        # Verify the logo exists in the database
+        Logo.objects.get(pk=obj.logo.pk)
+        return True
+    except Logo.DoesNotExist:
+        logger.warning(f"Logo with ID {obj.logo.pk} does not exist in database for {obj_type} '{getattr(obj, 'name', 'Unknown')}', setting to None")
+        obj.logo = None
+        return False

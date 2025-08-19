@@ -45,9 +45,9 @@ class Series(models.Model):
     genre = models.CharField(max_length=255, blank=True, null=True)
     logo = models.ForeignKey(Logo, on_delete=models.SET_NULL, null=True, blank=True)
 
-    # Metadata IDs for deduplication
-    tmdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="TMDB ID for metadata", db_index=True)
-    imdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="IMDB ID for metadata", db_index=True)
+    # Metadata IDs for deduplication - these should be globally unique when present
+    tmdb_id = models.CharField(max_length=50, blank=True, null=True, unique=True, help_text="TMDB ID for metadata")
+    imdb_id = models.CharField(max_length=50, blank=True, null=True, unique=True, help_text="IMDB ID for metadata")
 
     # Additional metadata and properties
     custom_properties = models.JSONField(blank=True, null=True, help_text='Additional metadata and properties for the series')
@@ -59,10 +59,13 @@ class Series(models.Model):
         verbose_name = 'Series'
         verbose_name_plural = 'Series'
         ordering = ['name']
-        # Create unique constraint for deduplication
-        unique_together = [
-            ('name', 'year', 'tmdb_id'),
-            ('name', 'year', 'imdb_id'),
+        # Only enforce name+year uniqueness when no external IDs are present
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'year'],
+                condition=models.Q(tmdb_id__isnull=True) & models.Q(imdb_id__isnull=True),
+                name='unique_series_name_year_no_external_id'
+            ),
         ]
 
     def __str__(self):
@@ -81,9 +84,9 @@ class Movie(models.Model):
     duration_secs = models.IntegerField(blank=True, null=True, help_text="Duration in seconds")
     logo = models.ForeignKey(Logo, on_delete=models.SET_NULL, null=True, blank=True)
 
-    # Metadata IDs for deduplication
-    tmdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="TMDB ID for metadata", db_index=True)
-    imdb_id = models.CharField(max_length=50, blank=True, null=True, help_text="IMDB ID for metadata", db_index=True)
+    # Metadata IDs for deduplication - these should be globally unique when present
+    tmdb_id = models.CharField(max_length=50, blank=True, null=True, unique=True, help_text="TMDB ID for metadata")
+    imdb_id = models.CharField(max_length=50, blank=True, null=True, unique=True, help_text="IMDB ID for metadata")
 
     # Additional metadata and properties
     custom_properties = models.JSONField(blank=True, null=True, help_text='Additional metadata and properties for the movie')
@@ -95,10 +98,13 @@ class Movie(models.Model):
         verbose_name = 'Movie'
         verbose_name_plural = 'Movies'
         ordering = ['name']
-        # Create unique constraint for deduplication
-        unique_together = [
-            ('name', 'year', 'tmdb_id'),
-            ('name', 'year', 'imdb_id'),
+        # Only enforce name+year uniqueness when no external IDs are present
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'year'],
+                condition=models.Q(tmdb_id__isnull=True) & models.Q(imdb_id__isnull=True),
+                name='unique_movie_name_year_no_external_id'
+            ),
         ]
 
     def __str__(self):
@@ -198,7 +204,19 @@ class M3UMovieRelation(models.Model):
 
     def get_stream_url(self):
         """Get the full stream URL for this movie from this provider"""
-        return self.url
+        # If we have a stored URL, use it
+        if self.url:
+            return self.url
+            
+        # Otherwise, build URL dynamically for XtreamCodes accounts
+        if self.m3u_account.account_type == 'XC':
+            server_url = self.m3u_account.server_url.rstrip('/')
+            username = self.m3u_account.username
+            password = self.m3u_account.password
+            return f"{server_url}/movie/{username}/{password}/{self.stream_id}.{self.container_extension or 'mp4'}"
+        else:
+            # For other account types, we need a stored URL
+            return self.url
 
 
 class M3UEpisodeRelation(models.Model):

@@ -376,15 +376,29 @@ class VODStreamView(View):
     def _get_stream_url_from_relation(self, relation):
         """Get stream URL from the M3U relation"""
         try:
+            # Log the relation type and available attributes
+            logger.info(f"[VOD-URL] Relation type: {type(relation).__name__}")
+            logger.info(f"[VOD-URL] Account type: {relation.m3u_account.account_type}")
+            logger.info(f"[VOD-URL] Stream ID: {getattr(relation, 'stream_id', 'N/A')}")
+
+            # First try the get_stream_url method (this should build URLs dynamically)
+            if hasattr(relation, 'get_stream_url'):
+                url = relation.get_stream_url()
+                if url:
+                    logger.info(f"[VOD-URL] Built URL from get_stream_url(): {url}")
+                    return url
+                else:
+                    logger.warning(f"[VOD-URL] get_stream_url() returned None")
+
+            # Fallback to stored URL field (for backwards compatibility)
             if hasattr(relation, 'url') and relation.url:
+                logger.info(f"[VOD-URL] Using stored URL: {relation.url}")
                 return relation.url
-            elif hasattr(relation, 'get_stream_url'):
-                return relation.get_stream_url()
-            else:
-                logger.error("Relation has no URL or get_stream_url method")
-                return None
+
+            logger.error(f"[VOD-URL] Relation has no URL or get_stream_url method failed")
+            return None
         except Exception as e:
-            logger.error(f"Error getting stream URL from relation: {e}")
+            logger.error(f"[VOD-URL] Error getting stream URL from relation: {e}", exc_info=True)
             return None
 
     def _get_m3u_profile(self, m3u_account, profile_id, user_agent):
