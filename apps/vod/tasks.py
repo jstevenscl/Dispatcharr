@@ -55,28 +55,35 @@ def refresh_vod_content(account_id):
 
 
 def refresh_movies(client, account):
-    """Refresh movie content using simple batch processing like M3U"""
+    """Refresh movie content using single API call for all movies"""
     logger.info(f"Refreshing movies for account {account.name}")
 
-    # Get movie categories and pre-create them in batch
-    categories = client.get_vod_categories()
-    category_map = batch_create_categories(categories, 'movie')
+    # First, get the category list to properly map category IDs and names
+    logger.info("Fetching movie categories from provider...")
+    categories_data = client.get_vod_categories()
+    category_map = batch_create_categories(categories_data, 'movie')
 
-    # Collect all movie data first
-    all_movies_data = []
-    for category_data in categories:
-        category_id = category_data.get('category_id')
-        category_name = category_data.get('category_name', 'Unknown')
+    # Create a mapping from category names to provider category IDs
+    provider_category_map = {}
+    for cat_data in categories_data:
+        cat_name = cat_data.get('category_name', 'Unknown')
+        cat_id = cat_data.get('category_id')
+        provider_category_map[cat_name] = cat_id
+
+    # Get all movies in a single API call
+    logger.info("Fetching all movies from provider...")
+    all_movies_data = client.get_vod_streams()  # No category_id = get all movies
+
+    # Add proper category info to each movie
+    for movie_data in all_movies_data:
+        category_name = movie_data.get('category_name', 'Unknown')
         category = category_map.get(category_name)
+        provider_category_id = provider_category_map.get(category_name)
 
-        # Get movies in this category - only basic list
-        movies = client.get_vod_streams(category_id)
-
-        for movie_data in movies:
-            # Store category ID instead of object to avoid JSON serialization issues
-            movie_data['_category_id'] = category.id if category else None
-            movie_data['_category_name'] = category_name
-            all_movies_data.append(movie_data)
+        # Store category ID instead of object to avoid JSON serialization issues
+        movie_data['_category_id'] = category.id if category else None
+        movie_data['_category_name'] = category_name
+        movie_data['_provider_category_id'] = provider_category_id
 
     # Process movies in chunks using the simple approach
     chunk_size = 1000
@@ -94,28 +101,35 @@ def refresh_movies(client, account):
 
 
 def refresh_series(client, account):
-    """Refresh series content using simple batch processing like M3U"""
+    """Refresh series content using single API call for all series"""
     logger.info(f"Refreshing series for account {account.name}")
 
-    # Get series categories and pre-create them in batch
-    categories = client.get_series_categories()
-    category_map = batch_create_categories(categories, 'series')
+    # First, get the category list to properly map category IDs and names
+    logger.info("Fetching series categories from provider...")
+    categories_data = client.get_series_categories()
+    category_map = batch_create_categories(categories_data, 'series')
 
-    # Collect all series data first
-    all_series_data = []
-    for category_data in categories:
-        category_id = category_data.get('category_id')
-        category_name = category_data.get('category_name', 'Unknown')
+    # Create a mapping from category names to provider category IDs
+    provider_category_map = {}
+    for cat_data in categories_data:
+        cat_name = cat_data.get('category_name', 'Unknown')
+        cat_id = cat_data.get('category_id')
+        provider_category_map[cat_name] = cat_id
+
+    # Get all series in a single API call
+    logger.info("Fetching all series from provider...")
+    all_series_data = client.get_series()  # No category_id = get all series
+
+    # Add proper category info to each series
+    for series_data in all_series_data:
+        category_name = series_data.get('category_name', 'Unknown')
         category = category_map.get(category_name)
+        provider_category_id = provider_category_map.get(category_name)
 
-        # Get series in this category - only basic list
-        series_list = client.get_series(category_id)
-
-        for series_data in series_list:
-            # Store category ID instead of object to avoid JSON serialization issues
-            series_data['_category_id'] = category.id if category else None
-            series_data['_category_name'] = category_name
-            all_series_data.append(series_data)
+        # Store category ID instead of object to avoid JSON serialization issues
+        series_data['_category_id'] = category.id if category else None
+        series_data['_category_name'] = category_name
+        series_data['_provider_category_id'] = provider_category_id
 
     # Process series in chunks using the simple approach
     chunk_size = 1000
@@ -133,6 +147,36 @@ def refresh_series(client, account):
 
 
 # Batch processing functions for improved efficiency
+
+def batch_create_categories_from_names(category_names, category_type):
+    """Create categories from names and return a mapping"""
+    # Get existing categories
+    existing_categories = {
+        cat.name: cat for cat in VODCategory.objects.filter(
+            name__in=category_names,
+            category_type=category_type
+        )
+    }
+
+    # Create missing categories in batch
+    new_categories = []
+    for name in category_names:
+        if name not in existing_categories:
+            new_categories.append(VODCategory(name=name, category_type=category_type))
+
+    if new_categories:
+        VODCategory.objects.bulk_create(new_categories, ignore_conflicts=True)
+        # Fetch the newly created categories
+        newly_created = {
+            cat.name: cat for cat in VODCategory.objects.filter(
+                name__in=[cat.name for cat in new_categories],
+                category_type=category_type
+            )
+        }
+        existing_categories.update(newly_created)
+
+    return existing_categories
+
 
 def batch_create_categories(categories_data, category_type):
     """Create categories in batch and return a mapping"""
