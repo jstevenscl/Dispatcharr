@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { copyToClipboard } from '../utils';
 import {
   ListOrdered,
   Play,
@@ -27,6 +28,7 @@ import {
   ActionIcon,
   Menu,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
@@ -168,19 +170,15 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
   }, []);
 
   const copyPublicIP = async () => {
-    try {
-      await navigator.clipboard.writeText(environment.public_ip);
-    } catch (err) {
-      const inputElement = publicIPRef.current; // Get the actual input
-      console.log(inputElement);
-
-      if (inputElement) {
-        inputElement.focus();
-        inputElement.select();
-
-        // For older browsers
-        document.execCommand('copy');
-      }
+    const success = await copyToClipboard(environment.public_ip);
+    if (success) {
+      notifications.show({
+        title: 'Success',
+        message: 'Public IP copied to clipboard',
+        color: 'green',
+      });
+    } else {
+      console.error('Failed to copy public IP to clipboard');
     }
   };
 

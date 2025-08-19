@@ -33,7 +33,8 @@ export POSTGRES_USER=${POSTGRES_USER:-dispatch}
 export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
 export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
 export POSTGRES_PORT=${POSTGRES_PORT:-5432}
-
+export PG_VERSION=$(ls /usr/lib/postgresql/ | sort -V | tail -n 1)
+export PG_BINDIR="/usr/lib/postgresql/${PG_VERSION}/bin"
 export REDIS_HOST=${REDIS_HOST:-localhost}
 export REDIS_DB=${REDIS_DB:-0}
 export DISPATCHARR_PORT=${DISPATCHARR_PORT:-9191}
@@ -107,13 +108,13 @@ echo "Starting init process..."
 
 # Start PostgreSQL
 echo "Starting Postgres..."
-su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
+su - postgres -c "$PG_BINDIR/pg_ctl -D ${POSTGRES_DIR} start -w -t 300 -o '-c port=${POSTGRES_PORT}'"
 # Wait for PostgreSQL to be ready
-until su - postgres -c "/usr/lib/postgresql/14/bin/pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT}" >/dev/null 2>&1; do
+until su - postgres -c "$PG_BINDIR/pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT}" >/dev/null 2>&1; do
     echo_with_timestamp "Waiting for PostgreSQL to be ready..."
     sleep 1
 done
-postgres_pid=$(su - postgres -c "/usr/lib/postgresql/14/bin/pg_ctl -D ${POSTGRES_DIR} status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
+postgres_pid=$(su - postgres -c "$PG_BINDIR/pg_ctl -D ${POSTGRES_DIR} status" | sed -n 's/.*PID: \([0-9]\+\).*/\1/p')
 echo "✅ Postgres started with PID $postgres_pid"
 pids+=("$postgres_pid")
 

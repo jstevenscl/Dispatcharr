@@ -95,6 +95,19 @@ class Stream(models.Model):
     )
     last_seen = models.DateTimeField(db_index=True, default=datetime.now)
     custom_properties = models.TextField(null=True, blank=True)
+    
+    # Stream statistics fields
+    stream_stats = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="JSON object containing stream statistics like video codec, resolution, etc."
+    )
+    stream_stats_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When stream statistics were last updated",
+        db_index=True
+    )
 
     class Meta:
         # If you use m3u_account, you might do unique_together = ('name','url','m3u_account')

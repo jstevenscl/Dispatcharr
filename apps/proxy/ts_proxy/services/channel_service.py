@@ -417,8 +417,8 @@ class ChannelService:
             return False, None, None, {"error": f"Exception: {str(e)}"}
 
     @staticmethod
-    def parse_and_store_stream_info(channel_id, stream_info_line, stream_type="video"):
-        """Parse FFmpeg stream info line and store in Redis metadata"""
+    def parse_and_store_stream_info(channel_id, stream_info_line, stream_type="video", stream_id=None):
+        """Parse FFmpeg stream info line and store in Redis metadata and database"""
         try:
             if stream_type == "input":
                 # Example lines:
@@ -432,6 +432,9 @@ class ChannelService:
                 # Store in Redis if we have valid data
                 if input_format:
                     ChannelService._update_stream_info_in_redis(channel_id, None, None, None, None, None, None, None, None, None, None, None, input_format)
+                    # Save to database if stream_id is provided
+                    if stream_id:
+                        ChannelService._update_stream_stats_in_db(stream_id, stream_type=input_format)
 
                 logger.debug(f"Input format info - Format: {input_format} for channel {channel_id}")
 
@@ -480,6 +483,16 @@ class ChannelService:
                 # Store in Redis if we have valid data
                 if any(x is not None for x in [video_codec, resolution, source_fps, pixel_format, video_bitrate]):
                     ChannelService._update_stream_info_in_redis(channel_id, video_codec, resolution, width, height, source_fps, pixel_format, video_bitrate, None, None, None, None, None)
+                    # Save to database if stream_id is provided
+                    if stream_id:
+                        ChannelService._update_stream_stats_in_db(
+                            stream_id,
+                            video_codec=video_codec,
+                            resolution=resolution,
+                            source_fps=source_fps,
+                            pixel_format=pixel_format,
+                            video_bitrate=video_bitrate
+                        )
 
                 logger.info(f"Video stream info - Codec: {video_codec}, Resolution: {resolution}, "
                            f"Source FPS: {source_fps}, Pixel Format: {pixel_format}, "
@@ -511,9 +524,15 @@ class ChannelService:
                 # Store in Redis if we have valid data
                 if any(x is not None for x in [audio_codec, sample_rate, channels, audio_bitrate]):
                     ChannelService._update_stream_info_in_redis(channel_id, None, None, None, None, None, None, None, audio_codec, sample_rate, channels, audio_bitrate, None)
-
-                logger.info(f"Audio stream info - Codec: {audio_codec}, Sample Rate: {sample_rate} Hz, "
-                           f"Channels: {channels}, Audio Bitrate: {audio_bitrate} kb/s")
+                    # Save to database if stream_id is provided
+                    if stream_id:
+                        ChannelService._update_stream_stats_in_db(
+                            stream_id,
+                            audio_codec=audio_codec,
+                            sample_rate=sample_rate,
+                            audio_channels=channels,
+                            audio_bitrate=audio_bitrate
+                        )
 
         except Exception as e:
             logger.debug(f"Error parsing FFmpeg {stream_type} stream info: {e}")
@@ -573,6 +592,35 @@ class ChannelService:
 
         except Exception as e:
             logger.error(f"Error updating stream info in Redis: {e}")
+            return False
+
+    @staticmethod
+    def _update_stream_stats_in_db(stream_id, **stats):
+        """Update stream stats in database"""
+        try:
+            from apps.channels.models import Stream
+            from django.utils import timezone
+            
+            stream = Stream.objects.get(id=stream_id)
+            
+            # Get existing stats or create new dict
+            current_stats = stream.stream_stats or {}
+            
+            # Update with new stats
+            for key, value in stats.items():
+                if value is not None:
+                    current_stats[key] = value
+            
+            # Save updated stats and timestamp
+            stream.stream_stats = current_stats
+            stream.stream_stats_updated_at = timezone.now()
+            stream.save(update_fields=['stream_stats', 'stream_stats_updated_at'])
+            
+            logger.debug(f"Updated stream stats in database for stream {stream_id}: {stats}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating stream stats in database for stream {stream_id}: {e}")
             return False
 
     # Helper methods for Redis operations

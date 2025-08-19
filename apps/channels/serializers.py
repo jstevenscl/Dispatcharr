@@ -16,6 +16,7 @@ from apps.epg.models import EPGData
 from django.urls import reverse
 from rest_framework import serializers
 from django.utils import timezone
+from core.utils import validate_flexible_url
 
 
 class LogoSerializer(serializers.ModelSerializer):
@@ -32,10 +33,10 @@ class LogoSerializer(serializers.ModelSerializer):
         """Validate that the URL is unique for creation or update"""
         if self.instance and self.instance.url == value:
             return value
-        
+
         if Logo.objects.filter(url=value).exists():
             raise serializers.ValidationError("A logo with this URL already exists.")
-        
+
         return value
 
     def create(self, validated_data):
@@ -79,6 +80,12 @@ class LogoSerializer(serializers.ModelSerializer):
 # Stream
 #
 class StreamSerializer(serializers.ModelSerializer):
+    url = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[validate_flexible_url]
+    )
     stream_profile_id = serializers.PrimaryKeyRelatedField(
         queryset=StreamProfile.objects.all(),
         source="stream_profile",
@@ -104,6 +111,8 @@ class StreamSerializer(serializers.ModelSerializer):
             "is_custom",
             "channel_group",
             "stream_hash",
+            "stream_stats",
+            "stream_stats_updated_at",
         ]
 
     def get_fields(self):
