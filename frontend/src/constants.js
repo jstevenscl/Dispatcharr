@@ -33,25 +33,44 @@ export const NETWORK_ACCESS_OPTIONS = {
 export const PROXY_SETTINGS_OPTIONS = {
   buffering_timeout: {
     label: 'Buffering Timeout',
-    description: 'Maximum time (in seconds) to wait for buffering before switching streams',
+    description:
+      'Maximum time (in seconds) to wait for buffering before switching streams',
   },
   buffering_speed: {
     label: 'Buffering Speed',
-    description: 'Speed threshold below which buffering is detected (1.0 = normal speed)',
+    description:
+      'Speed threshold below which buffering is detected (1.0 = normal speed)',
   },
   redis_chunk_ttl: {
     label: 'Buffer Chunk TTL',
-    description: 'Time-to-live for buffer chunks in seconds (how long stream data is cached)',
+    description:
+      'Time-to-live for buffer chunks in seconds (how long stream data is cached)',
   },
   channel_shutdown_delay: {
     label: 'Channel Shutdown Delay',
-    description: 'Delay in seconds before shutting down a channel after last client disconnects',
+    description:
+      'Delay in seconds before shutting down a channel after last client disconnects',
   },
   channel_init_grace_period: {
     label: 'Channel Initialization Grace Period',
     description: 'Grace period in seconds during channel initialization',
   },
 };
+
+export const M3U_FILTER_TYPES = [
+  {
+    label: 'Group',
+    value: 'group',
+  },
+  {
+    label: 'Stream Name',
+    value: 'name',
+  },
+  {
+    label: 'Stream URL',
+    value: 'url',
+  },
+];
 
 export const REGION_CHOICES = [
   { value: 'ad', label: 'AD' },

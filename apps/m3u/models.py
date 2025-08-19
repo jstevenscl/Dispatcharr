@@ -155,9 +155,11 @@ class M3UFilter(models.Model):
     """Defines filters for M3U accounts based on stream name or group title."""
 
     FILTER_TYPE_CHOICES = (
-        ("group", "Group Title"),
+        ("group", "Group"),
         ("name", "Stream Name"),
+        ("url", "Stream URL"),
     )
+
     m3u_account = models.ForeignKey(
         M3UAccount,
         on_delete=models.CASCADE,
@@ -177,6 +179,8 @@ class M3UFilter(models.Model):
         default=True,
         help_text="If True, matching items are excluded; if False, only matches are included.",
     )
+    order = models.PositiveIntegerField(default=0)
+    custom_properties = models.TextField(null=True, blank=True)
 
     def applies_to(self, stream_name, group_name):
         target = group_name if self.filter_type == "group" else stream_name
@@ -224,9 +228,6 @@ class ServerGroup(models.Model):
 
     def __str__(self):
         return self.name
-
-
-from django.db import models
 
 
 class M3UAccountProfile(models.Model):

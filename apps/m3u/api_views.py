@@ -252,8 +252,6 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
 
 
 class M3UFilterViewSet(viewsets.ModelViewSet):
-    """Handles CRUD operations for M3U filters"""
-
     queryset = M3UFilter.objects.all()
     serializer_class = M3UFilterSerializer
 
@@ -262,6 +260,23 @@ class M3UFilterViewSet(viewsets.ModelViewSet):
             return [perm() for perm in permission_classes_by_action[self.action]]
         except KeyError:
             return [Authenticated()]
+
+    def get_queryset(self):
+        m3u_account_id = self.kwargs["account_id"]
+        return M3UFilter.objects.filter(m3u_account_id=m3u_account_id)
+
+    def perform_create(self, serializer):
+        # Get the account ID from the URL
+        account_id = self.kwargs["account_id"]
+
+        # # Get the M3UAccount instance for the account_id
+        # m3u_account = M3UAccount.objects.get(id=account_id)
+
+        # Save the 'm3u_account' in the serializer context
+        serializer.context["m3u_account"] = account_id
+
+        # Perform the actual save
+        serializer.save(m3u_account_id=account_id)
 
 
 class ServerGroupViewSet(viewsets.ModelViewSet):

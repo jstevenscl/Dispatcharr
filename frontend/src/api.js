@@ -256,7 +256,7 @@ export default class API {
           hasChannels: false,
           hasM3UAccounts: false,
           canEdit: true,
-          canDelete: true
+          canDelete: true,
         };
         useChannelsStore.getState().addChannelGroup(processedGroup);
         // Refresh channel groups to update the UI
@@ -736,10 +736,13 @@ export default class API {
 
   static async updateM3UGroupSettings(playlistId, groupSettings) {
     try {
-      const response = await request(`${host}/api/m3u/accounts/${playlistId}/group-settings/`, {
-        method: 'PATCH',
-        body: { group_settings: groupSettings },
-      });
+      const response = await request(
+        `${host}/api/m3u/accounts/${playlistId}/group-settings/`,
+        {
+          method: 'PATCH',
+          body: { group_settings: groupSettings },
+        }
+      );
       // Fetch the updated playlist and update the store
       const updatedPlaylist = await API.getPlaylist(playlistId);
       usePlaylistsStore.getState().updatePlaylist(updatedPlaylist);
@@ -863,7 +866,6 @@ export default class API {
         body = { ...payload };
         delete body.file;
       }
-      console.log(body);
 
       const response = await request(`${host}/api/m3u/accounts/${id}/`, {
         method: 'PATCH',
@@ -1119,6 +1121,48 @@ export default class API {
     }
   }
 
+  static async addM3UFilter(accountId, values) {
+    try {
+      const response = await request(
+        `${host}/api/m3u/accounts/${accountId}/filters/`,
+        {
+          method: 'POST',
+          body: values,
+        }
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification(`Failed to add profile to account ${accountId}`, e);
+    }
+  }
+
+  static async deleteM3UFilter(accountId, id) {
+    try {
+      await request(`${host}/api/m3u/accounts/${accountId}/filters/${id}/`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      errorNotification(`Failed to delete profile for account ${accountId}`, e);
+    }
+  }
+
+  static async updateM3UFilter(accountId, filterId, values) {
+    const { id, ...payload } = values;
+
+    try {
+      await request(
+        `${host}/api/m3u/accounts/${accountId}/filters/${filterId}/`,
+        {
+          method: 'PUT',
+          body: payload,
+        }
+      );
+    } catch (e) {
+      errorNotification(`Failed to update profile for account ${accountId}`, e);
+    }
+  }
+
   static async getSettings() {
     try {
       const response = await request(`${host}/api/core/settings/`);
@@ -1239,7 +1283,9 @@ export default class API {
   static async getLogos(params = {}) {
     try {
       const queryParams = new URLSearchParams(params);
-      const response = await request(`${host}/api/channels/logos/?${queryParams.toString()}`);
+      const response = await request(
+        `${host}/api/channels/logos/?${queryParams.toString()}`
+      );
 
       return response;
     } catch (e) {
@@ -1378,7 +1424,7 @@ export default class API {
       });
 
       // Remove multiple logos from store
-      ids.forEach(id => {
+      ids.forEach((id) => {
         useChannelsStore.getState().removeLogo(id);
       });
 
