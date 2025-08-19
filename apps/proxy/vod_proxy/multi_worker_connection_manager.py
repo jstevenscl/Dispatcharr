@@ -340,9 +340,44 @@ class RedisBackedVODConnection:
         # Remove from Redis
         if self.redis_client:
             try:
-                self.redis_client.delete(self.connection_key)
-                self.redis_client.delete(self.lock_key)
-                logger.info(f"[{self.session_id}] Cleaned up Redis connection state")
+                # Get session information for cleanup
+                session_key = f"vod_session:{self.session_id}"
+                session_data = self.redis_client.hgetall(session_key)
+
+                # Convert bytes to strings if needed
+                if session_data and isinstance(list(session_data.keys())[0], bytes):
+                    session_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in session_data.items()}
+
+                # Use pipeline for atomic cleanup operations
+                pipe = self.redis_client.pipeline()
+
+                # 1. Remove main connection state
+                pipe.delete(self.connection_key)
+
+                # 2. Remove distributed lock
+                pipe.delete(self.lock_key)
+
+                # 3. Remove session tracking
+                pipe.delete(session_key)
+
+                # 4. Clean up legacy vod_proxy connection keys if session data exists
+                if session_data:
+                    content_type = session_data.get('content_type')
+                    content_uuid = session_data.get('content_uuid')
+
+                    if content_type and content_uuid:
+                        # Remove from vod_proxy connection tracking
+                        vod_proxy_connection_key = f"vod_proxy:connection:{content_type}:{content_uuid}:{self.session_id}"
+                        pipe.delete(vod_proxy_connection_key)
+
+                        # Remove from content connections set
+                        content_connections_key = f"vod_proxy:content:{content_type}:{content_uuid}:connections"
+                        pipe.srem(content_connections_key, self.session_id)
+
+                # Execute all cleanup operations
+                pipe.execute()
+
+                logger.info(f"[{self.session_id}] Cleaned up all Redis keys (connection, session, locks)")
 
                 # Decrement profile connections if we have the state and connection manager
                 if state and state.m3u_profile_id and connection_manager:
@@ -719,14 +754,7 @@ class MultiWorkerVODConnectionManager:
         redis_connection = RedisBackedVODConnection(session_id, self.redis_client)
         redis_connection.cleanup(connection_manager=self)
 
-        # Also clean up session data
-        if self.redis_client:
-            try:
-                session_key = f"vod_session:{session_id}"
-                self.redis_client.delete(session_key)
-                logger.info(f"[{session_id}] Cleaned up session data")
-            except Exception as e:
-                logger.error(f"[{session_id}] Error cleaning up session data: {e}")
+        # The cleanup method now handles all Redis keys including session data
 
     def cleanup_stale_persistent_connections(self, max_age_seconds: int = 1800):
         """Clean up stale Redis-backed persistent connections"""
