@@ -63,12 +63,14 @@ def refresh_movies(client, account):
     categories_data = client.get_vod_categories()
     category_map = batch_create_categories(categories_data, 'movie')
 
-    # Create a mapping from category names to provider category IDs
-    provider_category_map = {}
+    # Create a mapping from provider category IDs to our category objects
+    provider_category_id_map = {}
     for cat_data in categories_data:
         cat_name = cat_data.get('category_name', 'Unknown')
-        cat_id = cat_data.get('category_id')
-        provider_category_map[cat_name] = cat_id
+        provider_cat_id = cat_data.get('category_id')
+        our_category = category_map.get(cat_name)
+        if provider_cat_id and our_category:
+            provider_category_id_map[str(provider_cat_id)] = our_category
 
     # Get all movies in a single API call
     logger.info("Fetching all movies from provider...")
@@ -76,14 +78,16 @@ def refresh_movies(client, account):
 
     # Add proper category info to each movie
     for movie_data in all_movies_data:
-        category_name = movie_data.get('category_name', 'Unknown')
-        category = category_map.get(category_name)
-        provider_category_id = provider_category_map.get(category_name)
+        provider_cat_id = str(movie_data.get('category_id', '')) if movie_data.get('category_id') else None
+        category = provider_category_id_map.get(provider_cat_id) if provider_cat_id else None
 
         # Store category ID instead of object to avoid JSON serialization issues
         movie_data['_category_id'] = category.id if category else None
-        movie_data['_category_name'] = category_name
-        movie_data['_provider_category_id'] = provider_category_id
+        movie_data['_provider_category_id'] = provider_cat_id
+
+        # Debug logging for first few movies
+        if len(all_movies_data) > 0 and all_movies_data.index(movie_data) < 3:
+            logger.info(f"Movie '{movie_data.get('name')}' -> Provider Category ID: {provider_cat_id} -> Our Category: {category.name if category else 'None'} (ID: {category.id if category else 'None'})")
 
     # Process movies in chunks using the simple approach
     chunk_size = 1000
@@ -109,12 +113,14 @@ def refresh_series(client, account):
     categories_data = client.get_series_categories()
     category_map = batch_create_categories(categories_data, 'series')
 
-    # Create a mapping from category names to provider category IDs
-    provider_category_map = {}
+    # Create a mapping from provider category IDs to our category objects
+    provider_category_id_map = {}
     for cat_data in categories_data:
         cat_name = cat_data.get('category_name', 'Unknown')
-        cat_id = cat_data.get('category_id')
-        provider_category_map[cat_name] = cat_id
+        provider_cat_id = cat_data.get('category_id')
+        our_category = category_map.get(cat_name)
+        if provider_cat_id and our_category:
+            provider_category_id_map[str(provider_cat_id)] = our_category
 
     # Get all series in a single API call
     logger.info("Fetching all series from provider...")
@@ -122,14 +128,16 @@ def refresh_series(client, account):
 
     # Add proper category info to each series
     for series_data in all_series_data:
-        category_name = series_data.get('category_name', 'Unknown')
-        category = category_map.get(category_name)
-        provider_category_id = provider_category_map.get(category_name)
+        provider_cat_id = str(series_data.get('category_id', '')) if series_data.get('category_id') else None
+        category = provider_category_id_map.get(provider_cat_id) if provider_cat_id else None
 
         # Store category ID instead of object to avoid JSON serialization issues
         series_data['_category_id'] = category.id if category else None
-        series_data['_category_name'] = category_name
-        series_data['_provider_category_id'] = provider_category_id
+        series_data['_provider_category_id'] = provider_cat_id
+
+        # Debug logging for first few series
+        if len(all_series_data) > 0 and all_series_data.index(series_data) < 3:
+            logger.info(f"Series '{series_data.get('name')}' -> Provider Category ID: {provider_cat_id} -> Our Category: {category.name if category else 'None'} (ID: {category.id if category else 'None'})")
 
     # Process series in chunks using the simple approach
     chunk_size = 1000
@@ -227,7 +235,18 @@ def process_movie_batch(account, batch, category_map):
             stream_id = str(movie_data.get('stream_id'))
             name = movie_data.get('name', 'Unknown')
             category_id = movie_data.get('_category_id')
-            category = VODCategory.objects.get(id=category_id) if category_id else None
+
+            # Get category with proper error handling
+            category = None
+            if category_id:
+                try:
+                    category = VODCategory.objects.get(id=category_id)
+                    logger.debug(f"Found category {category.name} (ID: {category_id}) for movie {name}")
+                except VODCategory.DoesNotExist:
+                    logger.warning(f"Category ID {category_id} not found for movie {name}")
+                    category = None
+            else:
+                logger.warning(f"No category ID provided for movie {name}")
 
             # Extract metadata
             year = extract_year_from_data(movie_data, 'name')
@@ -501,7 +520,18 @@ def process_series_batch(account, batch, category_map):
             series_id = str(series_data.get('series_id'))
             name = series_data.get('name', 'Unknown')
             category_id = series_data.get('_category_id')
-            category = VODCategory.objects.get(id=category_id) if category_id else None
+
+            # Get category with proper error handling
+            category = None
+            if category_id:
+                try:
+                    category = VODCategory.objects.get(id=category_id)
+                    logger.debug(f"Found category {category.name} (ID: {category_id}) for series {name}")
+                except VODCategory.DoesNotExist:
+                    logger.warning(f"Category ID {category_id} not found for series {name}")
+                    category = None
+            else:
+                logger.warning(f"No category ID provided for series {name}")
 
             # Extract metadata
             year = extract_year(series_data.get('releaseDate', ''))
