@@ -55,12 +55,7 @@ urlpatterns = [
         stream_xc,
         name="xc_stream_endpoint",
     ),
-    # Swagger UI
-    path(
-        "swagger/",
-        schema_view.with_ui("swagger", cache_timeout=0),
-        name="schema-swagger-ui",
-    ),
+    re_path(r"^swagger/?$", schema_view.with_ui("swagger", cache_timeout=0), name="schema-swagger-ui"),
     # ReDoc UI
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     # Optionally, serve the raw Swagger JSON
