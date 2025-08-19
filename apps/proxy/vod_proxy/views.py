@@ -15,6 +15,7 @@ from django.views import View
 from apps.vod.models import Movie, Series, Episode
 from apps.m3u.models import M3UAccount, M3UAccountProfile
 from apps.proxy.vod_proxy.connection_manager import VODConnectionManager
+from apps.proxy.vod_proxy.multi_worker_connection_manager import MultiWorkerVODConnectionManager
 from .utils import get_client_info, create_vod_response
 
 logger = logging.getLogger(__name__)
@@ -180,8 +181,9 @@ class VODStreamView(View):
                 logger.error(f"[VOD-ERROR] Invalid stream URL: {final_stream_url}")
                 return HttpResponse("Invalid stream URL", status=500)
 
-            # Get connection manager
-            connection_manager = VODConnectionManager.get_instance()
+            # Get connection manager (Redis-backed for multi-worker support)
+            connection_manager = MultiWorkerVODConnectionManager.get_instance()
+
 
             # Stream the content with session-based connection reuse
             logger.info("[VOD-STREAM] Calling connection manager to stream content")
@@ -304,7 +306,9 @@ class VODStreamView(View):
 
             # Now create a persistent connection for the session (if one doesn't exist)
             # This ensures the FUSE GET requests will reuse the same connection
-            connection_manager = VODConnectionManager.get_instance()
+
+            connection_manager = MultiWorkerVODConnectionManager.get_instance()
+
             logger.info(f"[VOD-HEAD] Pre-creating persistent connection for session: {session_id}")
 
             # We don't actually stream content here, just ensure connection is ready
