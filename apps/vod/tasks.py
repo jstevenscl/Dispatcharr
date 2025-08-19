@@ -374,7 +374,6 @@ def process_movie_batch(account, batch, category_map):
                 movie=movie,
                 category=category,
                 stream_id=stream_id,
-                url='',  # Will be set later if needed
                 container_extension=movie_data.get('container_extension', 'mp4'),
                 custom_properties={
                     'basic_data': movie_data,
@@ -430,7 +429,7 @@ def process_movie_batch(account, batch, category_map):
 
             if relations_to_update:
                 M3UMovieRelation.objects.bulk_update(relations_to_update, [
-                    'movie', 'category', 'url', 'container_extension', 'custom_properties'
+                    'movie', 'category', 'container_extension', 'custom_properties'
                 ])
 
         logger.info("Movie batch processing completed successfully!")
@@ -492,6 +491,14 @@ def process_series_batch(account, batch, category_map):
             genre = series_data.get('genre', '')
             logo_url = series_data.get('cover') or ''
 
+            # Extract additional metadata for custom_properties
+            additional_metadata = {}
+            for key in ['backdrop_path', 'poster_path', 'original_name', 'first_air_date', 'last_air_date',
+                       'episode_run_time', 'status', 'type', 'cast', 'director', 'country', 'language',
+                       'releaseDate', 'youtube_trailer', 'category_id', 'age', 'seasons']:
+                if series_data.get(key):
+                    additional_metadata[key] = series_data[key]
+
             series_props = {
                 'name': name,
                 'year': year,
@@ -500,6 +507,7 @@ def process_series_batch(account, batch, category_map):
                 'description': description,
                 'rating': rating,
                 'genre': genre,
+                'custom_properties': additional_metadata if additional_metadata else None,
             }
 
             series_keys[series_key] = {
@@ -598,7 +606,11 @@ def process_series_batch(account, batch, category_map):
             updated = False
 
             for field, value in series_props.items():
-                if getattr(series, field) != value:
+                if field == 'custom_properties':
+                    if value != series.custom_properties:
+                        series.custom_properties = value
+                        updated = True
+                elif getattr(series, field) != value:
                     setattr(series, field, value)
                     updated = True
 
@@ -684,7 +696,8 @@ def process_series_batch(account, batch, category_map):
             # Update existing series
             if series_to_update:
                 Series.objects.bulk_update(series_to_update, [
-                    'description', 'rating', 'genre', 'year', 'tmdb_id', 'imdb_id', 'logo'
+                    'description', 'rating', 'genre', 'year', 'tmdb_id', 'imdb_id',
+                    'custom_properties', 'logo'
                 ])
 
             # Update relations to reference the correct series objects

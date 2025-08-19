@@ -390,12 +390,7 @@ class VODStreamView(View):
                 else:
                     logger.warning(f"[VOD-URL] get_stream_url() returned None")
 
-            # Fallback to stored URL field (for backwards compatibility)
-            if hasattr(relation, 'url') and relation.url:
-                logger.info(f"[VOD-URL] Using stored URL: {relation.url}")
-                return relation.url
-
-            logger.error(f"[VOD-URL] Relation has no URL or get_stream_url method failed")
+            logger.error(f"[VOD-URL] Relation has no get_stream_url method or it failed")
             return None
         except Exception as e:
             logger.error(f"[VOD-URL] Error getting stream URL from relation: {e}", exc_info=True)

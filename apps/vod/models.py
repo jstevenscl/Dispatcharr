@@ -182,7 +182,6 @@ class M3UMovieRelation(models.Model):
     category = models.ForeignKey(VODCategory, on_delete=models.SET_NULL, null=True, blank=True)
 
     # Streaming information (provider-specific)
-    url = models.URLField(max_length=2048)
     stream_id = models.CharField(max_length=255, help_text="External stream ID from M3U provider")
     container_extension = models.CharField(max_length=10, blank=True, null=True)
 
@@ -204,19 +203,15 @@ class M3UMovieRelation(models.Model):
 
     def get_stream_url(self):
         """Get the full stream URL for this movie from this provider"""
-        # If we have a stored URL, use it
-        if self.url:
-            return self.url
-            
-        # Otherwise, build URL dynamically for XtreamCodes accounts
+        # Build URL dynamically for XtreamCodes accounts
         if self.m3u_account.account_type == 'XC':
             server_url = self.m3u_account.server_url.rstrip('/')
             username = self.m3u_account.username
             password = self.m3u_account.password
             return f"{server_url}/movie/{username}/{password}/{self.stream_id}.{self.container_extension or 'mp4'}"
         else:
-            # For other account types, we need a stored URL
-            return self.url
+            # For other account types, we would need another way to build URLs
+            return None
 
 
 class M3UEpisodeRelation(models.Model):
