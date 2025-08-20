@@ -94,6 +94,10 @@ class M3UAccount(models.Model):
         default=7,
         help_text="Number of days after which a stream will be removed if not seen in the M3U source.",
     )
+    priority = models.PositiveIntegerField(
+        default=0,
+        help_text="Priority for VOD provider selection (higher numbers = higher priority). Used when multiple providers offer the same content.",
+    )
 
     def __str__(self):
         return self.name

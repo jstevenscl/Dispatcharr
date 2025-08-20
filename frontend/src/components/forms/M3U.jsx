@@ -64,6 +64,7 @@ const M3U = ({
       username: '',
       password: '',
       stale_stream_days: 7,
+      priority: 0,
       enable_vod: false,
     },
 
@@ -93,6 +94,9 @@ const M3U = ({
             m3uAccount.stale_stream_days !== null
             ? m3uAccount.stale_stream_days
             : 7,
+        priority: m3uAccount.priority !== undefined && m3uAccount.priority !== null
+          ? m3uAccount.priority
+          : 0,
         enable_vod: m3uAccount.enable_vod || false,
       });
 
@@ -364,6 +368,15 @@ const M3U = ({
                 label="Stale Stream Retention (days)"
                 description="Streams not seen for this many days will be removed"
                 {...form.getInputProps('stale_stream_days')}
+              />
+
+              <NumberInput
+                min={0}
+                max={999}
+                label="VOD Priority"
+                description="Priority for VOD provider selection (higher numbers = higher priority). Used when multiple providers offer the same content."
+                {...form.getInputProps('priority')}
+                key={form.key('priority')}
               />
 
               <Checkbox

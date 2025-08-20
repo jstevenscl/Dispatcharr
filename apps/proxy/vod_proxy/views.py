@@ -345,16 +345,28 @@ class VODStreamView(View):
                 content_obj = get_object_or_404(Movie, uuid=content_id)
                 logger.info(f"[CONTENT-FOUND] Movie: {content_obj.name} (ID: {content_obj.id})")
 
-                # Get the first active relation
-                relation = content_obj.m3u_relations.filter(m3u_account__is_active=True).first()
+                # Get the highest priority active relation
+                relation = content_obj.m3u_relations.filter(
+                    m3u_account__is_active=True
+                ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
+
+                if relation:
+                    logger.info(f"[PROVIDER-SELECTED] Using provider: {relation.m3u_account.name} (priority: {relation.m3u_account.priority})")
+
                 return content_obj, relation
 
             elif content_type == 'episode':
                 content_obj = get_object_or_404(Episode, uuid=content_id)
                 logger.info(f"[CONTENT-FOUND] Episode: {content_obj.name} (ID: {content_obj.id}, Series: {content_obj.series.name})")
 
-                # Get the first active relation
-                relation = content_obj.m3u_relations.filter(m3u_account__is_active=True).first()
+                # Get the highest priority active relation
+                relation = content_obj.m3u_relations.filter(
+                    m3u_account__is_active=True
+                ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
+
+                if relation:
+                    logger.info(f"[PROVIDER-SELECTED] Using provider: {relation.m3u_account.name} (priority: {relation.m3u_account.priority})")
+
                 return content_obj, relation
 
             elif content_type == 'series':
@@ -367,7 +379,14 @@ class VODStreamView(View):
                     return None, None
 
                 logger.info(f"[CONTENT-FOUND] First episode: {episode.name} (ID: {episode.id})")
-                relation = episode.m3u_relations.filter(m3u_account__is_active=True).first()
+                # Get the highest priority active relation
+                relation = episode.m3u_relations.filter(
+                    m3u_account__is_active=True
+                ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
+
+                if relation:
+                    logger.info(f"[PROVIDER-SELECTED] Using provider: {relation.m3u_account.name} (priority: {relation.m3u_account.priority})")
+
                 return episode, relation
             else:
                 logger.error(f"[CONTENT-ERROR] Invalid content type: {content_type}")

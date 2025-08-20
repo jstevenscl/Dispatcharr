@@ -18,6 +18,7 @@ class M3UAccountAdmin(admin.ModelAdmin):
         "server_url",
         "server_group",
         "max_streams",
+        "priority",
         "is_active",
         "user_agent_display",
         "uploaded_file_link",

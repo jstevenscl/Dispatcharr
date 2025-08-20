@@ -1,5 +1,5 @@
 from core.utils import validate_flexible_url
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
@@ -113,6 +113,7 @@ class M3UAccountSerializer(serializers.ModelSerializer):
             "username",
             "password",
             "stale_stream_days",
+            "priority",
             "status",
             "last_message",
             "enable_vod",

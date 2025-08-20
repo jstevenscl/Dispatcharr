@@ -1077,10 +1077,10 @@ def xc_get_vod_streams(request, user, category_id=None):
     movies = Movie.objects.filter(**filters).select_related('logo').distinct()
 
     for movie in movies:
-        # Get the first relation for this movie (for metadata like container_extension)
+        # Get the highest priority relation for this movie (for metadata like container_extension)
         relation = movie.m3u_relations.filter(
             m3u_account__is_active=True
-        ).first()
+        ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
 
         if relation:
             relation_custom = relation.custom_properties or {}
@@ -1282,9 +1282,11 @@ def xc_get_series_info(request, user, series_id):
         if season_num not in seasons:
             seasons[season_num] = []
 
-        # Try to get the first related M3UEpisodeRelation for this episode (for video/audio/bitrate)
+        # Try to get the highest priority related M3UEpisodeRelation for this episode (for video/audio/bitrate)
         from apps.vod.models import M3UEpisodeRelation
-        first_relation = M3UEpisodeRelation.objects.filter(episode=episode).order_by('id').first()
+        first_relation = M3UEpisodeRelation.objects.filter(
+            episode=episode
+        ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
         video = audio = bitrate = None
         if first_relation and first_relation.custom_properties:
             info = first_relation.custom_properties.get('info')
