@@ -59,6 +59,8 @@ const SettingsPage = () => {
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
+  const [timeFormat, setTimeFormat] = useLocalStorage('time-format', '12h');
+  const [dateFormat, setDateFormat] = useLocalStorage('date-format', 'mdy');
 
   const regionChoices = REGION_CHOICES;
 
@@ -265,6 +267,12 @@ const SettingsPage = () => {
       case 'table-size':
         setTableSize(value);
         break;
+      case 'time-format':
+        setTimeFormat(value);
+        break;
+      case 'date-format':
+        setDateFormat(value);
+        break;
     }
   };
 
@@ -360,6 +368,36 @@ const SettingsPage = () => {
                   },
                 ]}
               />
+              <Select
+                label="Time format"
+                value={timeFormat}
+                onChange={(val) => onUISettingsChange('time-format', val)}
+                data={[
+                  {
+                    value: '12h',
+                    label: '12h hour time',
+                  },
+                  {
+                    value: '24h',
+                    label: '24 hour time',
+                  },
+                ]}
+              />
+              <Select
+                label="Date format"
+                value={dateFormat}
+                onChange={(val) => onUISettingsChange('date-format', val)}
+                data={[
+                  {
+                    value: 'mdy',
+                    label: 'MM/DD/YYYY',
+                  },
+                  {
+                    value: 'dmy',
+                    label: 'DD/MM/YYYY',
+                  },
+                ]}
+              />
             </Accordion.Panel>
           </Accordion.Item>
 
@@ -390,7 +428,6 @@ const SettingsPage = () => {
                         label: option.name,
                       }))}
                     />
-
                     <Select
                       searchable
                       {...form.getInputProps('default-stream-profile')}
