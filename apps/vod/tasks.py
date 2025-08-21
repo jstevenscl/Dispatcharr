@@ -276,7 +276,8 @@ def process_movie_batch(account, batch, category_map):
             rating = movie_data.get('rating') or movie_data.get('vote_average') or ''
             genre = movie_data.get('genre') or movie_data.get('category_name') or ''
             duration_secs = extract_duration_from_data(movie_data)
-            trailer = movie_data.get('trailer') or movie_data.get('youtube_trailer') or ''
+            trailer_raw = movie_data.get('trailer') or movie_data.get('youtube_trailer') or ''
+            trailer = extract_string_from_array_or_string(trailer_raw) if trailer_raw else None
             logo_url = movie_data.get('stream_icon') or ''
 
             movie_props = {
@@ -570,8 +571,21 @@ def process_series_batch(account, batch, category_map):
             for key in ['backdrop_path', 'poster_path', 'original_name', 'first_air_date', 'last_air_date',
                        'episode_run_time', 'status', 'type', 'cast', 'director', 'country', 'language',
                        'releaseDate', 'youtube_trailer', 'category_id', 'age', 'seasons']:
-                if series_data.get(key):
-                    additional_metadata[key] = series_data[key]
+                value = series_data.get(key)
+                if value:
+                    # For string-like fields that might be arrays, extract clean strings
+                    if key in ['poster_path', 'youtube_trailer', 'cast', 'director']:
+                        clean_value = extract_string_from_array_or_string(value)
+                        if clean_value:
+                            additional_metadata[key] = clean_value
+                    elif key == 'backdrop_path':
+                        clean_value = extract_string_from_array_or_string(value)
+                        if clean_value:
+                            additional_metadata[key] = [clean_value]
+                    else:
+                        # For other fields, keep as-is if not null/empty
+                        if value is not None and value != '' and value != []:
+                            additional_metadata[key] = value
 
             series_props = {
                 'name': name,
@@ -946,11 +960,26 @@ def refresh_series_episodes(account, series, external_series_id, episodes_data=N
                     # Update series with detailed info
                     info = series_info.get('info', {})
                     if info:
-                        series.description = info.get('plot', series.description)
-                        series.rating = info.get('rating', series.rating)
-                        series.genre = info.get('genre', series.genre)
-                        series.year = extract_year_from_data(info)
-                        series.save()
+                        # Only update fields if new value is non-empty and either no existing value or existing value is empty
+                        updated = False
+                        if should_update_field(series.description, info.get('plot')):
+                            series.description = extract_string_from_array_or_string(info.get('plot'))
+                            updated = True
+                        if (info.get('rating') and str(info.get('rating')).strip() and
+                            (not series.rating or not str(series.rating).strip())):
+                            series.rating = info.get('rating')
+                            updated = True
+                        if should_update_field(series.genre, info.get('genre')):
+                            series.genre = extract_string_from_array_or_string(info.get('genre'))
+                            updated = True
+
+                        year = extract_year_from_data(info)
+                        if year and not series.year:
+                            series.year = year
+                            updated = True
+
+                        if updated:
+                            series.save()
 
                     episodes_data = series_info.get('episodes', {})
                 else:
@@ -1051,9 +1080,12 @@ def batch_process_episodes(account, series, episodes_data):
                 if info.get('crew'):
                     custom_props['crew'] = info.get('crew')
                 if info.get('movie_image'):
-                    custom_props['movie_image'] = info.get('movie_image')
-                if info.get('backdrop_path'):
-                    custom_props['backdrop_path'] = info.get('backdrop_path')
+                    movie_image = extract_string_from_array_or_string(info.get('movie_image'))
+                    if movie_image:
+                        custom_props['movie_image'] = movie_image
+                backdrop = extract_string_from_array_or_string(info.get('backdrop_path'))
+                if backdrop:
+                    custom_props['backdrop_path'] = [backdrop]
 
             # Find existing episode
             episode_key = (series.id, season_number, episode_number)
@@ -1537,6 +1569,77 @@ def merge_series_data(source_series, target_series, tmdb_id_to_set=None, imdb_id
         logger.info(f"Successfully merged data from series {source_series.id} into {target_series.id}")
 
 
+def is_non_empty_string(value):
+    """
+    Helper function to safely check if a value is a non-empty string.
+    Returns True only if value is a string and has non-whitespace content.
+    """
+    return isinstance(value, str) and value.strip()
+
+
+def extract_string_from_array_or_string(value):
+    """
+    Helper function to extract a string value from either a string or array.
+    Returns the first non-null string from an array, or the string itself.
+    Returns None if no valid string is found.
+    """
+    if isinstance(value, str):
+        return value.strip() if value.strip() else None
+    elif isinstance(value, list) and value:
+        # Find first non-null, non-empty string in the array
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+            elif item is not None and str(item).strip():
+                return str(item).strip()
+    return None
+
+
+def clean_custom_properties(custom_props):
+    """
+    Remove null, empty, or invalid values from custom_properties dict.
+    Only keeps properties that have meaningful values.
+    """
+    if not custom_props:
+        return None
+
+    cleaned = {}
+    for key, value in custom_props.items():
+        # Handle fields that should extract clean strings
+        if key in ['youtube_trailer', 'actors', 'director', 'cast']:
+            clean_value = extract_string_from_array_or_string(value)
+            if clean_value:
+                cleaned[key] = clean_value
+        # Handle backdrop_path which should remain as array format
+        elif key == 'backdrop_path':
+            clean_value = extract_string_from_array_or_string(value)
+            if clean_value:
+                cleaned[key] = [clean_value]
+        else:
+            # For other properties, keep them if they're not None and not empty
+            if value is not None and value != '' and value != []:
+                # If it's a list with only null values, skip it
+                if isinstance(value, list) and all(item is None for item in value):
+                    continue
+                cleaned[key] = value
+
+    return cleaned if cleaned else None
+
+
+def should_update_field(existing_value, new_value):
+    """
+    Helper function to determine if we should update a field.
+    Returns True if:
+    - new_value is a non-empty string (or contains one if it's an array) AND
+    - existing_value is None, empty string, array with null/empty values, or non-string
+    """
+    # Extract actual string values from arrays if needed
+    new_string = extract_string_from_array_or_string(new_value)
+    existing_string = extract_string_from_array_or_string(existing_value)
+
+    return new_string is not None and (existing_string is None or not existing_string)
+
+
 @shared_task
 def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
     """
@@ -1641,26 +1744,32 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                             movie.imdb_id = imdb_id_to_set
                             updated = True
                             logger.debug(f"Set imdb_id {imdb_id_to_set} on movie {movie.id}")
-                if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
-                    custom_props['youtube_trailer'] = info.get('trailer')
+                # Only update trailer if we have a non-empty value and either no existing value or existing value is empty
+                if should_update_field(custom_props.get('youtube_trailer'), info.get('trailer')):
+                    custom_props['youtube_trailer'] = extract_string_from_array_or_string(info.get('trailer'))
                     updated = True
-                if info.get('youtube_trailer') and info.get('youtube_trailer') != custom_props.get('youtube_trailer'):
-                    custom_props['youtube_trailer'] = info.get('youtube_trailer')
+                if should_update_field(custom_props.get('youtube_trailer'), info.get('youtube_trailer')):
+                    custom_props['youtube_trailer'] = extract_string_from_array_or_string(info.get('youtube_trailer'))
                     updated = True
-                if info.get('backdrop_path') and info.get('backdrop_path') != custom_props.get('backdrop_path'):
-                    custom_props['backdrop_path'] = info.get('backdrop_path')
+                # Only update backdrop_path if we have a non-empty value and either no existing value or existing value is empty
+                if should_update_field(custom_props.get('backdrop_path'), info.get('backdrop_path')):
+                    backdrop_url = extract_string_from_array_or_string(info.get('backdrop_path'))
+                    custom_props['backdrop_path'] = [backdrop_url] if backdrop_url else None
                     updated = True
-                if info.get('actors') and info.get('actors') != custom_props.get('actors'):
-                    custom_props['actors'] = info.get('actors')
+                # Only update actors if we have a non-empty value and either no existing value or existing value is empty
+                if should_update_field(custom_props.get('actors'), info.get('actors')):
+                    custom_props['actors'] = extract_string_from_array_or_string(info.get('actors'))
                     updated = True
-                if info.get('cast') and info.get('cast') != custom_props.get('actors'):
-                    custom_props['actors'] = info.get('cast')
+                if should_update_field(custom_props.get('actors'), info.get('cast')):
+                    custom_props['actors'] = extract_string_from_array_or_string(info.get('cast'))
                     updated = True
-                if info.get('director') and info.get('director') != custom_props.get('director'):
-                    custom_props['director'] = info.get('director')
+                # Only update director if we have a non-empty value and either no existing value or existing value is empty
+                if should_update_field(custom_props.get('director'), info.get('director')):
+                    custom_props['director'] = extract_string_from_array_or_string(info.get('director'))
                     updated = True
                 if updated:
-                    movie.custom_properties = custom_props
+                    # Clean custom_properties before saving to remove null/empty values
+                    movie.custom_properties = clean_custom_properties(custom_props)
                     try:
                         movie.save()
                     except Exception as save_error:
@@ -1681,11 +1790,19 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                             raise
 
                 # Update relation custom_properties and last_advanced_refresh
-                custom_props = relation.custom_properties or {}
-                custom_props['detailed_info'] = info
-                custom_props['movie_data'] = movie_data
-                custom_props['detailed_fetched'] = True
-                relation.custom_properties = custom_props
+                relation_custom_props = relation.custom_properties or {}
+
+                # Clean the detailed_info before saving to avoid storing null/empty arrays
+                cleaned_info = clean_custom_properties(info) if info else None
+                cleaned_movie_data = clean_custom_properties(movie_data) if movie_data else None
+
+                if cleaned_info:
+                    relation_custom_props['detailed_info'] = cleaned_info
+                if cleaned_movie_data:
+                    relation_custom_props['movie_data'] = cleaned_movie_data
+                relation_custom_props['detailed_fetched'] = True
+
+                relation.custom_properties = relation_custom_props
                 relation.last_advanced_refresh = now
                 relation.save(update_fields=['custom_properties', 'last_advanced_refresh'])
 

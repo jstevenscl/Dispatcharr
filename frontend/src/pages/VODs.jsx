@@ -1444,7 +1444,9 @@ const VODModal = ({ vod, opened, onClose }) => {
                                         {techDetails.video && Object.keys(techDetails.video).length > 0 && (
                                             <Text size="xs" color="dimmed">
                                                 <strong>Video:</strong>{' '}
-                                                {techDetails.video.codec_long_name || techDetails.video.codec_name}
+                                                {(techDetails.video.codec_long_name && techDetails.video.codec_long_name !== 'unknown')
+                                                    ? techDetails.video.codec_long_name
+                                                    : techDetails.video.codec_name}
                                                 {techDetails.video.profile ? ` (${techDetails.video.profile})` : ''}
                                                 {techDetails.video.width && techDetails.video.height
                                                     ? `, ${techDetails.video.width}x${techDetails.video.height}`
@@ -1466,7 +1468,9 @@ const VODModal = ({ vod, opened, onClose }) => {
                                         {techDetails.audio && Object.keys(techDetails.audio).length > 0 && (
                                             <Text size="xs" color="dimmed">
                                                 <strong>Audio:</strong>{' '}
-                                                {techDetails.audio.codec_long_name || techDetails.audio.codec_name}
+                                                {(techDetails.audio.codec_long_name && techDetails.audio.codec_long_name !== 'unknown')
+                                                    ? techDetails.audio.codec_long_name
+                                                    : techDetails.audio.codec_name}
                                                 {techDetails.audio.profile ? ` (${techDetails.audio.profile})` : ''}
                                                 {techDetails.audio.channel_layout
                                                     ? `, Channels: ${techDetails.audio.channel_layout}`
