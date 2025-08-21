@@ -1786,6 +1786,24 @@ export default class API {
     }
   }
 
+  static async getMovieProviders(movieId) {
+    try {
+      const response = await request(`${host}/api/vod/movies/${movieId}/providers/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve movie providers', e);
+    }
+  }
+
+  static async getSeriesProviders(seriesId) {
+    try {
+      const response = await request(`${host}/api/vod/series/${seriesId}/providers/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve series providers', e);
+    }
+  }
+
   static async getVODCategories() {
     try {
       const response = await request(`${host}/api/vod/categories/`);

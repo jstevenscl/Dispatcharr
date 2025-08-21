@@ -233,7 +233,7 @@ const SeriesCard = ({ series, onClick }) => {
 };
 
 const SeriesModal = ({ series, opened, onClose }) => {
-    const { fetchSeriesInfo, loading, episodes } = useVODStore();
+    const { fetchSeriesInfo, fetchSeriesProviders } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
     const [detailedSeries, setDetailedSeries] = useState(null);
@@ -242,6 +242,9 @@ const SeriesModal = ({ series, opened, onClose }) => {
     const [expandedEpisode, setExpandedEpisode] = useState(null);
     const [trailerModalOpened, setTrailerModalOpened] = useState(false);
     const [trailerUrl, setTrailerUrl] = useState('');
+    const [providers, setProviders] = useState([]);
+    const [selectedProvider, setSelectedProvider] = useState(null);
+    const [loadingProviders, setLoadingProviders] = useState(false);
 
     useEffect(() => {
         if (opened && series) {
@@ -263,13 +266,34 @@ const SeriesModal = ({ series, opened, onClose }) => {
                 .finally(() => {
                     setLoadingDetails(false);
                 });
+
+            // Fetch available providers
+            setLoadingProviders(true);
+            fetchSeriesProviders(series.id)
+                .then((providersData) => {
+                    setProviders(providersData);
+                    // Set the first provider as default if none selected
+                    if (providersData.length > 0 && !selectedProvider) {
+                        setSelectedProvider(providersData[0]);
+                    }
+                })
+                .catch((error) => {
+                    console.error('Failed to fetch series providers:', error);
+                    setProviders([]);
+                })
+                .finally(() => {
+                    setLoadingProviders(false);
+                });
         }
-    }, [opened, series, fetchSeriesInfo]);
+    }, [opened, series, fetchSeriesInfo, fetchSeriesProviders, selectedProvider]);
 
     useEffect(() => {
         if (!opened) {
             setDetailedSeries(null);
             setLoadingDetails(false);
+            setProviders([]);
+            setSelectedProvider(null);
+            setLoadingProviders(false);
         }
     }, [opened]);
 
@@ -277,7 +301,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
     const seriesEpisodes = React.useMemo(() => {
         if (!detailedSeries) return [];
 
-        // First try to get episodes from the fetched data
+        // Try to get episodes from the fetched data
         if (detailedSeries.episodesList) {
             return detailedSeries.episodesList.sort((a, b) => {
                 if (a.season_number !== b.season_number) {
@@ -287,16 +311,9 @@ const SeriesModal = ({ series, opened, onClose }) => {
             });
         }
 
-        // Otherwise, filter episodes from the global store
-        return Object.values(episodes)
-            .filter(episode => episode.series?.id === detailedSeries.id)
-            .sort((a, b) => {
-                if (a.season_number !== b.season_number) {
-                    return (a.season_number || 0) - (b.season_number || 0);
-                }
-                return (a.episode_number || 0) - (b.episode_number || 0);
-            });
-    }, [detailedSeries, episodes]);
+        // If no episodes in detailed series, return empty array
+        return [];
+    }, [detailedSeries]);
 
     // Group episodes by season
     const episodesBySeason = React.useMemo(() => {
@@ -334,6 +351,12 @@ const SeriesModal = ({ series, opened, onClose }) => {
 
     const handlePlayEpisode = (episode) => {
         let streamUrl = `/proxy/vod/episode/${episode.uuid}`;
+
+        // Add selected provider as query parameter if available
+        if (selectedProvider) {
+            streamUrl += `?m3u_account_id=${selectedProvider.m3u_account.id}`;
+        }
+
         if (env_mode === 'dev') {
             streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${streamUrl}`;
         } else {
@@ -549,9 +572,14 @@ const SeriesModal = ({ series, opened, onClose }) => {
                             </Flex>
 
                             {/* Provider Information */}
-                            {displaySeries.m3u_account && (
-                                <Box mt="md">
-                                    <Text size="sm" weight={500} mb={4}>Provider Information</Text>
+                            <Box mt="md">
+                                <Text size="sm" weight={500} mb={4}>
+                                    Provider Information
+                                    {loadingProviders && (
+                                        <Loader size="xs" style={{ marginLeft: 8 }} />
+                                    )}
+                                </Text>
+                                {providers.length === 0 && !loadingProviders && displaySeries.m3u_account ? (
                                     <Group spacing="md">
                                         <Badge color="blue" variant="light">
                                             {displaySeries.m3u_account.name}
@@ -562,8 +590,34 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                             </Badge>
                                         )}
                                     </Group>
-                                </Box>
-                            )}
+                                ) : providers.length === 1 ? (
+                                    <Group spacing="md">
+                                        <Badge color="blue" variant="light">
+                                            {providers[0].m3u_account.name}
+                                        </Badge>
+                                        {providers[0].m3u_account.account_type && (
+                                            <Badge color="gray" variant="outline" size="xs">
+                                                {providers[0].m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
+                                            </Badge>
+                                        )}
+                                    </Group>
+                                ) : providers.length > 1 ? (
+                                    <Select
+                                        data={providers.map((provider) => ({
+                                            value: provider.id.toString(),
+                                            label: `${provider.m3u_account.name} (${provider.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'})`
+                                        }))}
+                                        value={selectedProvider?.id?.toString() || ''}
+                                        onChange={(value) => {
+                                            const provider = providers.find(p => p.id.toString() === value);
+                                            setSelectedProvider(provider);
+                                        }}
+                                        placeholder="Select provider..."
+                                        style={{ maxWidth: 350 }}
+                                        disabled={loadingProviders}
+                                    />
+                                ) : null}
+                            </Box>
 
                             <Divider />
 
@@ -639,6 +693,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                                         variant="filled"
                                                                         color="blue"
                                                                         size="sm"
+                                                                        disabled={providers.length > 0 && !selectedProvider}
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             handlePlayEpisode(episode);
@@ -840,26 +895,50 @@ const VODModal = ({ vod, opened, onClose }) => {
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [trailerModalOpened, setTrailerModalOpened] = useState(false);
     const [trailerUrl, setTrailerUrl] = useState('');
-    const { fetchMovieDetailsFromProvider } = useVODStore();
+    const [providers, setProviders] = useState([]);
+    const [selectedProvider, setSelectedProvider] = useState(null);
+    const [loadingProviders, setLoadingProviders] = useState(false);
+    const { fetchMovieDetailsFromProvider, fetchMovieProviders } = useVODStore();
     const showVideo = useVideoStore((s) => s.showVideo);
     const env_mode = useSettingsStore((s) => s.environment.env_mode);
 
     useEffect(() => {
-        if (opened && vod && !detailedVOD) {
-            setLoadingDetails(true);
-            fetchMovieDetailsFromProvider(vod.id)
-                .then((details) => {
-                    setDetailedVOD(details);
+        if (opened && vod) {
+            // Fetch detailed VOD info if not already loaded
+            if (!detailedVOD) {
+                setLoadingDetails(true);
+                fetchMovieDetailsFromProvider(vod.id)
+                    .then((details) => {
+                        setDetailedVOD(details);
+                    })
+                    .catch((error) => {
+                        console.warn('Failed to fetch provider details, using basic info:', error);
+                        setDetailedVOD(vod); // Fallback to basic data
+                    })
+                    .finally(() => {
+                        setLoadingDetails(false);
+                    });
+            }
+
+            // Fetch available providers
+            setLoadingProviders(true);
+            fetchMovieProviders(vod.id)
+                .then((providersData) => {
+                    setProviders(providersData);
+                    // Set the first provider as default if none selected
+                    if (providersData.length > 0 && !selectedProvider) {
+                        setSelectedProvider(providersData[0]);
+                    }
                 })
                 .catch((error) => {
-                    console.warn('Failed to fetch provider details, using basic info:', error);
-                    setDetailedVOD(vod); // Fallback to basic data
+                    console.error('Failed to fetch providers:', error);
+                    setProviders([]);
                 })
                 .finally(() => {
-                    setLoadingDetails(false);
+                    setLoadingProviders(false);
                 });
         }
-    }, [opened, vod, detailedVOD, fetchMovieDetailsFromProvider]);
+    }, [opened, vod, detailedVOD, fetchMovieDetailsFromProvider, fetchMovieProviders, selectedProvider]);
 
     useEffect(() => {
         if (!opened) {
@@ -867,6 +946,9 @@ const VODModal = ({ vod, opened, onClose }) => {
             setLoadingDetails(false);
             setTrailerModalOpened(false);
             setTrailerUrl('');
+            setProviders([]);
+            setSelectedProvider(null);
+            setLoadingProviders(false);
         }
     }, [opened]);
 
@@ -875,6 +957,12 @@ const VODModal = ({ vod, opened, onClose }) => {
         if (!vodToPlay) return;
 
         let streamUrl = `/proxy/vod/movie/${vod.uuid}`;
+
+        // Add selected provider as query parameter if available
+        if (selectedProvider) {
+            streamUrl += `?m3u_account_id=${selectedProvider.m3u_account.id}`;
+        }
+
         if (env_mode === 'dev') {
             streamUrl = `${window.location.protocol}//${window.location.hostname}:5656${streamUrl}`;
         } else {
@@ -1085,9 +1173,48 @@ const VODModal = ({ vod, opened, onClose }) => {
                             </Flex>
 
                             {/* Provider Information & Play Button Row */}
-                            <Group spacing="md" align="center" mt="md">
-                                {/* Provider Information (conditional) */}
-                                {vod?.m3u_account && (
+                            <Group spacing="md" align="flex-end" mt="md">
+                                {/* Provider Selection */}
+                                {providers.length > 0 && (
+                                    <Box style={{ minWidth: 200 }}>
+                                        <Text size="sm" weight={500} mb={8}>
+                                            IPTV Provider
+                                            {loadingProviders && (
+                                                <Loader size="xs" style={{ marginLeft: 8 }} />
+                                            )}
+                                        </Text>
+                                        {providers.length === 1 ? (
+                                            <Group spacing="md">
+                                                <Badge color="blue" variant="light">
+                                                    {providers[0].m3u_account.name}
+                                                </Badge>
+                                                {providers[0].m3u_account.account_type && (
+                                                    <Badge color="gray" variant="outline" size="xs">
+                                                        {providers[0].m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
+                                                    </Badge>
+                                                )}
+                                            </Group>
+                                        ) : (
+                                            <Select
+                                                data={providers.map((provider) => ({
+                                                    value: provider.id.toString(),
+                                                    label: `${provider.m3u_account.name} (${provider.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'})`
+                                                }))}
+                                                value={selectedProvider?.id?.toString() || ''}
+                                                onChange={(value) => {
+                                                    const provider = providers.find(p => p.id.toString() === value);
+                                                    setSelectedProvider(provider);
+                                                }}
+                                                placeholder="Select provider..."
+                                                style={{ minWidth: 250 }}
+                                                disabled={loadingProviders}
+                                            />
+                                        )}
+                                    </Box>
+                                )}
+
+                                {/* Fallback provider info if no providers loaded yet */}
+                                {providers.length === 0 && !loadingProviders && vod?.m3u_account && (
                                     <Box>
                                         <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
                                         <Group spacing="md">
@@ -1103,19 +1230,19 @@ const VODModal = ({ vod, opened, onClose }) => {
                                     </Box>
                                 )}
 
-                                {/* Play Button (always shown) */}
+                                {/* Play Button */}
                                 <Button
                                     leftSection={<Play size={16} />}
                                     variant="filled"
                                     color="blue"
                                     size="md"
                                     onClick={handlePlayVOD}
-                                    style={{ alignSelf: 'flex-start' }}
+                                    disabled={providers.length > 0 && !selectedProvider}
                                 >
                                     Play Movie
-                                    {vod?.m3u_account && (
+                                    {selectedProvider && (
                                         <span style={{ fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
-                                            {`(via ${vod.m3u_account.name}${displayVOD.bitrate ? `, ~${displayVOD.bitrate} kbps` : ''})`}
+                                            (via {selectedProvider.m3u_account.name})
                                         </span>
                                     )}
                                 </Button>
@@ -1240,9 +1367,8 @@ const VODsPage = () => {
     const {
         movies,
         series,
-        episodes,
+        // episodes, loading - removed as unused
         categories,
-        loading,
         filters,
         currentPage,
         totalCount,
@@ -1254,7 +1380,7 @@ const VODsPage = () => {
         fetchCategories
     } = useVODStore();
 
-    const showVideo = useVideoStore((s) => s.showVideo);
+    // const showVideo = useVideoStore((s) => s.showVideo); - removed as unused
     const [selectedSeries, setSelectedSeries] = useState(null);
     const [selectedVOD, setSelectedVOD] = useState(null);
     const [seriesModalOpened, { open: openSeriesModal, close: closeSeriesModal }] = useDisclosure(false);

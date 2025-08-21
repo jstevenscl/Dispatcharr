@@ -212,6 +212,26 @@ const useVODStore = create((set, get) => ({
         }
     },
 
+    fetchMovieProviders: async (movieId) => {
+        try {
+            const response = await api.getMovieProviders(movieId);
+            return response || [];
+        } catch (error) {
+            console.error('Failed to fetch movie providers:', error);
+            throw error;
+        }
+    },
+
+    fetchSeriesProviders: async (seriesId) => {
+        try {
+            const response = await api.getSeriesProviders(seriesId);
+            return response || [];
+        } catch (error) {
+            console.error('Failed to fetch series providers:', error);
+            throw error;
+        }
+    },
+
     fetchCategories: async () => {
         try {
             const response = await api.getVODCategories();

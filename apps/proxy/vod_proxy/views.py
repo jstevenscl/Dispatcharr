@@ -142,8 +142,17 @@ class VODStreamView(View):
                     headers={'Location': redirect_url}
                 )
 
+            # Extract preferred M3U account ID from query parameters
+            preferred_m3u_account_id = request.GET.get('m3u_account_id')
+            if preferred_m3u_account_id:
+                try:
+                    preferred_m3u_account_id = int(preferred_m3u_account_id)
+                except (ValueError, TypeError):
+                    logger.warning(f"[VOD-PARAM] Invalid m3u_account_id parameter: {preferred_m3u_account_id}")
+                    preferred_m3u_account_id = None
+
             # Get the content object and its relation
-            content_obj, relation = self._get_content_and_relation(content_type, content_id)
+            content_obj, relation = self._get_content_and_relation(content_type, content_id, preferred_m3u_account_id)
             if not content_obj or not relation:
                 logger.error(f"[VOD-ERROR] Content or relation not found: {content_type} {content_id}")
                 raise Http404(f"Content not found: {content_type} {content_id}")
@@ -239,8 +248,17 @@ class VODStreamView(View):
                 session_url = request.path
                 logger.info(f"[VOD-HEAD] Using existing session: {session_id}")
 
+            # Extract preferred M3U account ID from query parameters
+            preferred_m3u_account_id = request.GET.get('m3u_account_id')
+            if preferred_m3u_account_id:
+                try:
+                    preferred_m3u_account_id = int(preferred_m3u_account_id)
+                except (ValueError, TypeError):
+                    logger.warning(f"[VOD-HEAD] Invalid m3u_account_id parameter: {preferred_m3u_account_id}")
+                    preferred_m3u_account_id = None
+
             # Get content and relation (same as GET)
-            content_obj, relation = self._get_content_and_relation(content_type, content_id)
+            content_obj, relation = self._get_content_and_relation(content_type, content_id, preferred_m3u_account_id)
             if not content_obj or not relation:
                 logger.error(f"[VOD-HEAD] Content or relation not found: {content_type} {content_id}")
                 return HttpResponse("Content not found", status=404)
@@ -336,19 +354,29 @@ class VODStreamView(View):
             logger.error(f"[VOD-HEAD] Error in HEAD request: {e}", exc_info=True)
             return HttpResponse(f"HEAD error: {str(e)}", status=500)
 
-    def _get_content_and_relation(self, content_type, content_id):
+    def _get_content_and_relation(self, content_type, content_id, preferred_m3u_account_id=None):
         """Get the content object and its M3U relation"""
         try:
             logger.info(f"[CONTENT-LOOKUP] Looking up {content_type} with UUID {content_id}")
+            if preferred_m3u_account_id:
+                logger.info(f"[CONTENT-LOOKUP] Preferred M3U account ID: {preferred_m3u_account_id}")
 
             if content_type == 'movie':
                 content_obj = get_object_or_404(Movie, uuid=content_id)
                 logger.info(f"[CONTENT-FOUND] Movie: {content_obj.name} (ID: {content_obj.id})")
 
-                # Get the highest priority active relation
-                relation = content_obj.m3u_relations.filter(
-                    m3u_account__is_active=True
-                ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
+                # Filter by preferred M3U account if specified
+                relations_query = content_obj.m3u_relations.filter(m3u_account__is_active=True)
+                if preferred_m3u_account_id:
+                    specific_relation = relations_query.filter(m3u_account__id=preferred_m3u_account_id).first()
+                    if specific_relation:
+                        logger.info(f"[PROVIDER-SELECTED] Using preferred provider: {specific_relation.m3u_account.name}")
+                        return content_obj, specific_relation
+                    else:
+                        logger.warning(f"[PROVIDER-FALLBACK] Preferred M3U account {preferred_m3u_account_id} not found, using highest priority")
+
+                # Get the highest priority active relation (fallback or default)
+                relation = relations_query.select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
 
                 if relation:
                     logger.info(f"[PROVIDER-SELECTED] Using provider: {relation.m3u_account.name} (priority: {relation.m3u_account.priority})")
@@ -359,10 +387,18 @@ class VODStreamView(View):
                 content_obj = get_object_or_404(Episode, uuid=content_id)
                 logger.info(f"[CONTENT-FOUND] Episode: {content_obj.name} (ID: {content_obj.id}, Series: {content_obj.series.name})")
 
-                # Get the highest priority active relation
-                relation = content_obj.m3u_relations.filter(
-                    m3u_account__is_active=True
-                ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
+                # Filter by preferred M3U account if specified
+                relations_query = content_obj.m3u_relations.filter(m3u_account__is_active=True)
+                if preferred_m3u_account_id:
+                    specific_relation = relations_query.filter(m3u_account__id=preferred_m3u_account_id).first()
+                    if specific_relation:
+                        logger.info(f"[PROVIDER-SELECTED] Using preferred provider: {specific_relation.m3u_account.name}")
+                        return content_obj, specific_relation
+                    else:
+                        logger.warning(f"[PROVIDER-FALLBACK] Preferred M3U account {preferred_m3u_account_id} not found, using highest priority")
+
+                # Get the highest priority active relation (fallback or default)
+                relation = relations_query.select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
 
                 if relation:
                     logger.info(f"[PROVIDER-SELECTED] Using provider: {relation.m3u_account.name} (priority: {relation.m3u_account.priority})")
@@ -379,10 +415,19 @@ class VODStreamView(View):
                     return None, None
 
                 logger.info(f"[CONTENT-FOUND] First episode: {episode.name} (ID: {episode.id})")
-                # Get the highest priority active relation
-                relation = episode.m3u_relations.filter(
-                    m3u_account__is_active=True
-                ).select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
+
+                # Filter by preferred M3U account if specified
+                relations_query = episode.m3u_relations.filter(m3u_account__is_active=True)
+                if preferred_m3u_account_id:
+                    specific_relation = relations_query.filter(m3u_account__id=preferred_m3u_account_id).first()
+                    if specific_relation:
+                        logger.info(f"[PROVIDER-SELECTED] Using preferred provider: {specific_relation.m3u_account.name}")
+                        return episode, specific_relation
+                    else:
+                        logger.warning(f"[PROVIDER-FALLBACK] Preferred M3U account {preferred_m3u_account_id} not found, using highest priority")
+
+                # Get the highest priority active relation (fallback or default)
+                relation = relations_query.select_related('m3u_account').order_by('-m3u_account__priority', 'id').first()
 
                 if relation:
                     logger.info(f"[PROVIDER-SELECTED] Using provider: {relation.m3u_account.name} (priority: {relation.m3u_account.priority})")
