@@ -1,6 +1,6 @@
 from celery import shared_task
 from django.utils import timezone
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Q
 from apps.m3u.models import M3UAccount
 from core.xtream_codes import Client as XtreamCodesClient
@@ -1236,6 +1236,295 @@ def cleanup_orphaned_vod_content():
     return f"Cleaned up {movie_count} movies and {series_count} series"
 
 
+def handle_movie_id_conflicts(current_movie, relation, tmdb_id_to_set, imdb_id_to_set):
+    """
+    Handle potential duplicate key conflicts when setting tmdb_id or imdb_id.
+
+    Since this is called when a user is actively accessing movie details, we always
+    preserve the current movie (user's selection) and merge the existing one into it.
+    This prevents breaking the user's current viewing experience.
+
+    Returns:
+        tuple: (movie_to_use, relation_was_updated)
+    """
+    from django.db import IntegrityError
+
+    existing_movie_with_tmdb = None
+    existing_movie_with_imdb = None
+
+    # Check for existing movies with these IDs
+    if tmdb_id_to_set:
+        try:
+            existing_movie_with_tmdb = Movie.objects.get(tmdb_id=tmdb_id_to_set)
+        except Movie.DoesNotExist:
+            pass
+
+    if imdb_id_to_set:
+        try:
+            existing_movie_with_imdb = Movie.objects.get(imdb_id=imdb_id_to_set)
+        except Movie.DoesNotExist:
+            pass
+
+    # If no conflicts, proceed normally
+    if not existing_movie_with_tmdb and not existing_movie_with_imdb:
+        return current_movie, False
+
+    # Determine which existing movie has the conflicting ID (prefer TMDB match)
+    existing_movie = existing_movie_with_tmdb or existing_movie_with_imdb
+
+    logger.info(f"ID conflict detected: Merging existing movie '{existing_movie.name}' into current movie '{current_movie.name}' to preserve user selection")
+
+    # FIRST: Clear the conflicting ID from the existing movie before any merging
+    if existing_movie_with_tmdb and tmdb_id_to_set:
+        logger.info(f"Clearing tmdb_id from existing movie {existing_movie.id} to avoid constraint violation")
+        existing_movie.tmdb_id = None
+        existing_movie.save(update_fields=['tmdb_id'])
+
+    if existing_movie_with_imdb and imdb_id_to_set:
+        logger.info(f"Clearing imdb_id from existing movie {existing_movie.id} to avoid constraint violation")
+        existing_movie.imdb_id = None
+        existing_movie.save(update_fields=['imdb_id'])
+
+    # THEN: Merge data from existing movie into current movie (now safe to set IDs)
+    merge_movie_data(source_movie=existing_movie, target_movie=current_movie,
+                     tmdb_id_to_set=tmdb_id_to_set, imdb_id_to_set=imdb_id_to_set)
+
+    # Transfer all relations from existing movie to current movie
+    existing_relations = existing_movie.m3u_relations.all()
+    if existing_relations.exists():
+        logger.info(f"Transferring {existing_relations.count()} relations from existing movie {existing_movie.id} to current movie {current_movie.id}")
+        existing_relations.update(movie=current_movie)
+
+    # Now safe to delete the existing movie since all its relations have been transferred
+    logger.info(f"Deleting existing movie {existing_movie.id} '{existing_movie.name}' after merging data and transferring relations")
+    existing_movie.delete()
+
+    return current_movie, False  # No relation update needed since we kept current movie
+
+
+def merge_movie_data(source_movie, target_movie, tmdb_id_to_set=None, imdb_id_to_set=None):
+    """
+    Merge valuable data from source_movie into target_movie.
+    Only overwrites target fields that are empty/None with non-empty source values.
+
+    Args:
+        source_movie: Movie to copy data from
+        target_movie: Movie to copy data to
+        tmdb_id_to_set: TMDB ID to set on target (overrides source tmdb_id)
+        imdb_id_to_set: IMDB ID to set on target (overrides source imdb_id)
+    """
+    updated = False
+
+    # Basic fields - only fill if target is empty
+    if not target_movie.description and source_movie.description:
+        target_movie.description = source_movie.description
+        updated = True
+        logger.debug(f"Merged description from movie {source_movie.id} to {target_movie.id}")
+
+    if not target_movie.year and source_movie.year:
+        target_movie.year = source_movie.year
+        updated = True
+        logger.debug(f"Merged year from movie {source_movie.id} to {target_movie.id}")
+
+    if not target_movie.rating and source_movie.rating:
+        target_movie.rating = source_movie.rating
+        updated = True
+        logger.debug(f"Merged rating from movie {source_movie.id} to {target_movie.id}")
+
+    if not target_movie.genre and source_movie.genre:
+        target_movie.genre = source_movie.genre
+        updated = True
+        logger.debug(f"Merged genre from movie {source_movie.id} to {target_movie.id}")
+
+    if not target_movie.duration_secs and source_movie.duration_secs:
+        target_movie.duration_secs = source_movie.duration_secs
+        updated = True
+        logger.debug(f"Merged duration_secs from movie {source_movie.id} to {target_movie.id}")
+
+    if not target_movie.logo and source_movie.logo:
+        target_movie.logo = source_movie.logo
+        updated = True
+        logger.debug(f"Merged logo from movie {source_movie.id} to {target_movie.id}")
+
+    # Handle external IDs - use the specific IDs we want to set, or fall back to source
+    if not target_movie.tmdb_id:
+        if tmdb_id_to_set:
+            target_movie.tmdb_id = tmdb_id_to_set
+            updated = True
+            logger.debug(f"Set tmdb_id {tmdb_id_to_set} on movie {target_movie.id}")
+        elif source_movie.tmdb_id:
+            target_movie.tmdb_id = source_movie.tmdb_id
+            updated = True
+            logger.debug(f"Merged tmdb_id from movie {source_movie.id} to {target_movie.id}")
+
+    if not target_movie.imdb_id:
+        if imdb_id_to_set:
+            target_movie.imdb_id = imdb_id_to_set
+            updated = True
+            logger.debug(f"Set imdb_id {imdb_id_to_set} on movie {target_movie.id}")
+        elif source_movie.imdb_id:
+            target_movie.imdb_id = source_movie.imdb_id
+            updated = True
+            logger.debug(f"Merged imdb_id from movie {source_movie.id} to {target_movie.id}")
+
+    # Merge custom properties
+    target_props = target_movie.custom_properties or {}
+    source_props = source_movie.custom_properties or {}
+
+    for key, value in source_props.items():
+        if value and not target_props.get(key):
+            target_props[key] = value
+            updated = True
+            logger.debug(f"Merged custom property '{key}' from movie {source_movie.id} to {target_movie.id}")
+
+    if updated:
+        target_movie.custom_properties = target_props
+        target_movie.save()
+        logger.info(f"Successfully merged data from movie {source_movie.id} into {target_movie.id}")
+
+
+def handle_series_id_conflicts(current_series, relation, tmdb_id_to_set, imdb_id_to_set):
+    """
+    Handle potential duplicate key conflicts when setting tmdb_id or imdb_id for series.
+
+    Since this is called when a user is actively accessing series details, we always
+    preserve the current series (user's selection) and merge the existing one into it.
+    This prevents breaking the user's current viewing experience.
+
+    Returns:
+        tuple: (series_to_use, relation_was_updated)
+    """
+    from django.db import IntegrityError
+
+    existing_series_with_tmdb = None
+    existing_series_with_imdb = None
+
+    # Check for existing series with these IDs
+    if tmdb_id_to_set:
+        try:
+            existing_series_with_tmdb = Series.objects.get(tmdb_id=tmdb_id_to_set)
+        except Series.DoesNotExist:
+            pass
+
+    if imdb_id_to_set:
+        try:
+            existing_series_with_imdb = Series.objects.get(imdb_id=imdb_id_to_set)
+        except Series.DoesNotExist:
+            pass
+
+    # If no conflicts, proceed normally
+    if not existing_series_with_tmdb and not existing_series_with_imdb:
+        return current_series, False
+
+    # Determine which existing series has the conflicting ID (prefer TMDB match)
+    existing_series = existing_series_with_tmdb or existing_series_with_imdb
+
+    logger.info(f"ID conflict detected: Merging existing series '{existing_series.name}' into current series '{current_series.name}' to preserve user selection")
+
+    # FIRST: Clear the conflicting ID from the existing series before any merging
+    if existing_series_with_tmdb and tmdb_id_to_set:
+        logger.info(f"Clearing tmdb_id from existing series {existing_series.id} to avoid constraint violation")
+        existing_series.tmdb_id = None
+        existing_series.save(update_fields=['tmdb_id'])
+
+    if existing_series_with_imdb and imdb_id_to_set:
+        logger.info(f"Clearing imdb_id from existing series {existing_series.id} to avoid constraint violation")
+        existing_series.imdb_id = None
+        existing_series.save(update_fields=['imdb_id'])
+
+    # THEN: Merge data from existing series into current series (now safe to set IDs)
+    merge_series_data(source_series=existing_series, target_series=current_series,
+                      tmdb_id_to_set=tmdb_id_to_set, imdb_id_to_set=imdb_id_to_set)
+
+    # Transfer all relations from existing series to current series
+    existing_relations = existing_series.m3u_relations.all()
+    if existing_relations.exists():
+        logger.info(f"Transferring {existing_relations.count()} relations from existing series {existing_series.id} to current series {current_series.id}")
+        existing_relations.update(series=current_series)
+
+    # Now safe to delete the existing series since all its relations have been transferred
+    logger.info(f"Deleting existing series {existing_series.id} '{existing_series.name}' after merging data and transferring relations")
+    existing_series.delete()
+
+    return current_series, False  # No relation update needed since we kept current series
+
+
+def merge_series_data(source_series, target_series, tmdb_id_to_set=None, imdb_id_to_set=None):
+    """
+    Merge valuable data from source_series into target_series.
+    Only overwrites target fields that are empty/None with non-empty source values.
+
+    Args:
+        source_series: Series to copy data from
+        target_series: Series to copy data to
+        tmdb_id_to_set: TMDB ID to set on target (overrides source tmdb_id)
+        imdb_id_to_set: IMDB ID to set on target (overrides source imdb_id)
+    """
+    updated = False
+
+    # Basic fields - only fill if target is empty
+    if not target_series.description and source_series.description:
+        target_series.description = source_series.description
+        updated = True
+        logger.debug(f"Merged description from series {source_series.id} to {target_series.id}")
+
+    if not target_series.year and source_series.year:
+        target_series.year = source_series.year
+        updated = True
+        logger.debug(f"Merged year from series {source_series.id} to {target_series.id}")
+
+    if not target_series.rating and source_series.rating:
+        target_series.rating = source_series.rating
+        updated = True
+        logger.debug(f"Merged rating from series {source_series.id} to {target_series.id}")
+
+    if not target_series.genre and source_series.genre:
+        target_series.genre = source_series.genre
+        updated = True
+        logger.debug(f"Merged genre from series {source_series.id} to {target_series.id}")
+
+    if not target_series.logo and source_series.logo:
+        target_series.logo = source_series.logo
+        updated = True
+        logger.debug(f"Merged logo from series {source_series.id} to {target_series.id}")
+
+    # Handle external IDs - use the specific IDs we want to set, or fall back to source
+    if not target_series.tmdb_id:
+        if tmdb_id_to_set:
+            target_series.tmdb_id = tmdb_id_to_set
+            updated = True
+            logger.debug(f"Set tmdb_id {tmdb_id_to_set} on series {target_series.id}")
+        elif source_series.tmdb_id:
+            target_series.tmdb_id = source_series.tmdb_id
+            updated = True
+            logger.debug(f"Merged tmdb_id from series {source_series.id} to {target_series.id}")
+
+    if not target_series.imdb_id:
+        if imdb_id_to_set:
+            target_series.imdb_id = imdb_id_to_set
+            updated = True
+            logger.debug(f"Set imdb_id {imdb_id_to_set} on series {target_series.id}")
+        elif source_series.imdb_id:
+            target_series.imdb_id = source_series.imdb_id
+            updated = True
+            logger.debug(f"Merged imdb_id from series {source_series.id} to {target_series.id}")
+
+    # Merge custom properties
+    target_props = target_series.custom_properties or {}
+    source_props = source_series.custom_properties or {}
+
+    for key, value in source_props.items():
+        if value and not target_props.get(key):
+            target_props[key] = value
+            updated = True
+            logger.debug(f"Merged custom property '{key}' from series {source_series.id} to {target_series.id}")
+
+    if updated:
+        target_series.custom_properties = target_props
+        target_series.save()
+        logger.info(f"Successfully merged data from series {source_series.id} into {target_series.id}")
+
+
 @shared_task
 def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
     """
@@ -1313,12 +1602,27 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                             updated = True
                     except Exception:
                         pass
-                if info.get('tmdb_id') and info.get('tmdb_id') != movie.tmdb_id:
-                    movie.tmdb_id = info.get('tmdb_id')
-                    updated = True
-                if info.get('imdb_id') and info.get('imdb_id') != movie.imdb_id:
-                    movie.imdb_id = info.get('imdb_id')
-                    updated = True
+                # Handle TMDB/IMDB ID updates with duplicate key protection
+                tmdb_id_to_set = info.get('tmdb_id') if info.get('tmdb_id') and info.get('tmdb_id') != movie.tmdb_id else None
+                imdb_id_to_set = info.get('imdb_id') if info.get('imdb_id') and info.get('imdb_id') != movie.imdb_id else None
+
+                if tmdb_id_to_set or imdb_id_to_set:
+                    # Check for existing movies with these IDs and handle duplicates
+                    updated_movie, relation_updated = handle_movie_id_conflicts(
+                        movie, relation, tmdb_id_to_set, imdb_id_to_set
+                    )
+                    if relation_updated:
+                        # If the relation was updated to point to a different movie,
+                        # we need to update our reference and continue with that movie
+                        movie = updated_movie
+                    else:
+                        # No relation update, safe to set the IDs
+                        if tmdb_id_to_set:
+                            movie.tmdb_id = tmdb_id_to_set
+                            updated = True
+                        if imdb_id_to_set:
+                            movie.imdb_id = imdb_id_to_set
+                            updated = True
                 if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
                     custom_props['youtube_trailer'] = info.get('trailer')
                     updated = True
@@ -1339,7 +1643,24 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                     updated = True
                 if updated:
                     movie.custom_properties = custom_props
-                    movie.save()
+                    try:
+                        movie.save()
+                    except Exception as save_error:
+                        # If we still get an integrity error after our conflict resolution,
+                        # log it and try to save without the problematic IDs
+                        logger.error(f"Failed to save movie {movie.id} after conflict resolution: {str(save_error)}")
+                        if 'tmdb_id' in str(save_error) and movie.tmdb_id:
+                            logger.warning(f"Clearing tmdb_id {movie.tmdb_id} from movie {movie.id} due to save error")
+                            movie.tmdb_id = None
+                        if 'imdb_id' in str(save_error) and movie.imdb_id:
+                            logger.warning(f"Clearing imdb_id {movie.imdb_id} from movie {movie.id} due to save error")
+                            movie.imdb_id = None
+                        try:
+                            movie.save()
+                            logger.info(f"Successfully saved movie {movie.id} after clearing problematic IDs")
+                        except Exception as final_error:
+                            logger.error(f"Final save attempt failed for movie {movie.id}: {str(final_error)}")
+                            raise
 
                 # Update relation custom_properties and last_advanced_refresh
                 custom_props = relation.custom_properties or {}
