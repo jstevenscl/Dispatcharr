@@ -96,6 +96,9 @@ const ChannelCard = ({
   const [data, setData] = useState([]);
   const [previewedStream, setPreviewedStream] = useState(null);
 
+  // Get Date-format from localStorage
+  const [dateFormatSetting] = useLocalStorage('date-format', 'mdy');
+  const dateFormat = dateFormatSetting === 'mdy' ? "MM/DD" : "DD/MM";
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
   const [tableSize] = useLocalStorage('table-size', 'default');
@@ -305,13 +308,13 @@ const ChannelCard = ({
               row.connected_since,
               'second'
             );
-            return connectedTime.format('MM/DD HH:mm:ss');
+            return connectedTime.format(`${dateFormat} HH:mm:ss`);
           }
 
           // Fallback to connected_at if it exists
           if (row.connected_at) {
             const connectedTime = dayjs(row.connected_at * 1000);
-            return connectedTime.format('MM/DD HH:mm:ss');
+            return connectedTime.format(`${dateFormat} HH:mm:ss`);
           }
 
           return 'Unknown';
