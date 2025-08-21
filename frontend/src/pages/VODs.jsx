@@ -37,6 +37,159 @@ const formatDuration = (seconds) => {
     const secs = seconds % 60;
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m ${secs}s`;
 };
+
+const formatStreamLabel = (relation) => {
+    // Create a label for the stream that includes provider name and stream-specific info
+    const provider = relation.m3u_account.name;
+    const streamId = relation.stream_id;
+
+    // Try to extract quality info - prioritizing the new quality_info field from backend
+    let qualityInfo = '';
+
+    // 1. Check the new quality_info field from backend (PRIMARY)
+    if (relation.quality_info) {
+        if (relation.quality_info.quality) {
+            qualityInfo = ` - ${relation.quality_info.quality}`;
+        } else if (relation.quality_info.resolution) {
+            qualityInfo = ` - ${relation.quality_info.resolution}`;
+        } else if (relation.quality_info.bitrate) {
+            qualityInfo = ` - ${relation.quality_info.bitrate}`;
+        }
+    }
+
+    // 2. Fallback: Check custom_properties detailed info structure
+    if (qualityInfo === '' && relation.custom_properties) {
+        const props = relation.custom_properties;
+
+        // Check detailed_info structure (where the real data is!)
+        if (qualityInfo === '' && props.detailed_info) {
+            const detailedInfo = props.detailed_info;
+
+            // Extract from video resolution
+            if (detailedInfo.video && detailedInfo.video.width && detailedInfo.video.height) {
+                const width = detailedInfo.video.width;
+                const height = detailedInfo.video.height;
+
+                // Prioritize width for quality detection (handles ultrawide/cinematic aspect ratios)
+                if (width >= 3840) {
+                    qualityInfo = ' - 4K';
+                } else if (width >= 1920) {
+                    qualityInfo = ' - 1080p';
+                } else if (width >= 1280) {
+                    qualityInfo = ' - 720p';
+                } else if (width >= 854) {
+                    qualityInfo = ' - 480p';
+                } else {
+                    qualityInfo = ` - ${width}x${height}`;
+                }
+            }
+
+            // Extract from movie name in detailed_info
+            if (qualityInfo === '' && detailedInfo.name) {
+                const name = detailedInfo.name;
+                if (name.includes('4K') || name.includes('2160p')) {
+                    qualityInfo = ' - 4K';
+                } else if (name.includes('1080p') || name.includes('FHD')) {
+                    qualityInfo = ' - 1080p';
+                } else if (name.includes('720p') || name.includes('HD')) {
+                    qualityInfo = ' - 720p';
+                } else if (name.includes('480p')) {
+                    qualityInfo = ' - 480p';
+                }
+            }
+
+            // Extract from bitrate in detailed_info
+            if (qualityInfo === '' && detailedInfo.bitrate && detailedInfo.bitrate > 0) {
+                const bitrate = detailedInfo.bitrate;
+                if (bitrate >= 6000) {
+                    qualityInfo = ' - 4K';
+                } else if (bitrate >= 3000) {
+                    qualityInfo = ' - 1080p';
+                } else if (bitrate >= 1500) {
+                    qualityInfo = ' - 720p';
+                } else {
+                    qualityInfo = ` - ${Math.round(bitrate / 1000)}Mbps`;
+                }
+            }
+        }
+
+        // Check basic_data structure as another fallback
+        if (qualityInfo === '' && props.basic_data && props.basic_data.name) {
+            const name = props.basic_data.name;
+            if (name.includes('4K') || name.includes('2160p')) {
+                qualityInfo = ' - 4K';
+            } else if (name.includes('1080p') || name.includes('FHD')) {
+                qualityInfo = ' - 1080p';
+            } else if (name.includes('720p') || name.includes('HD')) {
+                qualityInfo = ' - 720p';
+            } else if (name.includes('480p')) {
+                qualityInfo = ' - 480p';
+            }
+        }
+    }
+
+    // 3. Final fallback: Try to extract from movie/episode name
+    if (qualityInfo === '') {
+        const content = relation.movie || relation.episode;
+        if (content && content.name) {
+            const name = content.name;
+            if (name.includes('4K') || name.includes('2160p')) {
+                qualityInfo = ' - 4K';
+            } else if (name.includes('1080p') || name.includes('FHD')) {
+                qualityInfo = ' - 1080p';
+            } else if (name.includes('720p') || name.includes('HD')) {
+                qualityInfo = ' - 720p';
+            } else if (name.includes('480p')) {
+                qualityInfo = ' - 480p';
+            }
+        }
+    }
+
+    // If no quality info and multiple streams from same provider, show stream ID
+    const finalLabel = `${provider}${qualityInfo}${qualityInfo === '' && streamId ? ` - Stream ${streamId}` : ''}`;
+    return finalLabel;
+};
+
+// Helper function to get technical details from selected provider or fallback to default VOD
+const getTechnicalDetails = (selectedProvider, defaultVOD) => {
+    let source = defaultVOD; // Default fallback
+
+    // If a provider is selected, try to get technical details from various locations
+    if (selectedProvider) {
+        // 1. First try the movie/episode relation content
+        const content = selectedProvider.movie || selectedProvider.episode;
+
+        if (content && (content.bitrate || content.video || content.audio)) {
+            source = content;
+        }
+        // 2. Try technical details directly on the relation object
+        else if (selectedProvider.bitrate || selectedProvider.video || selectedProvider.audio) {
+            source = selectedProvider;
+        }
+        // 3. Try to extract from custom_properties detailed_info (where quality data is stored)
+        else if (selectedProvider.custom_properties?.detailed_info) {
+            const detailedInfo = selectedProvider.custom_properties.detailed_info;
+
+            // Create a synthetic source from detailed_info
+            const syntheticSource = {
+                bitrate: detailedInfo.bitrate || null,
+                video: detailedInfo.video || null,
+                audio: detailedInfo.audio || null
+            };
+
+            if (syntheticSource.bitrate || syntheticSource.video || syntheticSource.audio) {
+                source = syntheticSource;
+            }
+        }
+    }
+
+    return {
+        bitrate: source?.bitrate,
+        video: source?.video,
+        audio: source?.audio
+    };
+};
+
 const VODCard = ({ vod, onClick }) => {
     const isEpisode = vod.type === 'episode';
 
@@ -256,7 +409,6 @@ const SeriesModal = ({ series, opened, onClose }) => {
                     // Check if episodes were fetched
                     if (!details.episodes_fetched) {
                         // Episodes not yet fetched, may need to wait for background fetch
-                        console.log('Episodes not yet fetched for series, may load incrementally');
                     }
                 })
                 .catch((error) => {
@@ -354,7 +506,12 @@ const SeriesModal = ({ series, opened, onClose }) => {
 
         // Add selected provider as query parameter if available
         if (selectedProvider) {
-            streamUrl += `?m3u_account_id=${selectedProvider.m3u_account.id}`;
+            // Use stream_id for most specific selection, fallback to account_id
+            if (selectedProvider.stream_id) {
+                streamUrl += `?stream_id=${encodeURIComponent(selectedProvider.stream_id)}`;
+            } else {
+                streamUrl += `?m3u_account_id=${selectedProvider.m3u_account.id}`;
+            }
         }
 
         if (env_mode === 'dev') {
@@ -574,7 +731,7 @@ const SeriesModal = ({ series, opened, onClose }) => {
                             {/* Provider Information */}
                             <Box mt="md">
                                 <Text size="sm" weight={500} mb={4}>
-                                    Provider Information
+                                    Stream Selection
                                     {loadingProviders && (
                                         <Loader size="xs" style={{ marginLeft: 8 }} />
                                     )}
@@ -600,19 +757,24 @@ const SeriesModal = ({ series, opened, onClose }) => {
                                                 {providers[0].m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
                                             </Badge>
                                         )}
+                                        {providers[0].stream_id && (
+                                            <Badge color="orange" variant="outline" size="xs">
+                                                Stream {providers[0].stream_id}
+                                            </Badge>
+                                        )}
                                     </Group>
                                 ) : providers.length > 1 ? (
                                     <Select
                                         data={providers.map((provider) => ({
                                             value: provider.id.toString(),
-                                            label: `${provider.m3u_account.name} (${provider.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'})`
+                                            label: formatStreamLabel(provider)
                                         }))}
                                         value={selectedProvider?.id?.toString() || ''}
                                         onChange={(value) => {
                                             const provider = providers.find(p => p.id.toString() === value);
                                             setSelectedProvider(provider);
                                         }}
-                                        placeholder="Select provider..."
+                                        placeholder="Select stream..."
                                         style={{ maxWidth: 350 }}
                                         disabled={loadingProviders}
                                     />
@@ -960,7 +1122,12 @@ const VODModal = ({ vod, opened, onClose }) => {
 
         // Add selected provider as query parameter if available
         if (selectedProvider) {
-            streamUrl += `?m3u_account_id=${selectedProvider.m3u_account.id}`;
+            // Use stream_id for most specific selection, fallback to account_id
+            if (selectedProvider.stream_id) {
+                streamUrl += `?stream_id=${encodeURIComponent(selectedProvider.stream_id)}`;
+            } else {
+                streamUrl += `?m3u_account_id=${selectedProvider.m3u_account.id}`;
+            }
         }
 
         if (env_mode === 'dev') {
@@ -1178,7 +1345,7 @@ const VODModal = ({ vod, opened, onClose }) => {
                                 {providers.length > 0 && (
                                     <Box style={{ minWidth: 200 }}>
                                         <Text size="sm" weight={500} mb={8}>
-                                            IPTV Provider
+                                            Stream Selection
                                             {loadingProviders && (
                                                 <Loader size="xs" style={{ marginLeft: 8 }} />
                                             )}
@@ -1193,19 +1360,24 @@ const VODModal = ({ vod, opened, onClose }) => {
                                                         {providers[0].m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'}
                                                     </Badge>
                                                 )}
+                                                {providers[0].stream_id && (
+                                                    <Badge color="orange" variant="outline" size="xs">
+                                                        Stream {providers[0].stream_id}
+                                                    </Badge>
+                                                )}
                                             </Group>
                                         ) : (
                                             <Select
                                                 data={providers.map((provider) => ({
                                                     value: provider.id.toString(),
-                                                    label: `${provider.m3u_account.name} (${provider.m3u_account.account_type === 'XC' ? 'Xtream Codes' : 'Standard M3U'})`
+                                                    label: formatStreamLabel(provider)
                                                 }))}
                                                 value={selectedProvider?.id?.toString() || ''}
                                                 onChange={(value) => {
                                                     const provider = providers.find(p => p.id.toString() === value);
                                                     setSelectedProvider(provider);
                                                 }}
-                                                placeholder="Select provider..."
+                                                placeholder="Select stream..."
                                                 style={{ minWidth: 250 }}
                                                 disabled={loadingProviders}
                                             />
@@ -1216,7 +1388,7 @@ const VODModal = ({ vod, opened, onClose }) => {
                                 {/* Fallback provider info if no providers loaded yet */}
                                 {providers.length === 0 && !loadingProviders && vod?.m3u_account && (
                                     <Box>
-                                        <Text size="sm" weight={500} mb={8}>IPTV Provider</Text>
+                                        <Text size="sm" weight={500} mb={8}>Stream Selection</Text>
                                         <Group spacing="md">
                                             <Badge color="blue" variant="light">
                                                 {vod.m3u_account.name}
@@ -1242,66 +1414,79 @@ const VODModal = ({ vod, opened, onClose }) => {
                                     Play Movie
                                     {selectedProvider && (
                                         <span style={{ fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
-                                            (via {selectedProvider.m3u_account.name})
+                                            ({selectedProvider.stream_id ? `Stream ${selectedProvider.stream_id}` : selectedProvider.m3u_account.name})
                                         </span>
                                     )}
                                 </Button>
                             </Group>
 
                             {/* Technical Details */}
-                            {(displayVOD.bitrate || displayVOD.video || displayVOD.audio) && (
-                                <Stack spacing={4} mt="xs">
-                                    <Text size="sm" weight={500}>Technical Details:</Text>
-                                    {displayVOD.bitrate && displayVOD.bitrate > 0 && (
-                                        <Text size="xs" color="dimmed">
-                                            <strong>Bitrate:</strong> {displayVOD.bitrate} kbps
+                            {(() => {
+                                const techDetails = getTechnicalDetails(selectedProvider, displayVOD);
+                                const hasDetails = techDetails.bitrate || techDetails.video || techDetails.audio;
+
+                                return hasDetails && (
+                                    <Stack spacing={4} mt="xs">
+                                        <Text size="sm" weight={500}>
+                                            Technical Details:
+                                            {selectedProvider && (
+                                                <Text size="xs" color="dimmed" weight="normal" span style={{ marginLeft: 8 }}>
+                                                    (from {selectedProvider.m3u_account.name}
+                                                    {selectedProvider.stream_id && ` - Stream ${selectedProvider.stream_id}`})
+                                                </Text>
+                                            )}
                                         </Text>
-                                    )}
-                                    {displayVOD.video && Object.keys(displayVOD.video).length > 0 && (
-                                        <Text size="xs" color="dimmed">
-                                            <strong>Video:</strong>{' '}
-                                            {displayVOD.video.codec_long_name || displayVOD.video.codec_name}
-                                            {displayVOD.video.profile ? ` (${displayVOD.video.profile})` : ''}
-                                            {displayVOD.video.width && displayVOD.video.height
-                                                ? `, ${displayVOD.video.width}x${displayVOD.video.height}`
-                                                : ''}
-                                            {displayVOD.video.display_aspect_ratio
-                                                ? `, Aspect Ratio: ${displayVOD.video.display_aspect_ratio}`
-                                                : ''}
-                                            {displayVOD.video.bit_rate
-                                                ? `, Bitrate: ${Math.round(Number(displayVOD.video.bit_rate) / 1000)} kbps`
-                                                : ''}
-                                            {displayVOD.video.r_frame_rate
-                                                ? `, Frame Rate: ${displayVOD.video.r_frame_rate.replace('/', '/')} fps`
-                                                : ''}
-                                            {displayVOD.video.tags?.encoder
-                                                ? `, Encoder: ${displayVOD.video.tags.encoder}`
-                                                : ''}
-                                        </Text>
-                                    )}
-                                    {displayVOD.audio && Object.keys(displayVOD.audio).length > 0 && (
-                                        <Text size="xs" color="dimmed">
-                                            <strong>Audio:</strong>{' '}
-                                            {displayVOD.audio.codec_long_name || displayVOD.audio.codec_name}
-                                            {displayVOD.audio.profile ? ` (${displayVOD.audio.profile})` : ''}
-                                            {displayVOD.audio.channel_layout
-                                                ? `, Channels: ${displayVOD.audio.channel_layout}`
-                                                : displayVOD.audio.channels
-                                                    ? `, Channels: ${displayVOD.audio.channels}`
+                                        {techDetails.bitrate && techDetails.bitrate > 0 && (
+                                            <Text size="xs" color="dimmed">
+                                                <strong>Bitrate:</strong> {techDetails.bitrate} kbps
+                                            </Text>
+                                        )}
+                                        {techDetails.video && Object.keys(techDetails.video).length > 0 && (
+                                            <Text size="xs" color="dimmed">
+                                                <strong>Video:</strong>{' '}
+                                                {techDetails.video.codec_long_name || techDetails.video.codec_name}
+                                                {techDetails.video.profile ? ` (${techDetails.video.profile})` : ''}
+                                                {techDetails.video.width && techDetails.video.height
+                                                    ? `, ${techDetails.video.width}x${techDetails.video.height}`
                                                     : ''}
-                                            {displayVOD.audio.sample_rate
-                                                ? `, Sample Rate: ${displayVOD.audio.sample_rate} Hz`
-                                                : ''}
-                                            {displayVOD.audio.bit_rate
-                                                ? `, Bitrate: ${Math.round(Number(displayVOD.audio.bit_rate) / 1000)} kbps`
-                                                : ''}
-                                            {displayVOD.audio.tags?.handler_name
-                                                ? `, Handler: ${displayVOD.audio.tags.handler_name}`
-                                                : ''}
-                                        </Text>
-                                    )}
-                                </Stack>
-                            )}
+                                                {techDetails.video.display_aspect_ratio
+                                                    ? `, Aspect Ratio: ${techDetails.video.display_aspect_ratio}`
+                                                    : ''}
+                                                {techDetails.video.bit_rate
+                                                    ? `, Bitrate: ${Math.round(Number(techDetails.video.bit_rate) / 1000)} kbps`
+                                                    : ''}
+                                                {techDetails.video.r_frame_rate
+                                                    ? `, Frame Rate: ${techDetails.video.r_frame_rate.replace('/', '/')} fps`
+                                                    : ''}
+                                                {techDetails.video.tags?.encoder
+                                                    ? `, Encoder: ${techDetails.video.tags.encoder}`
+                                                    : ''}
+                                            </Text>
+                                        )}
+                                        {techDetails.audio && Object.keys(techDetails.audio).length > 0 && (
+                                            <Text size="xs" color="dimmed">
+                                                <strong>Audio:</strong>{' '}
+                                                {techDetails.audio.codec_long_name || techDetails.audio.codec_name}
+                                                {techDetails.audio.profile ? ` (${techDetails.audio.profile})` : ''}
+                                                {techDetails.audio.channel_layout
+                                                    ? `, Channels: ${techDetails.audio.channel_layout}`
+                                                    : techDetails.audio.channels
+                                                        ? `, Channels: ${techDetails.audio.channels}`
+                                                        : ''}
+                                                {techDetails.audio.sample_rate
+                                                    ? `, Sample Rate: ${techDetails.audio.sample_rate} Hz`
+                                                    : ''}
+                                                {techDetails.audio.bit_rate
+                                                    ? `, Bitrate: ${Math.round(Number(techDetails.audio.bit_rate) / 1000)} kbps`
+                                                    : ''}
+                                                {techDetails.audio.tags?.handler_name
+                                                    ? `, Handler: ${techDetails.audio.tags.handler_name}`
+                                                    : ''}
+                                            </Text>
+                                        )}
+                                    </Stack>
+                                );
+                            })()}
                             {/* YouTube trailer if available */}
                         </Stack>
                     </Box>
