@@ -24,6 +24,7 @@ import {
 import { Search, X, Clock, Video, Calendar, Play } from 'lucide-react';
 import './guide.css';
 import useEPGsStore from '../store/epgs';
+import useLocalStorage from '../hooks/useLocalStorage';
 
 /** Layout constants */
 const CHANNEL_WIDTH = 120; // Width of the channel/logo column
@@ -196,7 +197,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
       return time.format('dddd');
     } else {
       // Beyond a week, show month and day
-      return time.format('MMM D');
+      return time.format(dateFormat);
     }
   };
 
@@ -636,7 +637,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 overflow: 'hidden',
               }}
             >
-              {programStart.format('h:mma')} - {programEnd.format('h:mma')}
+              {programStart.format(timeFormat)} - {programEnd.format(timeFormat)}
             </Text>
           </Box>          {/* Description is always shown but expands when row is expanded */}
           {program.description && (
@@ -766,6 +767,12 @@ export default function TVChannelGuide({ startDate, endDate }) {
     setSelectedProfileId(value || 'all');
   };
 
+  // Handle date-time formats
+  const [timeFormatSetting] = useLocalStorage('time-format', '12h');
+  const [dateFormatSetting] = useLocalStorage('date-format', 'mdy');
+  const timeFormat = timeFormatSetting === '12h' ? "h:mm A" : "HH:mm";
+  const dateFormat = dateFormatSetting === 'mdy' ? "MMMM D" : "D MMMM";
+
   return (
     <Box
       className="tv-guide"
@@ -797,7 +804,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
             TV Guide
           </Title>
           <Flex align="center" gap="md">
-            <Text>{now.format('dddd, MMMM D, YYYY • h:mm A')}</Text>
+            <Text>{now.format(`dddd, ${dateFormat}, YYYY • ${timeFormat}`)}</Text>
             <Tooltip label="Jump to current time">
               <ActionIcon
                 onClick={scrollToNow}
@@ -972,9 +979,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         {formatDayLabel(time)}{' '}
                         {/* Use same formatDayLabel function for all hours */}
                       </Text>
-                      {time.format('h:mm')}
+                      {time.format(timeFormat)}
                       <Text span size="xs" ml={1} opacity={0.7}>
-                        {time.format('A')}
+                        {/*time.format('A')*/}
                       </Text>
                     </Text>
 
