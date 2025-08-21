@@ -1272,7 +1272,13 @@ def handle_movie_id_conflicts(current_movie, relation, tmdb_id_to_set, imdb_id_t
     # Determine which existing movie has the conflicting ID (prefer TMDB match)
     existing_movie = existing_movie_with_tmdb or existing_movie_with_imdb
 
-    logger.info(f"ID conflict detected: Merging existing movie '{existing_movie.name}' into current movie '{current_movie.name}' to preserve user selection")
+    # CRITICAL: Check if the existing movie is actually the same as the current movie
+    # This can happen if the current movie already has the ID we're trying to set
+    if existing_movie.id == current_movie.id:
+        logger.debug(f"Current movie {current_movie.id} already has the target ID, no conflict resolution needed")
+        return current_movie, False
+
+    logger.info(f"ID conflict detected: Merging existing movie '{existing_movie.name}' (ID: {existing_movie.id}) into current movie '{current_movie.name}' (ID: {current_movie.id}) to preserve user selection")
 
     # FIRST: Clear the conflicting ID from the existing movie before any merging
     if existing_movie_with_tmdb and tmdb_id_to_set:
@@ -1419,7 +1425,13 @@ def handle_series_id_conflicts(current_series, relation, tmdb_id_to_set, imdb_id
     # Determine which existing series has the conflicting ID (prefer TMDB match)
     existing_series = existing_series_with_tmdb or existing_series_with_imdb
 
-    logger.info(f"ID conflict detected: Merging existing series '{existing_series.name}' into current series '{current_series.name}' to preserve user selection")
+    # CRITICAL: Check if the existing series is actually the same as the current series
+    # This can happen if the current series already has the ID we're trying to set
+    if existing_series.id == current_series.id:
+        logger.debug(f"Current series {current_series.id} already has the target ID, no conflict resolution needed")
+        return current_series, False
+
+    logger.info(f"ID conflict detected: Merging existing series '{existing_series.name}' (ID: {existing_series.id}) into current series '{current_series.name}' (ID: {current_series.id}) to preserve user selection")
 
     # FIRST: Clear the conflicting ID from the existing series before any merging
     if existing_series_with_tmdb and tmdb_id_to_set:
@@ -1606,6 +1618,9 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                 tmdb_id_to_set = info.get('tmdb_id') if info.get('tmdb_id') and info.get('tmdb_id') != movie.tmdb_id else None
                 imdb_id_to_set = info.get('imdb_id') if info.get('imdb_id') and info.get('imdb_id') != movie.imdb_id else None
 
+                logger.debug(f"Movie {movie.id} current IDs: tmdb_id={movie.tmdb_id}, imdb_id={movie.imdb_id}")
+                logger.debug(f"IDs to set: tmdb_id={tmdb_id_to_set}, imdb_id={imdb_id_to_set}")
+
                 if tmdb_id_to_set or imdb_id_to_set:
                     # Check for existing movies with these IDs and handle duplicates
                     updated_movie, relation_updated = handle_movie_id_conflicts(
@@ -1615,14 +1630,17 @@ def refresh_movie_advanced_data(m3u_movie_relation_id, force_refresh=False):
                         # If the relation was updated to point to a different movie,
                         # we need to update our reference and continue with that movie
                         movie = updated_movie
+                        logger.info(f"Relation updated, now working with movie {movie.id}")
                     else:
                         # No relation update, safe to set the IDs
                         if tmdb_id_to_set:
                             movie.tmdb_id = tmdb_id_to_set
                             updated = True
+                            logger.debug(f"Set tmdb_id {tmdb_id_to_set} on movie {movie.id}")
                         if imdb_id_to_set:
                             movie.imdb_id = imdb_id_to_set
                             updated = True
+                            logger.debug(f"Set imdb_id {imdb_id_to_set} on movie {movie.id}")
                 if info.get('trailer') and info.get('trailer') != custom_props.get('youtube_trailer'):
                     custom_props['youtube_trailer'] = info.get('trailer')
                     updated = True
