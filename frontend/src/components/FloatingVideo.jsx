@@ -16,6 +16,8 @@ export default function FloatingVideo() {
   const videoContainerRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const overlayTimeoutRef = useRef(null);
 
   // Safely destroy the mpegts player to prevent errors
   const safeDestroyPlayer = () => {
@@ -49,6 +51,22 @@ export default function FloatingVideo() {
       console.log("Error during player cleanup:", error);
       playerRef.current = null;
     }
+
+    // Clear overlay timer
+    if (overlayTimeoutRef.current) {
+      clearTimeout(overlayTimeoutRef.current);
+      overlayTimeoutRef.current = null;
+    }
+  };
+
+  // Start overlay auto-hide timer
+  const startOverlayTimer = () => {
+    if (overlayTimeoutRef.current) {
+      clearTimeout(overlayTimeoutRef.current);
+    }
+    overlayTimeoutRef.current = setTimeout(() => {
+      setShowOverlay(false);
+    }, 4000); // Hide after 4 seconds
   };
 
   // Initialize VOD player (native HTML5 with enhanced controls)
@@ -57,6 +75,7 @@ export default function FloatingVideo() {
 
     setIsLoading(true);
     setLoadError(null);
+    setShowOverlay(true); // Show overlay initially
 
     console.log("Initializing VOD player for:", streamUrl);
 
@@ -76,6 +95,8 @@ export default function FloatingVideo() {
         console.log("Auto-play prevented:", e);
         setLoadError("Auto-play was prevented. Click play to start.");
       });
+      // Start overlay timer when video is ready
+      startOverlayTimer();
     };
     const handleError = (e) => {
       setIsLoading(false);
@@ -315,7 +336,22 @@ export default function FloatingVideo() {
         </Flex>
 
         {/* Video container with relative positioning for the overlay */}
-        <Box style={{ position: 'relative' }}>
+        <Box
+          style={{ position: 'relative' }}
+          onMouseEnter={() => {
+            if (contentType === 'vod' && !isLoading) {
+              setShowOverlay(true);
+              if (overlayTimeoutRef.current) {
+                clearTimeout(overlayTimeoutRef.current);
+              }
+            }
+          }}
+          onMouseLeave={() => {
+            if (contentType === 'vod' && !isLoading) {
+              startOverlayTimer();
+            }
+          }}
+        >
           {/* Enhanced video element with better controls for VOD */}
           <video
             ref={videoRef}
@@ -336,17 +372,20 @@ export default function FloatingVideo() {
             })}
           />
 
-          {/* VOD title overlay when not loading */}
-          {!isLoading && metadata && contentType === 'vod' && (
+          {/* VOD title overlay when not loading - auto-hides after 4 seconds */}
+          {!isLoading && metadata && contentType === 'vod' && showOverlay && (
             <Box
               style={{
                 position: 'absolute',
-                bottom: 0,
+                top: 0,
                 left: 0,
                 right: 0,
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-                padding: '20px 10px 10px',
+                background: 'linear-gradient(rgba(0,0,0,0.8), transparent)',
+                padding: '10px 10px 20px',
                 color: 'white',
+                pointerEvents: 'none', // Allow clicks to pass through to video controls
+                transition: 'opacity 0.3s ease-in-out',
+                opacity: showOverlay ? 1 : 0,
               }}
             >
               <Text size="sm" weight={500} style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
