@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { notifications } from '@mantine/notifications';
 import useChannelsStore from './store/channels';
+import useLogosStore from './store/logos';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
 import { Box, Button, Stack, Alert, Group } from '@mantine/core';
@@ -499,7 +500,7 @@ export const WebsocketProvider = ({ children }) => {
   const setProfilePreview = usePlaylistsStore((s) => s.setProfilePreview);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
   const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
-  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
+  const fetchLogos = useLogosStore((s) => s.fetchLogos);
   const fetchChannelProfiles = useChannelsStore((s) => s.fetchChannelProfiles);
 
   const ret = useMemo(() => {

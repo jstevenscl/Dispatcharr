@@ -1280,6 +1280,18 @@ class LogoViewSet(viewsets.ModelViewSet):
         """Optimize queryset with prefetch and add filtering"""
         queryset = Logo.objects.prefetch_related('channels').order_by('name')
 
+        # Filter by specific IDs
+        ids = self.request.query_params.getlist('ids')
+        if ids:
+            try:
+                # Convert string IDs to integers and filter
+                id_list = [int(id_str) for id_str in ids if id_str.isdigit()]
+                if id_list:
+                    queryset = queryset.filter(id__in=id_list)
+            except (ValueError, TypeError):
+                pass  # Invalid IDs, return empty queryset
+                queryset = Logo.objects.none()
+
         # Filter by usage
         used_filter = self.request.query_params.get('used', None)
         if used_filter == 'true':

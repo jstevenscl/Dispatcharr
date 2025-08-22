@@ -14,7 +14,6 @@ const useChannelsStore = create((set, get) => ({
   stats: {},
   activeChannels: {},
   activeClients: {},
-  logos: {},
   recordings: [],
   isLoading: false,
   error: null,
@@ -215,52 +214,6 @@ const useChannelsStore = create((set, get) => ({
       return { channelGroups: remainingGroups };
     }),
 
-  fetchLogos: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const logos = await api.getLogos();
-      set({
-        logos: logos.reduce((acc, logo) => {
-          acc[logo.id] = {
-            ...logo,
-          };
-          return acc;
-        }, {}),
-        isLoading: false,
-      });
-    } catch (error) {
-      console.error('Failed to fetch logos:', error);
-      set({ error: 'Failed to load logos.', isLoading: false });
-    }
-  },
-
-  addLogo: (newLogo) =>
-    set((state) => ({
-      logos: {
-        ...state.logos,
-        [newLogo.id]: {
-          ...newLogo,
-        },
-      },
-    })),
-
-  updateLogo: (logo) =>
-    set((state) => ({
-      logos: {
-        ...state.logos,
-        [logo.id]: {
-          ...logo,
-        },
-      },
-    })),
-
-  removeLogo: (logoId) =>
-    set((state) => {
-      const newLogos = { ...state.logos };
-      delete newLogos[logoId];
-      return { logos: newLogos };
-    }),
-
   addProfile: (profile) =>
     set((state) => ({
       profiles: {
@@ -348,10 +301,10 @@ const useChannelsStore = create((set, get) => ({
     }),
 
   setChannelsPageSelection: (channelsPageSelection) =>
-    set((state) => ({ channelsPageSelection })),
+    set(() => ({ channelsPageSelection })),
 
   setSelectedProfileId: (id) =>
-    set((state) => ({
+    set(() => ({
       selectedProfileId: id,
     })),
 
