@@ -2,9 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import useChannelsStore from '../../store/channels';
+import useLogosStore from '../../store/logos';
 import API from '../../api';
 import useStreamProfilesStore from '../../store/streamProfiles';
+import useStreamProfilesStore from '../../store/streamProfiles';
 import useStreamsStore from '../../store/streams';
+import { useLogoSelection } from '../../hooks/useSmartLogos';
+import LazyLogo from '../LazyLogo';
 import ChannelGroupForm from './ChannelGroup';
 import usePlaylistsStore from '../../store/playlists';
 import logo from '../../images/logo.png';
@@ -45,8 +49,8 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
   const groupListRef = useRef(null);
 
   const channelGroups = useChannelsStore((s) => s.channelGroups);
-  const logos = useChannelsStore((s) => s.logos);
-  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
+  const { logos, ensureLogosLoaded } = useLogoSelection();
+  const fetchLogos = useLogosStore((s) => s.fetchLogos);
   const streams = useStreamsStore((state) => state.streams);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
   const playlists = usePlaylistsStore((s) => s.playlists);
@@ -189,10 +193,10 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
 
       formik.resetForm();
       API.requeryChannels();
-      
+
       // Refresh channel profiles to update the membership information
       useChannelsStore.getState().fetchChannelProfiles();
-      
+
       setSubmitting(false);
       setTvgFilter('');
       setLogoFilter('');
@@ -448,7 +452,12 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
             <Group justify="space-between">
               <Popover
                 opened={logoPopoverOpened}
-                onChange={setLogoPopoverOpened}
+                onChange={(opened) => {
+                  setLogoPopoverOpened(opened);
+                  if (opened) {
+                    ensureLogosLoaded();
+                  }
+                }}
                 // position="bottom-start"
                 withArrow
               >
@@ -507,13 +516,10 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
                 </Popover.Dropdown>
               </Popover>
 
-              <img
-                src={
-                  logos[formik.values.logo_id]
-                    ? logos[formik.values.logo_id].cache_url
-                    : logo
-                }
-                height="40"
+              <LazyLogo
+                logoId={formik.values.logo_id}
+                alt="channel logo"
+                style={{ height: 40 }}
               />
             </Group>
 

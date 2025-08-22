@@ -1,7 +1,7 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import API from '../../api';
 import LogoForm from '../forms/Logo';
-import useChannelsStore from '../../store/channels';
+import useLogosStore from '../../store/logos';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import {
     SquarePlus,
@@ -83,7 +83,7 @@ const LogosTable = () => {
     /**
      * STORES
      */
-    const { logos, fetchLogos } = useChannelsStore();
+    const { logos, fetchLogos } = useLogosStore();
 
     /**
      * useState

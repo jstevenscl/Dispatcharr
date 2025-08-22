@@ -19,6 +19,7 @@ import {
 import { TableHelper } from '../helpers';
 import API from '../api';
 import useChannelsStore from '../store/channels';
+import useLogosStore from '../store/logos';
 import logo from '../images/logo.png';
 import {
   Gauge,
@@ -699,7 +700,7 @@ const ChannelsPage = () => {
   const channels = useChannelsStore((s) => s.channels);
   const channelsByUUID = useChannelsStore((s) => s.channelsByUUID);
   const channelStats = useChannelsStore((s) => s.stats);
-  const logos = useChannelsStore((s) => s.logos); // Add logos from the store
+  const logos = useLogosStore((s) => s.logos); // Add logos from the store
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
 
   const [activeChannels, setActiveChannels] = useState({});

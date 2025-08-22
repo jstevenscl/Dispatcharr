@@ -3,6 +3,7 @@ import API from '../../api';
 import StreamForm from '../forms/Stream';
 import usePlaylistsStore from '../../store/playlists';
 import useChannelsStore from '../../store/channels';
+import useLogosStore from '../../store/logos';
 import { copyToClipboard, useDebounce } from '../../utils';
 import {
   SquarePlus,
@@ -59,7 +60,7 @@ const StreamRowActions = ({
     (state) =>
       state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
   );
-  const fetchLogos = useChannelsStore((s) => s.fetchLogos);
+  const fetchLogos = useLogosStore((s) => s.fetchLogos);
 
   const createChannelFromStream = async () => {
     const selectedChannelProfileId = useChannelsStore.getState().selectedProfileId;

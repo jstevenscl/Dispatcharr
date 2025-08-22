@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import api from '../api';
 import useSettingsStore from './settings';
 import useChannelsStore from './channels';
+import useLogosStore from './logos';
 import usePlaylistsStore from './playlists';
 import useEPGsStore from './epgs';
 import useStreamProfilesStore from './streamProfiles';
@@ -46,7 +47,7 @@ const useAuthStore = create((set, get) => ({
     await useSettingsStore.getState().fetchSettings();
 
     try {
-      // Only after settings are loaded, fetch the dependent data
+      // Load essential data first (without all logos)
       await Promise.all([
         useChannelsStore.getState().fetchChannels(),
         useChannelsStore.getState().fetchChannelGroups(),
@@ -54,16 +55,24 @@ const useAuthStore = create((set, get) => ({
         usePlaylistsStore.getState().fetchPlaylists(),
         useEPGsStore.getState().fetchEPGs(),
         useEPGsStore.getState().fetchEPGData(),
-        useChannelsStore.getState().fetchLogos(),
         useStreamProfilesStore.getState().fetchProfiles(),
         useUserAgentsStore.getState().fetchUserAgents(),
       ]);
+
+      // Load only logos that are currently used by channels (much faster)
+      await useLogosStore.getState().fetchUsedLogos();
 
       if (user.user_level >= USER_LEVELS.ADMIN) {
         await Promise.all([useUsersStore.getState().fetchUsers()]);
       }
 
       set({ user, isAuthenticated: true });
+
+      // Start background loading of remaining logos after login is complete
+      setTimeout(() => {
+        useLogosStore.getState().fetchLogosInBackground();
+      }, 2000); // 2 second delay to let UI settle
+
     } catch (error) {
       console.error('Error initializing data:', error);
     }
