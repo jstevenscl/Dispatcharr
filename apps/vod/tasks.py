@@ -128,7 +128,7 @@ def refresh_movies(client, account, categories):
         total_chunks = (total_movies + chunk_size - 1) // chunk_size
 
         logger.info(f"Processing movie chunk {chunk_num}/{total_chunks} ({len(chunk)} movies)")
-        process_movie_batch(account, chunk, category_map)
+        process_movie_batch(account, chunk, categories)
 
     logger.info(f"Completed processing all {total_movies} movies in {total_chunks} chunks")
 
@@ -164,7 +164,7 @@ def refresh_series(client, account, categories):
         total_chunks = (total_series + chunk_size - 1) // chunk_size
 
         logger.info(f"Processing series chunk {chunk_num}/{total_chunks} ({len(chunk)} series)")
-        process_series_batch(account, chunk, category_map)
+        process_series_batch(account, chunk, categories)
 
     logger.info(f"Completed processing all {total_series} series in {total_chunks} chunks")
 
@@ -188,14 +188,9 @@ def batch_create_categories_from_names(category_names, category_type):
             new_categories.append(VODCategory(name=name, category_type=category_type))
 
     if new_categories:
-        VODCategory.objects.bulk_create(new_categories, ignore_conflicts=True)
-        # Fetch the newly created categories
-        newly_created = {
-            cat.name: cat for cat in VODCategory.objects.filter(
-                name__in=[cat.name for cat in new_categories],
-                category_type=category_type
-            )
-        }
+        created_categories = VODCategory.bulk_create_and_fetch(new_categories, ignore_conflicts=True)
+        # Convert to dictionary for easy lookup
+        newly_created = {cat.name: cat for cat in created_categories}
         existing_categories.update(newly_created)
 
     return existing_categories
@@ -228,14 +223,9 @@ def batch_create_categories(categories_data, category_type, account):
             ))
 
     if new_categories:
-        VODCategory.objects.bulk_create_and_fetch(new_categories, ignore_conflicts=True)
-        # Fetch the newly created categories
-        newly_created = {
-            cat.name: cat for cat in VODCategory.objects.filter(
-                name__in=[cat.name for cat in new_categories],
-                category_type=category_type
-            )
-        }
+        created_categories = VODCategory.bulk_create_and_fetch(new_categories, ignore_conflicts=True)
+        # Convert to dictionary for easy lookup
+        newly_created = {cat.name: cat for cat in created_categories}
 
         relations = relations + [M3UVODCategoryRelation(
             category=cat,
@@ -251,7 +241,7 @@ def batch_create_categories(categories_data, category_type, account):
 
 
 @shared_task
-def process_movie_batch(account, batch, category_map):
+def process_movie_batch(account, batch, categories):
     """Process a batch of movies using simple bulk operations like M3U processing"""
     logger.info(f"Processing movie batch of {len(batch)} movies for account {account.name}")
 
@@ -537,7 +527,7 @@ def process_movie_batch(account, batch, category_map):
 
 
 @shared_task
-def process_series_batch(account, batch, category_map):
+def process_series_batch(account, batch, categories):
     """Process a batch of series using simple bulk operations like M3U processing"""
     logger.info(f"Processing series batch of {len(batch)} series for account {account.name}")
 

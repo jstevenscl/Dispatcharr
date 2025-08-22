@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -30,6 +31,31 @@ class VODCategory(models.Model):
         verbose_name_plural = 'VOD Categories'
         ordering = ['name']
         unique_together = [('name', 'category_type')]
+
+    @classmethod
+    def bulk_create_and_fetch(cls, objects, ignore_conflicts=False):
+        # Perform the bulk create operation
+        cls.objects.bulk_create(objects, ignore_conflicts=ignore_conflicts)
+
+        # Use the unique fields to fetch the created objects
+        # Since we have unique_together on ('name', 'category_type'), we need both fields
+        filter_conditions = []
+        for obj in objects:
+            filter_conditions.append(
+                Q(name=obj.name, category_type=obj.category_type)
+            )
+
+        if filter_conditions:
+            # Combine all conditions with OR
+            combined_condition = filter_conditions[0]
+            for condition in filter_conditions[1:]:
+                combined_condition |= condition
+
+            created_objects = cls.objects.filter(combined_condition)
+        else:
+            created_objects = cls.objects.none()
+
+        return created_objects
 
     def __str__(self):
         return f"{self.name} ({self.get_category_type_display()})"

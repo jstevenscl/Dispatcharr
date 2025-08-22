@@ -663,8 +663,8 @@ def process_m3u_batch(account_id, batch, groups, hash_keys):
 def cleanup_streams(account_id, scan_start_time=timezone.now):
     account = M3UAccount.objects.get(id=account_id, is_active=True)
     existing_groups = ChannelGroup.objects.filter(
-        m3u_account__m3u_account=account,
-        m3u_account__enabled=True,
+        m3u_accounts__m3u_account=account,
+        m3u_accounts__enabled=True,
     ).values_list("id", flat=True)
     logger.info(
         f"Found {len(existing_groups)} active groups for M3U account {account_id}"
