@@ -252,3 +252,26 @@ class M3UEpisodeRelation(models.Model):
             # We might support non XC accounts in the future
             # For now, return None
             return None
+
+class M3UVODCategoryRelation(models.Model):
+    """Links M3U accounts to categories with provider-specific information"""
+    m3u_account = models.ForeignKey(M3UAccount, on_delete=models.CASCADE, related_name='category_relations')
+    category = models.ForeignKey(VODCategory, on_delete=models.CASCADE, related_name='m3u_relations')
+
+    enabled = models.BooleanField(
+        default=True, help_text="Set to false to deactivate this category for the M3U account"
+    )
+
+    custom_properties = models.JSONField(blank=True, null=True, help_text="Provider-specific data like quality, language, etc.")
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'M3U VOD Category Relation'
+        verbose_name_plural = 'M3U VOD Category Relations'
+        unique_together = [('m3u_account', 'category')]
+
+    def __str__(self):
+        return f"{self.m3u_account.name} - {self.category.name}"

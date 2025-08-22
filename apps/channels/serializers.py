@@ -134,16 +134,54 @@ class StreamSerializer(serializers.ModelSerializer):
         return fields
 
 
+class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
+    m3u_accounts = serializers.IntegerField(source="m3u_account.id", read_only=True)
+    enabled = serializers.BooleanField()
+    auto_channel_sync = serializers.BooleanField(default=False)
+    auto_sync_channel_start = serializers.FloatField(allow_null=True, required=False)
+    custom_properties = serializers.JSONField(required=False)
+
+    class Meta:
+        model = ChannelGroupM3UAccount
+        fields = ["m3u_accounts", "channel_group", "enabled", "auto_channel_sync", "auto_sync_channel_start", "custom_properties"]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Ensure custom_properties is always a dict or None
+        val = ret.get("custom_properties")
+        if isinstance(val, str):
+            import json
+            try:
+                ret["custom_properties"] = json.loads(val)
+            except Exception:
+                ret["custom_properties"] = None
+        return ret
+
+    def to_internal_value(self, data):
+        # Accept both dict and JSON string for custom_properties
+        val = data.get("custom_properties")
+        if isinstance(val, str):
+            import json
+            try:
+                data["custom_properties"] = json.loads(val)
+            except Exception:
+                pass
+        return super().to_internal_value(data)
+
 #
 # Channel Group
 #
 class ChannelGroupSerializer(serializers.ModelSerializer):
     channel_count = serializers.IntegerField(read_only=True)
     m3u_account_count = serializers.IntegerField(read_only=True)
+    m3u_accounts = ChannelGroupM3UAccountSerializer(
+        many=True,
+        read_only=True
+    )
 
     class Meta:
         model = ChannelGroup
-        fields = ["id", "name", "channel_count", "m3u_account_count"]
+        fields = ["id", "name", "channel_count", "m3u_account_count", "m3u_accounts"]
 
 
 class ChannelProfileSerializer(serializers.ModelSerializer):
@@ -345,40 +383,6 @@ class ChannelSerializer(serializers.ModelSerializer):
         if obj.auto_created_by:
             return obj.auto_created_by.name
         return None
-
-
-class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
-    enabled = serializers.BooleanField()
-    auto_channel_sync = serializers.BooleanField(default=False)
-    auto_sync_channel_start = serializers.FloatField(allow_null=True, required=False)
-    custom_properties = serializers.JSONField(required=False)
-
-    class Meta:
-        model = ChannelGroupM3UAccount
-        fields = ["id", "channel_group", "enabled", "auto_channel_sync", "auto_sync_channel_start", "custom_properties"]
-
-    def to_representation(self, instance):
-        ret = super().to_representation(instance)
-        # Ensure custom_properties is always a dict or None
-        val = ret.get("custom_properties")
-        if isinstance(val, str):
-            import json
-            try:
-                ret["custom_properties"] = json.loads(val)
-            except Exception:
-                ret["custom_properties"] = None
-        return ret
-
-    def to_internal_value(self, data):
-        # Accept both dict and JSON string for custom_properties
-        val = data.get("custom_properties")
-        if isinstance(val, str):
-            import json
-            try:
-                data["custom_properties"] = json.loads(val)
-            except Exception:
-                pass
-        return super().to_internal_value(data)
 
 
 class RecordingSerializer(serializers.ModelSerializer):

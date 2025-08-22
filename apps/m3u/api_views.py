@@ -21,6 +21,7 @@ from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
 from apps.channels.models import ChannelGroupM3UAccount
 from core.serializers import UserAgentSerializer
+from apps.vod.models import M3UVODCategoryRelation
 
 from .serializers import (
     M3UAccountSerializer,
@@ -86,9 +87,9 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
             # Check if VOD is enabled
             enable_vod = request.data.get("enable_vod", False)
             if enable_vod:
-                from apps.vod.tasks import refresh_vod_content
+                from apps.vod.tasks import refresh_categories
 
-                refresh_vod_content.delay(account_id)
+                refresh_categories.delay(account_id)
 
         # After the instance is created, return the response
         return response
@@ -217,6 +218,7 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
         """Update auto channel sync settings for M3U account groups"""
         account = self.get_object()
         group_settings = request.data.get("group_settings", [])
+        category_settings = request.data.get("category_settings", [])
 
         try:
             for setting in group_settings:
@@ -234,6 +236,25 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
                             "enabled": enabled,
                             "auto_channel_sync": auto_sync,
                             "auto_sync_channel_start": sync_start,
+                            "custom_properties": (
+                                custom_properties
+                                if isinstance(custom_properties, str)
+                                else json.dumps(custom_properties)
+                            ),
+                        },
+                    )
+
+            for setting in category_settings:
+                category_id = setting.get("id")
+                enabled = setting.get("enabled", True)
+                custom_properties = setting.get("custom_properties", {})
+
+                if category_id:
+                    M3UVODCategoryRelation.objects.update_or_create(
+                        category_id=category_id,
+                        m3u_account=account,
+                        defaults={
+                            "enabled": enabled,
                             "custom_properties": (
                                 custom_properties
                                 if isinstance(custom_properties, str)

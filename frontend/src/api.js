@@ -735,13 +735,20 @@ export default class API {
     }
   }
 
-  static async updateM3UGroupSettings(playlistId, groupSettings) {
+  static async updateM3UGroupSettings(
+    playlistId,
+    groupSettings = [],
+    categorySettings = []
+  ) {
     try {
       const response = await request(
         `${host}/api/m3u/accounts/${playlistId}/group-settings/`,
         {
           method: 'PATCH',
-          body: { group_settings: groupSettings },
+          body: {
+            group_settings: groupSettings,
+            category_settings: categorySettings,
+          },
         }
       );
       // Fetch the updated playlist and update the store
@@ -806,9 +813,12 @@ export default class API {
   }
   static async refreshVODContent(accountId) {
     try {
-      const response = await request(`${host}/api/m3u/accounts/${accountId}/refresh-vod/`, {
-        method: 'POST'
-      });
+      const response = await request(
+        `${host}/api/m3u/accounts/${accountId}/refresh-vod/`,
+        {
+          method: 'POST',
+        }
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to refresh VOD content', e);
@@ -1821,7 +1831,9 @@ export default class API {
 
   static async getMovieProviderInfo(movieId) {
     try {
-      const response = await request(`${host}/api/vod/movies/${movieId}/provider-info/`);
+      const response = await request(
+        `${host}/api/vod/movies/${movieId}/provider-info/`
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve movie provider info', e);
@@ -1830,7 +1842,9 @@ export default class API {
 
   static async getMovieProviders(movieId) {
     try {
-      const response = await request(`${host}/api/vod/movies/${movieId}/providers/`);
+      const response = await request(
+        `${host}/api/vod/movies/${movieId}/providers/`
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve movie providers', e);
@@ -1839,7 +1853,9 @@ export default class API {
 
   static async getSeriesProviders(seriesId) {
     try {
-      const response = await request(`${host}/api/vod/series/${seriesId}/providers/`);
+      const response = await request(
+        `${host}/api/vod/series/${seriesId}/providers/`
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve series providers', e);
@@ -1855,11 +1871,12 @@ export default class API {
     }
   }
 
-
   static async getSeriesInfo(seriesId) {
     try {
       // Call the provider-info endpoint that includes episodes
-      const response = await request(`${host}/api/vod/series/${seriesId}/provider-info/?include_episodes=true`);
+      const response = await request(
+        `${host}/api/vod/series/${seriesId}/provider-info/?include_episodes=true`
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to retrieve series info', e);
@@ -1868,10 +1885,13 @@ export default class API {
 
   static async updateVODPosition(vodUuid, clientId, position) {
     try {
-      const response = await request(`${host}/proxy/vod/stream/${vodUuid}/position/`, {
-        method: 'POST',
-        body: { client_id: clientId, position }
-      });
+      const response = await request(
+        `${host}/proxy/vod/stream/${vodUuid}/position/`,
+        {
+          method: 'POST',
+          body: { client_id: clientId, position },
+        }
+      );
       return response;
     } catch (e) {
       errorNotification('Failed to update playback position', e);

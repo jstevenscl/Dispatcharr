@@ -1,19 +1,34 @@
 from rest_framework import serializers
 from .models import (
     Series, VODCategory, Movie, Episode,
-    M3USeriesRelation, M3UMovieRelation, M3UEpisodeRelation
+    M3USeriesRelation, M3UMovieRelation, M3UEpisodeRelation, M3UVODCategoryRelation
 )
 from apps.channels.serializers import LogoSerializer
 from apps.m3u.serializers import M3UAccountSerializer
 
 
+class M3UVODCategoryRelationSerializer(serializers.ModelSerializer):
+    category = serializers.IntegerField(source="category.id")
+    m3u_account = serializers.IntegerField(source="m3u_account.id")
+
+    class Meta:
+        model = M3UVODCategoryRelation
+        fields = ["category", "m3u_account", "enabled"]
+
+
 class VODCategorySerializer(serializers.ModelSerializer):
     category_type_display = serializers.CharField(source='get_category_type_display', read_only=True)
+    m3u_accounts = M3UVODCategoryRelationSerializer(many=True, source="m3u_relations", read_only=True)
 
     class Meta:
         model = VODCategory
-        fields = '__all__'
-
+        fields = [
+            "id",
+            "name",
+            "category_type",
+            "category_type_display",
+            "m3u_accounts",
+        ]
 
 class SeriesSerializer(serializers.ModelSerializer):
     logo = LogoSerializer(read_only=True)
@@ -220,4 +235,3 @@ class EnhancedSeriesSerializer(serializers.ModelSerializer):
 
     def get_episode_count(self, obj):
         return obj.episodes.count()
-

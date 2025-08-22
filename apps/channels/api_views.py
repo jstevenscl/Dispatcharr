@@ -195,7 +195,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         from django.db.models import Count
         return ChannelGroup.objects.annotate(
             channel_count=Count('channels', distinct=True),
-            m3u_account_count=Count('m3u_account', distinct=True)
+            m3u_account_count=Count('m3u_accounts', distinct=True)
         )
 
     def update(self, request, *args, **kwargs):
@@ -237,7 +237,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         # Find groups with no channels and no M3U account associations
         unused_groups = ChannelGroup.objects.annotate(
             channel_count=Count('channels', distinct=True),
-            m3u_account_count=Count('m3u_account', distinct=True)
+            m3u_account_count=Count('m3u_accounts', distinct=True)
         ).filter(
             channel_count=0,
             m3u_account_count=0

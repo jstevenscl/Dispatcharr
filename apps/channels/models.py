@@ -95,7 +95,7 @@ class Stream(models.Model):
     )
     last_seen = models.DateTimeField(db_index=True, default=datetime.now)
     custom_properties = models.TextField(null=True, blank=True)
-    
+
     # Stream statistics fields
     stream_stats = models.JSONField(
         null=True,
@@ -560,7 +560,7 @@ class ChannelStream(models.Model):
 
 class ChannelGroupM3UAccount(models.Model):
     channel_group = models.ForeignKey(
-        ChannelGroup, on_delete=models.CASCADE, related_name="m3u_account"
+        ChannelGroup, on_delete=models.CASCADE, related_name="m3u_accounts"
     )
     m3u_account = models.ForeignKey(
         M3UAccount, on_delete=models.CASCADE, related_name="channel_group"
