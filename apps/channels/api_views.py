@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404, get_list_or_404
@@ -1262,7 +1262,7 @@ class CleanupUnusedLogosAPIView(APIView):
 class LogoViewSet(viewsets.ModelViewSet):
     queryset = Logo.objects.all()
     serializer_class = LogoSerializer
-    parser_classes = (MultiPartParser, FormParser)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_permissions(self):
         if self.action in ["upload"]:
@@ -1387,10 +1387,14 @@ class LogoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.warning(f"Failed to mark logo file as processed in Redis: {e}")
 
+        # Get custom name from request data, fallback to filename
+        custom_name = request.data.get('name', '').strip()
+        logo_name = custom_name if custom_name else file_name
+
         logo, _ = Logo.objects.get_or_create(
             url=file_path,
             defaults={
-                "name": file_name,
+                "name": logo_name,
             },
         )
 
