@@ -1331,10 +1331,15 @@ export default class API {
     }
   }
 
-  static async uploadLogo(file) {
+  static async uploadLogo(file, name = null) {
     try {
       const formData = new FormData();
       formData.append('file', file);
+
+      // Add custom name if provided
+      if (name && name.trim()) {
+        formData.append('name', name.trim());
+      }
 
       // Add timeout handling for file uploads
       const controller = new AbortController();

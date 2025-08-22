@@ -52,7 +52,7 @@ const LogoForm = ({ logo = null, isOpen, onClose }) => {
                 // If we have a selected file, upload it first
                 if (selectedFile) {
                     try {
-                        const uploadResponse = await API.uploadLogo(selectedFile);
+                        const uploadResponse = await API.uploadLogo(selectedFile, values.name);
                         // Use the uploaded file data instead of form values
                         values.name = uploadResponse.name;
                         values.url = uploadResponse.url;

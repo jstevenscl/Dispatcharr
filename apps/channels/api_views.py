@@ -1387,10 +1387,14 @@ class LogoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.warning(f"Failed to mark logo file as processed in Redis: {e}")
 
+        # Get custom name from request data, fallback to filename
+        custom_name = request.data.get('name', '').strip()
+        logo_name = custom_name if custom_name else file_name
+
         logo, _ = Logo.objects.get_or_create(
             url=file_path,
             defaults={
-                "name": file_name,
+                "name": logo_name,
             },
         )
 
