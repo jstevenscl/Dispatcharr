@@ -135,7 +135,7 @@ class StreamSerializer(serializers.ModelSerializer):
 
 
 class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
-    m3u_accounts = serializers.IntegerField(source="m3u_account.id", read_only=True)
+    m3u_accounts = serializers.IntegerField(source="m3u_accounts.id", read_only=True)
     enabled = serializers.BooleanField()
     auto_channel_sync = serializers.BooleanField(default=False)
     auto_sync_channel_start = serializers.FloatField(allow_null=True, required=False)
