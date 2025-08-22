@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import useChannelsStore from '../../store/channels';
+import useLogosStore from '../../store/logos';
 import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
@@ -49,6 +50,7 @@ import { getCoreRowModel, flexRender } from '@tanstack/react-table';
 import './table.css';
 import useChannelsTableStore from '../../store/channelsTable';
 import ChannelTableStreams from './ChannelTableStreams';
+import LazyLogo from '../LazyLogo';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { CustomTable, useTable } from './CustomTable';
 import ChannelsTableOnboarding from './ChannelsTable/ChannelsTableOnboarding';
@@ -244,7 +246,7 @@ const ChannelsTable = ({ }) => {
   const channels = useChannelsStore((s) => s.channels);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
-  const logos = useChannelsStore((s) => s.logos);
+  const logos = useLogosStore((s) => s.logos);
   const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
     pageSize: 50,
   });
@@ -717,18 +719,11 @@ const ChannelsTable = ({ }) => {
         header: '',
         cell: ({ getValue }) => {
           const logoId = getValue();
-          let src = logo; // Default fallback
-
-          if (logoId && logos[logoId]) {
-            // Try to use cache_url if available, otherwise construct it from the ID
-            src =
-              logos[logoId].cache_url || `/api/channels/logos/${logoId}/cache/`;
-          }
 
           return (
             <Center style={{ width: '100%' }}>
-              <img
-                src={src}
+              <LazyLogo
+                logoId={logoId}
                 alt="logo"
                 style={{ maxHeight: 18, maxWidth: 55 }}
               />

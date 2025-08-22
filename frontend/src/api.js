@@ -1,6 +1,7 @@
 // src/api.js (updated)
 import useAuthStore from './store/auth';
 import useChannelsStore from './store/channels';
+import useLogosStore from './store/logos';
 import useUserAgentsStore from './store/userAgents';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
@@ -1293,13 +1294,49 @@ export default class API {
     }
   }
 
+  static async getLogosByIds(logoIds) {
+    try {
+      if (!logoIds || logoIds.length === 0) return [];
+
+      const params = new URLSearchParams();
+      logoIds.forEach(id => params.append('ids', id));
+
+      const response = await request(
+        `${host}/api/channels/logos/?${params.toString()}`
+      );
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to retrieve logos by IDs', e);
+      return [];
+    }
+  }
+
   static async fetchLogos() {
     try {
       const response = await this.getLogos();
-      useChannelsStore.getState().setLogos(response);
+      useLogosStore.getState().setLogos(response);
       return response;
     } catch (e) {
       errorNotification('Failed to fetch logos', e);
+    }
+  }
+
+  static async fetchUsedLogos() {
+    try {
+      const response = await useLogosStore.getState().fetchUsedLogos();
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch used logos', e);
+    }
+  }
+
+  static async fetchLogosByIds(logoIds) {
+    try {
+      const response = await useLogosStore.getState().fetchLogosByIds(logoIds);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to fetch logos by IDs', e);
     }
   }
 
@@ -1340,7 +1377,7 @@ export default class API {
       }
 
       const result = await response.json();
-      useChannelsStore.getState().addLogo(result);
+      useLogosStore.getState().addLogo(result);
       return result;
     } catch (e) {
       if (e.name === 'AbortError') {
@@ -1368,7 +1405,7 @@ export default class API {
         body: formData,
       });
 
-      useChannelsStore.getState().addLogo(response);
+      useLogosStore.getState().addLogo(response);
 
       return response;
     } catch (e) {
@@ -1383,7 +1420,7 @@ export default class API {
         body: values, // This will be converted to JSON in the request function
       });
 
-      useChannelsStore.getState().updateLogo(response);
+      useLogosStore.getState().updateLogo(response);
 
       return response;
     } catch (e) {
@@ -1403,7 +1440,7 @@ export default class API {
         method: 'DELETE',
       });
 
-      useChannelsStore.getState().removeLogo(id);
+      useLogosStore.getState().removeLogo(id);
 
       return true;
     } catch (e) {
@@ -1425,7 +1462,7 @@ export default class API {
 
       // Remove multiple logos from store
       ids.forEach((id) => {
-        useChannelsStore.getState().removeLogo(id);
+        useLogosStore.getState().removeLogo(id);
       });
 
       return true;

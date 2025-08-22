@@ -1,27 +1,31 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Box } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import useChannelsStore from '../store/channels';
+import useLogosStore from '../store/logos';
 import LogosTable from '../components/tables/LogosTable';
 
 const LogosPage = () => {
-    const { fetchLogos } = useChannelsStore();
+    const { fetchLogos, logos } = useLogosStore();
 
-    useEffect(() => {
-        loadLogos();
-    }, []);
-
-    const loadLogos = async () => {
+    const loadLogos = useCallback(async () => {
         try {
-            await fetchLogos();
-        } catch (error) {
+            // Only fetch all logos if we don't have any yet
+            if (Object.keys(logos).length === 0) {
+                await fetchLogos();
+            }
+        } catch (err) {
             notifications.show({
                 title: 'Error',
                 message: 'Failed to load logos',
                 color: 'red',
             });
+            console.error('Failed to load logos:', err);
         }
-    };
+    }, [fetchLogos, logos]);
+
+    useEffect(() => {
+        loadLogos();
+    }, [loadLogos]);
 
     return (
         <Box style={{ padding: 10 }}>
