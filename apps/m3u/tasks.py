@@ -1754,8 +1754,8 @@ def refresh_single_m3u_account(account_id):
     existing_groups = {
         group.name: group.id
         for group in ChannelGroup.objects.filter(
-            m3u_account__m3u_account=account,  # Filter by the M3UAccount
-            m3u_account__enabled=True,  # Filter by the enabled flag in the join table
+            m3u_accounts__m3u_account=account,  # Filter by the M3UAccount
+            m3u_accounts__enabled=True,  # Filter by the enabled flag in the join table
         )
     }
 
