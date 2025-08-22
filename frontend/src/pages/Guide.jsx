@@ -3,6 +3,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import dayjs from 'dayjs';
 import API from '../api';
 import useChannelsStore from '../store/channels';
+import useLogosStore from '../store/logos';
 import logo from '../images/logo.png';
 import useVideoStore from '../store/useVideoStore'; // NEW import
 import { notifications } from '@mantine/notifications';
@@ -39,7 +40,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
   const recordings = useChannelsStore((s) => s.recordings);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const profiles = useChannelsStore((s) => s.profiles);
-  const logos = useChannelsStore((s) => s.logos);
+  const logos = useLogosStore((s) => s.logos);
 
   const tvgsById = useEPGsStore((s) => s.tvgsById);
 
