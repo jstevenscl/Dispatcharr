@@ -1,3 +1,4 @@
+import json
 from rest_framework import serializers
 from .models import (
     Stream,
@@ -146,26 +147,26 @@ class ChannelGroupM3UAccountSerializer(serializers.ModelSerializer):
         fields = ["m3u_accounts", "channel_group", "enabled", "auto_channel_sync", "auto_sync_channel_start", "custom_properties"]
 
     def to_representation(self, instance):
-        ret = super().to_representation(instance)
-        # Ensure custom_properties is always a dict or None
-        val = ret.get("custom_properties")
-        if isinstance(val, str):
-            import json
+        data = super().to_representation(instance)
+
+        custom_props = {}
+        if instance.custom_properties:
             try:
-                ret["custom_properties"] = json.loads(val)
-            except Exception:
-                ret["custom_properties"] = None
-        return ret
+                custom_props = json.loads(instance.custom_properties)
+            except (json.JSONDecodeError, TypeError):
+                custom_props = {}
+
+        return data
 
     def to_internal_value(self, data):
         # Accept both dict and JSON string for custom_properties
         val = data.get("custom_properties")
         if isinstance(val, str):
-            import json
             try:
                 data["custom_properties"] = json.loads(val)
             except Exception:
                 pass
+
         return super().to_internal_value(data)
 
 #

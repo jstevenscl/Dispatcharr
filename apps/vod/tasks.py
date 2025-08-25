@@ -1,4 +1,4 @@
-from celery import shared_task
+from celery import shared_task, current_app, group
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 from django.db.models import Q
@@ -38,11 +38,18 @@ def refresh_vod_content(account_id):
         ) as client:
 
             movie_categories, series_categories = refresh_categories(account.id, client)
+
+            logger.debug("Fetching relations for filtering category filtering")
+            relations = { rel.category_id: rel for rel in M3UVODCategoryRelation.objects
+                .filter(m3u_account=account)
+                .select_related("category", "m3u_account")
+            }
+
             # Refresh movies with batch processing
-            refresh_movies(client, account, movie_categories)
+            refresh_movies(client, account, movie_categories, relations)
 
             # Refresh series with batch processing
-            refresh_series(client, account, series_categories)
+            refresh_series(client, account, series_categories, relations)
 
         end_time = timezone.now()
         duration = (end_time - start_time).total_seconds()
@@ -54,7 +61,6 @@ def refresh_vod_content(account_id):
         logger.error(f"Error refreshing VOD for account {account_id}: {str(e)}")
         return f"VOD refresh failed: {str(e)}"
 
-@shared_task
 def refresh_categories(account_id, client=None):
     account = M3UAccount.objects.get(id=account_id, is_active=True)
 
@@ -97,26 +103,13 @@ def refresh_categories(account_id, client=None):
 
     return movies_category_id_map, series_category_id_map
 
-def refresh_movies(client, account, categories):
+def refresh_movies(client, account, categories_by_provider, relations):
     """Refresh movie content using single API call for all movies"""
     logger.info(f"Refreshing movies for account {account.name}")
 
     # Get all movies in a single API call
     logger.info("Fetching all movies from provider...")
     all_movies_data = client.get_vod_streams()  # No category_id = get all movies
-
-    # Add proper category info to each movie
-    for movie_data in all_movies_data:
-        provider_cat_id = str(movie_data.get('category_id', '')) if movie_data.get('category_id') else None
-        category = categories.get(provider_cat_id) if provider_cat_id else None
-
-        # Store category ID instead of object to avoid JSON serialization issues
-        movie_data['_category_id'] = category.id if category else None
-        movie_data['_provider_category_id'] = provider_cat_id
-
-        # Debug logging for first few movies
-        if len(all_movies_data) > 0 and all_movies_data.index(movie_data) < 3:
-            logger.info(f"Movie '{movie_data.get('name')}' -> Provider Category ID: {provider_cat_id} -> Our Category: {category.name if category else 'None'} (ID: {category.id if category else 'None'})")
 
     # Process movies in chunks using the simple approach
     chunk_size = 1000
@@ -128,31 +121,18 @@ def refresh_movies(client, account, categories):
         total_chunks = (total_movies + chunk_size - 1) // chunk_size
 
         logger.info(f"Processing movie chunk {chunk_num}/{total_chunks} ({len(chunk)} movies)")
-        process_movie_batch(account, chunk, categories)
+        process_movie_batch(account, chunk, categories_by_provider, relations)
 
     logger.info(f"Completed processing all {total_movies} movies in {total_chunks} chunks")
 
 
-def refresh_series(client, account, categories):
+def refresh_series(client, account, categories_by_provider, relations):
     """Refresh series content using single API call for all series"""
     logger.info(f"Refreshing series for account {account.name}")
 
     # Get all series in a single API call
     logger.info("Fetching all series from provider...")
     all_series_data = client.get_series()  # No category_id = get all series
-
-    # Add proper category info to each series
-    for series_data in all_series_data:
-        provider_cat_id = str(series_data.get('category_id', '')) if series_data.get('category_id') else None
-        category = categories.get(provider_cat_id) if provider_cat_id else None
-
-        # Store category ID instead of object to avoid JSON serialization issues
-        series_data['_category_id'] = category.id if category else None
-        series_data['_provider_category_id'] = provider_cat_id
-
-        # Debug logging for first few series
-        if len(all_series_data) > 0 and all_series_data.index(series_data) < 3:
-            logger.info(f"Series '{series_data.get('name')}' -> Provider Category ID: {provider_cat_id} -> Our Category: {category.name if category else 'None'} (ID: {category.id if category else 'None'})")
 
     # Process series in chunks using the simple approach
     chunk_size = 1000
@@ -164,51 +144,27 @@ def refresh_series(client, account, categories):
         total_chunks = (total_series + chunk_size - 1) // chunk_size
 
         logger.info(f"Processing series chunk {chunk_num}/{total_chunks} ({len(chunk)} series)")
-        process_series_batch(account, chunk, categories)
+        process_series_batch(account, chunk, categories_by_provider, relations)
 
     logger.info(f"Completed processing all {total_series} series in {total_chunks} chunks")
-
-
-# Batch processing functions for improved efficiency
-
-def batch_create_categories_from_names(category_names, category_type):
-    """Create categories from names and return a mapping"""
-    # Get existing categories
-    existing_categories = {
-        cat.name: cat for cat in VODCategory.objects.filter(
-            name__in=category_names,
-            category_type=category_type
-        )
-    }
-
-    # Create missing categories in batch
-    new_categories = []
-    for name in category_names:
-        if name not in existing_categories:
-            new_categories.append(VODCategory(name=name, category_type=category_type))
-
-    if new_categories:
-        created_categories = VODCategory.bulk_create_and_fetch(new_categories, ignore_conflicts=True)
-        # Convert to dictionary for easy lookup
-        newly_created = {cat.name: cat for cat in created_categories}
-        existing_categories.update(newly_created)
-
-    return existing_categories
 
 
 def batch_create_categories(categories_data, category_type, account):
     """Create categories in batch and return a mapping"""
     category_names = [cat.get('category_name', 'Unknown') for cat in categories_data]
 
-    relations = []
+    relations_to_create = []
 
     # Get existing categories
+    logger.debug(f"Starting VOD {category_type} category refresh")
     existing_categories = {
         cat.name: cat for cat in VODCategory.objects.filter(
             name__in=category_names,
             category_type=category_type
         )
     }
+
+    logger.debug(f"Found {len(existing_categories)} existing categories")
 
     # Create missing categories in batch
     new_categories = []
@@ -216,32 +172,56 @@ def batch_create_categories(categories_data, category_type, account):
         if name not in existing_categories:
             new_categories.append(VODCategory(name=name, category_type=category_type))
         else:
-            relations.append(M3UVODCategoryRelation(
+            relations_to_create.append(M3UVODCategoryRelation(
                 category=existing_categories[name],
                 m3u_account=account,
                 custom_properties={},
             ))
 
+    logger.debug(f"{len(new_categories)} new categories found")
+    logger.debug(f"{len(relations_to_create)} existing categories found for account")
+
     if new_categories:
+        logger.debug("Creating new categories...")
         created_categories = VODCategory.bulk_create_and_fetch(new_categories, ignore_conflicts=True)
         # Convert to dictionary for easy lookup
         newly_created = {cat.name: cat for cat in created_categories}
 
-        relations = relations + [M3UVODCategoryRelation(
-            category=cat,
-            m3u_account=account,
-            custom_properties={},
-        ) for cat in newly_created.values()]
+        relations_to_create += [
+            M3UVODCategoryRelation(
+                category=cat,
+                m3u_account=account,
+                custom_properties={},
+            ) for cat in newly_created.values()
+        ]
 
         existing_categories.update(newly_created)
 
-    M3UVODCategoryRelation.objects.bulk_create(relations, ignore_conflicts=True)
+    # Create missing relations
+    logger.debug("Updating category account relations...")
+    M3UVODCategoryRelation.objects.bulk_create(relations_to_create, ignore_conflicts=True)
+
+    # 🔑 Fetch all relations for this account, for all categories
+    # relations = { rel.id: rel for rel in M3UVODCategoryRelation.objects
+    #     .filter(category__in=existing_categories.values(), m3u_account=account)
+    #     .select_related("category", "m3u_account")
+    # }
+
+    # Attach relations to category objects
+    # for rel in relations:
+    #     existing_categories[rel.category.name]['relation'] = {
+    #         "relation_id": rel.id,
+    #         "category_id": rel.category_id,
+    #         "account_id": rel.m3u_account_id,
+    #     }
+
 
     return existing_categories
 
 
+
 @shared_task
-def process_movie_batch(account, batch, categories):
+def process_movie_batch(account, batch, categories, relations):
     """Process a batch of movies using simple bulk operations like M3U processing"""
     logger.info(f"Processing movie batch of {len(batch)} movies for account {account.name}")
 
@@ -256,17 +236,24 @@ def process_movie_batch(account, batch, categories):
         try:
             stream_id = str(movie_data.get('stream_id'))
             name = movie_data.get('name', 'Unknown')
-            category_id = movie_data.get('_category_id')
 
             # Get category with proper error handling
             category = None
-            if category_id:
-                try:
-                    category = VODCategory.objects.get(id=category_id)
-                    logger.debug(f"Found category {category.name} (ID: {category_id}) for movie {name}")
-                except VODCategory.DoesNotExist:
-                    logger.warning(f"Category ID {category_id} not found for movie {name}")
-                    category = None
+
+            provider_cat_id = str(movie_data.get('category_id', '')) if movie_data.get('category_id') else None
+            movie_data['_provider_category_id'] = provider_cat_id
+            movie_data['_category_id'] = None
+
+            logger.debug(f"Checking for existing provider category ID {provider_cat_id}")
+            if provider_cat_id in categories:
+                category = categories[provider_cat_id]
+                movie_data['_category_id'] = category.id
+                logger.debug(f"Found category {category.name} (ID: {category.id}) for movie {name}")
+
+                relation = relations.get(category.id, None)
+                if relation and not relation.enabled:
+                    logger.debug("Skipping disabled category")
+                    continue
             else:
                 logger.warning(f"No category ID provided for movie {name}")
 
@@ -527,7 +514,7 @@ def process_movie_batch(account, batch, categories):
 
 
 @shared_task
-def process_series_batch(account, batch, categories):
+def process_series_batch(account, batch, categories, relations):
     """Process a batch of series using simple bulk operations like M3U processing"""
     logger.info(f"Processing series batch of {len(batch)} series for account {account.name}")
 
@@ -542,17 +529,23 @@ def process_series_batch(account, batch, categories):
         try:
             series_id = str(series_data.get('series_id'))
             name = series_data.get('name', 'Unknown')
-            category_id = series_data.get('_category_id')
 
             # Get category with proper error handling
             category = None
-            if category_id:
-                try:
-                    category = VODCategory.objects.get(id=category_id)
-                    logger.debug(f"Found category {category.name} (ID: {category_id}) for series {name}")
-                except VODCategory.DoesNotExist:
-                    logger.warning(f"Category ID {category_id} not found for series {name}")
-                    category = None
+
+            provider_cat_id = str(series_data.get('category_id', '')) if series_data.get('category_id') else None
+            series_data['_provider_category_id'] = provider_cat_id
+            series_data['_category_id'] = None
+
+            if provider_cat_id in categories:
+                category = categories[provider_cat_id]
+                series_data['_category_id'] = category.id
+                logger.debug(f"Found category {category.name} (ID: {category.id}) for series {name}")
+                relation = relations.get(category.id, None)
+
+                if relation and not relation.enabled:
+                    logger.debug("Skipping disabled category")
+                    continue
             else:
                 logger.warning(f"No category ID provided for series {name}")
 

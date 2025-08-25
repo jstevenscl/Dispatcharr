@@ -89,7 +89,7 @@ class M3UAccountViewSet(viewsets.ModelViewSet):
             if enable_vod:
                 from apps.vod.tasks import refresh_categories
 
-                refresh_categories.delay(account_id)
+                refresh_categories(account_id)
 
         # After the instance is created, return the response
         return response

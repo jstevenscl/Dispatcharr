@@ -51,7 +51,8 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const [groupStates, setGroupStates] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [categoryStates, setCategoryStates] = useState([]);
+  const [movieCategoryStates, setMovieCategoryStates] = useState([]);
+  const [seriesCategoryStates, setSeriesCategoryStates] = useState([]);
 
   useEffect(() => {
     if (Object.keys(channelGroups).length === 0) {
@@ -87,22 +88,31 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
     setIsLoading(true);
     try {
       // Prepare groupStates for API: custom_properties must be stringified
-      const groupSettings = groupStates.map((state) => ({
-        ...state,
-        custom_properties: state.custom_properties
-          ? JSON.stringify(state.custom_properties)
-          : undefined,
-      })).filter(group => group.enabled !== group.original_enabled)
+      const groupSettings = groupStates
+        .map((state) => ({
+          ...state,
+          custom_properties: state.custom_properties
+            ? JSON.stringify(state.custom_properties)
+            : undefined,
+        }))
+        .filter((group) => group.enabled !== group.original_enabled);
 
-      const categorySettings = categoryStates.map(state => ({
-        ...state,
-        custom_properties: state.custom_properties
-          ? JSON.stringify(state.custom_properties)
-          : undefined,
-      })).filter(state => state.enabled !== state.original_enabled)
+      const categorySettings = movieCategoryStates
+        .concat(seriesCategoryStates)
+        .map((state) => ({
+          ...state,
+          custom_properties: state.custom_properties
+            ? JSON.stringify(state.custom_properties)
+            : undefined,
+        }))
+        .filter((state) => state.enabled !== state.original_enabled);
 
       // Update group settings via API endpoint
-      await API.updateM3UGroupSettings(playlist.id, groupSettings, categorySettings);
+      await API.updateM3UGroupSettings(
+        playlist.id,
+        groupSettings,
+        categorySettings
+      );
 
       // Show notification about the refresh process
       notifications.show({
@@ -148,7 +158,8 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
         <Tabs defaultValue="live">
           <Tabs.List>
             <Tabs.Tab value="live">Live</Tabs.Tab>
-            <Tabs.Tab value="vod">VOD</Tabs.Tab>
+            <Tabs.Tab value="vod-movie">VOD - Movies</Tabs.Tab>
+            <Tabs.Tab value="vod-series">VOD - Series</Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="live">
@@ -159,11 +170,21 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
             />
           </Tabs.Panel>
 
-          <Tabs.Panel value="vod">
+          <Tabs.Panel value="vod-movie">
             <VODCategoryFilter
               playlist={playlist}
-              categoryStates={categoryStates}
-              setCategoryStates={setCategoryStates}
+              categoryStates={movieCategoryStates}
+              setCategoryStates={setMovieCategoryStates}
+              type="movie"
+            />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="vod-series">
+            <VODCategoryFilter
+              playlist={playlist}
+              categoryStates={seriesCategoryStates}
+              setCategoryStates={setSeriesCategoryStates}
+              type="series"
             />
           </Tabs.Panel>
         </Tabs>

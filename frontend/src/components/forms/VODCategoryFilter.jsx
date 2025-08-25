@@ -18,6 +18,7 @@ const VODCategoryFilter = ({
   playlist = null,
   categoryStates,
   setCategoryStates,
+  type,
 }) => {
   const categories = useVODStore((s) => s.categories);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,16 +29,26 @@ const VODCategoryFilter = ({
       return;
     }
 
-    setCategoryStates(Object.values(categories).map(cat => {
-      const match = cat.m3u_accounts.find(acc => acc.m3u_account == playlist.id)
-      if (match) {
-        return {
-          ...cat,
-          enabled: match.enabled,
-          original_enabled: match.enabled,
-        }
-      }
-    }));
+    console.log(categories)
+
+    setCategoryStates(
+      Object.values(categories)
+        .filter((cat) =>
+          cat.m3u_accounts.find((acc) => acc.m3u_account == playlist.id) && cat.category_type == type
+        )
+        .map((cat) => {
+          const match = cat.m3u_accounts.find(
+            (acc) => acc.m3u_account == playlist.id
+          );
+          if (match) {
+            return {
+              ...cat,
+              enabled: match.enabled,
+              original_enabled: match.enabled,
+            };
+          }
+        })
+    );
   }, [categories]);
 
   const toggleEnabled = (id) => {
@@ -71,8 +82,6 @@ const VODCategoryFilter = ({
     );
   };
 
-  console.log(categoryStates)
-
   return (
     <Stack style={{ paddingTop: 10 }}>
       <Flex gap="sm">
@@ -98,9 +107,9 @@ const VODCategoryFilter = ({
           verticalSpacing="xs"
         >
           {categoryStates
-            .filter((category) =>
-              category.name.toLowerCase().includes(filter.toLowerCase())
-            )
+            .filter((category) => {
+              return category.name.toLowerCase().includes(filter.toLowerCase());
+            })
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((category) => (
               <Group
