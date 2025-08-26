@@ -109,7 +109,8 @@ const useAuthStore = create((set, get) => ({
         // Start background loading of channel-assignable logos
         setTimeout(() => {
           try {
-            useLogosStore.getState().backgroundLoadChannelLogos();
+            //useLogosStore.getState().backgroundLoadChannelLogos();
+            useLogosStore.getState().fetchAllLogos();
           } catch (error) {
             console.log('Background logo loading not available:', error);
           }

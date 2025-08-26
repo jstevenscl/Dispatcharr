@@ -42,11 +42,11 @@ export const useLogoSelection = () => {
  * (unused + channel-used, excluding VOD-only logos)
  */
 export const useChannelLogoSelection = () => {
-  const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
   const channelLogos = useLogosStore((s) => s.channelLogos);
   const hasLoadedChannelLogos = useLogosStore((s) => s.hasLoadedChannelLogos);
+  const backgroundLoading = useLogosStore((s) => s.backgroundLoading); // Use global loading state
   const fetchChannelAssignableLogos = useLogosStore(
     (s) => s.fetchChannelAssignableLogos
   );
@@ -55,21 +55,19 @@ export const useChannelLogoSelection = () => {
   const hasLogos = Object.keys(channelLogos).length > 0;
 
   const ensureLogosLoaded = useCallback(async () => {
-    if (isLoading || (hasLoadedChannelLogos && isInitialized)) {
+    // Use global loading state instead of local state
+    if (backgroundLoading || (hasLoadedChannelLogos && isInitialized)) {
       return;
     }
 
-    setIsLoading(true);
     try {
       await fetchChannelAssignableLogos();
       setIsInitialized(true);
     } catch (error) {
       console.error('Failed to load channel-assignable logos:', error);
-    } finally {
-      setIsLoading(false);
     }
   }, [
-    isLoading,
+    backgroundLoading, // Use global loading state
     hasLoadedChannelLogos,
     isInitialized,
     fetchChannelAssignableLogos,
@@ -82,7 +80,7 @@ export const useChannelLogoSelection = () => {
 
   return {
     logos: channelLogos, // Return channelLogos instead of all logos
-    isLoading,
+    isLoading: backgroundLoading, // Use global loading state
     ensureLogosLoaded,
     hasLogos,
   };

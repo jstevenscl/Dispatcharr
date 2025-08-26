@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import useChannelsStore from '../../store/channels';
-import useLogosStore from '../../store/logos';
 import API from '../../api';
 import useStreamProfilesStore from '../../store/streamProfiles';
 import useStreamsStore from '../../store/streams';
@@ -49,7 +48,6 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
 
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const { logos, ensureLogosLoaded } = useChannelLogoSelection();
-  const fetchLogos = useLogosStore((s) => s.fetchLogos);
   const streams = useStreamsStore((state) => state.streams);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
   const playlists = usePlaylistsStore((s) => s.playlists);
@@ -100,7 +98,7 @@ const ChannelsForm = ({ channel = null, isOpen, onClose }) => {
 
       try {
         const retval = await API.uploadLogo(file);
-        await fetchLogos();
+        // Note: API.uploadLogo already adds the logo to the store, no need to fetch
         setLogoPreview(retval.cache_url);
         formik.setFieldValue('logo_id', retval.id);
       } catch (error) {

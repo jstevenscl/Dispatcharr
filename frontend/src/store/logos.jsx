@@ -123,7 +123,17 @@ const useLogosStore = create((set, get) => ({
   },
 
   fetchChannelAssignableLogos: async () => {
-    set({ isLoading: true, error: null });
+    const { backgroundLoading, hasLoadedChannelLogos, channelLogos } = get();
+
+    // Prevent concurrent calls
+    if (
+      backgroundLoading ||
+      (hasLoadedChannelLogos && Object.keys(channelLogos).length > 0)
+    ) {
+      return Object.values(channelLogos);
+    }
+
+    set({ backgroundLoading: true, error: null });
     try {
       // Load logos suitable for channel assignment (unused + channel-used, exclude VOD-only)
       const response = await api.getLogos({
@@ -143,7 +153,7 @@ const useLogosStore = create((set, get) => ({
           return acc;
         }, {}),
         hasLoadedChannelLogos: true,
-        isLoading: false,
+        backgroundLoading: false,
       });
 
       return logos;
@@ -151,7 +161,7 @@ const useLogosStore = create((set, get) => ({
       console.error('Failed to fetch channel-assignable logos:', error);
       set({
         error: 'Failed to load channel-assignable logos.',
-        isLoading: false,
+        backgroundLoading: false,
       });
       throw error;
     }
