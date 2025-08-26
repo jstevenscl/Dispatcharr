@@ -83,7 +83,14 @@ const LogosTable = () => {
   /**
    * STORES
    */
-  const { logos, fetchLogos, isLoading: storeLoading } = useLogosStore();
+  const {
+    logos,
+    fetchLogos,
+    fetchAllLogos,
+    updateLogo,
+    addLogo,
+    isLoading: storeLoading,
+  } = useLogosStore();
 
   /**
    * useState
@@ -529,8 +536,28 @@ const LogosTable = () => {
   const closeLogoForm = () => {
     setSelectedLogo(null);
     setLogoModalOpen(false);
-    fetchLogos(); // Refresh the logos list
+    // Don't automatically refresh - only refresh if data was actually changed via onLogoSuccess
   };
+
+  const onLogoSuccess = useCallback(
+    async (result) => {
+      if (!result) return;
+
+      const { type, logo } = result;
+
+      if (type === 'update' && logo) {
+        // For updates, just update the specific logo in the store
+        updateLogo(logo);
+      } else if (type === 'create' && logo) {
+        // For creates, add the new logo to the store
+        addLogo(logo);
+      } else {
+        // For uploads or when we don't have logo data, refresh all
+        await fetchAllLogos(); // Use fetchAllLogos to maintain full view
+      }
+    },
+    [updateLogo, addLogo, fetchAllLogos]
+  );
 
   const renderHeaderCell = (header) => {
     return (
@@ -774,6 +801,7 @@ const LogosTable = () => {
         logo={selectedLogo}
         isOpen={logoModalOpen}
         onClose={closeLogoForm}
+        onSuccess={onLogoSuccess}
       />
 
       <ConfirmationDialog
