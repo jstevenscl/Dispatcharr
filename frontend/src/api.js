@@ -1310,6 +1310,8 @@ export default class API {
 
       const params = new URLSearchParams();
       logoIds.forEach(id => params.append('ids', id));
+      // Disable pagination for ID-based queries to get all matching logos
+      params.append('no_pagination', 'true');
 
       const response = await request(
         `${host}/api/channels/logos/?${params.toString()}`

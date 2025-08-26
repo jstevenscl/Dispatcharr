@@ -83,7 +83,7 @@ const LogosTable = () => {
   /**
    * STORES
    */
-  const { logos, fetchLogos } = useLogosStore();
+  const { logos, fetchLogos, isLoading: storeLoading } = useLogosStore();
 
   /**
    * useState
@@ -416,7 +416,7 @@ const LogosTable = () => {
               label={
                 <div>
                   <Text size="xs" fw={600}>
-                    Used by {count} channel{count !== 1 ? 's' : ''}:
+                    Used by {count} item{count !== 1 ? 's' : ''}:
                   </Text>
                   {channelNames.map((name, index) => (
                     <Text key={index} size="xs">
@@ -429,7 +429,7 @@ const LogosTable = () => {
               width={220}
             >
               <Badge size="sm" variant="light" color="blue">
-                {count} channel{count !== 1 ? 's' : ''}
+                {count} item{count !== 1 ? 's' : ''}
               </Badge>
             </Tooltip>
           );
@@ -689,7 +689,7 @@ const LogosTable = () => {
                 }}
               >
                 <div>
-                  <LoadingOverlay visible={isLoading} />
+                  <LoadingOverlay visible={isLoading || storeLoading} />
                   <CustomTable table={table} />
                 </div>
               </Box>
@@ -758,7 +758,8 @@ const LogosTable = () => {
               Are you sure you want to delete {selectedRows.size} selected
               logos?
               <Text size="sm" c="dimmed" mt="xs">
-                Any channels using these logos will have their logo removed.
+                Any channels, movies, or series using these logos will have
+                their logo removed.
               </Text>
               <Text size="sm" c="dimmed" mt="xs">
                 This action cannot be undone.
@@ -770,8 +771,8 @@ const LogosTable = () => {
               {logoToDelete.channel_count > 0 && (
                 <Text size="sm" c="orange" mt="xs">
                   This logo is currently used by {logoToDelete.channel_count}{' '}
-                  channel{logoToDelete.channel_count !== 1 ? 's' : ''}. They
-                  will have their logo removed.
+                  item{logoToDelete.channel_count !== 1 ? 's' : ''}. They will
+                  have their logo removed.
                 </Text>
               )}
               <Text size="sm" c="dimmed" mt="xs">

@@ -2,141 +2,209 @@ import { create } from 'zustand';
 import api from '../api';
 
 const useLogosStore = create((set, get) => ({
-    logos: {},
-    isLoading: false,
-    error: null,
+  logos: {},
+  isLoading: false,
+  backgroundLoading: false,
+  hasLoadedAll: false, // Track if we've loaded all logos
+  error: null,
 
-    // Basic CRUD operations
-    setLogos: (logos) => {
-        set({
-            logos: logos.reduce((acc, logo) => {
-                acc[logo.id] = { ...logo };
-                return acc;
+  // Basic CRUD operations
+  setLogos: (logos) => {
+    set({
+      logos: logos.reduce((acc, logo) => {
+        acc[logo.id] = { ...logo };
+        return acc;
+      }, {}),
+    });
+  },
+
+  addLogo: (newLogo) =>
+    set((state) => ({
+      logos: {
+        ...state.logos,
+        [newLogo.id]: { ...newLogo },
+      },
+    })),
+
+  updateLogo: (logo) =>
+    set((state) => ({
+      logos: {
+        ...state.logos,
+        [logo.id]: { ...logo },
+      },
+    })),
+
+  removeLogo: (logoId) =>
+    set((state) => {
+      const newLogos = { ...state.logos };
+      delete newLogos[logoId];
+      return { logos: newLogos };
+    }),
+
+  // Smart loading methods
+  fetchLogos: async (pageSize = 100) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await api.getLogos({ page_size: pageSize });
+
+      // Handle both paginated and non-paginated responses
+      const logos = Array.isArray(response) ? response : response.results || [];
+
+      set({
+        logos: logos.reduce((acc, logo) => {
+          acc[logo.id] = { ...logo };
+          return acc;
+        }, {}),
+        isLoading: false,
+      });
+      return response;
+    } catch (error) {
+      console.error('Failed to fetch logos:', error);
+      set({ error: 'Failed to load logos.', isLoading: false });
+      throw error;
+    }
+  },
+
+  fetchAllLogos: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      // Disable pagination to get all logos for management interface
+      const response = await api.getLogos({ no_pagination: 'true' });
+
+      // Handle both paginated and non-paginated responses
+      const logos = Array.isArray(response) ? response : response.results || [];
+
+      set({
+        logos: logos.reduce((acc, logo) => {
+          acc[logo.id] = { ...logo };
+          return acc;
+        }, {}),
+        hasLoadedAll: true, // Mark that we've loaded all logos
+        isLoading: false,
+      });
+      return logos;
+    } catch (error) {
+      console.error('Failed to fetch all logos:', error);
+      set({ error: 'Failed to load all logos.', isLoading: false });
+      throw error;
+    }
+  },
+
+  fetchUsedLogos: async (pageSize = 100) => {
+    set({ isLoading: true, error: null });
+    try {
+      // Load used logos with pagination for better performance
+      const response = await api.getLogos({
+        used: 'true',
+        page_size: pageSize,
+      });
+
+      // Handle both paginated and non-paginated responses
+      const logos = Array.isArray(response) ? response : response.results || [];
+
+      set((state) => ({
+        logos: {
+          ...state.logos,
+          ...logos.reduce((acc, logo) => {
+            acc[logo.id] = { ...logo };
+            return acc;
+          }, {}),
+        },
+        isLoading: false,
+      }));
+      return response;
+    } catch (error) {
+      console.error('Failed to fetch used logos:', error);
+      set({ error: 'Failed to load used logos.', isLoading: false });
+      throw error;
+    }
+  },
+
+  fetchLogosByIds: async (logoIds) => {
+    if (!logoIds || logoIds.length === 0) return [];
+
+    try {
+      // Filter out logos we already have
+      const missingIds = logoIds.filter((id) => !get().logos[id]);
+      if (missingIds.length === 0) return [];
+
+      const response = await api.getLogosByIds(missingIds);
+
+      // Handle both paginated and non-paginated responses
+      const logos = Array.isArray(response) ? response : response.results || [];
+
+      set((state) => ({
+        logos: {
+          ...state.logos,
+          ...logos.reduce((acc, logo) => {
+            acc[logo.id] = { ...logo };
+            return acc;
+          }, {}),
+        },
+      }));
+      return logos;
+    } catch (error) {
+      console.error('Failed to fetch logos by IDs:', error);
+      throw error;
+    }
+  },
+
+  fetchLogosInBackground: async () => {
+    set({ backgroundLoading: true });
+    try {
+      // Load logos in chunks using pagination for better performance
+      let page = 1;
+      const pageSize = 200;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await api.getLogos({ page, page_size: pageSize });
+
+        set((state) => ({
+          logos: {
+            ...state.logos,
+            ...response.results.reduce((acc, logo) => {
+              acc[logo.id] = { ...logo };
+              return acc;
             }, {}),
-        });
-    },
+          },
+        }));
 
-    addLogo: (newLogo) =>
-        set((state) => ({
-            logos: {
-                ...state.logos,
-                [newLogo.id]: { ...newLogo },
-            },
-        })),
+        // Check if there are more pages
+        hasMore = !!response.next;
+        page++;
 
-    updateLogo: (logo) =>
-        set((state) => ({
-            logos: {
-                ...state.logos,
-                [logo.id]: { ...logo },
-            },
-        })),
-
-    removeLogo: (logoId) =>
-        set((state) => {
-            const newLogos = { ...state.logos };
-            delete newLogos[logoId];
-            return { logos: newLogos };
-        }),
-
-    // Smart loading methods
-    fetchLogos: async () => {
-        set({ isLoading: true, error: null });
-        try {
-            const logos = await api.getLogos();
-            set({
-                logos: logos.reduce((acc, logo) => {
-                    acc[logo.id] = { ...logo };
-                    return acc;
-                }, {}),
-                isLoading: false,
-            });
-            return logos;
-        } catch (error) {
-            console.error('Failed to fetch logos:', error);
-            set({ error: 'Failed to load logos.', isLoading: false });
-            throw error;
+        // Add a small delay between chunks to avoid overwhelming the server
+        if (hasMore) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
-    },
+      }
+    } catch (error) {
+      console.error('Background logo loading failed:', error);
+      // Don't throw error for background loading
+    } finally {
+      set({ backgroundLoading: false });
+    }
+  },
 
-    fetchUsedLogos: async () => {
-        set({ isLoading: true, error: null });
-        try {
-            const logos = await api.getLogos({ used: 'true' });
-            set((state) => ({
-                logos: {
-                    ...state.logos,
-                    ...logos.reduce((acc, logo) => {
-                        acc[logo.id] = { ...logo };
-                        return acc;
-                    }, {}),
-                },
-                isLoading: false,
-            }));
-            return logos;
-        } catch (error) {
-            console.error('Failed to fetch used logos:', error);
-            set({ error: 'Failed to load used logos.', isLoading: false });
-            throw error;
-        }
-    },
+  // Helper methods
+  getLogoById: (logoId) => {
+    return get().logos[logoId] || null;
+  },
 
-    fetchLogosByIds: async (logoIds) => {
-        if (!logoIds || logoIds.length === 0) return [];
+  hasLogo: (logoId) => {
+    return !!get().logos[logoId];
+  },
 
-        try {
-            // Filter out logos we already have
-            const missingIds = logoIds.filter(id => !get().logos[id]);
-            if (missingIds.length === 0) return [];
+  getLogosCount: () => {
+    return Object.keys(get().logos).length;
+  },
 
-            const logos = await api.getLogosByIds(missingIds);
-            set((state) => ({
-                logos: {
-                    ...state.logos,
-                    ...logos.reduce((acc, logo) => {
-                        acc[logo.id] = { ...logo };
-                        return acc;
-                    }, {}),
-                },
-            }));
-            return logos;
-        } catch (error) {
-            console.error('Failed to fetch logos by IDs:', error);
-            throw error;
-        }
-    },
-
-    fetchLogosInBackground: async () => {
-        try {
-            // Load all remaining logos in background
-            const allLogos = await api.getLogos();
-            set((state) => ({
-                logos: {
-                    ...state.logos,
-                    ...allLogos.reduce((acc, logo) => {
-                        acc[logo.id] = { ...logo };
-                        return acc;
-                    }, {}),
-                },
-            }));
-        } catch (error) {
-            console.error('Background logo loading failed:', error);
-            // Don't throw error for background loading
-        }
-    },
-
-    // Helper methods
-    getLogoById: (logoId) => {
-        return get().logos[logoId] || null;
-    },
-
-    hasLogo: (logoId) => {
-        return !!get().logos[logoId];
-    },
-
-    getLogosCount: () => {
-        return Object.keys(get().logos).length;
-    },
+  // Check if we need to fetch all logos (haven't loaded them yet or store is empty)
+  needsAllLogos: () => {
+    const state = get();
+    return !state.hasLoadedAll || Object.keys(state.logos).length === 0;
+  },
 }));
 
 export default useLogosStore;
