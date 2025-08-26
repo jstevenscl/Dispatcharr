@@ -878,7 +878,7 @@ const LogosTable = () => {
             {unusedLogosCount !== 1 ? 's' : ''}?
             <Text size="sm" c="dimmed" mt="xs">
               This will permanently delete all logos that are not currently used
-              by any channels.
+              by any channels, series, or movies.
             </Text>
             <Text size="sm" c="dimmed" mt="xs">
               This action cannot be undone.
