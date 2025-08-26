@@ -227,7 +227,7 @@ const LogosTable = () => {
       setIsCleaningUp(true);
       try {
         const result = await API.cleanupUnusedLogos(deleteFiles);
-        await fetchLogos(); // Refresh the logos list
+        await fetchAllLogos(); // Refresh all logos to maintain full view
 
         let message = `Successfully deleted ${result.deleted_count} unused logos`;
         if (result.local_files_deleted > 0) {
@@ -251,7 +251,7 @@ const LogosTable = () => {
         setSelectedRows(new Set()); // Clear selections after cleanup
       }
     },
-    [fetchLogos]
+    [fetchAllLogos]
   );
 
   const editLogo = useCallback(async (logo = null) => {
