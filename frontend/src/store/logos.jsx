@@ -68,23 +68,32 @@ const useLogosStore = create((set, get) => ({
   },
 
   fetchAllLogos: async () => {
+    const { isLoading, hasLoadedAll, logos } = get();
+
+    // Prevent unnecessary reloading if we already have all logos
+    if (isLoading || (hasLoadedAll && Object.keys(logos).length > 0)) {
+      return Object.values(logos);
+    }
+
     set({ isLoading: true, error: null });
     try {
       // Disable pagination to get all logos for management interface
       const response = await api.getLogos({ no_pagination: 'true' });
 
       // Handle both paginated and non-paginated responses
-      const logos = Array.isArray(response) ? response : response.results || [];
+      const logosArray = Array.isArray(response)
+        ? response
+        : response.results || [];
 
       set({
-        logos: logos.reduce((acc, logo) => {
+        logos: logosArray.reduce((acc, logo) => {
           acc[logo.id] = { ...logo };
           return acc;
         }, {}),
         hasLoadedAll: true, // Mark that we've loaded all logos
         isLoading: false,
       });
-      return logos;
+      return logosArray;
     } catch (error) {
       console.error('Failed to fetch all logos:', error);
       set({ error: 'Failed to load all logos.', isLoading: false });
@@ -234,6 +243,54 @@ const useLogosStore = create((set, get) => ({
     }
   },
 
+  // Background loading specifically for all logos after login
+  backgroundLoadAllLogos: async () => {
+    const { backgroundLoading, hasLoadedAll } = get();
+
+    // Don't start if already loading or if we already have all logos loaded
+    if (backgroundLoading || hasLoadedAll) {
+      return;
+    }
+
+    set({ backgroundLoading: true });
+
+    // Use setTimeout to make this truly non-blocking
+    setTimeout(async () => {
+      try {
+        // Use the API directly to avoid interfering with the main isLoading state
+        const response = await api.getLogos({ no_pagination: 'true' });
+        const logosArray = Array.isArray(response)
+          ? response
+          : response.results || [];
+
+        // Process logos in smaller chunks to avoid blocking the main thread
+        const chunkSize = 1000;
+        const logoObject = {};
+
+        for (let i = 0; i < logosArray.length; i += chunkSize) {
+          const chunk = logosArray.slice(i, i + chunkSize);
+          chunk.forEach((logo) => {
+            logoObject[logo.id] = { ...logo };
+          });
+
+          // Yield control back to the main thread between chunks
+          if (i + chunkSize < logosArray.length) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+        }
+
+        set({
+          logos: logoObject,
+          hasLoadedAll: true,
+          backgroundLoading: false,
+        });
+      } catch (error) {
+        console.error('Background all logos loading failed:', error);
+        set({ backgroundLoading: false });
+      }
+    }, 0); // Execute immediately but asynchronously
+  },
+
   // Background loading specifically for channel-assignable logos after login
   backgroundLoadChannelLogos: async () => {
     const { backgroundLoading, channelLogos, hasLoadedChannelLogos } = get();
@@ -260,6 +317,19 @@ const useLogosStore = create((set, get) => ({
     } finally {
       set({ backgroundLoading: false });
     }
+  },
+
+  // Start background loading after app is fully initialized
+  startBackgroundLoading: () => {
+    // Use a longer delay to ensure app is fully loaded
+    setTimeout(() => {
+      // Fire and forget - don't await this
+      get()
+        .backgroundLoadAllLogos()
+        .catch((error) => {
+          console.error('Background logo loading failed:', error);
+        });
+    }, 3000); // Wait 3 seconds after app initialization
   },
 
   // Helper methods

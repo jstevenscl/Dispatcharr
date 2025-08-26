@@ -106,15 +106,7 @@ const useAuthStore = create((set, get) => ({
         localStorage.setItem('refreshToken', response.refresh);
         localStorage.setItem('tokenExpiration', expiration);
 
-        // Start background loading of channel-assignable logos
-        setTimeout(() => {
-          try {
-            //useLogosStore.getState().backgroundLoadChannelLogos();
-            useLogosStore.getState().fetchAllLogos();
-          } catch (error) {
-            console.log('Background logo loading not available:', error);
-          }
-        }, 1000); // Wait 1 second after login to start background loading
+        // Don't start background loading here - let it happen after app initialization
       }
     } catch (error) {
       console.error('Login failed:', error);
