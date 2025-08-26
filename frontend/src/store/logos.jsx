@@ -3,9 +3,11 @@ import api from '../api';
 
 const useLogosStore = create((set, get) => ({
   logos: {},
+  channelLogos: {}, // Separate state for channel-assignable logos
   isLoading: false,
   backgroundLoading: false,
   hasLoadedAll: false, // Track if we've loaded all logos
+  hasLoadedChannelLogos: false, // Track if we've loaded channel-assignable logos
   error: null,
 
   // Basic CRUD operations
@@ -120,6 +122,41 @@ const useLogosStore = create((set, get) => ({
     }
   },
 
+  fetchChannelAssignableLogos: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      // Load logos suitable for channel assignment (unused + channel-used, exclude VOD-only)
+      const response = await api.getLogos({
+        channel_assignable: 'true',
+        no_pagination: 'true', // Get all channel-assignable logos
+      });
+
+      // Handle both paginated and non-paginated responses
+      const logos = Array.isArray(response) ? response : response.results || [];
+
+      console.log(`Fetched ${logos.length} channel-assignable logos`);
+
+      // Store in separate channelLogos state
+      set({
+        channelLogos: logos.reduce((acc, logo) => {
+          acc[logo.id] = { ...logo };
+          return acc;
+        }, {}),
+        hasLoadedChannelLogos: true,
+        isLoading: false,
+      });
+
+      return logos;
+    } catch (error) {
+      console.error('Failed to fetch channel-assignable logos:', error);
+      set({
+        error: 'Failed to load channel-assignable logos.',
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
   fetchLogosByIds: async (logoIds) => {
     if (!logoIds || logoIds.length === 0) return [];
 
@@ -181,6 +218,34 @@ const useLogosStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Background logo loading failed:', error);
+      // Don't throw error for background loading
+    } finally {
+      set({ backgroundLoading: false });
+    }
+  },
+
+  // Background loading specifically for channel-assignable logos after login
+  backgroundLoadChannelLogos: async () => {
+    const { backgroundLoading, channelLogos, hasLoadedChannelLogos } = get();
+
+    // Don't start if already loading or if we already have channel logos loaded
+    if (
+      backgroundLoading ||
+      hasLoadedChannelLogos ||
+      Object.keys(channelLogos).length > 100
+    ) {
+      return;
+    }
+
+    set({ backgroundLoading: true });
+    try {
+      console.log('Background loading channel-assignable logos...');
+      await get().fetchChannelAssignableLogos();
+      console.log(
+        `Background loaded ${Object.keys(get().channelLogos).length} channel-assignable logos`
+      );
+    } catch (error) {
+      console.error('Background channel logo loading failed:', error);
       // Don't throw error for background loading
     } finally {
       set({ backgroundLoading: false });

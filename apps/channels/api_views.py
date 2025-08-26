@@ -1365,6 +1365,27 @@ class LogoViewSet(viewsets.ModelViewSet):
 
             queryset = queryset.filter(filter_conditions)
 
+        # Filter for channel assignment (unused + channel-used, exclude VOD-only)
+        channel_assignable = self.request.query_params.get('channel_assignable', None)
+        if channel_assignable == 'true':
+            # Include logos that are either:
+            # 1. Completely unused, OR
+            # 2. Used by channels (but may also be used by VOD)
+            # Exclude logos that are ONLY used by VOD content
+
+            unused_condition = Q(channels__isnull=True)
+            channel_used_condition = Q(channels__isnull=False)
+
+            # Add VOD conditions if models are available
+            try:
+                unused_condition &= Q(movie__isnull=True) & Q(series__isnull=True)
+            except:
+                pass
+
+            # Combine: unused OR used by channels
+            filter_conditions = unused_condition | channel_used_condition
+            queryset = queryset.filter(filter_conditions).distinct()
+
         # Filter by name
         name_filter = self.request.query_params.get('name', None)
         if name_filter:

@@ -7,6 +7,7 @@ import useEPGsStore from './epgs';
 import useStreamProfilesStore from './streamProfiles';
 import useUserAgentsStore from './userAgents';
 import useUsersStore from './users';
+import useLogosStore from './logos';
 import API from '../api';
 import { USER_LEVELS } from '../constants';
 
@@ -104,6 +105,15 @@ const useAuthStore = create((set, get) => ({
         localStorage.setItem('accessToken', response.access);
         localStorage.setItem('refreshToken', response.refresh);
         localStorage.setItem('tokenExpiration', expiration);
+
+        // Start background loading of channel-assignable logos
+        setTimeout(() => {
+          try {
+            useLogosStore.getState().backgroundLoadChannelLogos();
+          } catch (error) {
+            console.log('Background logo loading not available:', error);
+          }
+        }, 1000); // Wait 1 second after login to start background loading
       }
     } catch (error) {
       console.error('Login failed:', error);

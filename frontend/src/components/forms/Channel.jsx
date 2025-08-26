@@ -9,7 +9,7 @@ import useStreamsStore from '../../store/streams';
 import ChannelGroupForm from './ChannelGroup';
 import usePlaylistsStore from '../../store/playlists';
 import logo from '../../images/logo.png';
-import { useLogoSelection } from '../../hooks/useSmartLogos';
+import { useChannelLogoSelection } from '../../hooks/useSmartLogos';
 import LazyLogo from '../LazyLogo';
 import {
   Box,
@@ -51,7 +51,11 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
 
-  const { logos, ensureLogosLoaded, isLoading: logosLoading } = useLogoSelection();
+  const {
+    logos,
+    ensureLogosLoaded,
+    isLoading: logosLoading,
+  } = useChannelLogoSelection();
   const fetchLogos = useLogosStore((s) => s.fetchLogos);
   const streams = useStreamsStore((state) => state.streams);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
