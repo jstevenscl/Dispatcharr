@@ -17,7 +17,7 @@ import API from './api';
 import useSettingsStore from './store/settings';
 import useAuthStore from './store/auth';
 
-export const WebsocketContext = createContext([false, () => { }, null]);
+export const WebsocketContext = createContext([false, () => {}, null]);
 
 export const WebsocketProvider = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
@@ -215,7 +215,10 @@ export const WebsocketProvider = ({ children }) => {
                   ) {
                     updateData.updated_at = new Date().toISOString();
                     // Log successful completion for debugging
-                    console.log('M3U refresh completed successfully:', updateData);
+                    console.log(
+                      'M3U refresh completed successfully:',
+                      updateData
+                    );
                   }
 
                   updatePlaylist(updateData);
@@ -225,7 +228,9 @@ export const WebsocketProvider = ({ children }) => {
                   // Log when playlist can't be found for debugging purposes
                   console.warn(
                     `Received update for unknown playlist ID: ${parsedEvent.data.account}`,
-                    Array.isArray(playlists) ? 'playlists is array' : 'playlists is object',
+                    Array.isArray(playlists)
+                      ? 'playlists is array'
+                      : 'playlists is object',
                     Object.keys(playlists).length
                   );
                 }
@@ -500,7 +505,7 @@ export const WebsocketProvider = ({ children }) => {
   const setProfilePreview = usePlaylistsStore((s) => s.setProfilePreview);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
   const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
-  const fetchLogos = useLogosStore((s) => s.fetchLogos);
+  const fetchLogos = useLogosStore((s) => s.fetchAllLogos);
   const fetchChannelProfiles = useChannelsStore((s) => s.fetchChannelProfiles);
 
   const ret = useMemo(() => {

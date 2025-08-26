@@ -85,7 +85,6 @@ const LogosTable = () => {
    */
   const {
     logos,
-    fetchLogos,
     fetchAllLogos,
     updateLogo,
     addLogo,
@@ -168,7 +167,7 @@ const LogosTable = () => {
       setIsLoading(true);
       try {
         await API.deleteLogo(id, deleteFile);
-        await fetchLogos();
+        await fetchAllLogos(); // Refresh all logos to maintain full view
         notifications.show({
           title: 'Success',
           message: 'Logo deleted successfully',
@@ -189,7 +188,7 @@ const LogosTable = () => {
         setSelectedRows(new Set()); // Clear selections
       }
     },
-    [fetchLogos]
+    [fetchAllLogos]
   );
 
   const executeBulkDelete = useCallback(
@@ -199,7 +198,7 @@ const LogosTable = () => {
       setIsLoading(true);
       try {
         await API.deleteLogos(Array.from(selectedRows), deleteFiles);
-        await fetchLogos();
+        await fetchAllLogos(); // Refresh all logos to maintain full view
 
         notifications.show({
           title: 'Success',
@@ -219,7 +218,7 @@ const LogosTable = () => {
         setSelectedRows(new Set()); // Clear selections
       }
     },
-    [selectedRows, fetchLogos]
+    [selectedRows, fetchAllLogos]
   );
 
   const executeCleanupUnused = useCallback(
