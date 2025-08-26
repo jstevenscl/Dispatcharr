@@ -1229,12 +1229,12 @@ class CleanupUnusedLogosAPIView(APIView):
 
         # Add VOD conditions if models are available
         try:
-            filter_conditions &= Q(movie_set__isnull=True)
+            filter_conditions &= Q(movie__isnull=True)
         except:
             pass
 
         try:
-            filter_conditions &= Q(series_set__isnull=True)
+            filter_conditions &= Q(series__isnull=True)
         except:
             pass
 
