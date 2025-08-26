@@ -411,12 +411,47 @@ const LogosTable = () => {
             );
           }
 
+          // Analyze channel_names to categorize types
+          const categorizeUsage = (names) => {
+            const types = { channels: 0, movies: 0, series: 0 };
+
+            names.forEach((name) => {
+              if (name.startsWith('Channel:')) types.channels++;
+              else if (name.startsWith('Movie:')) types.movies++;
+              else if (name.startsWith('Series:')) types.series++;
+            });
+
+            return types;
+          };
+
+          const types = categorizeUsage(channelNames);
+          const typeCount = Object.values(types).filter(
+            (count) => count > 0
+          ).length;
+
+          // Generate smart label based on usage
+          const generateLabel = () => {
+            if (typeCount === 1) {
+              // Only one type - be specific
+              if (types.channels > 0)
+                return `${types.channels} channel${types.channels !== 1 ? 's' : ''}`;
+              if (types.movies > 0)
+                return `${types.movies} movie${types.movies !== 1 ? 's' : ''}`;
+              if (types.series > 0) return `${types.series} series`;
+            } else {
+              // Multiple types - use generic "items"
+              return `${count} item${count !== 1 ? 's' : ''}`;
+            }
+          };
+
+          const label = generateLabel();
+
           return (
             <Tooltip
               label={
                 <div>
                   <Text size="xs" fw={600}>
-                    Used by {count} item{count !== 1 ? 's' : ''}:
+                    Used by {label}:
                   </Text>
                   {channelNames.map((name, index) => (
                     <Text key={index} size="xs">
@@ -429,7 +464,7 @@ const LogosTable = () => {
               width={220}
             >
               <Badge size="sm" variant="light" color="blue">
-                {count} item{count !== 1 ? 's' : ''}
+                {label}
               </Badge>
             </Tooltip>
           );
