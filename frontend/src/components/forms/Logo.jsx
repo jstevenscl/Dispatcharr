@@ -52,14 +52,12 @@ const LogoForm = ({ logo = null, isOpen, onClose, onSuccess }) => {
     onSubmit: async (values, { setSubmitting }) => {
       try {
         setUploading(true);
+        let uploadResponse = null; // Store upload response for later use
 
         // If we have a selected file, upload it first
         if (selectedFile) {
           try {
-            const uploadResponse = await API.uploadLogo(
-              selectedFile,
-              values.name
-            );
+            uploadResponse = await API.uploadLogo(selectedFile, values.name);
             // Use the uploaded file data instead of form values
             values.name = uploadResponse.name;
             values.url = uploadResponse.url;
@@ -108,12 +106,13 @@ const LogoForm = ({ logo = null, isOpen, onClose, onSuccess }) => {
           onSuccess?.({ type: 'create', logo: newLogo }); // Call onSuccess for creates
         } else {
           // File was uploaded and logo was already created
+          // Note: API.uploadLogo already calls addLogo() in the store, so no need to call onSuccess
           notifications.show({
             title: 'Success',
             message: 'Logo uploaded successfully',
             color: 'green',
           });
-          onSuccess?.({ type: 'upload' }); // Call onSuccess for uploads
+          // No onSuccess call needed - API.uploadLogo already updated the store
         }
         onClose();
       } catch (error) {

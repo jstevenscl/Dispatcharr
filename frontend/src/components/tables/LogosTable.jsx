@@ -548,11 +548,12 @@ const LogosTable = () => {
       if (type === 'update' && logo) {
         // For updates, just update the specific logo in the store
         updateLogo(logo);
-      } else if (type === 'create' && logo) {
+      } else if ((type === 'create' || type === 'upload') && logo) {
         // For creates, add the new logo to the store
+        // Note: uploads are handled automatically by API.uploadLogo, so this path is rarely used
         addLogo(logo);
       } else {
-        // For uploads or when we don't have logo data, refresh all
+        // Fallback: if we don't have logo data for some reason, refresh all
         await fetchAllLogos(); // Use fetchAllLogos to maintain full view
       }
     },
