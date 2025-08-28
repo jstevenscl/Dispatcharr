@@ -40,15 +40,18 @@ export default function FloatingVideo() {
         try {
           playerRef.current.destroy();
         } catch (error) {
-          if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
-            console.log("Error during player destruction:", error.message);
+          if (
+            error.name !== 'AbortError' &&
+            !error.message?.includes('aborted')
+          ) {
+            console.log('Error during player destruction:', error.message);
           }
         } finally {
           playerRef.current = null;
         }
       }
     } catch (error) {
-      console.log("Error during player cleanup:", error);
+      console.log('Error during player cleanup:', error);
       playerRef.current = null;
     }
 
@@ -77,7 +80,7 @@ export default function FloatingVideo() {
     setLoadError(null);
     setShowOverlay(true); // Show overlay initially
 
-    console.log("Initializing VOD player for:", streamUrl);
+    console.log('Initializing VOD player for:', streamUrl);
 
     const video = videoRef.current;
 
@@ -91,9 +94,9 @@ export default function FloatingVideo() {
     const handleCanPlay = () => {
       setIsLoading(false);
       // Auto-play for VOD content
-      video.play().catch(e => {
-        console.log("Auto-play prevented:", e);
-        setLoadError("Auto-play was prevented. Click play to start.");
+      video.play().catch((e) => {
+        console.log('Auto-play prevented:', e);
+        setLoadError('Auto-play was prevented. Click play to start.');
       });
       // Start overlay timer when video is ready
       startOverlayTimer();
@@ -101,24 +104,24 @@ export default function FloatingVideo() {
     const handleError = (e) => {
       setIsLoading(false);
       const error = e.target.error;
-      let errorMessage = "Video playback error";
+      let errorMessage = 'Video playback error';
 
       if (error) {
         switch (error.code) {
           case error.MEDIA_ERR_ABORTED:
-            errorMessage = "Video playback was aborted";
+            errorMessage = 'Video playback was aborted';
             break;
           case error.MEDIA_ERR_NETWORK:
-            errorMessage = "Network error while loading video";
+            errorMessage = 'Network error while loading video';
             break;
           case error.MEDIA_ERR_DECODE:
-            errorMessage = "Video codec not supported by your browser";
+            errorMessage = 'Video codec not supported by your browser';
             break;
           case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMessage = "Video format not supported by your browser";
+            errorMessage = 'Video format not supported by your browser';
             break;
           default:
-            errorMessage = error.message || "Unknown video error";
+            errorMessage = error.message || 'Unknown video error';
         }
       }
 
@@ -158,7 +161,7 @@ export default function FloatingVideo() {
         video.removeEventListener('progress', handleProgress);
         video.removeAttribute('src');
         video.load();
-      }
+      },
     };
   };
 
@@ -169,12 +172,14 @@ export default function FloatingVideo() {
     setIsLoading(true);
     setLoadError(null);
 
-    console.log("Initializing live stream player for:", streamUrl);
+    console.log('Initializing live stream player for:', streamUrl);
 
     try {
       if (!mpegts.getFeatureList().mseLivePlayback) {
         setIsLoading(false);
-        setLoadError("Your browser doesn't support live video streaming. Please try Chrome or Edge.");
+        setLoadError(
+          "Your browser doesn't support live video streaming. Please try Chrome or Edge."
+        );
         return;
       }
 
@@ -214,14 +219,26 @@ export default function FloatingVideo() {
           if (errorType === 'MediaError') {
             const errorString = errorDetail?.toLowerCase() || '';
 
-            if (errorString.includes('audio') || errorString.includes('ac3') || errorString.includes('ac-3')) {
-              errorMessage = "Audio codec not supported by your browser. Try Chrome or Edge for better audio codec support.";
-            } else if (errorString.includes('video') || errorString.includes('h264') || errorString.includes('h.264')) {
-              errorMessage = "Video codec not supported by your browser. Try Chrome or Edge for better video codec support.";
+            if (
+              errorString.includes('audio') ||
+              errorString.includes('ac3') ||
+              errorString.includes('ac-3')
+            ) {
+              errorMessage =
+                'Audio codec not supported by your browser. Try Chrome or Edge for better audio codec support.';
+            } else if (
+              errorString.includes('video') ||
+              errorString.includes('h264') ||
+              errorString.includes('h.264')
+            ) {
+              errorMessage =
+                'Video codec not supported by your browser. Try Chrome or Edge for better video codec support.';
             } else if (errorString.includes('mse')) {
-              errorMessage = "Your browser doesn't support the codecs used in this stream. Try Chrome or Edge for better compatibility.";
+              errorMessage =
+                "Your browser doesn't support the codecs used in this stream. Try Chrome or Edge for better compatibility.";
             } else {
-              errorMessage = "Media codec not supported by your browser. This may be due to unsupported audio (AC3) or video codecs. Try Chrome or Edge.";
+              errorMessage =
+                'Media codec not supported by your browser. This may be due to unsupported audio (AC3) or video codecs. Try Chrome or Edge.';
             }
           } else if (errorDetail) {
             errorMessage += ` - ${errorDetail}`;
@@ -236,12 +253,12 @@ export default function FloatingVideo() {
       player.on(mpegts.Events.MEDIA_INFO, () => {
         setIsLoading(false);
         try {
-          player.play().catch(e => {
-            console.log("Auto-play prevented:", e);
-            setLoadError("Auto-play was prevented. Click play to start.");
+          player.play().catch((e) => {
+            console.log('Auto-play prevented:', e);
+            setLoadError('Auto-play was prevented. Click play to start.');
           });
         } catch (e) {
-          console.log("Error during play:", e);
+          console.log('Error during play:', e);
           setLoadError(`Playback error: ${e.message}`);
         }
       });
@@ -249,10 +266,15 @@ export default function FloatingVideo() {
       playerRef.current = player;
     } catch (error) {
       setIsLoading(false);
-      console.error("Error initializing player:", error);
+      console.error('Error initializing player:', error);
 
-      if (error.message?.includes('codec') || error.message?.includes('format')) {
-        setLoadError("Codec not supported by your browser. Please try a different browser (Chrome/Edge recommended).");
+      if (
+        error.message?.includes('codec') ||
+        error.message?.includes('format')
+      ) {
+        setLoadError(
+          'Codec not supported by your browser. Please try a different browser (Chrome/Edge recommended).'
+        );
       } else {
         setLoadError(`Initialization error: ${error.message}`);
       }
@@ -318,7 +340,7 @@ export default function FloatingVideo() {
         <Flex
           justify="flex-end"
           style={{
-            padding: 3
+            padding: 3,
           }}
         >
           <CloseButton
@@ -330,7 +352,7 @@ export default function FloatingVideo() {
               minHeight: '32px',
               minWidth: '32px',
               cursor: 'pointer',
-              touchAction: 'manipulation'
+              touchAction: 'manipulation',
             }}
           />
         </Flex>
@@ -364,7 +386,7 @@ export default function FloatingVideo() {
               ...(contentType === 'vod' && {
                 controlsList: 'nodownload',
                 playsInline: true,
-              })
+              }),
             }}
             // Add poster for VOD if available
             {...(contentType === 'vod' && {
@@ -388,11 +410,19 @@ export default function FloatingVideo() {
                 opacity: showOverlay ? 1 : 0,
               }}
             >
-              <Text size="sm" weight={500} style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+              <Text
+                size="sm"
+                weight={500}
+                style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
+              >
                 {metadata.name}
               </Text>
               {metadata.year && (
-                <Text size="xs" color="dimmed" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>
+                <Text
+                  size="xs"
+                  color="dimmed"
+                  style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
+                >
                   {metadata.year}
                 </Text>
               )}
