@@ -2,12 +2,12 @@ import { create } from 'zustand';
 import api from '../api';
 import useSettingsStore from './settings';
 import useChannelsStore from './channels';
-import useLogosStore from './logos';
 import usePlaylistsStore from './playlists';
 import useEPGsStore from './epgs';
 import useStreamProfilesStore from './streamProfiles';
 import useUserAgentsStore from './userAgents';
 import useUsersStore from './users';
+import useLogosStore from './logos';
 import API from '../api';
 import { USER_LEVELS } from '../constants';
 
@@ -47,7 +47,7 @@ const useAuthStore = create((set, get) => ({
     await useSettingsStore.getState().fetchSettings();
 
     try {
-      // Load essential data first (without all logos)
+      // Only after settings are loaded, fetch the essential data
       await Promise.all([
         useChannelsStore.getState().fetchChannels(),
         useChannelsStore.getState().fetchChannelGroups(),
@@ -59,20 +59,11 @@ const useAuthStore = create((set, get) => ({
         useUserAgentsStore.getState().fetchUserAgents(),
       ]);
 
-      // Load only logos that are currently used by channels (much faster)
-      await useLogosStore.getState().fetchUsedLogos();
-
       if (user.user_level >= USER_LEVELS.ADMIN) {
         await Promise.all([useUsersStore.getState().fetchUsers()]);
       }
 
       set({ user, isAuthenticated: true });
-
-      // Start background loading of remaining logos after login is complete
-      setTimeout(() => {
-        useLogosStore.getState().fetchLogosInBackground();
-      }, 2000); // 2 second delay to let UI settle
-
     } catch (error) {
       console.error('Error initializing data:', error);
     }
@@ -114,6 +105,8 @@ const useAuthStore = create((set, get) => ({
         localStorage.setItem('accessToken', response.access);
         localStorage.setItem('refreshToken', response.refresh);
         localStorage.setItem('tokenExpiration', expiration);
+
+        // Don't start background loading here - let it happen after app initialization
       }
     } catch (error) {
       console.error('Login failed:', error);

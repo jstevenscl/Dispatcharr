@@ -1,5 +1,5 @@
 from core.utils import validate_flexible_url
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from .models import M3UAccount, M3UFilter, ServerGroup, M3UAccountProfile
 from core.models import UserAgent
@@ -8,6 +8,7 @@ from apps.channels.serializers import (
     ChannelGroupM3UAccountSerializer,
 )
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class M3UAccountSerializer(serializers.ModelSerializer):
         allow_null=True,
         validators=[validate_flexible_url],
     )
+    enable_vod = serializers.BooleanField(required=False, write_only=True)
 
     class Meta:
         model = M3UAccount
@@ -111,8 +113,10 @@ class M3UAccountSerializer(serializers.ModelSerializer):
             "username",
             "password",
             "stale_stream_days",
+            "priority",
             "status",
             "last_message",
+            "enable_vod",
         ]
         extra_kwargs = {
             "password": {
@@ -121,7 +125,37 @@ class M3UAccountSerializer(serializers.ModelSerializer):
             },
         }
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        # Parse custom_properties to get VOD preference
+        custom_props = {}
+        if instance.custom_properties:
+            try:
+                custom_props = json.loads(instance.custom_properties)
+            except (json.JSONDecodeError, TypeError):
+                custom_props = {}
+
+        data["enable_vod"] = custom_props.get("enable_vod", False)
+        return data
+
     def update(self, instance, validated_data):
+        # Handle enable_vod preference
+        enable_vod = validated_data.pop("enable_vod", None)
+
+        if enable_vod is not None:
+            # Parse existing custom_properties
+            custom_props = {}
+            if instance.custom_properties:
+                try:
+                    custom_props = json.loads(instance.custom_properties)
+                except (json.JSONDecodeError, TypeError):
+                    custom_props = {}
+
+            # Update VOD preference
+            custom_props["enable_vod"] = enable_vod
+            validated_data["custom_properties"] = json.dumps(custom_props)
+
         # Pop out channel group memberships so we can handle them manually
         channel_group_data = validated_data.pop("channel_group", [])
 
@@ -152,6 +186,24 @@ class M3UAccountSerializer(serializers.ModelSerializer):
             )
 
         return instance
+
+    def create(self, validated_data):
+        # Handle enable_vod preference during creation
+        enable_vod = validated_data.pop("enable_vod", False)
+
+        # Parse existing custom_properties or create new
+        custom_props = {}
+        if validated_data.get("custom_properties"):
+            try:
+                custom_props = json.loads(validated_data["custom_properties"])
+            except (json.JSONDecodeError, TypeError):
+                custom_props = {}
+
+        # Set VOD preference
+        custom_props["enable_vod"] = enable_vod
+        validated_data["custom_properties"] = json.dumps(custom_props)
+
+        return super().create(validated_data)
 
     def get_filters(self, obj):
         filters = obj.filters.order_by("order")

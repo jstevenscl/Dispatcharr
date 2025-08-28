@@ -44,6 +44,7 @@ import django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
+from apps.vod.models import Movie, Series
 from django.db.models import Q
 from django.http import StreamingHttpResponse, FileResponse, Http404
 import mimetypes
@@ -195,7 +196,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         from django.db.models import Count
         return ChannelGroup.objects.annotate(
             channel_count=Count('channels', distinct=True),
-            m3u_account_count=Count('m3u_account', distinct=True)
+            m3u_account_count=Count('m3u_accounts', distinct=True)
         )
 
     def update(self, request, *args, **kwargs):
@@ -237,7 +238,7 @@ class ChannelGroupViewSet(viewsets.ModelViewSet):
         # Find groups with no channels and no M3U account associations
         unused_groups = ChannelGroup.objects.annotate(
             channel_count=Count('channels', distinct=True),
-            m3u_account_count=Count('m3u_account', distinct=True)
+            m3u_account_count=Count('m3u_accounts', distinct=True)
         ).filter(
             channel_count=0,
             m3u_account_count=0
@@ -1206,7 +1207,7 @@ class CleanupUnusedLogosAPIView(APIView):
             return [Authenticated()]
 
     @swagger_auto_schema(
-        operation_description="Delete all logos that are not used by any channels",
+        operation_description="Delete all logos that are not used by any channels, movies, or series",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -1220,10 +1221,24 @@ class CleanupUnusedLogosAPIView(APIView):
         responses={200: "Cleanup completed"},
     )
     def post(self, request):
-        """Delete all logos with no channel associations"""
+        """Delete all logos with no channel, movie, or series associations"""
         delete_files = request.data.get("delete_files", False)
 
-        unused_logos = Logo.objects.filter(channels__isnull=True)
+        # Find logos that are not used by channels, movies, or series
+        filter_conditions = Q(channels__isnull=True)
+
+        # Add VOD conditions if models are available
+        try:
+            filter_conditions &= Q(movie__isnull=True)
+        except:
+            pass
+
+        try:
+            filter_conditions &= Q(series__isnull=True)
+        except:
+            pass
+
+        unused_logos = Logo.objects.filter(filter_conditions)
         deleted_count = unused_logos.count()
         logo_names = list(unused_logos.values_list('name', flat=True))
         local_files_deleted = 0
@@ -1259,9 +1274,23 @@ class CleanupUnusedLogosAPIView(APIView):
         })
 
 
+class LogoPagination(PageNumberPagination):
+    page_size = 50  # Default page size to match frontend default
+    page_size_query_param = "page_size"  # Allow clients to specify page size
+    max_page_size = 1000  # Prevent excessive page sizes
+
+    def paginate_queryset(self, queryset, request, view=None):
+        # Check if pagination should be disabled for specific requests
+        if request.query_params.get('no_pagination') == 'true':
+            return None  # disables pagination, returns full queryset
+
+        return super().paginate_queryset(queryset, request, view)
+
+
 class LogoViewSet(viewsets.ModelViewSet):
     queryset = Logo.objects.all()
     serializer_class = LogoSerializer
+    pagination_class = LogoPagination
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_permissions(self):
@@ -1278,7 +1307,15 @@ class LogoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Optimize queryset with prefetch and add filtering"""
+        # Start with basic prefetch for channels
         queryset = Logo.objects.prefetch_related('channels').order_by('name')
+
+        # Try to prefetch VOD relations if available
+        try:
+            queryset = queryset.prefetch_related('movie', 'series')
+        except:
+            # VOD app might not be available, continue without VOD prefetch
+            pass
 
         # Filter by specific IDs
         ids = self.request.query_params.getlist('ids')
@@ -1292,12 +1329,62 @@ class LogoViewSet(viewsets.ModelViewSet):
                 pass  # Invalid IDs, return empty queryset
                 queryset = Logo.objects.none()
 
-        # Filter by usage
+        # Filter by usage - now includes VOD content
         used_filter = self.request.query_params.get('used', None)
         if used_filter == 'true':
-            queryset = queryset.filter(channels__isnull=False).distinct()
+            # Logo is used if it has any channels, movies, or series
+            filter_conditions = Q(channels__isnull=False)
+
+            # Add VOD conditions if models are available
+            try:
+                filter_conditions |= Q(movie__isnull=False)
+            except:
+                pass
+
+            try:
+                filter_conditions |= Q(series__isnull=False)
+            except:
+                pass
+
+            queryset = queryset.filter(filter_conditions).distinct()
+
         elif used_filter == 'false':
-            queryset = queryset.filter(channels__isnull=True)
+            # Logo is unused if it has no channels, movies, or series
+            filter_conditions = Q(channels__isnull=True)
+
+            # Add VOD conditions if models are available
+            try:
+                filter_conditions &= Q(movie__isnull=True)
+            except:
+                pass
+
+            try:
+                filter_conditions &= Q(series__isnull=True)
+            except:
+                pass
+
+            queryset = queryset.filter(filter_conditions)
+
+        # Filter for channel assignment (unused + channel-used, exclude VOD-only)
+        channel_assignable = self.request.query_params.get('channel_assignable', None)
+        if channel_assignable == 'true':
+            # Include logos that are either:
+            # 1. Completely unused, OR
+            # 2. Used by channels (but may also be used by VOD)
+            # Exclude logos that are ONLY used by VOD content
+
+            unused_condition = Q(channels__isnull=True)
+            channel_used_condition = Q(channels__isnull=False)
+
+            # Add VOD conditions if models are available
+            try:
+                unused_condition &= Q(movie__isnull=True) & Q(series__isnull=True)
+            except:
+                pass
+
+            # Combine: unused OR used by channels
+            filter_conditions = unused_condition | channel_used_condition
+            queryset = queryset.filter(filter_conditions).distinct()
 
         # Filter by name
         name_filter = self.request.query_params.get('name', None)

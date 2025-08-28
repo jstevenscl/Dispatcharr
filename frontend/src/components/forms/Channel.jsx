@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import useChannelsStore from '../../store/channels';
-import useLogosStore from '../../store/logos';
 import API from '../../api';
 import useStreamProfilesStore from '../../store/streamProfiles';
 import useStreamsStore from '../../store/streams';
 import ChannelGroupForm from './ChannelGroup';
 import usePlaylistsStore from '../../store/playlists';
 import logo from '../../images/logo.png';
-import { useLogoSelection } from '../../hooks/useSmartLogos';
+import { useChannelLogoSelection } from '../../hooks/useSmartLogos';
 import LazyLogo from '../LazyLogo';
 import {
   Box,
@@ -51,8 +50,11 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const canEditChannelGroup = useChannelsStore((s) => s.canEditChannelGroup);
 
-  const { logos, ensureLogosLoaded, isLoading: logosLoading } = useLogoSelection();
-  const fetchLogos = useLogosStore((s) => s.fetchLogos);
+  const {
+    logos,
+    ensureLogosLoaded,
+    isLoading: logosLoading,
+  } = useChannelLogoSelection();
   const streams = useStreamsStore((state) => state.streams);
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
   const playlists = usePlaylistsStore((s) => s.playlists);
@@ -68,7 +70,6 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const [selectedEPG, setSelectedEPG] = useState('');
   const [tvgFilter, setTvgFilter] = useState('');
   const [logoFilter, setLogoFilter] = useState('');
-  const [logoOptions, setLogoOptions] = useState([]);
 
   const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
@@ -103,7 +104,7 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
 
       try {
         const retval = await API.uploadLogo(file);
-        await fetchLogos();
+        // Note: API.uploadLogo already adds the logo to the store, no need to fetch
         setLogoPreview(retval.cache_url);
         formik.setFieldValue('logo_id', retval.id);
       } catch (error) {
@@ -239,9 +240,10 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
     }
   }, [channel, tvgsById, channelGroups]);
 
-  useEffect(() => {
-    setLogoOptions([{ id: '0', name: 'Default' }].concat(Object.values(logos)));
-  }, [logos]);
+  // Memoize logo options to prevent infinite re-renders during background loading
+  const logoOptions = useMemo(() => {
+    return [{ id: '0', name: 'Default' }].concat(Object.values(logos));
+  }, [logos]); // Only depend on logos object
 
   const renderLogoOption = ({ option, checked }) => {
     return (
