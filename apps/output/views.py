@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 import base64
 import logging
 import os
+from apps.m3u.utils import calculate_tuner_count
 
 logger = logging.getLogger(__name__)
 
@@ -733,7 +734,7 @@ def xc_get_info(request, full=False):
             "auth": 1,
             "status": "Active",
             "exp_date": str(int(time.time()) + (90 * 24 * 60 * 60)),
-            "max_connections": "99",
+            "max_connections": str(calculate_tuner_count(minimum=1, unlimited_default=50)),
             "allowed_output_formats": [
                 "ts",
             ],
