@@ -729,10 +729,10 @@ def xc_get_info(request, full=False):
         "user_info": {
             "username": request.GET.get("username"),
             "password": request.GET.get("password"),
-            "message": "",
+            "message": "Dispatcharr XC API",
             "auth": 1,
             "status": "Active",
-            "exp_date": "1715062090",
+            "exp_date": str(int(time.time()) + (90 * 24 * 60 * 60)),
             "max_connections": "99",
             "allowed_output_formats": [
                 "ts",
