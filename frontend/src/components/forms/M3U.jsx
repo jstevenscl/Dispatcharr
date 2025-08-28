@@ -27,6 +27,7 @@ import usePlaylistsStore from '../../store/playlists';
 import { notifications } from '@mantine/notifications';
 import { isNotEmpty, useForm } from '@mantine/form';
 import useEPGsStore from '../../store/epgs';
+import useVODStore from '../../store/useVODStore';
 import M3UFilters from './M3UFilters';
 
 const M3U = ({
@@ -41,6 +42,7 @@ const M3U = ({
   const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
   const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
   const fetchEPGs = useEPGsStore((s) => s.fetchEPGs);
+  const fetchCategories = useVODStore((s) => s.fetchCategories);
 
   const [playlist, setPlaylist] = useState(null);
   const [file, setFile] = useState(null);
@@ -91,12 +93,13 @@ const M3U = ({
         password: '',
         stale_stream_days:
           m3uAccount.stale_stream_days !== undefined &&
-            m3uAccount.stale_stream_days !== null
+          m3uAccount.stale_stream_days !== null
             ? m3uAccount.stale_stream_days
             : 7,
-        priority: m3uAccount.priority !== undefined && m3uAccount.priority !== null
-          ? m3uAccount.priority
-          : 0,
+        priority:
+          m3uAccount.priority !== undefined && m3uAccount.priority !== null
+            ? m3uAccount.priority
+            : 0,
         enable_vod: m3uAccount.enable_vod || false,
       });
 
@@ -170,6 +173,12 @@ const M3U = ({
 
       const updatedPlaylist = await API.getPlaylist(newPlaylist.id);
       await Promise.all([fetchChannelGroups(), fetchPlaylists(), fetchEPGs()]);
+
+      // If this is an XC account with VOD enabled, also fetch VOD categories
+      if (values.account_type === 'XC' && values.enable_vod) {
+        fetchCategories();
+      }
+
       console.log('opening group options');
       setPlaylist(updatedPlaylist);
       setGroupFilterModalOpen(true);
@@ -402,7 +411,13 @@ const M3U = ({
                   variant="filled"
                   // color={theme.custom.colors.buttonPrimary}
                   size="sm"
-                  onClick={() => setGroupFilterModalOpen(true)}
+                  onClick={() => {
+                    // If this is an XC account with VOD enabled, fetch VOD categories
+                    if (m3uAccount?.account_type === 'XC' && m3uAccount?.enable_vod) {
+                      fetchCategories();
+                    }
+                    setGroupFilterModalOpen(true);
+                  }}
                 >
                   Groups
                 </Button>

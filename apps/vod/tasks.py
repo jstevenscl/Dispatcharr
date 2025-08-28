@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 @shared_task
 def refresh_vod_content(account_id):
     """Refresh VOD content for an M3U account with batch processing for improved performance"""
+    # Import here to avoid circular import
+    from apps.m3u.tasks import send_m3u_update
+
     try:
         account = M3UAccount.objects.get(id=account_id, is_active=True)
 
@@ -29,6 +32,9 @@ def refresh_vod_content(account_id):
 
         logger.info(f"Starting batch VOD refresh for account {account.name}")
         start_time = timezone.now()
+
+        # Send start notification
+        send_m3u_update(account_id, "vod_refresh", 0, status="processing")
 
         with XtreamCodesClient(
             account.server_url,
@@ -55,10 +61,20 @@ def refresh_vod_content(account_id):
         duration = (end_time - start_time).total_seconds()
 
         logger.info(f"Batch VOD refresh completed for account {account.name} in {duration:.2f} seconds")
+
+        # Send completion notification
+        send_m3u_update(account_id, "vod_refresh", 100, status="success",
+                       message=f"VOD refresh completed in {duration:.2f} seconds")
+
         return f"Batch VOD refresh completed for account {account.name} in {duration:.2f} seconds"
 
     except Exception as e:
         logger.error(f"Error refreshing VOD for account {account_id}: {str(e)}")
+
+        # Send error notification
+        send_m3u_update(account_id, "vod_refresh", 100, status="error",
+                       message=f"VOD refresh failed: {str(e)}")
+
         return f"VOD refresh failed: {str(e)}"
 
 def refresh_categories(account_id, client=None):

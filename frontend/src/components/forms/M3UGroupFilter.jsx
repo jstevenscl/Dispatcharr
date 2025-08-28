@@ -31,6 +31,7 @@ import {
 } from '@mantine/core';
 import { Info } from 'lucide-react';
 import useChannelsStore from '../../store/channels';
+import useVODStore from '../../store/useVODStore';
 import { CircleCheck, CircleX } from 'lucide-react';
 import { notifications } from '@mantine/notifications';
 import LiveGroupFilter from './LiveGroupFilter';
@@ -49,6 +50,7 @@ const OptionWithTooltip = forwardRef(
 
 const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
+  const fetchCategories = useVODStore((s) => s.fetchCategories);
   const [groupStates, setGroupStates] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [movieCategoryStates, setMovieCategoryStates] = useState([]);
@@ -83,6 +85,18 @@ const M3UGroupFilter = ({ playlist = null, isOpen, onClose }) => {
       })
     );
   }, [playlist, channelGroups]);
+
+  // Fetch VOD categories when modal opens for XC accounts with VOD enabled
+  useEffect(() => {
+    if (
+      isOpen &&
+      playlist &&
+      playlist.account_type === 'XC' &&
+      playlist.enable_vod
+    ) {
+      fetchCategories();
+    }
+  }, [isOpen, playlist, fetchCategories]);
 
   const submit = async () => {
     setIsLoading(true);

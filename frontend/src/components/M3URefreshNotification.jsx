@@ -5,6 +5,7 @@ import { notifications } from '@mantine/notifications';
 import useStreamsStore from '../store/streams';
 import useChannelsStore from '../store/channels';
 import useEPGsStore from '../store/epgs';
+import useVODStore from '../store/useVODStore';
 import { Stack, Button, Group } from '@mantine/core';
 import API from '../api';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +19,7 @@ export default function M3URefreshNotification() {
   const fetchChannels = useChannelsStore((s) => s.fetchChannels);
   const fetchPlaylists = usePlaylistsStore((s) => s.fetchPlaylists);
   const fetchEPGData = useEPGsStore((s) => s.fetchEPGData);
+  const fetchCategories = useVODStore((s) => s.fetchCategories);
 
   const [notificationStatus, setNotificationStatus] = useState({});
   const navigate = useNavigate();
@@ -126,7 +128,7 @@ export default function M3URefreshNotification() {
       case 'processing_groups':
         message = 'Group parsing';
         break;
-        
+
       case 'vod_refresh':
         message = 'VOD content refresh';
         break;
@@ -148,8 +150,9 @@ export default function M3URefreshNotification() {
         fetchEPGData();
         fetchPlaylists();
       } else if (data.action == 'vod_refresh') {
-        // VOD refresh completed, could trigger additional UI updates if needed
+        // VOD refresh completed, trigger VOD categories refresh
         fetchPlaylists(); // Refresh playlist data to show updated VOD info
+        fetchCategories(); // Refresh VOD categories to make them visible
       }
     }
 
