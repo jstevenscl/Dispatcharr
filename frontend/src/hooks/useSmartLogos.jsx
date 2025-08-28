@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import useLogosStore from '../store/logos';
 
 /**
@@ -46,16 +46,14 @@ export const useChannelLogoSelection = () => {
 
   const channelLogos = useLogosStore((s) => s.channelLogos);
   const hasLoadedChannelLogos = useLogosStore((s) => s.hasLoadedChannelLogos);
-  const backgroundLoading = useLogosStore((s) => s.backgroundLoading); // Use global loading state
+  const backgroundLoading = useLogosStore((s) => s.backgroundLoading);
   const fetchChannelAssignableLogos = useLogosStore(
     (s) => s.fetchChannelAssignableLogos
   );
 
-  // Check if we have channel-assignable logos loaded
   const hasLogos = Object.keys(channelLogos).length > 0;
 
   const ensureLogosLoaded = useCallback(async () => {
-    // Use global loading state instead of local state
     if (backgroundLoading || (hasLoadedChannelLogos && isInitialized)) {
       return;
     }
@@ -67,20 +65,15 @@ export const useChannelLogoSelection = () => {
       console.error('Failed to load channel-assignable logos:', error);
     }
   }, [
-    backgroundLoading, // Use global loading state
+    backgroundLoading,
     hasLoadedChannelLogos,
     isInitialized,
     fetchChannelAssignableLogos,
   ]);
 
-  // Auto-load logos when hook is first used
-  useEffect(() => {
-    ensureLogosLoaded();
-  }, [ensureLogosLoaded]);
-
   return {
-    logos: channelLogos, // Return channelLogos instead of all logos
-    isLoading: backgroundLoading, // Use global loading state
+    logos: channelLogos,
+    isLoading: backgroundLoading,
     ensureLogosLoaded,
     hasLogos,
   };
@@ -91,22 +84,40 @@ export const useChannelLogoSelection = () => {
  */
 export const useLogosById = (logoIds = []) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [loadedIds, setLoadedIds] = useState(new Set());
 
   const logos = useLogosStore((s) => s.logos);
-  const fetchLogosByIds = useLogosStore((s) => s.fetchLogosByIds); // Find missing logos
-  const missingIds = logoIds.filter((id) => id && !logos[id]);
+  const fetchLogosByIds = useLogosStore((s) => s.fetchLogosByIds);
+
+  // Memoize missing IDs calculation to prevent infinite loops
+  const missingIds = useMemo(() => {
+    return logoIds.filter((id) => id && !logos[id] && !loadedIds.has(id));
+  }, [logoIds, logos, loadedIds]);
+
+  // Stringify logoIds to prevent array reference issues
+  const logoIdsString = logoIds.join(',');
 
   useEffect(() => {
     if (missingIds.length > 0 && !isLoading) {
       setIsLoading(true);
+
+      // Track that we're loading these IDs to prevent re-requests
+      setLoadedIds((prev) => new Set([...prev, ...missingIds]));
+
       fetchLogosByIds(missingIds)
         .then(() => setIsLoading(false))
         .catch((error) => {
           console.error('Failed to load logos by IDs:', error);
+          // Remove failed IDs from loaded set so they can be retried
+          setLoadedIds((prev) => {
+            const newSet = new Set(prev);
+            missingIds.forEach((id) => newSet.delete(id));
+            return newSet;
+          });
           setIsLoading(false);
         });
     }
-  }, [missingIds, isLoading, fetchLogosByIds]);
+  }, [logoIdsString, missingIds, isLoading, fetchLogosByIds]);
 
   return {
     logos,

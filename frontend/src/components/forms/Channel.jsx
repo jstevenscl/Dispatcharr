@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import useChannelsStore from '../../store/channels';
@@ -70,7 +70,6 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
   const [selectedEPG, setSelectedEPG] = useState('');
   const [tvgFilter, setTvgFilter] = useState('');
   const [logoFilter, setLogoFilter] = useState('');
-  const [logoOptions, setLogoOptions] = useState([]);
 
   const [groupPopoverOpened, setGroupPopoverOpened] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
@@ -241,9 +240,10 @@ const ChannelForm = ({ channel = null, isOpen, onClose }) => {
     }
   }, [channel, tvgsById, channelGroups]);
 
-  useEffect(() => {
-    setLogoOptions([{ id: '0', name: 'Default' }].concat(Object.values(logos)));
-  }, [logos]);
+  // Memoize logo options to prevent infinite re-renders during background loading
+  const logoOptions = useMemo(() => {
+    return [{ id: '0', name: 'Default' }].concat(Object.values(logos));
+  }, [logos]); // Only depend on logos object
 
   const renderLogoOption = ({ option, checked }) => {
     return (
