@@ -21,7 +21,6 @@ const VODCategoryFilter = ({
   type,
 }) => {
   const categories = useVODStore((s) => s.categories);
-  const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
@@ -29,12 +28,14 @@ const VODCategoryFilter = ({
       return;
     }
 
-    console.log(categories)
+    console.log(categories);
 
     setCategoryStates(
       Object.values(categories)
-        .filter((cat) =>
-          cat.m3u_accounts.find((acc) => acc.m3u_account == playlist.id) && cat.category_type == type
+        .filter(
+          (cat) =>
+            cat.m3u_accounts.find((acc) => acc.m3u_account == playlist.id) &&
+            cat.category_type == type
         )
         .map((cat) => {
           const match = cat.m3u_accounts.find(
@@ -43,13 +44,13 @@ const VODCategoryFilter = ({
           if (match) {
             return {
               ...cat,
-              enabled: match.enabled,
+              enabled: match.enabled || false, // Keep user's previous choice, default to false for new categories
               original_enabled: match.enabled,
             };
           }
         })
     );
-  }, [categories]);
+  }, [categories, playlist.id, setCategoryStates, type]);
 
   const toggleEnabled = (id) => {
     setCategoryStates(

@@ -285,7 +285,7 @@ class M3UVODCategoryRelation(models.Model):
     category = models.ForeignKey(VODCategory, on_delete=models.CASCADE, related_name='m3u_relations')
 
     enabled = models.BooleanField(
-        default=True, help_text="Set to false to deactivate this category for the M3U account"
+        default=False, help_text="Set to false to deactivate this category for the M3U account"
     )
 
     custom_properties = models.JSONField(blank=True, null=True, help_text="Provider-specific data like quality, language, etc.")
