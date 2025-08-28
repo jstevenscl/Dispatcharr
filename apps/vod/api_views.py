@@ -417,7 +417,7 @@ class SeriesViewSet(viewsets.ReadOnlyModelViewSet):
                         'rating': episode.rating,
                         'tmdb_id': episode.tmdb_id,
                         'imdb_id': episode.imdb_id,
-                        'movie_image': episode_relation.custom_properties.get("info", {}).get('info', {}).get('movie_image') if episode_relation and episode_relation.custom_properties else None,
+                        'movie_image': episode.custom_properties.get('movie_image', '') if episode.custom_properties else '',
                         'container_extension': episode_relation.container_extension if episode_relation else 'mp4',
                         'type': 'episode',
                         'series': {
