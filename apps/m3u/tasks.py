@@ -357,14 +357,26 @@ def collect_xc_streams(account_id, enabled_groups):
                 if category_id in enabled_category_ids:
                     group_info = enabled_category_ids[category_id]
 
-                    # Convert XC stream to our standard format
+                    # Convert XC stream to our standard format with all properties preserved
                     stream_data = {
                         "name": stream["name"],
                         "url": xc_client.get_stream_url(stream["stream_id"]),
                         "attributes": {
                             "tvg-id": stream.get("epg_channel_id", ""),
                             "tvg-logo": stream.get("stream_icon", ""),
-                            "group-title": group_info["name"]
+                            "group-title": group_info["name"],
+                            # Preserve all XC stream properties as custom attributes
+                            "stream_id": str(stream.get("stream_id", "")),
+                            "category_id": category_id,
+                            "stream_type": stream.get("stream_type", ""),
+                            "added": stream.get("added", ""),
+                            "is_adult": str(stream.get("is_adult", "0")),
+                            "custom_sid": stream.get("custom_sid", ""),
+                            # Include any other properties that might be present
+                            **{k: str(v) for k, v in stream.items() if k not in [
+                                "name", "stream_id", "epg_channel_id", "stream_icon", 
+                                "category_id", "stream_type", "added", "is_adult", "custom_sid"
+                            ] and v is not None}
                         }
                     }
                     all_streams.append(stream_data)
