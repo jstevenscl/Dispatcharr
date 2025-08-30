@@ -374,7 +374,7 @@ def collect_xc_streams(account_id, enabled_groups):
                             "custom_sid": stream.get("custom_sid", ""),
                             # Include any other properties that might be present
                             **{k: str(v) for k, v in stream.items() if k not in [
-                                "name", "stream_id", "epg_channel_id", "stream_icon", 
+                                "name", "stream_id", "epg_channel_id", "stream_icon",
                                 "category_id", "stream_type", "added", "is_adult", "custom_sid"
                             ] and v is not None}
                         }
@@ -388,10 +388,6 @@ def collect_xc_streams(account_id, enabled_groups):
 
     logger.info(f"Filtered {filtered_count} streams from {len(enabled_category_ids)} enabled categories")
     return all_streams
-def process_xc_category(account_id, batch, groups, hash_keys):
-    """Legacy Celery task wrapper - calls the direct function."""
-    return process_xc_category_direct(account_id, batch, groups, hash_keys)
-
 
 def process_xc_category_direct(account_id, batch, groups, hash_keys):
     from django.db import connections
@@ -548,11 +544,6 @@ def process_xc_category_direct(account_id, batch, groups, hash_keys):
     gc.collect()
 
     return retval
-
-
-def process_m3u_batch(account_id, batch, groups, hash_keys):
-    """Legacy Celery task wrapper - calls the direct function."""
-    return process_m3u_batch_direct(account_id, batch, groups, hash_keys)
 
 
 def process_m3u_batch_direct(account_id, batch, groups, hash_keys):
