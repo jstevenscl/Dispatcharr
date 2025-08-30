@@ -192,6 +192,34 @@ class Client:
             logger.error(traceback.format_exc())
             raise
 
+    def get_all_live_streams(self):
+        """Get all live streams (no category filter)"""
+        try:
+            if not self.server_info:
+                self.authenticate()
+
+            endpoint = "player_api.php"
+            params = {
+                'username': self.username,
+                'password': self.password,
+                'action': 'get_live_streams'
+                # No category_id = get all streams
+            }
+
+            streams = self._make_request(endpoint, params)
+
+            if not isinstance(streams, list):
+                error_msg = f"Invalid streams response for all live streams: {streams}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            logger.info(f"Successfully retrieved {len(streams)} total live streams")
+            return streams
+        except Exception as e:
+            logger.error(f"Failed to get all live streams: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+
     def get_stream_url(self, stream_id):
         """Get the playback URL for a stream"""
         return f"{self.server_url}/live/{self.username}/{self.password}/{stream_id}.ts"
