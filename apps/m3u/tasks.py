@@ -77,30 +77,31 @@ def fetch_m3u_lines(account, use_cache=False):
                 if hasattr(response, 'url') and response.url != account.server_url:
                     logger.warning(f"Request was redirected from {account.server_url} to {response.url}")
 
-                # Check for standard HTTP error status codes
-                # IMPORTANT: Capture response content early, before any status checks
-                response_content = ""
-                try:
-                    response_content = response.text[:1000]  # Capture up to 1000 characters
-                    logger.info(f"Server response content: {response_content!r}")
-                except Exception as e:
-                    logger.error(f"Could not read response content: {e}")
-                    response_content = "Could not read response content"
-
-                response.raise_for_status()
-
-                # Check for non-standard or suspicious status codes
+                # Check for ANY non-success status code FIRST (before raise_for_status)
                 if response.status_code < 200 or response.status_code >= 300:
-                    # Use the response_content we already captured
-                    logger.error(f"Non-standard status code detected. Response content: {response_content!r}")
+                    # For error responses, read the content immediately (not streaming)
+                    try:
+                        response_content = response.text[:1000]  # Capture up to 1000 characters
+                        logger.error(f"Error response content: {response_content!r}")
+                    except Exception as e:
+                        logger.error(f"Could not read error response content: {e}")
+                        response_content = "Could not read error response content"
 
                     # Provide specific messages for known non-standard codes
                     if response.status_code == 884:
-                        error_msg = f"Server returned HTTP 884 (non-standard error code) from URL: {account.server_url}. This typically indicates an authentication or authorization failure. Server message: {response_content}"
+                        error_msg = f"Server returned HTTP 884 (authentication/authorization failure) from URL: {account.server_url}. Server message: {response_content}"
                     elif response.status_code >= 800:
-                        error_msg = f"Server returned non-standard HTTP status {response.status_code} from URL: {account.server_url}. This indicates a server-side error. Server message: {response_content}"
+                        error_msg = f"Server returned non-standard HTTP status {response.status_code} from URL: {account.server_url}. Server message: {response_content}"
+                    elif response.status_code == 404:
+                        error_msg = f"M3U file not found (404) at URL: {account.server_url}. Server message: {response_content}"
+                    elif response.status_code == 403:
+                        error_msg = f"Access forbidden (403) to M3U file at URL: {account.server_url}. Server message: {response_content}"
+                    elif response.status_code == 401:
+                        error_msg = f"Authentication required (401) for M3U file at URL: {account.server_url}. Server message: {response_content}"
+                    elif response.status_code == 500:
+                        error_msg = f"Server error (500) while fetching M3U file from URL: {account.server_url}. Server message: {response_content}"
                     else:
-                        error_msg = f"Server returned non-success HTTP status {response.status_code} from URL: {account.server_url}. Server message: {response_content}"
+                        error_msg = f"HTTP error ({response.status_code}) while fetching M3U file from URL: {account.server_url}. Server message: {response_content}"
 
                     logger.error(error_msg)
                     account.status = M3UAccount.Status.ERROR
@@ -115,25 +116,8 @@ def fetch_m3u_lines(account, use_cache=False):
                     )
                     return [], False
 
-                # Check if content-type suggests this isn't an M3U file
-                content_type = response.headers.get('content-type', '').lower()
-                if content_type and 'text/html' in content_type:
-                    # Use the response_content we already captured
-                    logger.error(f"HTML response detected. Content: {response_content!r}")
-                    error_msg = f"Server returned HTML content (Content-Type: {content_type}) instead of M3U file from URL: {account.server_url}. Content: {response_content}"
-
-                    logger.error(error_msg)
-                    account.status = M3UAccount.Status.ERROR
-                    account.last_message = error_msg
-                    account.save(update_fields=["status", "last_message"])
-                    send_m3u_update(
-                        account.id,
-                        "downloading",
-                        100,
-                        status="error",
-                        error=error_msg,
-                    )
-                    return [], False
+                # Only call raise_for_status if we have a success code (this should not raise now)
+                response.raise_for_status()
 
                 total_size = int(response.headers.get("Content-Length", 0))
                 downloaded = 0
