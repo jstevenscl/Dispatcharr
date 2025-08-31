@@ -1404,6 +1404,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
             channel_profile_ids = None
             channel_sort_order = None
             channel_sort_reverse = False
+            stream_profile_id = None
             if group_relation.custom_properties:
                 try:
                     group_custom_props = json.loads(group_relation.custom_properties)
@@ -1419,6 +1420,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     channel_sort_reverse = group_custom_props.get(
                         "channel_sort_reverse", False
                     )
+                    stream_profile_id = group_custom_props.get("stream_profile_id")
                 except Exception:
                     force_dummy_epg = False
                     override_group_id = None
@@ -1428,6 +1430,7 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     channel_profile_ids = None
                     channel_sort_order = None
                     channel_sort_reverse = False
+                    stream_profile_id = None
 
             # Determine which group to use for created channels
             target_group = channel_group
@@ -1559,6 +1562,21 @@ def sync_auto_channels(account_id, scan_start_time=None):
                 )
             else:
                 profiles_to_assign = list(ChannelProfile.objects.all())
+
+            # Get stream profile to assign if specified
+            from core.models import StreamProfile
+            stream_profile_to_assign = None
+            if stream_profile_id:
+                try:
+                    stream_profile_to_assign = StreamProfile.objects.get(id=int(stream_profile_id))
+                    logger.info(
+                        f"Will assign stream profile '{stream_profile_to_assign.name}' to auto-synced streams in group '{channel_group.name}'"
+                    )
+                except (StreamProfile.DoesNotExist, ValueError, TypeError):
+                    logger.warning(
+                        f"Stream profile with ID {stream_profile_id} not found for group '{channel_group.name}', streams will use default profile"
+                    )
+                    stream_profile_to_assign = None
 
             # Process each current stream
             current_channel_number = start_number
@@ -1694,6 +1712,11 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             existing_channel.epg_data = current_epg_data
                             channel_updated = True
 
+                        # Handle stream profile updates for the channel
+                        if stream_profile_to_assign and existing_channel.stream_profile != stream_profile_to_assign:
+                            existing_channel.stream_profile = stream_profile_to_assign
+                            channel_updated = True
+
                         if channel_updated:
                             existing_channel.save()
                             channels_updated += 1
@@ -1797,6 +1820,10 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             channel.logo = logo
                             channel.save(update_fields=["logo"])
 
+                        # Handle stream profile assignment
+                        if stream_profile_to_assign:
+                            channel.stream_profile = stream_profile_to_assign
+                            channel.save(update_fields=['stream_profile'])
                         channels_created += 1
                         logger.debug(
                             f"Created auto channel: {channel.channel_number} - {channel.name}"

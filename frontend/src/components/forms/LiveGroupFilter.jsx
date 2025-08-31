@@ -19,6 +19,7 @@ import {
 } from '@mantine/core';
 import { Info } from 'lucide-react';
 import useChannelsStore from '../../store/channels';
+import useStreamProfilesStore from '../../store/streamProfiles';
 import { CircleCheck, CircleX } from 'lucide-react';
 
 // Custom item component for MultiSelect with tooltip
@@ -35,7 +36,16 @@ const OptionWithTooltip = forwardRef(
 const LiveGroupFilter = ({ playlist, groupStates, setGroupStates }) => {
   const channelGroups = useChannelsStore((s) => s.channelGroups);
   const profiles = useChannelsStore((s) => s.profiles);
+  const streamProfiles = useStreamProfilesStore((s) => s.profiles);
+  const fetchStreamProfiles = useStreamProfilesStore((s) => s.fetchProfiles);
   const [groupFilter, setGroupFilter] = useState('');
+
+  // Fetch stream profiles when component mounts
+  useEffect(() => {
+    if (streamProfiles.length === 0) {
+      fetchStreamProfiles();
+    }
+  }, [streamProfiles.length, fetchStreamProfiles]);
 
   useEffect(() => {
     if (Object.keys(channelGroups).length === 0) {
@@ -279,6 +289,12 @@ const LiveGroupFilter = ({ playlist, groupStates, setGroupStates }) => {
                             description:
                               'Specify the order in which channels are created (name, tvg_id, updated_at)',
                           },
+                          {
+                            value: 'stream_profile_assignment',
+                            label: 'Stream Profile Assignment',
+                            description:
+                              'Assign a specific stream profile to all channels in this group during auto sync',
+                          },
                         ]}
                         itemComponent={OptionWithTooltip}
                         value={(() => {
@@ -317,6 +333,12 @@ const LiveGroupFilter = ({ playlist, groupStates, setGroupStates }) => {
                             undefined
                           ) {
                             selectedValues.push('channel_sort_order');
+                          }
+                          if (
+                            group.custom_properties?.stream_profile_id !==
+                            undefined
+                          ) {
+                            selectedValues.push('stream_profile_assignment');
                           }
                           return selectedValues;
                         })()}
@@ -419,6 +441,22 @@ const LiveGroupFilter = ({ playlist, groupStates, setGroupStates }) => {
                                 } else {
                                   delete newCustomProps.channel_sort_order;
                                   delete newCustomProps.channel_sort_reverse; // Remove reverse when sort is removed
+                                }
+
+                                // Handle stream_profile_assignment
+                                if (
+                                  selectedOptions.includes(
+                                    'stream_profile_assignment'
+                                  )
+                                ) {
+                                  if (
+                                    newCustomProps.stream_profile_id ===
+                                    undefined
+                                  ) {
+                                    newCustomProps.stream_profile_id = null;
+                                  }
+                                } else {
+                                  delete newCustomProps.stream_profile_id;
                                 }
 
                                 return {
@@ -593,6 +631,50 @@ const LiveGroupFilter = ({ playlist, groupStates, setGroupStates }) => {
                             data={Object.values(channelGroups).map((g) => ({
                               value: g.id.toString(),
                               label: g.name,
+                            }))}
+                            clearable
+                            searchable
+                            size="xs"
+                          />
+                        </Tooltip>
+                      )}
+
+                      {/* Show stream profile select only if stream_profile_assignment is selected */}
+                      {group.custom_properties?.stream_profile_id !==
+                        undefined && (
+                        <Tooltip
+                          label="Select a stream profile to assign to all streams in this group during auto sync."
+                          withArrow
+                        >
+                          <Select
+                            label="Stream Profile"
+                            placeholder="Choose stream profile..."
+                            value={
+                              group.custom_properties?.stream_profile_id?.toString() ||
+                              null
+                            }
+                            onChange={(value) => {
+                              const newValue = value ? parseInt(value) : null;
+                              setGroupStates(
+                                groupStates.map((state) => {
+                                  if (
+                                    state.channel_group === group.channel_group
+                                  ) {
+                                    return {
+                                      ...state,
+                                      custom_properties: {
+                                        ...state.custom_properties,
+                                        stream_profile_id: newValue,
+                                      },
+                                    };
+                                  }
+                                  return state;
+                                })
+                              );
+                            }}
+                            data={streamProfiles.map((profile) => ({
+                              value: profile.id.toString(),
+                              label: profile.name,
                             }))}
                             clearable
                             searchable
