@@ -81,8 +81,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
       console.log(`Received ${fetched.length} programs`);
 
       // Include ALL channels, sorted by channel number - don't filter by EPG data
-      const sortedChannels = Object.values(channels)
-        .sort((a, b) => (a.channel_number || Infinity) - (b.channel_number || Infinity));
+      const sortedChannels = Object.values(channels).sort(
+        (a, b) =>
+          (a.channel_number || Infinity) - (b.channel_number || Infinity)
+      );
 
       console.log(`Using all ${sortedChannels.length} available channels`);
 
@@ -523,7 +525,7 @@ export default function TVChannelGuide({ startDate, endDate }) {
     const isLive = now.isAfter(programStart) && now.isBefore(programEnd);
 
     // Determine if the program has ended
-    const isPast = now.isAfter(programEnd);    // Check if this program is expanded
+    const isPast = now.isAfter(programEnd); // Check if this program is expanded
     const isExpanded = expandedProgramId === program.id;
 
     // Set the height based on expanded state
@@ -638,9 +640,11 @@ export default function TVChannelGuide({ startDate, endDate }) {
                 overflow: 'hidden',
               }}
             >
-              {programStart.format(timeFormat)} - {programEnd.format(timeFormat)}
+              {programStart.format(timeFormat)} -{' '}
+              {programEnd.format(timeFormat)}
             </Text>
-          </Box>          {/* Description is always shown but expands when row is expanded */}
+          </Box>{' '}
+          {/* Description is always shown but expands when row is expanded */}
           {program.description && (
             <Box
               style={{
@@ -663,7 +667,6 @@ export default function TVChannelGuide({ startDate, endDate }) {
               </Text>
             </Box>
           )}
-
           {/* Expanded content */}
           {isExpanded && (
             <Box style={{ marginTop: 'auto' }}>
@@ -771,8 +774,8 @@ export default function TVChannelGuide({ startDate, endDate }) {
   // Handle date-time formats
   const [timeFormatSetting] = useLocalStorage('time-format', '12h');
   const [dateFormatSetting] = useLocalStorage('date-format', 'mdy');
-  const timeFormat = timeFormatSetting === '12h' ? "h:mm A" : "HH:mm";
-  const dateFormat = dateFormatSetting === 'mdy' ? "MMMM D" : "D MMMM";
+  const timeFormat = timeFormatSetting === '12h' ? 'h:mm A' : 'HH:mm';
+  const dateFormat = dateFormatSetting === 'mdy' ? 'MMMM D' : 'D MMMM';
 
   return (
     <Box
@@ -805,7 +808,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
             TV Guide
           </Title>
           <Flex align="center" gap="md">
-            <Text>{now.format(`dddd, ${dateFormat}, YYYY • ${timeFormat}`)}</Text>
+            <Text>
+              {now.format(`dddd, ${dateFormat}, YYYY • ${timeFormat}`)}
+            </Text>
             <Tooltip label="Jump to current time">
               <ActionIcon
                 onClick={scrollToNow}
@@ -863,10 +868,10 @@ export default function TVChannelGuide({ startDate, endDate }) {
           {(searchQuery !== '' ||
             selectedGroupId !== 'all' ||
             selectedProfileId !== 'all') && (
-              <Button variant="subtle" onClick={clearFilters} size="sm">
-                Clear Filters
-              </Button>
-            )}
+            <Button variant="subtle" onClick={clearFilters} size="sm">
+              Clear Filters
+            </Button>
+          )}
 
           <Text size="sm" color="dimmed">
             {filteredChannels.length}{' '}
@@ -933,100 +938,102 @@ export default function TVChannelGuide({ startDate, endDate }) {
                   borderBottom: '1px solid #27272A',
                   width: hourTimeline.length * HOUR_WIDTH,
                 }}
-              >                {hourTimeline.map((hourData) => {
-                const { time, isNewDay } = hourData;
+              >
+                {' '}
+                {hourTimeline.map((hourData) => {
+                  const { time, isNewDay } = hourData;
 
-                return (
-                  <Box
-                    key={time.format()}
-                    style={{
-                      width: HOUR_WIDTH,
-                      height: '40px',
-                      position: 'relative',
-                      color: '#a0aec0',
-                      borderRight: '1px solid #8DAFAA',
-                      cursor: 'pointer',
-                      borderLeft: isNewDay ? '2px solid #3BA882' : 'none', // Highlight day boundaries
-                      backgroundColor: isNewDay ? '#1E2A27' : '#1B2421', // Subtle background for new days
-                    }}
-                    onClick={(e) => handleTimeClick(time, e)}
-                  >
-                    {/* Remove the special day label for new days since we'll show day for all hours */}
-
-                    {/* Position time label at the left border of each hour block */}
-                    <Text
-                      size="sm"
+                  return (
+                    <Box
+                      key={time.format()}
                       style={{
-                        position: 'absolute',
-                        top: '8px', // Consistent positioning for all hours
-                        left: '4px',
-                        transform: 'none',
-                        borderRadius: '2px',
-                        lineHeight: 1.2,
-                        textAlign: 'left',
+                        width: HOUR_WIDTH,
+                        height: '40px',
+                        position: 'relative',
+                        color: '#a0aec0',
+                        borderRight: '1px solid #8DAFAA',
+                        cursor: 'pointer',
+                        borderLeft: isNewDay ? '2px solid #3BA882' : 'none', // Highlight day boundaries
+                        backgroundColor: isNewDay ? '#1E2A27' : '#1B2421', // Subtle background for new days
                       }}
+                      onClick={(e) => handleTimeClick(time, e)}
                     >
-                      {/* Show day above time for every hour using the same format */}
+                      {/* Remove the special day label for new days since we'll show day for all hours */}
+
+                      {/* Position time label at the left border of each hour block */}
                       <Text
-                        span
-                        size="xs"
+                        size="sm"
                         style={{
-                          display: 'block',
-                          opacity: 0.7,
-                          fontWeight: isNewDay ? 600 : 400, // Still emphasize day transitions
-                          color: isNewDay ? '#3BA882' : undefined,
+                          position: 'absolute',
+                          top: '8px', // Consistent positioning for all hours
+                          left: '4px',
+                          transform: 'none',
+                          borderRadius: '2px',
+                          lineHeight: 1.2,
+                          textAlign: 'left',
                         }}
                       >
-                        {formatDayLabel(time)}{' '}
-                        {/* Use same formatDayLabel function for all hours */}
-                      </Text>
-                      {time.format(timeFormat)}
-                      <Text span size="xs" ml={1} opacity={0.7}>
-                        {/*time.format('A')*/}
-                      </Text>
-                    </Text>
-
-                    {/* Hour boundary marker - more visible */}
-                    <Box
-                      style={{
-                        position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: '1px',
-                        backgroundColor: '#27272A',
-                        zIndex: 10,
-                      }}
-                    />
-
-                    {/* Quarter hour tick marks */}
-                    <Box
-                      style={{
-                        position: 'absolute',
-                        bottom: 0,
-                        width: '100%',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '0 1px',
-                      }}
-                    >
-                      {[15, 30, 45].map((minute) => (
-                        <Box
-                          key={minute}
+                        {/* Show day above time for every hour using the same format */}
+                        <Text
+                          span
+                          size="xs"
                           style={{
-                            width: '1px',
-                            height: '8px',
-                            backgroundColor: '#718096',
-                            position: 'absolute',
-                            bottom: 0,
-                            left: `${(minute / 60) * 100}%`,
+                            display: 'block',
+                            opacity: 0.7,
+                            fontWeight: isNewDay ? 600 : 400, // Still emphasize day transitions
+                            color: isNewDay ? '#3BA882' : undefined,
                           }}
-                        />
-                      ))}
+                        >
+                          {formatDayLabel(time)}{' '}
+                          {/* Use same formatDayLabel function for all hours */}
+                        </Text>
+                        {time.format(timeFormat)}
+                        <Text span size="xs" ml={1} opacity={0.7}>
+                          {/*time.format('A')*/}
+                        </Text>
+                      </Text>
+
+                      {/* Hour boundary marker - more visible */}
+                      <Box
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: '1px',
+                          backgroundColor: '#27272A',
+                          zIndex: 10,
+                        }}
+                      />
+
+                      {/* Quarter hour tick marks */}
+                      <Box
+                        style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          width: '100%',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '0 1px',
+                        }}
+                      >
+                        {[15, 30, 45].map((minute) => (
+                          <Box
+                            key={minute}
+                            style={{
+                              width: '1px',
+                              height: '8px',
+                              backgroundColor: '#718096',
+                              position: 'absolute',
+                              bottom: 0,
+                              left: `${(minute / 60) * 100}%`,
+                            }}
+                          />
+                        ))}
+                      </Box>
                     </Box>
-                  </Box>
-                );
-              })}
+                  );
+                })}
               </Box>
             </Box>
           </Box>
@@ -1222,7 +1229,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
                     >
                       {channelPrograms.length > 0 ? (
                         channelPrograms.map((program) => (
-                          <div key={`${channel.id}-${program.id}-${program.start_time}`}>
+                          <div
+                            key={`${channel.id}-${program.id}-${program.start_time}`}
+                          >
                             {renderProgram(program, start)}
                           </div>
                         ))
@@ -1230,7 +1239,9 @@ export default function TVChannelGuide({ startDate, endDate }) {
                         // Simple placeholder for channels with no program data - 2 hour blocks
                         <>
                           {/* Generate repeating placeholder blocks every 2 hours across the timeline */}
-                          {Array.from({ length: Math.ceil(hourTimeline.length / 2) }).map((_, index) => (
+                          {Array.from({
+                            length: Math.ceil(hourTimeline.length / 2),
+                          }).map((_, index) => (
                             <Box
                               key={`placeholder-${channel.id}-${index}`}
                               style={{

@@ -413,7 +413,10 @@ const M3U = ({
                   size="sm"
                   onClick={() => {
                     // If this is an XC account with VOD enabled, fetch VOD categories
-                    if (m3uAccount?.account_type === 'XC' && m3uAccount?.enable_vod) {
+                    if (
+                      m3uAccount?.account_type === 'XC' &&
+                      m3uAccount?.enable_vod
+                    ) {
                       fetchCategories();
                     }
                     setGroupFilterModalOpen(true);

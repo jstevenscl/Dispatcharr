@@ -454,16 +454,13 @@ const SettingsPage = () => {
                       {...form.getInputProps('preferred-region')}
                       key={form.key('preferred-region')}
                       id={
-                        settings['preferred-region']?.id ||
-                        'preferred-region'
+                        settings['preferred-region']?.id || 'preferred-region'
                       }
                       name={
-                        settings['preferred-region']?.key ||
-                        'preferred-region'
+                        settings['preferred-region']?.key || 'preferred-region'
                       }
                       label={
-                        settings['preferred-region']?.name ||
-                        'Preferred Region'
+                        settings['preferred-region']?.name || 'Preferred Region'
                       }
                       data={regionChoices.map((r) => ({
                         label: r.label,
@@ -471,10 +468,7 @@ const SettingsPage = () => {
                       }))}
                     />
 
-                    <Group
-                      justify="space-between"
-                      style={{ paddingTop: 5 }}
-                    >
+                    <Group justify="space-between" style={{ paddingTop: 5 }}>
                       <Text size="sm" fw={500}>
                         Auto-Import Mapped Files
                       </Text>
@@ -571,9 +565,7 @@ const SettingsPage = () => {
                 </Accordion.Control>
                 <Accordion.Panel>
                   <form
-                    onSubmit={networkAccessForm.onSubmit(
-                      onNetworkAccessSubmit
-                    )}
+                    onSubmit={networkAccessForm.onSubmit(onNetworkAccessSubmit)}
                   >
                     <Stack gap="sm">
                       {networkAccessSaved && (
@@ -628,9 +620,7 @@ const SettingsPage = () => {
                 </Accordion.Control>
                 <Accordion.Panel>
                   <form
-                    onSubmit={proxySettingsForm.onSubmit(
-                      onProxySettingsSubmit
-                    )}
+                    onSubmit={proxySettingsForm.onSubmit(onProxySettingsSubmit)}
                   >
                     <Stack gap="sm">
                       {proxySettingsSaved && (
@@ -647,7 +637,7 @@ const SettingsPage = () => {
                             'buffering_timeout',
                             'redis_chunk_ttl',
                             'channel_shutdown_delay',
-                            'channel_init_grace_period'
+                            'channel_init_grace_period',
                           ].includes(key);
 
                           const isFloatField = key === 'buffering_speed';
@@ -660,9 +650,15 @@ const SettingsPage = () => {
                                 {...proxySettingsForm.getInputProps(key)}
                                 description={config.description || null}
                                 min={0}
-                                max={key === 'buffering_timeout' ? 300 :
-                                  key === 'redis_chunk_ttl' ? 3600 :
-                                    key === 'channel_shutdown_delay' ? 300 : 60}
+                                max={
+                                  key === 'buffering_timeout'
+                                    ? 300
+                                    : key === 'redis_chunk_ttl'
+                                      ? 3600
+                                      : key === 'channel_shutdown_delay'
+                                        ? 300
+                                        : 60
+                                }
                               />
                             );
                           } else if (isFloatField) {
@@ -728,7 +724,11 @@ const SettingsPage = () => {
           setRehashDialogType(null);
         }}
         onConfirm={handleRehashConfirm}
-        title={rehashDialogType === 'save' ? 'Save Settings and Rehash Streams' : 'Confirm Stream Rehash'}
+        title={
+          rehashDialogType === 'save'
+            ? 'Save Settings and Rehash Streams'
+            : 'Confirm Stream Rehash'
+        }
         message={
           <div style={{ whiteSpace: 'pre-line' }}>
             {`Are you sure you want to rehash all streams?
@@ -740,7 +740,9 @@ M3U refreshes will be blocked until this process finishes.
 Please ensure you have time to let this complete before proceeding.`}
           </div>
         }
-        confirmLabel={rehashDialogType === 'save' ? 'Save and Rehash' : 'Start Rehash'}
+        confirmLabel={
+          rehashDialogType === 'save' ? 'Save and Rehash' : 'Start Rehash'
+        }
         cancelLabel="Cancel"
         actionKey="rehash-streams"
         onSuppressChange={suppressWarning}

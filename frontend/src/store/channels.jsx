@@ -54,7 +54,7 @@ const useChannelsStore = create((set, get) => ({
           hasChannels: group.channel_count > 0,
           hasM3UAccounts: group.m3u_account_count > 0,
           canEdit: group.m3u_account_count === 0,
-          canDelete: group.channel_count === 0 && group.m3u_account_count === 0
+          canDelete: group.channel_count === 0 && group.m3u_account_count === 0,
         };
         return acc;
       }, {});
@@ -152,9 +152,14 @@ const useChannelsStore = create((set, get) => ({
   updateChannels: (channels) => {
     // Ensure channels is an array
     if (!Array.isArray(channels)) {
-      console.error('updateChannels expects an array, received:', typeof channels, channels);
+      console.error(
+        'updateChannels expects an array, received:',
+        typeof channels,
+        channels
+      );
       return;
-    } const channelsByUUID = {};
+    }
+    const channelsByUUID = {};
     const updatedChannels = channels.reduce((acc, chan) => {
       channelsByUUID[chan.uuid] = chan.id;
       acc[chan.id] = chan;
@@ -405,12 +410,14 @@ const useChannelsStore = create((set, get) => ({
 
   // Add helper methods for validation
   canEditChannelGroup: (groupIdOrGroup) => {
-    const groupId = typeof groupIdOrGroup === 'object' ? groupIdOrGroup.id : groupIdOrGroup;
+    const groupId =
+      typeof groupIdOrGroup === 'object' ? groupIdOrGroup.id : groupIdOrGroup;
     return get().channelGroups[groupId]?.canEdit ?? true;
   },
 
   canDeleteChannelGroup: (groupIdOrGroup) => {
-    const groupId = typeof groupIdOrGroup === 'object' ? groupIdOrGroup.id : groupIdOrGroup;
+    const groupId =
+      typeof groupIdOrGroup === 'object' ? groupIdOrGroup.id : groupIdOrGroup;
     return get().channelGroups[groupId]?.canDelete ?? true;
   },
 }));

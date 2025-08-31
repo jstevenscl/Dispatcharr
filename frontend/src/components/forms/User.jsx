@@ -44,7 +44,7 @@ const User = ({ user = null, isOpen, onClose }) => {
       username: !values.username
         ? 'Username is required'
         : values.user_level == USER_LEVELS.STREAMER &&
-          !values.username.match(/^[a-z0-9]+$/i)
+            !values.username.match(/^[a-z0-9]+$/i)
           ? 'Streamer username must be alphanumeric'
           : null,
       password:
@@ -74,9 +74,7 @@ const User = ({ user = null, isOpen, onClose }) => {
   const onSubmit = async () => {
     const values = form.getValues();
 
-    const { ...customProps } = JSON.parse(
-      user?.custom_properties || '{}'
-    );
+    const { ...customProps } = JSON.parse(user?.custom_properties || '{}');
 
     // Always save xc_password, even if it's empty (to allow clearing)
     customProps.xc_password = values.xc_password || '';

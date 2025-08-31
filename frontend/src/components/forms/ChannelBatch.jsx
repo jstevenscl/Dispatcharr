@@ -58,7 +58,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
 
     const values = {
       ...form.getValues(),
-    };    // Handle channel group ID - convert to integer if it exists
+    }; // Handle channel group ID - convert to integer if it exists
     if (selectedChannelGroup && selectedChannelGroup !== '-1') {
       values.channel_group_id = parseInt(selectedChannelGroup);
     } else {
@@ -68,7 +68,10 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
     // Handle stream profile ID - convert special values
     if (!values.stream_profile_id || values.stream_profile_id === '-1') {
       delete values.stream_profile_id;
-    } else if (values.stream_profile_id === '0' || values.stream_profile_id === 0) {
+    } else if (
+      values.stream_profile_id === '0' ||
+      values.stream_profile_id === 0
+    ) {
       values.stream_profile_id = null; // Convert "use default" to null
     }
 
@@ -84,7 +87,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
       // Refresh both the channels table data and the main channels store
       await Promise.all([
         API.requeryChannels(),
-        useChannelsStore.getState().fetchChannels()
+        useChannelsStore.getState().fetchChannels(),
       ]);
       onClose();
     } catch (error) {
@@ -131,7 +134,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
     { id: '-1', name: '(no change)' },
     ...groupOptions.filter((group) =>
       group.name.toLowerCase().includes(groupFilter.toLowerCase())
-    )
+    ),
   ];
 
   if (!isOpen) {
@@ -172,8 +175,10 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                       key={form.key('channel_group')}
                       onClick={() => setGroupPopoverOpened(true)}
                       size="xs"
-                      style={{ flex: 1 }} rightSection={
-                        form.getValues().channel_group && form.getValues().channel_group !== '(no change)' && (
+                      style={{ flex: 1 }}
+                      rightSection={
+                        form.getValues().channel_group &&
+                        form.getValues().channel_group !== '(no change)' && (
                           <ActionIcon
                             size="xs"
                             variant="subtle"
@@ -282,7 +287,7 @@ const ChannelBatchForm = ({ channelIds, isOpen, onClose }) => {
                 key={form.key('stream_profile_id')}
                 data={[
                   { value: '-1', label: '(no change)' },
-                  { value: '0', label: '(use default)' }
+                  { value: '0', label: '(use default)' },
                 ].concat(
                   streamProfiles.map((option) => ({
                     value: `${option.id}`,

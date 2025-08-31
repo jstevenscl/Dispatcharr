@@ -61,7 +61,7 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
     if (!playlist || !playlist.id) return;
 
     // Get profile details for the confirmation dialog
-    const profileObj = profiles.find(p => p.id === id);
+    const profileObj = profiles.find((p) => p.id === id);
     setProfileToDelete(profileObj);
     setDeleteTarget(id);
 
@@ -195,13 +195,13 @@ const M3UProfiles = ({ playlist = null, isOpen, onClose }) => {
             New
           </Button>
         </Flex>
-      </Modal>      <M3UProfile
+      </Modal>{' '}
+      <M3UProfile
         m3u={playlist}
         profile={profile}
         isOpen={profileEditorOpen}
         onClose={closeEditor}
       />
-
       <ConfirmationDialog
         opened={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
