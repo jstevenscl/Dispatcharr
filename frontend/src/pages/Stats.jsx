@@ -36,6 +36,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { Sparkline } from '@mantine/charts';
 import useStreamProfilesStore from '../store/streamProfiles';
 import usePlaylistsStore from '../store/playlists'; // Add this import
+import useSettingsStore from '../store/settings';
 import { useLocation } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import { CustomTable, useTable } from '../components/tables/CustomTable';
@@ -103,6 +104,21 @@ const ChannelCard = ({
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
   const [tableSize] = useLocalStorage('table-size', 'default');
+  // Get settings for speed threshold
+  const settings = useSettingsStore((s) => s.settings);
+
+  // Parse proxy settings to get buffering_speed
+  const getBufferingSpeedThreshold = () => {
+    try {
+      if (settings['proxy-settings']?.value) {
+        const proxySettings = JSON.parse(settings['proxy-settings'].value);
+        return parseFloat(proxySettings.buffering_speed) || 1.0;
+      }
+    } catch (error) {
+      console.error('Error parsing proxy settings:', error);
+    }
+    return 1.0; // Default fallback
+  };
 
   // Create a map of M3U account IDs to names for quick lookup
   const m3uAccountsMap = useMemo(() => {
@@ -644,7 +660,10 @@ const ChannelCard = ({
                 size="sm"
                 variant="light"
                 color={
-                  parseFloat(channel.ffmpeg_speed) >= 1.0 ? 'green' : 'red'
+                  parseFloat(channel.ffmpeg_speed) >=
+                  getBufferingSpeedThreshold()
+                    ? 'green'
+                    : 'red'
                 }
               >
                 {parseFloat(channel.ffmpeg_speed).toFixed(2)}x
@@ -706,6 +725,7 @@ const ChannelsPage = () => {
   const channelStats = useChannelsStore((s) => s.stats);
   const logos = useLogosStore((s) => s.logos); // Add logos from the store
   const streamProfiles = useStreamProfilesStore((s) => s.profiles);
+  const fetchSettings = useSettingsStore((s) => s.fetchSettings);
 
   const [activeChannels, setActiveChannels] = useState({});
   const [clients, setClients] = useState([]);
@@ -799,6 +819,11 @@ const ChannelsPage = () => {
   };
 
   // The main clientsTable is no longer needed since each channel card has its own table
+
+  // Fetch settings on component mount
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   useEffect(() => {
     if (
