@@ -1829,6 +1829,27 @@ def sync_auto_channels(account_id, scan_start_time=None):
                     f"Deleted {deleted_count} auto channels for removed streams"
                 )
 
+        # Additional cleanup: Remove auto-created channels that no longer have any valid streams
+        # This handles the case where streams were deleted due to stale retention policy
+        orphaned_channels = Channel.objects.filter(
+            auto_created=True,
+            auto_created_by=account
+        ).exclude(
+            # Exclude channels that still have valid stream associations
+            id__in=ChannelStream.objects.filter(
+                stream__m3u_account=account,
+                stream__isnull=False
+            ).values_list('channel_id', flat=True)
+        )
+
+        orphaned_count = orphaned_channels.count()
+        if orphaned_count > 0:
+            orphaned_channels.delete()
+            channels_deleted += orphaned_count
+            logger.info(
+                f"Deleted {orphaned_count} orphaned auto channels with no valid streams"
+            )
+
         logger.info(
             f"Auto channel sync complete for account {account.name}: {channels_created} created, {channels_updated} updated, {channels_deleted} deleted"
         )
