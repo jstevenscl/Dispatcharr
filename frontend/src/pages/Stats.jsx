@@ -99,7 +99,7 @@ const ChannelCard = ({
 
   // Get Date-format from localStorage
   const [dateFormatSetting] = useLocalStorage('date-format', 'mdy');
-  const dateFormat = dateFormatSetting === 'mdy' ? "MM/DD" : "DD/MM";
+  const dateFormat = dateFormatSetting === 'mdy' ? 'MM/DD' : 'DD/MM';
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
   const [tableSize] = useLocalStorage('table-size', 'default');
@@ -446,13 +446,13 @@ const ChannelCard = ({
         }
       });
     }
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [channel.name, channel.stream_id]);
 
   const channelName =
-    channel.name ||
-    previewedStream?.name ||
-    'Unnamed Channel';
+    channel.name || previewedStream?.name || 'Unnamed Channel';
   const uptime = channel.uptime || 0;
   const bitrates = channel.bitrates || [];
   const totalBytes = channel.total_bytes || 0;
@@ -637,11 +637,15 @@ const ChannelCard = ({
             </Tooltip>
           )}
           {channel.ffmpeg_speed && (
-            <Tooltip label={`Current Speed: ${parseFloat(channel.ffmpeg_speed).toFixed(2)}x`}>
+            <Tooltip
+              label={`Current Speed: ${parseFloat(channel.ffmpeg_speed).toFixed(2)}x`}
+            >
               <Badge
                 size="sm"
                 variant="light"
-                color={parseFloat(channel.ffmpeg_speed) >= 1.0 ? "green" : "red"}
+                color={
+                  parseFloat(channel.ffmpeg_speed) >= 1.0 ? 'green' : 'red'
+                }
               >
                 {parseFloat(channel.ffmpeg_speed).toFixed(2)}x
               </Badge>
@@ -900,16 +904,18 @@ const ChannelsPage = () => {
               No active channels currently streaming
             </Text>
           </Box>
-        ) : (Object.values(activeChannels).map((channel) => (
-          <ChannelCard
-            key={channel.channel_id}
-            channel={channel}
-            clients={clients}
-            stopClient={stopClient}
-            stopChannel={stopChannel}
-            logos={logos}
-            channelsByUUID={channelsByUUID}
-          />))
+        ) : (
+          Object.values(activeChannels).map((channel) => (
+            <ChannelCard
+              key={channel.channel_id}
+              channel={channel}
+              clients={clients}
+              stopClient={stopClient}
+              stopChannel={stopChannel}
+              logos={logos}
+              channelsByUUID={channelsByUUID}
+            />
+          ))
         )}
       </div>
     </Box>
