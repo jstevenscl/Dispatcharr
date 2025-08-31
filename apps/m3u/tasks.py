@@ -66,79 +66,304 @@ def fetch_m3u_lines(account, use_cache=False):
                 response = requests.get(
                     account.server_url, headers=headers, stream=True
                 )
+
+                # Log the actual response details for debugging
+                logger.debug(f"HTTP Response: {response.status_code} from {account.server_url}")
+                logger.debug(f"Content-Type: {response.headers.get('content-type', 'Not specified')}")
+                logger.debug(f"Content-Length: {response.headers.get('content-length', 'Not specified')}")
+                logger.debug(f"Response headers: {dict(response.headers)}")
+
+                # Check if we've been redirected to a different URL
+                if hasattr(response, 'url') and response.url != account.server_url:
+                    logger.warning(f"Request was redirected from {account.server_url} to {response.url}")
+
+                # Check for standard HTTP error status codes
+                # IMPORTANT: Capture response content early, before any status checks
+                response_content = ""
+                try:
+                    response_content = response.text[:1000]  # Capture up to 1000 characters
+                    logger.info(f"Server response content: {response_content!r}")
+                except Exception as e:
+                    logger.error(f"Could not read response content: {e}")
+                    response_content = "Could not read response content"
+
                 response.raise_for_status()
+
+                # Check for non-standard or suspicious status codes
+                if response.status_code < 200 or response.status_code >= 300:
+                    # Use the response_content we already captured
+                    logger.error(f"Non-standard status code detected. Response content: {response_content!r}")
+
+                    # Provide specific messages for known non-standard codes
+                    if response.status_code == 884:
+                        error_msg = f"Server returned HTTP 884 (non-standard error code) from URL: {account.server_url}. This typically indicates an authentication or authorization failure. Server message: {response_content}"
+                    elif response.status_code >= 800:
+                        error_msg = f"Server returned non-standard HTTP status {response.status_code} from URL: {account.server_url}. This indicates a server-side error. Server message: {response_content}"
+                    else:
+                        error_msg = f"Server returned non-success HTTP status {response.status_code} from URL: {account.server_url}. Server message: {response_content}"
+
+                    logger.error(error_msg)
+                    account.status = M3UAccount.Status.ERROR
+                    account.last_message = error_msg
+                    account.save(update_fields=["status", "last_message"])
+                    send_m3u_update(
+                        account.id,
+                        "downloading",
+                        100,
+                        status="error",
+                        error=error_msg,
+                    )
+                    return [], False
+
+                # Check if content-type suggests this isn't an M3U file
+                content_type = response.headers.get('content-type', '').lower()
+                if content_type and 'text/html' in content_type:
+                    # Use the response_content we already captured
+                    logger.error(f"HTML response detected. Content: {response_content!r}")
+                    error_msg = f"Server returned HTML content (Content-Type: {content_type}) instead of M3U file from URL: {account.server_url}. Content: {response_content}"
+
+                    logger.error(error_msg)
+                    account.status = M3UAccount.Status.ERROR
+                    account.last_message = error_msg
+                    account.save(update_fields=["status", "last_message"])
+                    send_m3u_update(
+                        account.id,
+                        "downloading",
+                        100,
+                        status="error",
+                        error=error_msg,
+                    )
+                    return [], False
 
                 total_size = int(response.headers.get("Content-Length", 0))
                 downloaded = 0
                 start_time = time.time()
                 last_update_time = start_time
                 progress = 0
+                temp_content = b""  # Store content temporarily to validate before saving
+                has_content = False
 
+                # First, let's collect the content and validate it
+                send_m3u_update(account.id, "downloading", 0)
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        temp_content += chunk
+                        has_content = True
+
+                        downloaded += len(chunk)
+                        elapsed_time = time.time() - start_time
+
+                        # Calculate download speed in KB/s
+                        speed = downloaded / elapsed_time / 1024  # in KB/s
+
+                        # Calculate progress percentage
+                        if total_size and total_size > 0:
+                            progress = (downloaded / total_size) * 100
+
+                        # Time remaining (in seconds)
+                        time_remaining = (
+                            (total_size - downloaded) / (speed * 1024)
+                            if speed > 0
+                            else 0
+                        )
+
+                        current_time = time.time()
+                        if current_time - last_update_time >= 0.5:
+                            last_update_time = current_time
+                            if progress > 0:
+                                # Update the account's last_message with detailed progress info
+                                progress_msg = f"Downloading: {progress:.1f}% - {speed:.1f} KB/s - {time_remaining:.1f}s remaining"
+                                account.last_message = progress_msg
+                                account.save(update_fields=["last_message"])
+
+                                send_m3u_update(
+                                    account.id,
+                                    "downloading",
+                                    progress,
+                                    speed=speed,
+                                    elapsed_time=elapsed_time,
+                                    time_remaining=time_remaining,
+                                    message=progress_msg,
+                                )
+
+                # Check if we actually received any content
+                logger.info(f"Download completed. Has content: {has_content}, Content length: {len(temp_content)} bytes")
+                if not has_content or len(temp_content) == 0:
+                    error_msg = f"Server responded successfully (HTTP {response.status_code}) but provided empty M3U file from URL: {account.server_url}"
+                    logger.error(error_msg)
+                    account.status = M3UAccount.Status.ERROR
+                    account.last_message = error_msg
+                    account.save(update_fields=["status", "last_message"])
+                    send_m3u_update(
+                        account.id,
+                        "downloading",
+                        100,
+                        status="error",
+                        error=error_msg,
+                    )
+                    return [], False
+
+                # Basic validation: check if content looks like an M3U file
+                try:
+                    content_str = temp_content.decode('utf-8', errors='ignore')
+                    content_lines = content_str.strip().split('\n')
+
+                    # Log first few lines for debugging (be careful not to log too much)
+                    preview_lines = content_lines[:5]
+                    logger.info(f"Content preview (first 5 lines): {preview_lines}")
+                    logger.info(f"Total lines in content: {len(content_lines)}")
+
+                    # Check if it's a valid M3U file (should start with #EXTM3U or contain M3U-like content)
+                    is_valid_m3u = False
+
+                    # First, check if this looks like an error response disguised as 200 OK
+                    content_lower = content_str.lower()
+                    if any(error_indicator in content_lower for error_indicator in [
+                        '<html', '<!doctype html', 'error', 'not found', '404', '403', '500',
+                        'access denied', 'unauthorized', 'forbidden', 'invalid', 'expired'
+                    ]):
+                        logger.warning(f"Content appears to be an error response disguised as HTTP 200: {content_str[:200]!r}")
+                        # Continue with M3U validation, but this gives us a clue
+
+                    if content_lines and content_lines[0].strip().upper().startswith('#EXTM3U'):
+                        is_valid_m3u = True
+                        logger.info("Content validated as M3U: starts with #EXTM3U")
+                    elif any(line.strip().startswith('#EXTINF:') for line in content_lines):
+                        is_valid_m3u = True
+                        logger.info("Content validated as M3U: contains #EXTINF entries")
+                    elif any(line.strip().startswith('http') for line in content_lines):
+                        # Has HTTP URLs, might be a simple M3U without headers
+                        is_valid_m3u = True
+                        logger.info("Content validated as M3U: contains HTTP URLs")
+
+                    if not is_valid_m3u:
+                        # Log what we actually received for debugging
+                        logger.error(f"Invalid M3U content received. First 200 characters: {content_str[:200]!r}")
+
+                        # Try to provide more specific error messages based on content
+                        if '<html' in content_lower or '<!doctype html' in content_lower:
+                            error_msg = f"Server returned HTML page instead of M3U file from URL: {account.server_url}. This usually indicates an error or authentication issue."
+                        elif 'error' in content_lower or 'not found' in content_lower:
+                            error_msg = f"Server returned an error message instead of M3U file from URL: {account.server_url}. Content: {content_str[:100]}"
+                        elif len(content_str.strip()) == 0:
+                            error_msg = f"Server returned completely empty response from URL: {account.server_url}"
+                        else:
+                            error_msg = f"Server provided invalid M3U content from URL: {account.server_url}. Content does not appear to be a valid M3U file."
+                        logger.error(error_msg)
+                        account.status = M3UAccount.Status.ERROR
+                        account.last_message = error_msg
+                        account.save(update_fields=["status", "last_message"])
+                        send_m3u_update(
+                            account.id,
+                            "downloading",
+                            100,
+                            status="error",
+                            error=error_msg,
+                        )
+                        return [], False
+
+                except UnicodeDecodeError:
+                    logger.error(f"Non-text content received. First 200 bytes: {temp_content[:200]!r}")
+                    error_msg = f"Server provided non-text content from URL: {account.server_url}. Unable to process as M3U file."
+                    logger.error(error_msg)
+                    account.status = M3UAccount.Status.ERROR
+                    account.last_message = error_msg
+                    account.save(update_fields=["status", "last_message"])
+                    send_m3u_update(
+                        account.id,
+                        "downloading",
+                        100,
+                        status="error",
+                        error=error_msg,
+                    )
+                    return [], False
+
+                # Content is valid, save it to file
                 with open(file_path, "wb") as file:
-                    send_m3u_update(account.id, "downloading", 0)
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            file.write(chunk)
-
-                            downloaded += len(chunk)
-                            elapsed_time = time.time() - start_time
-
-                            # Calculate download speed in KB/s
-                            speed = downloaded / elapsed_time / 1024  # in KB/s
-
-                            # Calculate progress percentage
-                            if total_size and total_size > 0:
-                                progress = (downloaded / total_size) * 100
-
-                            # Time remaining (in seconds)
-                            time_remaining = (
-                                (total_size - downloaded) / (speed * 1024)
-                                if speed > 0
-                                else 0
-                            )
-
-                            current_time = time.time()
-                            if current_time - last_update_time >= 0.5:
-                                last_update_time = current_time
-                                if progress > 0:
-                                    # Update the account's last_message with detailed progress info
-                                    progress_msg = f"Downloading: {progress:.1f}% - {speed:.1f} KB/s - {time_remaining:.1f}s remaining"
-                                    account.last_message = progress_msg
-                                    account.save(update_fields=["last_message"])
-
-                                    send_m3u_update(
-                                        account.id,
-                                        "downloading",
-                                        progress,
-                                        speed=speed,
-                                        elapsed_time=elapsed_time,
-                                        time_remaining=time_remaining,
-                                        message=progress_msg,
-                                    )
+                    file.write(temp_content)
 
                 # Final update with 100% progress
                 final_msg = f"Download complete. Size: {total_size/1024/1024:.2f} MB, Time: {time.time() - start_time:.1f}s"
                 account.last_message = final_msg
                 account.save(update_fields=["last_message"])
                 send_m3u_update(account.id, "downloading", 100, message=final_msg)
-            except Exception as e:
-                logger.error(f"Error fetching M3U from URL {account.server_url}: {e}")
-                # Update account status and send error notification
+            except requests.exceptions.HTTPError as e:
+                # Handle HTTP errors specifically with more context
+                status_code = e.response.status_code if e.response else "unknown"
+
+                # Try to capture the error response content
+                response_content = ""
+                if e.response:
+                    try:
+                        response_content = e.response.text[:500]  # Limit to first 500 characters
+                        logger.error(f"HTTP error response content: {response_content!r}")
+                    except Exception as content_error:
+                        logger.error(f"Could not read HTTP error response content: {content_error}")
+                        response_content = "Could not read error response content"
+
+                if status_code == 404:
+                    error_msg = f"M3U file not found (404) at URL: {account.server_url}. Server message: {response_content}"
+                elif status_code == 403:
+                    error_msg = f"Access forbidden (403) to M3U file at URL: {account.server_url}. Server message: {response_content}"
+                elif status_code == 401:
+                    error_msg = f"Authentication required (401) for M3U file at URL: {account.server_url}. Server message: {response_content}"
+                elif status_code == 500:
+                    error_msg = f"Server error (500) while fetching M3U file from URL: {account.server_url}. Server message: {response_content}"
+                else:
+                    error_msg = f"HTTP error ({status_code}) while fetching M3U file from URL: {account.server_url}. Server message: {response_content}"
+
+                logger.error(error_msg)
                 account.status = M3UAccount.Status.ERROR
-                account.last_message = f"Error downloading M3U file: {str(e)}"
+                account.last_message = error_msg
                 account.save(update_fields=["status", "last_message"])
                 send_m3u_update(
                     account.id,
                     "downloading",
                     100,
                     status="error",
-                    error=f"Error downloading M3U file: {str(e)}",
+                    error=error_msg,
                 )
-                return [], False  # Return empty list and False for success
+                return [], False
+            except requests.exceptions.RequestException as e:
+                # Handle other request errors (connection, timeout, etc.)
+                if "timeout" in str(e).lower():
+                    error_msg = f"Timeout while fetching M3U file from URL: {account.server_url}"
+                elif "connection" in str(e).lower():
+                    error_msg = f"Connection error while fetching M3U file from URL: {account.server_url}"
+                else:
+                    error_msg = f"Network error while fetching M3U file from URL: {account.server_url} - {str(e)}"
 
-        # Check if the file exists and is not empty
+                logger.error(error_msg)
+                account.status = M3UAccount.Status.ERROR
+                account.last_message = error_msg
+                account.save(update_fields=["status", "last_message"])
+                send_m3u_update(
+                    account.id,
+                    "downloading",
+                    100,
+                    status="error",
+                    error=error_msg,
+                )
+                return [], False
+            except Exception as e:
+                # Handle any other unexpected errors
+                error_msg = f"Unexpected error while fetching M3U file from URL: {account.server_url} - {str(e)}"
+                logger.error(error_msg)
+                account.status = M3UAccount.Status.ERROR
+                account.last_message = error_msg
+                account.save(update_fields=["status", "last_message"])
+                send_m3u_update(
+                    account.id,
+                    "downloading",
+                    100,
+                    status="error",
+                    error=error_msg,
+                )
+                return [], False
+
+        # Check if the file exists and is not empty (fallback check - should not happen with new validation)
         if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-            error_msg = f"M3U file not found or empty: {file_path}"
+            error_msg = f"M3U file is unexpectedly missing or empty after validation: {file_path}"
             logger.error(error_msg)
             account.status = M3UAccount.Status.ERROR
             account.last_message = error_msg
