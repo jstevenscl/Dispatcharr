@@ -1648,8 +1648,10 @@ def sync_auto_channels(account_id, scan_start_time=None):
                             else ""
                         )
                         try:
+                            # Convert $1, $2, etc. to \1, \2, etc. for consistency with M3U profiles
+                            safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', replace)
                             new_name = re.sub(
-                                name_regex_pattern, replace, original_name
+                                name_regex_pattern, safe_replace_pattern, original_name
                             )
                         except re.error as e:
                             logger.warning(
