@@ -283,6 +283,75 @@ def version(request):
 
 
 @swagger_auto_schema(
+    method="get",
+    operation_description="Fetch latest GitHub release info for Dispatcharr",
+    responses={200: "Latest release information"},
+)
+@api_view(["GET"])
+def latest_release(request):
+    """Return information about the latest GitHub release and whether it's newer than current."""
+    from version import __version__ as current_version
+
+    api_url = "https://api.github.com/repos/Dispatcharr/Dispatcharr/releases/latest"
+    try:
+        r = requests.get(
+            api_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "Dispatcharr",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        logger.warning(f"Failed to fetch latest release: {e}")
+        return Response(
+            {
+                "current_version": current_version,
+                "latest_version": current_version,
+                "latest_url": None,
+                "is_newer": False,
+                "error": True,
+                "message": "Unable to check GitHub releases",
+            }
+        )
+
+    tag = data.get("tag_name") or data.get("name") or ""
+    latest_version = str(tag).lstrip("vV").strip() or current_version
+
+    def parse_ver(v: str):
+        parts = []
+        for p in v.split("."):
+            try:
+                parts.append(int(p))
+            except Exception:
+                # Strip non-digits prefix/suffix like rc, beta
+                num = "".join(ch for ch in p if ch.isdigit())
+                parts.append(int(num) if num else 0)
+        # Normalize length
+        while len(parts) < 3:
+            parts.append(0)
+        return tuple(parts[:3])
+
+    try:
+        is_newer = parse_ver(latest_version) > parse_ver(current_version)
+    except Exception:
+        is_newer = latest_version != current_version
+
+    return Response(
+        {
+            "current_version": current_version,
+            "latest_version": latest_version,
+            "latest_url": data.get("html_url"),
+            "is_newer": bool(is_newer),
+            "published_at": data.get("published_at"),
+            "release_name": data.get("name"),
+            "prerelease": data.get("prerelease", False),
+        }
+    )
+
+@swagger_auto_schema(
     method="post",
     operation_description="Trigger rehashing of all streams",
     responses={200: "Rehash task started"},

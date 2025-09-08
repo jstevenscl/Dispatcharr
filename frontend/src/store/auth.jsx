@@ -9,6 +9,7 @@ import useUserAgentsStore from './userAgents';
 import useUsersStore from './users';
 import useLogosStore from './logos';
 import API from '../api';
+import useNotificationsStore from './notifications';
 import { USER_LEVELS } from '../constants';
 
 const decodeToken = (token) => {
@@ -61,6 +62,13 @@ const useAuthStore = create((set, get) => ({
 
       if (user.user_level >= USER_LEVELS.ADMIN) {
         await Promise.all([useUsersStore.getState().fetchUsers()]);
+      }
+
+      // Load notification preferences from user custom_properties
+      try {
+        useNotificationsStore.getState().loadFromUser(user);
+      } catch (e) {
+        console.warn('Failed to load notification prefs:', e);
       }
 
       set({ user, isAuthenticated: true });

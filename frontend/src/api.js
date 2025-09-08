@@ -1219,6 +1219,18 @@ export default class API {
     }
   }
 
+  static async getLatestRelease() {
+    try {
+      const response = await request(`${host}/api/core/latest-release/`, {
+        auth: false,
+      });
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to check latest release', e);
+    }
+  }
+
   static async checkSetting(values) {
     const { id, ...payload } = values;
 
@@ -1852,6 +1864,25 @@ export default class API {
 
   static async me() {
     return await request(`${host}/api/accounts/users/me/`);
+  }
+
+  static async getMyPreferences() {
+    try {
+      return await request(`${host}/api/accounts/users/me/preferences/`);
+    } catch (e) {
+      errorNotification('Failed to fetch preferences', e);
+    }
+  }
+
+  static async updateMyPreferences(body) {
+    try {
+      return await request(`${host}/api/accounts/users/me/preferences/`, {
+        method: 'PATCH',
+        body,
+      });
+    } catch (e) {
+      errorNotification('Failed to update preferences', e);
+    }
   }
 
   static async getUsers() {

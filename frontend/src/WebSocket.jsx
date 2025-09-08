@@ -13,6 +13,7 @@ import useLogosStore from './store/logos';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
 import { Box, Button, Stack, Alert, Group } from '@mantine/core';
+import useNotificationsStore from './store/notifications';
 import API from './api';
 import useSettingsStore from './store/settings';
 import useAuthStore from './store/auth';
@@ -296,10 +297,12 @@ export const WebsocketProvider = ({ children }) => {
               break;
 
             case 'epg_channels':
-              notifications.show({
-                message: 'EPG channels updated!',
-                color: 'green.5',
-              });
+              if (useNotificationsStore.getState().isEnabled('epg_events')) {
+                notifications.show({
+                  message: 'EPG channels updated!',
+                  color: 'green.5',
+                });
+              }
 
               // If source_id is provided, update that specific EPG's status
               if (parsedEvent.data.source_id) {
@@ -316,10 +319,12 @@ export const WebsocketProvider = ({ children }) => {
               break;
 
             case 'epg_match':
-              notifications.show({
-                message: parsedEvent.data.message || 'EPG match is complete!',
-                color: 'green.5',
-              });
+              if (useNotificationsStore.getState().isEnabled('epg_events')) {
+                notifications.show({
+                  message: parsedEvent.data.message || 'EPG match is complete!',
+                  color: 'green.5',
+                });
+              }
 
               // Check if we have associations data and use the more efficient batch API
               if (
@@ -354,10 +359,12 @@ export const WebsocketProvider = ({ children }) => {
               break;
 
             case 'recording_started':
-              notifications.show({
-                title: 'Recording started!',
-                message: `Started recording channel ${parsedEvent.data.channel}`,
-              });
+              if (useNotificationsStore.getState().isEnabled('epg_events')) {
+                notifications.show({
+                  title: 'Recording started!',
+                  message: `Started recording channel ${parsedEvent.data.channel}`,
+                });
+              }
               try {
                 await useChannelsStore.getState().fetchRecordings();
               } catch (e) {
@@ -366,10 +373,12 @@ export const WebsocketProvider = ({ children }) => {
               break;
 
             case 'recording_ended':
-              notifications.show({
-                title: 'Recording finished!',
-                message: `Stopped recording channel ${parsedEvent.data.channel}`,
-              });
+              if (useNotificationsStore.getState().isEnabled('epg_events')) {
+                notifications.show({
+                  title: 'Recording finished!',
+                  message: `Stopped recording channel ${parsedEvent.data.channel}`,
+                });
+              }
               try {
                 await useChannelsStore.getState().fetchRecordings();
               } catch (e) {

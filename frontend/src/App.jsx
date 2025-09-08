@@ -31,6 +31,7 @@ import mantineTheme from './mantineTheme';
 import API from './api';
 import { Notifications } from '@mantine/notifications';
 import M3URefreshNotification from './components/M3URefreshNotification';
+import UpdatePromptManager from './components/UpdatePromptManager';
 import 'allotment/dist/style.css';
 
 const drawerWidth = 240;
@@ -164,6 +165,7 @@ const App = () => {
             </AppShell.Main>
           </AppShell>
           <M3URefreshNotification />
+          <UpdatePromptManager />
           <Notifications containerWidth={350} />
         </Router>
       </WebsocketProvider>

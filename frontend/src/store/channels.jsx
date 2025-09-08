@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../api';
 import { notifications } from '@mantine/notifications';
+import useNotificationsStore from './notifications';
 
 const defaultProfiles = { 0: { id: '0', name: 'All', channels: new Set() } };
 
@@ -332,11 +333,13 @@ const useChannelsStore = create((set, get) => ({
             const channel = channelId ? channels[channelId] : null;
 
             if (channel) {
-              notifications.show({
-                title: 'New channel streaming',
-                message: channel.name,
-                color: 'blue.5',
-              });
+              if (useNotificationsStore.getState().isEnabled('channel_stream_started')) {
+                notifications.show({
+                  title: 'New channel streaming',
+                  message: channel.name,
+                  color: 'blue.5',
+                });
+              }
             }
           }
         }
@@ -345,11 +348,13 @@ const useChannelsStore = create((set, get) => ({
           // This check prevents the notifications if streams are active on page load
           if (currentStats.channels) {
             if (oldClients[client.client_id] === undefined) {
-              notifications.show({
-                title: 'New client started streaming',
-                message: `Client streaming from ${client.ip_address}`,
-                color: 'blue.5',
-              });
+              if (useNotificationsStore.getState().isEnabled('client_stream_started')) {
+                notifications.show({
+                  title: 'New client started streaming',
+                  message: `Client streaming from ${client.ip_address}`,
+                  color: 'blue.5',
+                });
+              }
             }
           }
         });
@@ -363,28 +368,32 @@ const useChannelsStore = create((set, get) => ({
             const channelId = channelsByUUID[uuid];
             const channel = channelId && channels[channelId];
 
-            if (channel) {
-              notifications.show({
-                title: 'Channel streaming stopped',
-                message: channel.name,
-                color: 'blue.5',
-              });
-            } else {
-              notifications.show({
-                title: 'Channel streaming stopped',
-                message: `Channel (${uuid})`,
-                color: 'blue.5',
-              });
+            if (useNotificationsStore.getState().isEnabled('channel_stream_stopped')) {
+              if (channel) {
+                notifications.show({
+                  title: 'Channel streaming stopped',
+                  message: channel.name,
+                  color: 'blue.5',
+                });
+              } else {
+                notifications.show({
+                  title: 'Channel streaming stopped',
+                  message: `Channel (${uuid})`,
+                  color: 'blue.5',
+                });
+              }
             }
           }
         }
         for (const clientId in oldClients) {
           if (newClients[clientId] === undefined) {
-            notifications.show({
-              title: 'Client stopped streaming',
-              message: `Client stopped streaming from ${oldClients[clientId].ip_address}`,
-              color: 'blue.5',
-            });
+            if (useNotificationsStore.getState().isEnabled('client_stream_stopped')) {
+              notifications.show({
+                title: 'Client stopped streaming',
+                message: `Client stopped streaming from ${oldClients[clientId].ip_address}`,
+                color: 'blue.5',
+              });
+            }
           }
         }
       }

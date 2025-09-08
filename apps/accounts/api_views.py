@@ -138,7 +138,7 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
     def get_permissions(self):
-        if self.action == "me":
+        if self.action in ["me", "preferences"]:
             return [Authenticated()]
 
         return [IsAdmin()]
@@ -175,6 +175,28 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         serializer = UserSerializer(user)
         return Response(serializer.data)
+
+    @swagger_auto_schema(
+        method="get",
+        operation_description="Get current user's preferences (custom_properties)",
+    )
+    @swagger_auto_schema(
+        method="patch",
+        operation_description="Update current user's preferences (custom_properties)",
+    )
+    @action(detail=False, methods=["get", "patch"], url_path="me/preferences")
+    def preferences(self, request):
+        user = request.user
+        if request.method == "GET":
+            return Response(user.custom_properties or {})
+
+        data = request.data or {}
+        # Merge incoming data into existing custom_properties (shallow merge)
+        props = user.custom_properties or {}
+        props.update(data)
+        user.custom_properties = props
+        user.save(update_fields=["custom_properties"])
+        return Response(user.custom_properties)
 
 
 # 🔹 3) Group Management APIs

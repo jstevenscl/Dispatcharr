@@ -32,6 +32,8 @@ import {
 } from '../constants';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import useWarningsStore from '../store/warnings';
+import useNotificationsStore, { DEFAULT_CATEGORIES } from '../store/notifications';
+import { notifications as toast } from '@mantine/notifications';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
@@ -61,6 +63,12 @@ const SettingsPage = () => {
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
   const [timeFormat, setTimeFormat] = useLocalStorage('time-format', '12h');
   const [dateFormat, setDateFormat] = useLocalStorage('date-format', 'mdy');
+  const [currentVersion, setCurrentVersion] = useState(null);
+  const [latestRelease, setLatestRelease] = useState(null);
+  const notifPrefs = useNotificationsStore((s) => s.prefs);
+  const setCategory = useNotificationsStore((s) => s.setCategory);
+  const setUpdatePolicy = useNotificationsStore((s) => s.setUpdatePolicy);
+  const saveNotifPrefs = useNotificationsStore((s) => s.save);
 
   const regionChoices = REGION_CHOICES;
 
@@ -169,6 +177,29 @@ const SettingsPage = () => {
       }
     }
   }, [settings]);
+
+  useEffect(() => {
+    // Load version info for Notification settings
+    (async () => {
+      try {
+        const v = await API.getVersion();
+        setCurrentVersion(v?.version || null);
+      } catch {}
+      try {
+        const r = await API.getLatestRelease();
+        setLatestRelease(r || null);
+      } catch {}
+    })();
+  }, []);
+
+  const onSaveNotifications = async () => {
+    try {
+      await saveNotifPrefs();
+      toast.show({ title: 'Notification settings saved' });
+    } catch (e) {
+      // errorNotification handled in API
+    }
+  };
 
   const onSubmit = async () => {
     const values = form.getValues();
@@ -821,6 +852,73 @@ const SettingsPage = () => {
                       </Flex>
                     </Stack>
                   </form>
+                </Accordion.Panel>
+              </Accordion.Item>
+
+              <Accordion.Item value="notifications">
+                <Accordion.Control>
+                  <Box>Notifications</Box>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  <Stack gap="sm">
+                    <Box>
+                      <Text size="sm" fw={600}>Version</Text>
+                      <Text size="sm">Current: {currentVersion || '—'}</Text>
+                      <Text size="sm">
+                        Latest: {latestRelease?.latest_version || '—'}{' '}
+                        {latestRelease?.latest_url && (
+                          <a
+                            href={latestRelease.latest_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ marginLeft: 6 }}
+                          >
+                            View on GitHub
+                          </a>
+                        )}
+                      </Text>
+                    </Box>
+
+                    <Select
+                      label="Update notification frequency"
+                      value={
+                        notifPrefs?.notifications?.updates?.policy || 'on_login'
+                      }
+                      onChange={(v) => setUpdatePolicy(v)}
+                      data={[
+                        { value: 'on_login', label: 'On login' },
+                        { value: 'daily', label: 'Once per day (on login)' },
+                        { value: 'weekly', label: 'Once per week (on login)' },
+                        { value: 'never', label: 'Never' },
+                      ]}
+                    />
+
+                    <Box>
+                      <Text size="sm" fw={600} mb={4}>
+                        App notifications
+                      </Text>
+                      {Object.entries(DEFAULT_CATEGORIES).map(([k, _]) => (
+                        <Group key={k} justify="space-between" mt={8}>
+                          <Text size="sm" style={{ textTransform: 'capitalize' }}>
+                            {k.replaceAll('_', ' ')}
+                          </Text>
+                          <Switch
+                            checked={
+                              (notifPrefs?.notifications?.categories || {})[k] !==
+                              false
+                            }
+                            onChange={(e) => setCategory(k, e.currentTarget.checked)}
+                          />
+                        </Group>
+                      ))}
+                    </Box>
+
+                    <Flex mih={50} gap="xs" justify="flex-end" align="flex-end">
+                      <Button variant="default" onClick={onSaveNotifications}>
+                        Save
+                      </Button>
+                    </Flex>
+                  </Stack>
                 </Accordion.Panel>
               </Accordion.Item>
             </>
