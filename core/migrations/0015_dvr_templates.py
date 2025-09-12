@@ -8,10 +8,10 @@ def add_dvr_defaults(apps, schema_editor):
     CoreSettings = apps.get_model("core", "CoreSettings")
 
     defaults = [
-        (slugify("DVR TV Template"), "DVR TV Template", "Recordings/TV_Shows/{show}/S{season:02d}E{episode:02d}.mkv"),
-        (slugify("DVR Movie Template"), "DVR Movie Template", "Recordings/Movies/{title} ({year}).mkv"),
-        (slugify("DVR TV Fallback Template"), "DVR TV Fallback Template", "Recordings/TV_Shows/{show}/{start}.mkv"),
-        (slugify("DVR Movie Fallback Template"), "DVR Movie Fallback Template", "Recordings/Movies/{start}.mkv"),
+        (slugify("DVR TV Template"), "DVR TV Template", "recordings/TV_Shows/{show}/S{season:02d}E{episode:02d}.mkv"),
+        (slugify("DVR Movie Template"), "DVR Movie Template", "recordings/Movies/{title} ({year}).mkv"),
+        (slugify("DVR TV Fallback Template"), "DVR TV Fallback Template", "recordings/TV_Shows/{show}/{start}.mkv"),
+        (slugify("DVR Movie Fallback Template"), "DVR Movie Fallback Template", "recordings/Movies/{start}.mkv"),
         (slugify("DVR Comskip Enabled"), "DVR Comskip Enabled", "false"),
     ]
 
