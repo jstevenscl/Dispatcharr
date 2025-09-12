@@ -328,7 +328,7 @@ export default function PluginsPage() {
           </SimpleGrid>
           {plugins.length === 0 && (
             <Box>
-              <Text c="dimmed">No plugins found. Drop a plugin into <code>/app/data/plugins</code> and reload.</Text>
+              <Text c="dimmed">No plugins found. Drop a plugin into <code>/data/plugins</code> and reload.</Text>
             </Box>
           )}
         </>

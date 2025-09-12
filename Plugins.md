@@ -6,12 +6,12 @@ This document explains how to build, install, and use Python plugins in Dispatch
 
 ## Quick Start
 
-1) Create a folder under `/app/data/plugins/my_plugin/` (host path `data/plugins/my_plugin/` in the repo).
+1) Create a folder under `/data/plugins/my_plugin/`.
 
 2) Add a `plugin.py` file exporting a `Plugin` class:
 
 ```
-# /app/data/plugins/my_plugin/plugin.py
+# /data/plugins/my_plugin/plugin.py
 class Plugin:
     name = "My Plugin"
     version = "0.1.0"
@@ -54,7 +54,7 @@ class Plugin:
 
 ## Where Plugins Live
 
-- Default directory: `/app/data/plugins` inside the container.
+- Default directory: `/data/plugins` inside the container.
 - Override with env var: `DISPATCHARR_PLUGINS_DIR`.
 - Each plugin is a directory containing either:
   - `plugin.py` exporting a `Plugin` class, or
@@ -255,7 +255,7 @@ class Plugin:
 - Validate and sanitize `params` received from the UI.
 - Use database transactions for bulk or related updates.
 - Log actionable messages for troubleshooting.
-- Only write files under `/data` or `/app/data` paths.
+- Only write files under `/data` path.
 - Treat plugins as trusted code: they run with full app permissions.
 
 ---
