@@ -631,7 +631,7 @@ def _build_output_paths(channel, program, start_time, end_time):
     # As a last resort for TV
     if not is_movie and not rel_path:
         rel_path = f"TV_Shows/{show}/S{season:02d}E{episode:02d}.mkv"
-    # Keep any leading folder like 'recordings/' from the template so users can
+    # Keep any leading folder like 'Recordings/' from the template so users can
     # structure their library under /data as desired.
     if not rel_path.lower().endswith('.mkv'):
         rel_path = f"{rel_path}.mkv"
