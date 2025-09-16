@@ -16,6 +16,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useDebouncedValue } from '@mantine/hooks';
 import { Filter, ListChecks, Plus, RefreshCcw, ServerOff } from 'lucide-react';
+import { shallow } from 'zustand/shallow';
 
 import useLibraryStore from '../store/library';
 import useMediaLibraryStore from '../store/mediaLibrary';
@@ -55,19 +56,22 @@ const LibraryPage = () => {
     setSelectedLibrary,
     filters: libraryFilters,
     setFilters: setLibraryFilters,
-  } = useLibraryStore((state) => ({
-    libraries: state.libraries,
-    loading: state.loading,
-    fetchLibraries: state.fetchLibraries,
-    createLibrary: state.createLibrary,
-    updateLibrary: state.updateLibrary,
-    deleteLibrary: state.deleteLibrary,
-    triggerScan: state.triggerScan,
-    selectedLibraryId: state.selectedLibraryId,
-    setSelectedLibrary: state.setSelectedLibrary,
-    filters: state.filters,
-    setFilters: state.setFilters,
-  }));
+  } = useLibraryStore(
+    (state) => ({
+      libraries: state.libraries,
+      loading: state.loading,
+      fetchLibraries: state.fetchLibraries,
+      createLibrary: state.createLibrary,
+      updateLibrary: state.updateLibrary,
+      deleteLibrary: state.deleteLibrary,
+      triggerScan: state.triggerScan,
+      selectedLibraryId: state.selectedLibraryId,
+      setSelectedLibrary: state.setSelectedLibrary,
+      filters: state.filters,
+      setFilters: state.setFilters,
+    }),
+    shallow
+  );
 
   const {
     items,
@@ -81,19 +85,22 @@ const LibraryPage = () => {
     fetchItems,
     openItem,
     closeItem,
-  } = useMediaLibraryStore((state) => ({
-    items: state.items,
-    loading: state.loading,
-    total: state.total,
-    page: state.page,
-    pageSize: state.pageSize,
-    setPage: state.setPage,
-    filters: state.filters,
-    setFilters: state.setFilters,
-    fetchItems: state.fetchItems,
-    openItem: state.openItem,
-    closeItem: state.closeItem,
-  }));
+  } = useMediaLibraryStore(
+    (state) => ({
+      items: state.items,
+      loading: state.loading,
+      total: state.total,
+      page: state.page,
+      pageSize: state.pageSize,
+      setPage: state.setPage,
+      filters: state.filters,
+      setFilters: state.setFilters,
+      fetchItems: state.fetchItems,
+      openItem: state.openItem,
+      closeItem: state.closeItem,
+    }),
+    shallow
+  );
 
   useEffect(() => {
     fetchLibraries();

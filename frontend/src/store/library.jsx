@@ -16,7 +16,10 @@ const useLibraryStore = create(
       autoScan: 'all',
     },
 
-    setSelectedLibrary: (id) => set({ selectedLibraryId: id }),
+    setSelectedLibrary: (id) =>
+      set((state) => {
+        state.selectedLibraryId = id;
+      }),
 
     setFilters: (filters) =>
       set((state) => {
@@ -24,7 +27,10 @@ const useLibraryStore = create(
       }),
 
     fetchLibraries: async () => {
-      set({ loading: true, error: null });
+      set((state) => {
+        state.loading = true;
+        state.error = null;
+      });
       try {
         const params = new URLSearchParams();
         const { filters } = get();
@@ -44,7 +50,10 @@ const useLibraryStore = create(
         });
       } catch (error) {
         console.error('Failed to fetch libraries', error);
-        set({ error: 'Failed to load libraries', loading: false });
+        set((state) => {
+          state.error = 'Failed to load libraries';
+          state.loading = false;
+        });
       }
     },
 
@@ -91,7 +100,9 @@ const useLibraryStore = create(
     },
 
     fetchScans: async (libraryId) => {
-      set({ scansLoading: true });
+      set((state) => {
+        state.scansLoading = true;
+      });
       try {
         const params = new URLSearchParams();
         if (libraryId) {
@@ -106,7 +117,9 @@ const useLibraryStore = create(
         });
       } catch (error) {
         console.error('Failed to fetch scans', error);
-        set({ scansLoading: false });
+        set((state) => {
+          state.scansLoading = false;
+        });
       }
     },
 

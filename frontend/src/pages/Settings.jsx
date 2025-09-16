@@ -36,6 +36,7 @@ import {
 } from '../constants';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import useWarningsStore from '../store/warnings';
+import { shallow } from 'zustand/shallow';
 import { notifications } from '@mantine/notifications';
 import useLibraryStore from '../store/library';
 import LibraryFormModal from '../components/library/LibraryFormModal';
@@ -57,15 +58,18 @@ const SettingsPage = () => {
     updateLibrary: updateMediaLibrary,
     deleteLibrary: deleteMediaLibrary,
     triggerScan: triggerLibraryScan,
-  } = useLibraryStore((state) => ({
-    libraries: state.libraries,
-    loading: state.loading,
-    fetchLibraries: state.fetchLibraries,
-    createLibrary: state.createLibrary,
-    updateLibrary: state.updateLibrary,
-    deleteLibrary: state.deleteLibrary,
-    triggerScan: state.triggerScan,
-  }));
+  } = useLibraryStore(
+    (state) => ({
+      libraries: state.libraries,
+      loading: state.loading,
+      fetchLibraries: state.fetchLibraries,
+      createLibrary: state.createLibrary,
+      updateLibrary: state.updateLibrary,
+      deleteLibrary: state.deleteLibrary,
+      triggerScan: state.triggerScan,
+    }),
+    shallow
+  );
 
   const [accordianValue, setAccordianValue] = useState(null);
   const [networkAccessSaved, setNetworkAccessSaved] = useState(false);

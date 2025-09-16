@@ -29,18 +29,35 @@ const useMediaLibraryStore = create(
         state.page = 1;
       }),
 
-    setPage: (page) => set({ page }),
+    setPage: (page) =>
+      set((state) => {
+        state.page = page;
+      }),
 
-    setPageSize: (pageSize) => set({ pageSize, page: 1 }),
+    setPageSize: (pageSize) =>
+      set((state) => {
+        state.pageSize = pageSize;
+        state.page = 1;
+      }),
 
-    resetFilters: () => set({ filters: { ...initialFilters }, page: 1 }),
+    resetFilters: () =>
+      set((state) => {
+        state.filters = { ...initialFilters };
+        state.page = 1;
+      }),
 
     fetchItems: async (libraryId) => {
       if (!libraryId) {
-        set({ items: [], total: 0 });
+        set((state) => {
+          state.items = [];
+          state.total = 0;
+        });
         return;
       }
-      set({ loading: true, error: null });
+      set((state) => {
+        state.loading = true;
+        state.error = null;
+      });
       try {
         const { page, pageSize, filters } = get();
         const params = new URLSearchParams();
@@ -61,36 +78,50 @@ const useMediaLibraryStore = create(
         }
         const response = await API.getMediaItems(params);
         const results = response.results || response;
-        set({
-          items: Array.isArray(results) ? results : [],
-          total: response.count || results.length || 0,
-          loading: false,
+        set((state) => {
+          state.items = Array.isArray(results) ? results : [];
+          state.total = response.count || results.length || 0;
+          state.loading = false;
         });
       } catch (error) {
         console.error('Failed to fetch media items', error);
-        set({ error: 'Failed to load media items', loading: false });
+        set((state) => {
+          state.error = 'Failed to load media items';
+          state.loading = false;
+        });
       }
     },
 
     openItem: async (id) => {
-      set({ activeItemLoading: true, resumePrompt: null, activeProgress: null });
+      set((state) => {
+        state.activeItemLoading = true;
+        state.resumePrompt = null;
+        state.activeProgress = null;
+      });
       try {
         const response = await API.getMediaItem(id);
         const progress = response.watch_progress || null;
-        set({
-          activeItem: response,
-          activeItemLoading: false,
-          activeProgress: progress,
+        set((state) => {
+          state.activeItem = response;
+          state.activeItemLoading = false;
+          state.activeProgress = progress;
         });
         return response;
       } catch (error) {
         console.error('Failed to load media item', error);
-        set({ activeItemLoading: false });
+        set((state) => {
+          state.activeItemLoading = false;
+        });
         throw error;
       }
     },
 
-    closeItem: () => set({ activeItem: null, resumePrompt: null, activeProgress: null }),
+    closeItem: () =>
+      set((state) => {
+        state.activeItem = null;
+        state.resumePrompt = null;
+        state.activeProgress = null;
+      }),
 
     setActiveProgress: (progress) =>
       set((state) => {
@@ -109,7 +140,9 @@ const useMediaLibraryStore = create(
       if (!progressId) return null;
       try {
         const response = await API.resumeMediaProgress(progressId);
-        set({ resumePrompt: response });
+        set((state) => {
+          state.resumePrompt = response;
+        });
         return response;
       } catch (error) {
         console.error('Failed to get resume info', error);
@@ -117,7 +150,10 @@ const useMediaLibraryStore = create(
       }
     },
 
-    clearResumePrompt: () => set({ resumePrompt: null }),
+    clearResumePrompt: () =>
+      set((state) => {
+        state.resumePrompt = null;
+      }),
   }))
 );
 
