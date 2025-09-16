@@ -16,7 +16,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useDebouncedValue } from '@mantine/hooks';
 import { Filter, ListChecks, Plus, RefreshCcw, ServerOff } from 'lucide-react';
-import { shallow } from 'zustand/shallow';
 
 import useLibraryStore from '../store/library';
 import useMediaLibraryStore from '../store/mediaLibrary';
@@ -44,89 +43,76 @@ const LibraryPage = () => {
   const [playbackModalOpen, setPlaybackModalOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  const {
-    libraries,
-    loading: librariesLoading,
-    fetchLibraries,
-    createLibrary,
-    updateLibrary,
-    deleteLibrary,
-    triggerScan,
-    selectedLibraryId,
-    setSelectedLibrary,
-    filters: libraryFilters,
-    setFilters: setLibraryFilters,
-  } = useLibraryStore(
-    (state) => ({
-      libraries: state.libraries,
-      loading: state.loading,
-      fetchLibraries: state.fetchLibraries,
-      createLibrary: state.createLibrary,
-      updateLibrary: state.updateLibrary,
-      deleteLibrary: state.deleteLibrary,
-      triggerScan: state.triggerScan,
-      selectedLibraryId: state.selectedLibraryId,
-      setSelectedLibrary: state.setSelectedLibrary,
-      filters: state.filters,
-      setFilters: state.setFilters,
-    }),
-    shallow
-  );
+  // ---- Library store (one selector per field/action) ----
+  const libraries = useLibraryStore((s) => s.libraries);
+  const librariesLoading = useLibraryStore((s) => s.loading);
+  const fetchLibraries = useLibraryStore((s) => s.fetchLibraries);
+  const createLibrary = useLibraryStore((s) => s.createLibrary);
+  const updateLibrary = useLibraryStore((s) => s.updateLibrary);
+  const deleteLibrary = useLibraryStore((s) => s.deleteLibrary);
+  const triggerScan = useLibraryStore((s) => s.triggerScan);
+  const selectedLibraryId = useLibraryStore((s) => s.selectedLibraryId);
+  const setSelectedLibrary = useLibraryStore((s) => s.setSelectedLibrary);
+  const libraryFilters = useLibraryStore((s) => s.filters);
+  const setLibraryFilters = useLibraryStore((s) => s.setFilters);
 
-  const {
-    items,
-    loading: itemsLoading,
-    total,
-    page,
-    pageSize,
-    setPage,
-    filters: itemFilters,
-    setFilters: setItemFilters,
-    fetchItems,
-    openItem,
-    closeItem,
-  } = useMediaLibraryStore(
-    (state) => ({
-      items: state.items,
-      loading: state.loading,
-      total: state.total,
-      page: state.page,
-      pageSize: state.pageSize,
-      setPage: state.setPage,
-      filters: state.filters,
-      setFilters: state.setFilters,
-      fetchItems: state.fetchItems,
-      openItem: state.openItem,
-      closeItem: state.closeItem,
-    }),
-    shallow
-  );
+  // ---- Media store (one selector per field/action) ----
+  const items = useMediaLibraryStore((s) => s.items);
+  const itemsLoading = useMediaLibraryStore((s) => s.loading);
+  const total = useMediaLibraryStore((s) => s.total);
+  const page = useMediaLibraryStore((s) => s.page);
+  const pageSize = useMediaLibraryStore((s) => s.pageSize);
+  const setPage = useMediaLibraryStore((s) => s.setPage);
+  const itemFilters = useMediaLibraryStore((s) => s.filters);
+  const setItemFilters = useMediaLibraryStore((s) => s.setFilters);
+  const fetchItems = useMediaLibraryStore((s) => s.fetchItems);
+  const openItem = useMediaLibraryStore((s) => s.openItem);
+  const closeItem = useMediaLibraryStore((s) => s.closeItem);
 
+  // ---- Effects ----
+
+  // Initial library load (run once on mount)
   useEffect(() => {
     fetchLibraries();
-  }, [fetchLibraries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Debounced media search change -> update filters & reset page
   useEffect(() => {
     setItemFilters({ search: debouncedSearch });
     setPage(1);
-  }, [debouncedSearch, setItemFilters, setPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
+  // Debounced library search change -> update filters & refresh libraries
   useEffect(() => {
     setLibraryFilters({ search: debouncedLibrarySearch });
     fetchLibraries();
-  }, [debouncedLibrarySearch, setLibraryFilters, fetchLibraries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedLibrarySearch]);
+
+  // Fetch items when selected library or paging/filter inputs change
+  useEffect(() => {
+    if (selectedLibraryId) {
+      fetchItems(selectedLibraryId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedLibraryId,
+    page,
+    pageSize,
+    itemFilters.type,
+    itemFilters.status,
+    itemFilters.year,
+    itemFilters.search,
+  ]);
 
   const selectedLibrary = useMemo(
     () => libraries.find((lib) => lib.id === selectedLibraryId) || null,
     [libraries, selectedLibraryId]
   );
 
-  useEffect(() => {
-    if (selectedLibraryId) {
-      fetchItems(selectedLibraryId);
-    }
-  }, [selectedLibraryId, fetchItems, page, pageSize, itemFilters.type, itemFilters.status, itemFilters.year, itemFilters.search]);
-
+  // ---- Handlers ----
   const handleCreateOrUpdate = async (payload) => {
     setFormSubmitting(true);
     try {
@@ -196,6 +182,7 @@ const LibraryPage = () => {
     }
   };
 
+  // ---- Render ----
   return (
     <Box p="md">
       <Stack spacing="xl">

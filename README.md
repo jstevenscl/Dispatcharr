@@ -103,6 +103,13 @@ Here’s how you can join the party:
 
 ---
 
+## 🔧 Configuration Notes
+
+- 🎞️ **TMDB Metadata** – Add your TMDB API key in *Settings → Media Libraries* to enable poster, backdrop, cast, and synopsis lookups for the local library scanner.
+- 🛠️ **FFmpeg & ffprobe** – Ensure FFmpeg (including `ffprobe`) is available to capture technical metadata. Dispatcharr will fall back to MediaInfo when ffprobe is missing, but FFmpeg is still recommended for best results.
+
+---
+
 ## 📚 Roadmap & Documentation
 
 - 📚  **Roadmap:** Coming soon!

@@ -16,6 +16,10 @@ import useLibraryStore from '../../store/library';
 
 dayjs.extend(relativeTime);
 
+const EMPTY_SCAN_LIST = [];
+
+
+
 const statusColor = {
   pending: 'gray',
   running: 'blue',
@@ -27,15 +31,15 @@ const statusColor = {
 };
 
 const LibraryScanDrawer = ({ opened, onClose, libraryId }) => {
-  const fetchScans = useLibraryStore((s) => s.fetchScans);
-  const scansLoading = useLibraryStore((s) => s.scansLoading);
-  const scans = useLibraryStore((s) => s.scans[libraryId || 'all'] || []);
+  const scansLoading = useLibraryStore((state) => state.scansLoading);
+  const scans =
+    useLibraryStore((state) => state.scans[libraryId || 'all']) ?? EMPTY_SCAN_LIST;
 
   useEffect(() => {
     if (opened) {
-      fetchScans(libraryId);
+      useLibraryStore.getState().fetchScans(libraryId);
     }
-  }, [opened, libraryId, fetchScans]);
+  }, [opened, libraryId]);
 
   return (
     <Drawer
