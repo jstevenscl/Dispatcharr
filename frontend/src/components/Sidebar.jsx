@@ -15,6 +15,7 @@ import {
   LogOut,
   User,
   FileImage,
+  Library,
 } from 'lucide-react';
 import {
   Avatar,
@@ -105,6 +106,11 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
             icon: <Video size={20} />,
           },
           {
+            label: 'Media Library',
+            path: '/library',
+            icon: <Library size={20} />,
+          },
+          {
             label: 'M3U & EPG Manager',
             icon: <Play size={20} />,
             path: '/sources',
@@ -137,6 +143,11 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
             badge: `(${Object.keys(channels).length})`,
           },
           { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
+          {
+            label: 'Media Library',
+            path: '/library',
+            icon: <Library size={20} />,
+          },
           {
             label: 'Settings',
             icon: <LucideSettings size={20} />,

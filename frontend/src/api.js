@@ -2208,4 +2208,210 @@ export default class API {
       errorNotification('Failed to update playback position', e);
     }
   }
+
+  // Media Library Methods
+  static async getMediaLibraries(params = new URLSearchParams()) {
+    try {
+      const query = params.toString();
+      const response = await request(
+        `${host}/api/media/libraries/${query ? `?${query}` : ''}`
+      );
+      return response.results || response;
+    } catch (e) {
+      errorNotification('Failed to load media libraries', e);
+      throw e;
+    }
+  }
+
+  static async createMediaLibrary(payload) {
+    try {
+      const response = await request(`${host}/api/media/libraries/`, {
+        method: 'POST',
+        body: payload,
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to create library', e);
+      throw e;
+    }
+  }
+
+  static async updateMediaLibrary(id, payload) {
+    try {
+      const response = await request(`${host}/api/media/libraries/${id}/`, {
+        method: 'PATCH',
+        body: payload,
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update library', e);
+      throw e;
+    }
+  }
+
+  static async deleteMediaLibrary(id) {
+    try {
+      await request(`${host}/api/media/libraries/${id}/`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      errorNotification('Failed to delete library', e);
+      throw e;
+    }
+  }
+
+  static async triggerLibraryScan(id, { full = false } = {}) {
+    try {
+      const response = await request(
+        `${host}/api/media/libraries/${id}/scan/`,
+        {
+          method: 'POST',
+          body: { full },
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to start library scan', e);
+      throw e;
+    }
+  }
+
+  static async getLibraryScans(params = new URLSearchParams()) {
+    try {
+      const query = params.toString();
+      const response = await request(
+        `${host}/api/media/scans/${query ? `?${query}` : ''}`
+      );
+      return response.results || response;
+    } catch (e) {
+      errorNotification('Failed to load library scans', e);
+      throw e;
+    }
+  }
+
+  static async getMediaItems(params = new URLSearchParams()) {
+    try {
+      const query = params.toString();
+      const response = await request(
+        `${host}/api/media/items/${query ? `?${query}` : ''}`
+      );
+      return response.results || response;
+    } catch (e) {
+      errorNotification('Failed to load media items', e);
+      throw e;
+    }
+  }
+
+  static async getMediaItem(id) {
+    try {
+      const response = await request(`${host}/api/media/items/${id}/`);
+      return response;
+    } catch (e) {
+      errorNotification('Failed to load media item details', e);
+      throw e;
+    }
+  }
+
+  static async refreshMediaItemMetadata(id) {
+    try {
+      const response = await request(
+        `${host}/api/media/items/${id}/refresh-metadata/`,
+        {
+          method: 'POST',
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to queue metadata refresh', e);
+      throw e;
+    }
+  }
+
+  static async markMediaItemWatched(id) {
+    try {
+      const response = await request(
+        `${host}/api/media/items/${id}/mark-watched/`,
+        {
+          method: 'POST',
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to mark as watched', e);
+      throw e;
+    }
+  }
+
+  static async clearMediaItemProgress(id) {
+    try {
+      const response = await request(
+        `${host}/api/media/items/${id}/clear-progress/`,
+        {
+          method: 'POST',
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to clear watch progress', e);
+      throw e;
+    }
+  }
+
+  static async getMediaWatchProgress(params = new URLSearchParams()) {
+    try {
+      const query = params.toString();
+      const response = await request(
+        `${host}/api/media/progress/${query ? `?${query}` : ''}`
+      );
+      return response.results || response;
+    } catch (e) {
+      errorNotification('Failed to load watch progress', e);
+      throw e;
+    }
+  }
+
+  static async setMediaWatchProgress(payload) {
+    try {
+      const response = await request(`${host}/api/media/progress/set/`, {
+        method: 'POST',
+        body: payload,
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to update watch progress', e);
+      throw e;
+    }
+  }
+
+  static async resumeMediaProgress(id) {
+    try {
+      const response = await request(
+        `${host}/api/media/progress/${id}/resume/`,
+        {
+          method: 'POST',
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to load resume information', e);
+      throw e;
+    }
+  }
+
+  static async streamMediaItem(id, options = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (options.fileId) {
+        params.append('file', options.fileId);
+      }
+      const query = params.toString();
+      const response = await request(
+        `${host}/api/media/items/${id}/stream/${query ? `?${query}` : ''}`
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to load media stream info', e);
+      throw e;
+    }
+  }
 }

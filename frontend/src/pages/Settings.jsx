@@ -5,12 +5,15 @@ import useUserAgentsStore from '../store/userAgents';
 import useStreamProfilesStore from '../store/streamProfiles';
 import {
   Accordion,
+  ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Center,
   Flex,
   Group,
+  Loader,
   MultiSelect,
   Select,
   Stack,
@@ -18,6 +21,7 @@ import {
   Text,
   TextInput,
   NumberInput,
+  Tooltip,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
 import UserAgentsTable from '../components/tables/UserAgentsTable';
@@ -32,6 +36,10 @@ import {
 } from '../constants';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import useWarningsStore from '../store/warnings';
+import { notifications } from '@mantine/notifications';
+import useLibraryStore from '../store/library';
+import LibraryFormModal from '../components/library/LibraryFormModal';
+import { Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react';
 
 const SettingsPage = () => {
   const settings = useSettingsStore((s) => s.settings);
@@ -40,6 +48,24 @@ const SettingsPage = () => {
   const authUser = useAuthStore((s) => s.user);
   const suppressWarning = useWarningsStore((s) => s.suppressWarning);
   const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
+
+  const {
+    libraries: mediaLibraries,
+    loading: librariesLoading,
+    fetchLibraries: fetchMediaLibraries,
+    createLibrary: createMediaLibrary,
+    updateLibrary: updateMediaLibrary,
+    deleteLibrary: deleteMediaLibrary,
+    triggerScan: triggerLibraryScan,
+  } = useLibraryStore((state) => ({
+    libraries: state.libraries,
+    loading: state.loading,
+    fetchLibraries: state.fetchLibraries,
+    createLibrary: state.createLibrary,
+    updateLibrary: state.updateLibrary,
+    deleteLibrary: state.deleteLibrary,
+    triggerScan: state.triggerScan,
+  }));
 
   const [accordianValue, setAccordianValue] = useState(null);
   const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
@@ -56,6 +82,13 @@ const SettingsPage = () => {
 
   // Add a new state to track the dialog type
   const [rehashDialogType, setRehashDialogType] = useState(null); // 'save' or 'rehash'
+
+  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [editingLibrarySettings, setEditingLibrarySettings] = useState(null);
+  const [librarySubmitting, setLibrarySubmitting] = useState(false);
+  const tmdbSetting = settings['tmdb-api-key'];
+  const [tmdbKey, setTmdbKey] = useState('');
+  const [savingTmdbKey, setSavingTmdbKey] = useState(false);
 
   // UI / local storage settings
   const [tableSize, setTableSize] = useLocalStorage('table-size', 'default');
@@ -177,6 +210,18 @@ const SettingsPage = () => {
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (authUser?.user_level === USER_LEVELS.ADMIN) {
+      fetchMediaLibraries();
+    }
+  }, [authUser?.user_level, fetchMediaLibraries]);
+
+  useEffect(() => {
+    if (tmdbSetting && tmdbSetting.value !== undefined) {
+      setTmdbKey(tmdbSetting.value);
+    }
+  }, [tmdbSetting]);
+
   const onSubmit = async () => {
     const values = form.getValues();
     const changedSettings = {};
@@ -221,6 +266,109 @@ const SettingsPage = () => {
           value: changedSettings[updatedKey],
         });
       }
+    }
+  };
+
+  const handleLibrarySettingsSubmit = async (values) => {
+    setLibrarySubmitting(true);
+    try {
+      if (editingLibrarySettings) {
+        await updateMediaLibrary(editingLibrarySettings.id, values);
+        notifications.show({
+          title: 'Library updated',
+          message: 'Changes saved.',
+          color: 'green',
+        });
+      } else {
+        await createMediaLibrary(values);
+        notifications.show({
+          title: 'Library created',
+          message: 'New library added.',
+          color: 'green',
+        });
+      }
+      setLibraryModalOpen(false);
+      setEditingLibrarySettings(null);
+      fetchMediaLibraries();
+    } catch (error) {
+      console.error('Failed to save library', error);
+      notifications.show({
+        title: 'Library error',
+        message: 'Unable to save library changes.',
+        color: 'red',
+      });
+    } finally {
+      setLibrarySubmitting(false);
+    }
+  };
+
+  const handleLibrarySettingsDelete = async (library) => {
+    if (!window.confirm(`Delete library "${library.name}"?`)) return;
+    try {
+      await deleteMediaLibrary(library.id);
+      notifications.show({
+        title: 'Library deleted',
+        message: 'Library removed successfully.',
+        color: 'green',
+      });
+      fetchMediaLibraries();
+    } catch (error) {
+      console.error('Failed to delete library', error);
+      notifications.show({
+        title: 'Library error',
+        message: 'Unable to delete library.',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleLibrarySettingsScan = async (library) => {
+    try {
+      await triggerLibraryScan(library.id, { full: false });
+      notifications.show({
+        title: 'Scan started',
+        message: `Library ${library.name} queued for scanning.`,
+        color: 'blue',
+      });
+    } catch (error) {
+      console.error('Failed to trigger scan', error);
+      notifications.show({
+        title: 'Scan error',
+        message: 'Unable to start scan.',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleSaveTmdbKey = async () => {
+    setSavingTmdbKey(true);
+    try {
+      if (tmdbSetting && tmdbSetting.id) {
+        await API.updateSetting({
+          ...tmdbSetting,
+          value: tmdbKey,
+        });
+      } else {
+        await API.createSetting({
+          key: 'tmdb-api-key',
+          name: 'TMDB API Key',
+          value: tmdbKey,
+        });
+      }
+      notifications.show({
+        title: 'Saved',
+        message: 'TMDB API key updated.',
+        color: 'green',
+      });
+    } catch (error) {
+      console.error('Failed to save TMDB key', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Unable to update TMDB API key.',
+        color: 'red',
+      });
+    } finally {
+      setSavingTmdbKey(false);
     }
   };
 
@@ -429,6 +577,125 @@ const SettingsPage = () => {
 
           {authUser.user_level == USER_LEVELS.ADMIN && (
             <>
+              <Accordion.Item value="media-libraries">
+                <Accordion.Control>Media Libraries</Accordion.Control>
+                <Accordion.Panel>
+                  <Stack spacing="md">
+                    <Group justify="space-between" align="center">
+                      <Text c="dimmed" size="sm">
+                  Configure local media libraries used for scanning and playback.
+                </Text>
+                <Button
+                  size="xs"
+                  leftSection={<Plus size={14} />}
+                        onClick={() => {
+                          setEditingLibrarySettings(null);
+                          setLibraryModalOpen(true);
+                        }}
+                      >
+                        Add Library
+                  </Button>
+                </Group>
+
+                <Stack spacing="xs">
+                  <TextInput
+                    label="TMDB API Key"
+                    placeholder="Enter TMDB API key"
+                    value={tmdbKey}
+                    onChange={(event) => setTmdbKey(event.currentTarget.value)}
+                    description="Used for metadata and artwork lookups."
+                  />
+                  <Group justify="flex-end">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      onClick={handleSaveTmdbKey}
+                      loading={savingTmdbKey}
+                    >
+                      Save Metadata Settings
+                    </Button>
+                  </Group>
+                </Stack>
+
+                {librariesLoading ? (
+                  <Group justify="center" py="md">
+                    <Loader size="sm" />
+                  </Group>
+                    ) : mediaLibraries.length === 0 ? (
+                      <Text c="dimmed" size="sm">
+                        No libraries configured yet.
+                      </Text>
+                    ) : (
+                      <Stack spacing="sm">
+                        {mediaLibraries.map((library) => (
+                          <Group
+                            key={library.id}
+                            justify="space-between"
+                            align="center"
+                            p="sm"
+                            style={{
+                              border: '1px solid rgba(148, 163, 184, 0.2)',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Stack spacing={4} style={{ flex: 1 }}>
+                              <Group gap="sm">
+                                <Text fw={600}>{library.name}</Text>
+                                <Badge color="violet" variant="light">
+                                  {library.library_type}
+                                </Badge>
+                                <Badge
+                                  color={library.auto_scan_enabled ? 'green' : 'gray'}
+                                  variant="outline"
+                                >
+                                  {library.auto_scan_enabled ? 'Auto-scan' : 'Manual'}
+                                </Badge>
+                              </Group>
+                              <Text size="xs" c="dimmed">
+                                Last scan:{' '}
+                                {library.last_scan_at
+                                  ? new Date(library.last_scan_at).toLocaleString()
+                                  : 'Never'}
+                              </Text>
+                            </Stack>
+                            <Group gap="xs">
+                              <Tooltip label="Trigger scan">
+                                <ActionIcon
+                                  variant="light"
+                                  onClick={() => handleLibrarySettingsScan(library)}
+                                >
+                                  <RefreshCcw size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label="Edit">
+                                <ActionIcon
+                                  variant="light"
+                                  onClick={() => {
+                                    setEditingLibrarySettings(library);
+                                    setLibraryModalOpen(true);
+                                  }}
+                                >
+                                  <Pencil size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label="Delete">
+                                <ActionIcon
+                                  variant="light"
+                                  color="red"
+                                  onClick={() => handleLibrarySettingsDelete(library)}
+                                >
+                                  <Trash2 size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          </Group>
+                        ))}
+                      </Stack>
+                    )}
+                  </Stack>
+                </Accordion.Panel>
+              </Accordion.Item>
+
               <Accordion.Item value="dvr-settings">
                 <Accordion.Control>DVR</Accordion.Control>
                 <Accordion.Panel>
@@ -866,6 +1133,17 @@ const SettingsPage = () => {
           )}
         </Accordion>
       </Box>
+
+      <LibraryFormModal
+        opened={libraryModalOpen}
+        onClose={() => {
+          setLibraryModalOpen(false);
+          setEditingLibrarySettings(null);
+        }}
+        library={editingLibrarySettings}
+        onSubmit={handleLibrarySettingsSubmit}
+        submitting={librarySubmitting}
+      />
 
       <ConfirmationDialog
         opened={rehashConfirmOpen}

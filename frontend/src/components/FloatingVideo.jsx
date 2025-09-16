@@ -4,6 +4,8 @@ import Draggable from 'react-draggable';
 import useVideoStore from '../store/useVideoStore';
 import mpegts from 'mpegts.js';
 import { CloseButton, Flex, Loader, Text, Box } from '@mantine/core';
+import API from '../api';
+import useAuthStore from '../store/auth';
 
 export default function FloatingVideo() {
   const isVisible = useVideoStore((s) => s.isVisible);
@@ -18,6 +20,23 @@ export default function FloatingVideo() {
   const [loadError, setLoadError] = useState(null);
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayTimeoutRef = useRef(null);
+  const lastProgressSentRef = useRef(0);
+  const authUser = useAuthStore((s) => s.user);
+
+  const sendLibraryProgress = (positionSeconds, durationSeconds, completed = false) => {
+    if (contentType !== 'library') return;
+    if (!metadata?.mediaItemId || !authUser?.id) return;
+    const payload = {
+      user: authUser.id,
+      media_item: metadata.mediaItemId,
+      position_ms: Math.max(0, Math.floor(positionSeconds * 1000)),
+      duration_ms: Math.max(0, Math.floor(durationSeconds * 1000)),
+      completed,
+    };
+    API.setMediaWatchProgress(payload).catch((error) => {
+      console.debug('Failed to update watch progress', error);
+    });
+  };
 
   // Safely destroy the mpegts player to prevent errors
   const safeDestroyPlayer = () => {
@@ -55,6 +74,8 @@ export default function FloatingVideo() {
       playerRef.current = null;
     }
 
+    lastProgressSentRef.current = 0;
+
     // Clear overlay timer
     if (overlayTimeoutRef.current) {
       clearTimeout(overlayTimeoutRef.current);
@@ -83,6 +104,7 @@ export default function FloatingVideo() {
     console.log('Initializing VOD player for:', streamUrl);
 
     const video = videoRef.current;
+    let resumeApplied = false;
 
     // Enhanced video element configuration for VOD
     video.preload = 'metadata';
@@ -98,6 +120,18 @@ export default function FloatingVideo() {
         console.log('Auto-play prevented:', e);
         setLoadError('Auto-play was prevented. Click play to start.');
       });
+      if (
+        contentType === 'library' &&
+        metadata?.resumePositionMs &&
+        !resumeApplied
+      ) {
+        try {
+          video.currentTime = metadata.resumePositionMs / 1000;
+          resumeApplied = true;
+        } catch (error) {
+          console.debug('Failed to set resume position', error);
+        }
+      }
       // Start overlay timer when video is ready
       startOverlayTimer();
     };
@@ -140,12 +174,31 @@ export default function FloatingVideo() {
       }
     };
 
+    const handleTimeUpdate = () => {
+      if (contentType !== 'library') return;
+      if (!video.duration || Number.isNaN(video.duration)) return;
+      const now = Date.now();
+      if (now - lastProgressSentRef.current < 5000) {
+        return;
+      }
+      lastProgressSentRef.current = now;
+      sendLibraryProgress(video.currentTime, video.duration, false);
+    };
+
+    const handleEnded = () => {
+      if (contentType !== 'library') return;
+      if (!video.duration || Number.isNaN(video.duration)) return;
+      sendLibraryProgress(video.duration, video.duration, true);
+    };
+
     // Add event listeners
     video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('error', handleError);
     video.addEventListener('progress', handleProgress);
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('ended', handleEnded);
 
     // Set the source
     video.src = streamUrl;
@@ -159,6 +212,8 @@ export default function FloatingVideo() {
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('error', handleError);
         video.removeEventListener('progress', handleProgress);
+        video.removeEventListener('timeupdate', handleTimeUpdate);
+        video.removeEventListener('ended', handleEnded);
         video.removeAttribute('src');
         video.load();
       },
@@ -291,7 +346,7 @@ export default function FloatingVideo() {
     safeDestroyPlayer();
 
     // Initialize the appropriate player based on content type
-    if (contentType === 'vod') {
+    if (contentType === 'vod' || contentType === 'library') {
       initializeVODPlayer();
     } else {
       initializeLivePlayer();
@@ -361,7 +416,7 @@ export default function FloatingVideo() {
         <Box
           style={{ position: 'relative' }}
           onMouseEnter={() => {
-            if (contentType === 'vod' && !isLoading) {
+            if (contentType !== 'live' && !isLoading) {
               setShowOverlay(true);
               if (overlayTimeoutRef.current) {
                 clearTimeout(overlayTimeoutRef.current);
@@ -369,7 +424,7 @@ export default function FloatingVideo() {
             }
           }}
           onMouseLeave={() => {
-            if (contentType === 'vod' && !isLoading) {
+            if (contentType !== 'live' && !isLoading) {
               startOverlayTimer();
             }
           }}
@@ -383,19 +438,19 @@ export default function FloatingVideo() {
               height: '180px',
               backgroundColor: '#000',
               // Better controls styling for VOD
-              ...(contentType === 'vod' && {
+              ...(contentType !== 'live' && {
                 controlsList: 'nodownload',
                 playsInline: true,
               }),
             }}
             // Add poster for VOD if available
-            {...(contentType === 'vod' && {
-              poster: metadata?.logo?.url, // Use VOD poster if available
+            {...(contentType !== 'live' && {
+              poster: metadata?.logo?.url, // Use poster if available
             })}
           />
 
           {/* VOD title overlay when not loading - auto-hides after 4 seconds */}
-          {!isLoading && metadata && contentType === 'vod' && showOverlay && (
+          {!isLoading && metadata && contentType !== 'live' && showOverlay && (
             <Box
               style={{
                 position: 'absolute',
@@ -415,7 +470,7 @@ export default function FloatingVideo() {
                 weight={500}
                 style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
               >
-                {metadata.name}
+                {metadata.name || metadata.title || metadata.mediaTitle}
               </Text>
               {metadata.year && (
                 <Text

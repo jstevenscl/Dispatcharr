@@ -1,0 +1,240 @@
+import logging
+
+from django.conf import settings
+from django.core.signing import TimestampSigner
+from django.db.models import Q
+from django.urls import reverse
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import mixins, status, viewsets
+from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.exceptions import NotFound, ValidationError
+
+from apps.accounts.permissions import Authenticated
+from apps.media_library import models, serializers
+from apps.media_library.tasks import enqueue_library_scan, sync_metadata_task
+
+logger = logging.getLogger(__name__)
+
+
+class LibraryViewSet(viewsets.ModelViewSet):
+    queryset = models.Library.objects.all().prefetch_related("locations")
+    serializer_class = serializers.LibrarySerializer
+    permission_classes = [Authenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    filterset_fields = ["library_type", "auto_scan_enabled"]
+    search_fields = ["name", "description"]
+    ordering_fields = ["name", "created_at", "updated_at", "last_scan_at"]
+    ordering = ["name"]
+
+    def perform_create(self, serializer):
+        library = serializer.save()
+        if library.auto_scan_enabled:
+            enqueue_library_scan(library_id=library.id, user_id=self.request.user.id)
+
+    def perform_update(self, serializer):
+        library = serializer.save()
+        if library.auto_scan_enabled and self.request.data.get("trigger_scan"):
+            enqueue_library_scan(library_id=library.id, user_id=self.request.user.id)
+
+    @action(detail=True, methods=["post"], url_path="scan")
+    def scan(self, request, pk=None):
+        library = self.get_object()
+        user_id = request.user.id if request.user and request.user.is_authenticated else None
+        scan = enqueue_library_scan(library_id=library.id, user_id=user_id, force_full=request.data.get("full", False))
+        serializer = serializers.LibraryScanSerializer(scan)
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+
+
+class LibraryScanViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = models.LibraryScan.objects.select_related("library", "created_by")
+    serializer_class = serializers.LibraryScanSerializer
+    permission_classes = [Authenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ["library", "status"]
+    ordering_fields = ["created_at", "started_at", "finished_at"]
+    ordering = ["-created_at"]
+
+
+class MediaItemViewSet(viewsets.ModelViewSet):
+    queryset = (
+        models.MediaItem.objects.select_related(
+            "library",
+            "parent",
+            "vod_movie",
+            "vod_series",
+            "vod_episode",
+        )
+        .prefetch_related("files", "artwork", "watch_progress")
+    )
+    serializer_class = serializers.MediaItemSerializer
+    permission_classes = [Authenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ["library", "item_type", "status", "release_year", "season_number"]
+    search_fields = ["title", "synopsis", "tags"]
+    ordering_fields = ["sort_title", "release_year", "first_imported_at", "updated_at"]
+    ordering = ["sort_title"]
+    http_method_names = ["get", "head", "options", "patch"]
+    _stream_signer = TimestampSigner(salt="media-library-stream")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search = self.request.query_params.get("search")
+        if search:
+            search = search.strip()
+            queryset = queryset.filter(
+                Q(title__icontains=search)
+                | Q(synopsis__icontains=search)
+                | Q(tags__icontains=search)
+            )
+        return queryset
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
+    def partial_update(self, request, *args, **kwargs):
+        allowed_fields = {
+            "title",
+            "synopsis",
+            "tagline",
+            "genres",
+            "cast",
+            "crew",
+            "tags",
+            "poster_url",
+            "backdrop_url",
+            "rating",
+            "runtime_ms",
+            "metadata",
+            "status",
+        }
+        unknown = {key for key in request.data.keys() if key not in allowed_fields}
+        if unknown:
+            raise ValidationError(
+                {"detail": f"Cannot update fields: {', '.join(sorted(unknown))}"}
+            )
+        return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="refresh-metadata")
+    def refresh_metadata(self, request, pk=None):
+        item = self.get_object()
+        sync_metadata_task.delay(item.id)
+        return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=["get"], url_path="stream")
+    def stream(self, request, pk=None):
+        item = self.get_object()
+        file_id = request.query_params.get("file")
+        files_qs = item.files.all()
+        if file_id:
+            file = files_qs.filter(pk=file_id).first()
+            if not file:
+                raise NotFound("Requested media file not found")
+        else:
+            file = files_qs.order_by("id").first()
+        if not file:
+            return Response(
+                {"detail": "No media files available for this item."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        payload = {"file_id": file.id, "user_id": request.user.id}
+        token = self._stream_signer.sign_object(payload)
+        stream_url = request.build_absolute_uri(
+            reverse("media:stream-file", args=[token])
+        )
+        ttl = getattr(settings, "MEDIA_LIBRARY_STREAM_TOKEN_TTL", 3600)
+        return Response(
+            {
+                "url": stream_url,
+                "file_id": file.id,
+                "expires_in": ttl,
+                "type": "direct",
+                "duration_ms": file.duration_ms,
+                "bit_rate": file.bit_rate,
+                "container": file.container,
+            }
+        )
+
+    @action(detail=True, methods=["post"], url_path="mark-watched")
+    def mark_watched(self, request, pk=None):
+        item = self.get_object()
+        duration = item.runtime_ms
+        if not duration:
+            primary_file = item.files.order_by("-duration_ms").first()
+            duration = primary_file.duration_ms if primary_file else 0
+        if not duration:
+            duration = 1000  # default to one second to allow completion state
+
+        progress, _ = models.WatchProgress.objects.update_or_create(
+            user=request.user,
+            media_item=item,
+            defaults={
+                "position_ms": duration or 0,
+                "duration_ms": duration or 0,
+                "completed": True,
+            },
+        )
+        progress.update_progress(position_ms=duration or 0, duration_ms=duration or 0)
+        return Response({"status": "ok"})
+
+    @action(detail=True, methods=["post"], url_path="clear-progress")
+    def clear_progress(self, request, pk=None):
+        item = self.get_object()
+        models.WatchProgress.objects.filter(user=request.user, media_item=item).delete()
+        return Response({"status": "cleared"})
+
+
+class MediaFileViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = models.MediaFile.objects.select_related("library", "media_item", "location")
+    serializer_class = serializers.MediaFileSerializer
+    permission_classes = [Authenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ["library", "media_item", "location", "has_subtitles"]
+    search_fields = ["relative_path", "file_name", "absolute_path"]
+    ordering_fields = ["relative_path", "file_name", "size_bytes", "updated_at", "last_seen_at"]
+    ordering = ["relative_path"]
+
+
+class WatchProgressViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    serializer_class = serializers.WatchProgressSerializer
+    permission_classes = [Authenticated]
+
+    def get_queryset(self):
+        queryset = models.WatchProgress.objects.select_related("media_item", "user")
+        user_only = self.request.query_params.get("mine", "true").lower() != "false"
+        if user_only:
+            queryset = queryset.filter(user=self.request.user)
+        return queryset
+
+    @action(detail=False, methods=["post"], url_path="set")
+    def set_progress(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        progress = serializer.save()
+        progress.update_progress(
+            position_ms=serializer.validated_data.get("position_ms", 0),
+            duration_ms=serializer.validated_data.get("duration_ms"),
+        )
+        return Response(self.get_serializer(progress).data)
+
+    @action(detail=True, methods=["post"], url_path="resume")
+    def resume(self, request, pk=None):
+        progress = self.get_object()
+        if progress.duration_ms:
+            percentage = progress.position_ms / progress.duration_ms
+        else:
+            percentage = 0
+        remaining_ms = max(progress.duration_ms - progress.position_ms, 0)
+        data = {
+            "position_ms": progress.position_ms,
+            "duration_ms": progress.duration_ms,
+            "percentage": percentage,
+            "remaining_ms": remaining_ms,
+            "completed": progress.completed,
+            "resume_allowed": progress.duration_ms * 0.04 < remaining_ms,
+        }
+        return Response(data)

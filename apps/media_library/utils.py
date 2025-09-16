@@ -1,0 +1,561 @@
+import json
+import logging
+import os
+import subprocess
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional
+
+from django.db import transaction
+from django.utils import timezone
+from guessit import guessit
+from pymediainfo import MediaInfo
+
+from apps.media_library.models import (
+    ClassificationResult,
+    Library,
+    LibraryLocation,
+    LibraryScan,
+    MediaFile,
+    MediaItem,
+    MEDIA_EXTENSIONS,
+    normalize_title,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DiscoveredFile:
+    file_id: int
+    requires_probe: bool
+
+
+class LibraryScanner:
+    """Performs discovery of files for a library scan."""
+
+    def __init__(
+        self,
+        library: Library,
+        scan: LibraryScan,
+        force_full: bool = False,
+        rescan_item_id: Optional[int] = None,
+    ) -> None:
+        self.library = library
+        self.scan = scan
+        self.force_full = force_full or rescan_item_id is not None
+        self.rescan_item_id = rescan_item_id
+        self.now = timezone.now()
+        self.log_messages: list[str] = []
+        self.stats: Dict[str, int] = defaultdict(int)
+        self._seen_paths: set[str] = set()
+        self.target_item = None
+        if rescan_item_id:
+            self.target_item = (
+                MediaItem.objects.filter(pk=rescan_item_id, library=library).first()
+            )
+            if not self.target_item:
+                self._log(
+                    f"Target media item {rescan_item_id} not found in library {library.id}."
+                )
+
+    def discover_files(self) -> List[DiscoveredFile]:
+        """Walk library locations, ensure MediaFile records exist, and return the IDs."""
+        discovered: list[DiscoveredFile] = []
+        if not self.library.locations.exists():
+            self._log(f"Library '{self.library.name}' has no configured locations.")
+            return discovered
+
+        for location in self.library.locations.all():
+            path = Path(location.path).expanduser()
+            if not path.exists():
+                self._log(f"Path '{path}' does not exist for library '{self.library.name}'.")
+                continue
+            if not path.is_dir():
+                self._log(f"Path '{path}' is not a directory; skipping.")
+                continue
+
+            iterator = path.rglob("*") if location.include_subdirectories else path.iterdir()
+            for file_path in iterator:
+                if not file_path.is_file():
+                    continue
+                if file_path.suffix.lower() not in MEDIA_EXTENSIONS:
+                    continue
+
+                absolute_path = str(file_path)
+                self._seen_paths.add(absolute_path)
+                try:
+                    record_data = self._ensure_file_record(location, file_path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Failed to process file %s", absolute_path)
+                    self._log(f"Failed to process '{absolute_path}': {exc}")
+                    continue
+
+                if not record_data:
+                    continue
+
+                file_record, requires_probe = record_data
+                if (
+                    self.target_item
+                    and file_record.media_item_id not in {None, self.target_item.id}
+                ):
+                    continue
+
+                discovered.append(
+                    DiscoveredFile(file_id=file_record.id, requires_probe=requires_probe)
+                )
+
+        self.stats["total"] = len(self._seen_paths)
+        self.scan.total_files = self.stats["total"]
+        self.scan.new_files = self.stats.get("new", 0)
+        self.scan.updated_files = self.stats.get("updated", 0)
+        self.scan.save(
+            update_fields=[
+                "total_files",
+                "new_files",
+                "updated_files",
+                "updated_at",
+            ]
+        )
+        return discovered
+
+    def mark_missing_files(self) -> int:
+        missing_qs = (
+            MediaFile.objects.filter(library=self.library)
+            .exclude(absolute_path__in=self._seen_paths)
+            .exclude(absolute_path="")
+        )
+        count = missing_qs.update(missing_since=self.now)
+        if count:
+            self.stats["removed"] += count
+            self._log(f"Marked {count} files as missing.")
+            self.scan.removed_files = self.stats["removed"]
+            self.scan.save(update_fields=["removed_files", "updated_at"])
+        return count
+
+    def finalize(self, matched: int, unmatched: int, summary: str | None = None) -> None:
+        self.stats["matched"] += matched
+        self.stats["unmatched"] += unmatched
+        self.scan.matched_items = self.stats["matched"]
+        self.scan.unmatched_files = self.stats["unmatched"]
+        if summary:
+            self.scan.summary = summary
+        self.scan.log = "\n".join(self.log_messages)
+        self.scan.finished_at = timezone.now()
+        self.scan.status = LibraryScan.STATUS_COMPLETED
+        self.scan.save(
+            update_fields=[
+                "matched_items",
+                "unmatched_files",
+                "summary",
+                "log",
+                "finished_at",
+                "status",
+                "updated_at",
+            ]
+        )
+
+        self.library.last_scan_at = timezone.now()
+        self.library.last_successful_scan_at = timezone.now()
+        self.library.save(update_fields=["last_scan_at", "last_successful_scan_at", "updated_at"])
+
+    def _ensure_file_record(
+        self, location: LibraryLocation, file_path: Path
+    ) -> Optional[tuple[MediaFile, bool]]:
+        relative_path = os.path.relpath(file_path, location.path)
+        stat = file_path.stat()
+        last_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+
+        file_record, created = MediaFile.objects.select_for_update().get_or_create(
+            library=self.library,
+            absolute_path=str(file_path),
+            defaults={
+                "location": location,
+                "relative_path": relative_path,
+                "file_name": file_path.name,
+                "size_bytes": stat.st_size,
+                "last_modified_at": last_modified,
+                "last_seen_at": self.now,
+            },
+        )
+
+        requires_probe = False
+        if created:
+            self.stats["new"] += 1
+            requires_probe = True
+        else:
+            should_update = (
+                self.force_full
+                or file_record.last_modified_at is None
+                or last_modified > file_record.last_modified_at
+            )
+            if should_update:
+                file_record.size_bytes = stat.st_size
+                file_record.last_modified_at = last_modified
+                self.stats["updated"] += 1
+                requires_probe = True
+
+        file_record.last_seen_at = self.now
+        file_record.location = location
+        file_record.relative_path = relative_path
+        file_record.file_name = file_path.name
+        file_record.missing_since = None
+        file_record.save(update_fields=[
+            "location",
+            "relative_path",
+            "file_name",
+            "size_bytes",
+            "last_modified_at",
+            "last_seen_at",
+            "missing_since",
+            "updated_at",
+        ])
+
+        # Always probe on forced scans or if checksum missing
+        if self.force_full or not file_record.checksum:
+            requires_probe = True
+        return file_record, requires_probe
+
+    def _log(self, message: str) -> None:
+        logger.debug("[Library %s] %s", self.library.id, message)
+        self.log_messages.append(message)
+
+
+def classify_media_file(file_name: str) -> ClassificationResult:
+    base_name = Path(file_name).stem
+    try:
+        data = guessit(file_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("guessit failed for %s: %s", file_name, exc)
+        return ClassificationResult(
+            detected_type=MediaItem.TYPE_OTHER,
+            title=base_name,
+            data={"error": str(exc)},
+        )
+
+    guess_type = data.get("type")
+    detected_type = MediaItem.TYPE_OTHER
+
+    if guess_type == "movie":
+        detected_type = MediaItem.TYPE_MOVIE
+    elif guess_type == "episode":
+        detected_type = MediaItem.TYPE_EPISODE
+    elif guess_type in {"show", "series", "tv"}:
+        detected_type = MediaItem.TYPE_SHOW
+    elif guess_type == "season":
+        detected_type = MediaItem.TYPE_SEASON
+
+    title = data.get("title") or base_name
+
+    classification = ClassificationResult(
+        detected_type=detected_type,
+        title=title,
+        year=data.get("year"),
+        season=data.get("season"),
+        episode=data.get("episode"),
+        episode_title=data.get("episode_title"),
+        data=data,
+    )
+
+    if detected_type == MediaItem.TYPE_EPISODE:
+        classification.data = dict(data)
+        classification.data["series_title"] = data.get("series") or data.get("title") or base_name
+
+    return classification
+
+
+def resolve_media_item(
+    library: Library,
+    classification: ClassificationResult,
+    target_item: Optional[MediaItem] = None,
+) -> Optional[MediaItem]:
+    if target_item:
+        return target_item
+
+    title = classification.title or "Unknown"
+    normalized = normalize_title(title)
+
+    if classification.detected_type == MediaItem.TYPE_MOVIE:
+        match = (
+            MediaItem.objects.filter(
+                library=library,
+                item_type=MediaItem.TYPE_MOVIE,
+                normalized_title=normalized,
+                release_year=classification.year,
+            ).first()
+        )
+        if match:
+            return match
+        return MediaItem.objects.create(
+            library=library,
+            item_type=MediaItem.TYPE_MOVIE,
+            status=MediaItem.STATUS_PENDING,
+            title=title,
+            sort_title=title,
+            normalized_title=normalized,
+            release_year=classification.year,
+            metadata=classification.data or {},
+        )
+
+    if classification.detected_type == MediaItem.TYPE_SHOW:
+        match = (
+            MediaItem.objects.filter(
+                library=library,
+                item_type=MediaItem.TYPE_SHOW,
+                normalized_title=normalized,
+            ).first()
+        )
+        if match:
+            return match
+        return MediaItem.objects.create(
+            library=library,
+            item_type=MediaItem.TYPE_SHOW,
+            status=MediaItem.STATUS_PENDING,
+            title=title,
+            sort_title=title,
+            normalized_title=normalized,
+            metadata=classification.data or {},
+        )
+
+    if classification.detected_type == MediaItem.TYPE_EPISODE:
+        series_title = classification.data.get("series_title") if classification.data else title
+        if not series_title:
+            series_title = title
+        series_normalized = normalize_title(series_title)
+
+        series_item = (
+            MediaItem.objects.filter(
+                library=library,
+                item_type=MediaItem.TYPE_SHOW,
+                normalized_title=series_normalized,
+            ).first()
+        )
+        if not series_item:
+            series_item = MediaItem.objects.create(
+                library=library,
+                item_type=MediaItem.TYPE_SHOW,
+                status=MediaItem.STATUS_PENDING,
+                title=series_title,
+                sort_title=series_title,
+                normalized_title=series_normalized,
+                metadata=classification.data or {},
+            )
+
+        episode_item = (
+            MediaItem.objects.filter(
+                library=library,
+                item_type=MediaItem.TYPE_EPISODE,
+                parent=series_item,
+                season_number=classification.season,
+                episode_number=classification.episode,
+            ).first()
+        )
+        if episode_item:
+            if classification.episode_title and not episode_item.title:
+                episode_item.title = classification.episode_title
+                episode_item.save(update_fields=["title", "updated_at"])
+            return episode_item
+
+        title_to_use = (
+            classification.episode_title
+            or (
+                f"S{classification.season:02d}E{classification.episode:02d}"
+                if classification.season and classification.episode
+                else title
+            )
+        )
+
+        return MediaItem.objects.create(
+            library=library,
+            parent=series_item,
+            item_type=MediaItem.TYPE_EPISODE,
+            status=MediaItem.STATUS_PENDING,
+            title=title_to_use,
+            sort_title=title_to_use,
+            normalized_title=normalize_title(title_to_use),
+            release_year=classification.year,
+            season_number=classification.season,
+            episode_number=classification.episode,
+            metadata=classification.data or {},
+        )
+
+    return MediaItem.objects.create(
+        library=library,
+        item_type=MediaItem.TYPE_OTHER,
+        status=MediaItem.STATUS_PENDING,
+        title=title,
+        sort_title=title,
+        normalized_title=normalized,
+        metadata=classification.data or {},
+    )
+
+
+def probe_media_file(path: str) -> dict:
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration,bit_rate,format_name",
+        "-show_streams",
+        "-of",
+        "json",
+        path,
+    ]
+
+    try:
+        process = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        logger.debug("ffprobe not available; falling back to pymediainfo for %s", path)
+        return _probe_with_mediainfo(path)
+    except subprocess.CalledProcessError as exc:  # noqa: BLE001
+        logger.warning("ffprobe failed for %s: %s", path, exc.stderr)
+        fallback = _probe_with_mediainfo(path)
+        if fallback:
+            return fallback
+        return {}
+
+    try:
+        return json.loads(process.stdout)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse ffprobe output for %s", path)
+        return {}
+
+
+def _probe_with_mediainfo(path: str) -> dict:
+    try:
+        media_info = MediaInfo.parse(path)
+    except Exception:  # noqa: BLE001
+        return {}
+
+    format_info: dict = {}
+    streams: list[dict] = []
+    for track in media_info.tracks:
+        if track.track_type == "General":
+            format_info = {
+                "duration": track.duration / 1000 if track.duration else None,
+                "bit_rate": track.overall_bit_rate,
+                "format_name": track.format,
+            }
+        elif track.track_type == "Video":
+            streams.append(
+                {
+                    "codec_type": "video",
+                    "codec_name": track.format,
+                    "width": track.width,
+                    "height": track.height,
+                    "avg_frame_rate": track.frame_rate,
+                }
+            )
+        elif track.track_type == "Audio":
+            streams.append(
+                {
+                    "codec_type": "audio",
+                    "codec_name": track.format,
+                    "channels": track.channel_s,
+                }
+            )
+        elif track.track_type == "Text":
+            streams.append(
+                {
+                    "codec_type": "subtitle",
+                    "codec_name": track.format,
+                    "tags": {"language": track.language},
+                }
+            )
+
+    return {"format": format_info, "streams": streams}
+
+
+def apply_probe_metadata(file_record: MediaFile, probe_data: dict) -> None:
+    if not probe_data:
+        return
+    format_info = probe_data.get("format", {})
+    streams = probe_data.get("streams", [])
+
+    duration = format_info.get("duration")
+    try:
+        if duration:
+            file_record.duration_ms = int(float(duration) * 1000)
+    except (TypeError, ValueError):  # noqa: PERF203
+        logger.debug("Unable to parse duration '%s' for %s", duration, file_record)
+
+    bit_rate = format_info.get("bit_rate")
+    try:
+        if bit_rate:
+            file_record.bit_rate = int(bit_rate)
+    except (TypeError, ValueError):  # noqa: PERF203
+        pass
+
+    if format_info.get("format_name"):
+        file_record.container = format_info["format_name"].split(",")[0]
+
+    video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    subtitle_streams = [s for s in streams if s.get("codec_type") == "subtitle"]
+
+    if video_stream:
+        file_record.video_codec = video_stream.get("codec_name", "")
+        file_record.width = video_stream.get("width")
+        file_record.height = video_stream.get("height")
+        file_record.frame_rate = _safe_frame_rate(video_stream)
+
+    if audio_stream:
+        file_record.audio_codec = audio_stream.get("codec_name", "")
+        channels = audio_stream.get("channels")
+        if channels is not None:
+            try:
+                file_record.audio_channels = float(channels)
+            except (TypeError, ValueError):  # noqa: PERF203
+                file_record.audio_channels = None
+
+    file_record.has_subtitles = bool(subtitle_streams)
+    if subtitle_streams:
+        file_record.subtitle_languages = [
+            stream.get("tags", {}).get("language") for stream in subtitle_streams
+        ]
+
+    file_record.extra_streams = {
+        "format": format_info,
+        "streams": streams,
+    }
+    file_record.save(update_fields=[
+        "duration_ms",
+        "bit_rate",
+        "container",
+        "video_codec",
+        "width",
+        "height",
+        "frame_rate",
+        "audio_codec",
+        "audio_channels",
+        "has_subtitles",
+        "subtitle_languages",
+        "extra_streams",
+        "updated_at",
+    ])
+
+
+def _safe_frame_rate(stream: dict) -> Optional[float]:
+    value = stream.get("avg_frame_rate") or stream.get("r_frame_rate")
+    if not value or value == "0/0":
+        return None
+    try:
+        if "/" in value:
+            numerator, denominator = value.split("/", 1)
+            numerator = float(numerator)
+            denominator = float(denominator)
+            if denominator == 0:
+                return None
+            return round(numerator / denominator, 3)
+        return float(value)
+    except (ValueError, ZeroDivisionError):  # noqa: PERF203
+        return None

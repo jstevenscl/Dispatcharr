@@ -12,6 +12,7 @@ import useChannelsStore from './store/channels';
 import useLogosStore from './store/logos';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
+import useLibraryStore from './store/library';
 import { Box, Button, Stack, Alert, Group } from '@mantine/core';
 import API from './api';
 import useSettingsStore from './store/settings';
@@ -38,6 +39,7 @@ export const WebsocketProvider = ({ children }) => {
 
   const playlists = usePlaylistsStore((s) => s.playlists);
   const updatePlaylist = usePlaylistsStore((s) => s.updatePlaylist);
+  const applyMediaScanUpdate = useLibraryStore((s) => s.applyScanUpdate);
 
   // Calculate reconnection delay with exponential backoff
   const getReconnectDelay = useCallback(() => {
@@ -221,6 +223,24 @@ export const WebsocketProvider = ({ children }) => {
                 try {
                   await useChannelsStore.getState().fetchRecordings();
                 } catch {}
+              }
+              break;
+            }
+            case 'media_scan': {
+              applyMediaScanUpdate(parsedEvent.data);
+
+              if (parsedEvent.data.status === 'completed') {
+                notifications.show({
+                  title: 'Library scan complete',
+                  message: parsedEvent.data.summary || 'Library scan finished successfully.',
+                  color: 'green',
+                });
+              } else if (parsedEvent.data.status === 'failed') {
+                notifications.show({
+                  title: 'Library scan failed',
+                  message: parsedEvent.data.message || 'Check logs for details.',
+                  color: 'red',
+                });
               }
               break;
             }

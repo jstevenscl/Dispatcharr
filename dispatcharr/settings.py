@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "apps.proxy.apps.ProxyConfig",
     "apps.proxy.ts_proxy",
     "apps.vod.apps.VODConfig",
+    "apps.media_library",
     "core",
     "daphne",
     "drf_yasg",
@@ -198,6 +199,19 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
+
+CELERY_BEAT_SCHEDULE = {
+    "media-library-auto-scan": {
+        "task": "media_library.schedule_auto_scans",
+        "schedule": timedelta(minutes=15),
+    },
+    "media-library-prune-scans": {
+        "task": "media_library.prune_stale_scans",
+        "schedule": timedelta(hours=1),
+    },
+}
+
+MEDIA_LIBRARY_STREAM_TOKEN_TTL = int(os.environ.get("MEDIA_LIBRARY_STREAM_TOKEN_TTL", 3600))
 CELERY_BEAT_SCHEDULE = {
     # Explicitly disable the old fetch-channel-statuses task
     # This ensures it gets disabled when DatabaseScheduler syncs

@@ -1,0 +1,124 @@
+import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+import API from '../api';
+
+const initialFilters = {
+  type: 'all',
+  search: '',
+  status: 'all',
+  year: '',
+};
+
+const useMediaLibraryStore = create(
+  immer((set, get) => ({
+    items: [],
+    loading: false,
+    error: null,
+    page: 1,
+    pageSize: 24,
+    total: 0,
+    activeItem: null,
+    activeProgress: null,
+    activeItemLoading: false,
+    resumePrompt: null,
+    filters: { ...initialFilters },
+
+    setFilters: (updated) =>
+      set((state) => {
+        state.filters = { ...state.filters, ...updated };
+        state.page = 1;
+      }),
+
+    setPage: (page) => set({ page }),
+
+    setPageSize: (pageSize) => set({ pageSize, page: 1 }),
+
+    resetFilters: () => set({ filters: { ...initialFilters }, page: 1 }),
+
+    fetchItems: async (libraryId) => {
+      if (!libraryId) {
+        set({ items: [], total: 0 });
+        return;
+      }
+      set({ loading: true, error: null });
+      try {
+        const { page, pageSize, filters } = get();
+        const params = new URLSearchParams();
+        params.append('library', libraryId);
+        params.append('page', page);
+        params.append('page_size', pageSize);
+        if (filters.type !== 'all') {
+          params.append('item_type', filters.type);
+        }
+        if (filters.status !== 'all') {
+          params.append('status', filters.status);
+        }
+        if (filters.year) {
+          params.append('release_year', filters.year);
+        }
+        if (filters.search) {
+          params.append('search', filters.search);
+        }
+        const response = await API.getMediaItems(params);
+        const results = response.results || response;
+        set({
+          items: Array.isArray(results) ? results : [],
+          total: response.count || results.length || 0,
+          loading: false,
+        });
+      } catch (error) {
+        console.error('Failed to fetch media items', error);
+        set({ error: 'Failed to load media items', loading: false });
+      }
+    },
+
+    openItem: async (id) => {
+      set({ activeItemLoading: true, resumePrompt: null, activeProgress: null });
+      try {
+        const response = await API.getMediaItem(id);
+        const progress = response.watch_progress || null;
+        set({
+          activeItem: response,
+          activeItemLoading: false,
+          activeProgress: progress,
+        });
+        return response;
+      } catch (error) {
+        console.error('Failed to load media item', error);
+        set({ activeItemLoading: false });
+        throw error;
+      }
+    },
+
+    closeItem: () => set({ activeItem: null, resumePrompt: null, activeProgress: null }),
+
+    setActiveProgress: (progress) =>
+      set((state) => {
+        if (state.activeItem) {
+          state.activeItem = { ...state.activeItem, watch_progress: progress };
+        }
+        state.items = state.items.map((item) =>
+          item.id === state.activeItem?.id
+            ? { ...item, watch_progress: progress }
+            : item
+        );
+        state.activeProgress = progress;
+      }),
+
+    requestResume: async (progressId) => {
+      if (!progressId) return null;
+      try {
+        const response = await API.resumeMediaProgress(progressId);
+        set({ resumePrompt: response });
+        return response;
+      } catch (error) {
+        console.error('Failed to get resume info', error);
+        return null;
+      }
+    },
+
+    clearResumePrompt: () => set({ resumePrompt: null }),
+  }))
+);
+
+export default useMediaLibraryStore;
