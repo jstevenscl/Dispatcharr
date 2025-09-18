@@ -97,6 +97,8 @@ const LibraryPage = () => {
   const fetchLibraries = useLibraryStore((s) => s.fetchLibraries);
   const createLibrary = useLibraryStore((s) => s.createLibrary);
   const triggerScan = useLibraryStore((s) => s.triggerScan);
+  const upsertScan = useLibraryStore((s) => s.upsertScan);
+  const removeScan = useLibraryStore((s) => s.removeScan);
   const selectedLibraryId = useLibraryStore((s) => s.selectedLibraryId);
   const setSelectedLibrary = useLibraryStore((s) => s.setSelectedLibrary);
 
@@ -420,7 +422,10 @@ const LibraryPage = () => {
   // Cancel a running scan by job id
   const handleCancelScanJob = async (jobId) => {
     try {
-      await API.cancelLibraryScan(jobId); // implement in API
+      const updated = await API.cancelLibraryScan(jobId);
+      if (updated) {
+        upsertScan(updated);
+      }
       notifications.show({
         title: 'Scan canceled',
         message: 'The running scan has been stopped.',
@@ -439,7 +444,8 @@ const LibraryPage = () => {
   // Remove a queued scan by job id
   const handleDeleteQueuedScan = async (jobId) => {
     try {
-      await API.deleteLibraryScan(jobId); // implement in API
+      await API.deleteLibraryScan(jobId);
+      removeScan(jobId);
       notifications.show({
         title: 'Removed from queue',
         message: 'The queued scan was removed.',

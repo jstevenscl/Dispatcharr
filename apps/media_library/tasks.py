@@ -3,6 +3,7 @@ from datetime import timedelta
 from typing import Optional, Set
 
 from celery import shared_task
+from celery.result import AsyncResult
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db import transaction
@@ -77,6 +78,73 @@ def enqueue_library_scan(
     )
 
     _start_next_scan(library)
+    return scan
+
+
+def _revoke_scan_task(task_id: str | None, *, terminate: bool = False) -> None:
+    if not task_id:
+        return
+    try:
+        AsyncResult(task_id).revoke(terminate=terminate)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to revoke scan task %s: %s", task_id, exc)
+
+
+def start_next_library_scan(library: Library) -> None:
+    """Public helper for kicking off the next pending scan."""
+
+    _start_next_scan(library)
+
+
+def revoke_scan_task(task_id: str | None, *, terminate: bool = False) -> None:
+    """Public helper to revoke a Celery scan task safely."""
+
+    _revoke_scan_task(task_id, terminate=terminate)
+
+
+def cancel_library_scan(scan: LibraryScan, *, summary: str | None = None) -> LibraryScan:
+    """Cancel a running or pending library scan."""
+
+    if scan.status not in {LibraryScan.STATUS_RUNNING, LibraryScan.STATUS_PENDING}:
+        raise ValueError("Only running or pending scans can be cancelled")
+
+    library = scan.library
+    terminate = scan.status == LibraryScan.STATUS_RUNNING
+    _revoke_scan_task(scan.task_id, terminate=terminate)
+
+    now = timezone.now()
+    scan.status = LibraryScan.STATUS_CANCELLED
+    scan.finished_at = now
+    update_fields = ["status", "finished_at", "updated_at"]
+
+    if summary:
+        scan.summary = summary
+        update_fields.append("summary")
+    elif not scan.summary:
+        scan.summary = "Cancelled by user"
+        update_fields.append("summary")
+
+    if scan.task_id:
+        scan.task_id = None
+        update_fields.append("task_id")
+
+    scan.save(update_fields=update_fields)
+
+    _send_scan_event(
+        {
+            "status": "cancelled",
+            "scan_id": str(scan.id),
+            "library_id": scan.library_id,
+            "library_name": library.name if library else "",
+            "summary": scan.summary,
+            "processed": scan.processed_files,
+            "processed_files": scan.processed_files,
+            "total": scan.total_files,
+        }
+    )
+
+    _start_next_scan(library)
+    scan.refresh_from_db()
     return scan
 
 

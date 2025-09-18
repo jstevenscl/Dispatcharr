@@ -2289,6 +2289,30 @@ export default class API {
     }
   }
 
+  static async cancelLibraryScan(id, payload = {}) {
+    try {
+      const response = await request(`${host}/api/media/scans/${id}/cancel/`, {
+        method: 'POST',
+        body: payload,
+      });
+      return response;
+    } catch (e) {
+      errorNotification('Failed to cancel library scan', e);
+      throw e;
+    }
+  }
+
+  static async deleteLibraryScan(id) {
+    try {
+      await request(`${host}/api/media/scans/${id}/`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      errorNotification('Failed to remove library scan', e);
+      throw e;
+    }
+  }
+
   static async getMediaItems(params = new URLSearchParams()) {
     try {
       const query = params.toString();

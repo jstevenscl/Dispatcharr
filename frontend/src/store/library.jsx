@@ -201,6 +201,36 @@ const useLibraryStore = create(
           state.scans[key] = updateList(state.scans[key]);
         });
       }),
+
+    upsertScan: (scan) =>
+      set((state) => {
+        if (!scan || !scan.id) return;
+        const normalized = normalizeScanEntry(scan);
+        const targetKeys = new Set(['all']);
+        if (normalized.library) {
+          targetKeys.add(normalized.library);
+        }
+        targetKeys.forEach((key) => {
+          const items = state.scans[key] ? [...state.scans[key]] : [];
+          const index = items.findIndex((entry) => String(entry.id) === String(normalized.id));
+          if (index >= 0) {
+            items[index] = { ...items[index], ...normalized };
+          } else {
+            items.unshift(normalized);
+          }
+          state.scans[key] = items;
+        });
+      }),
+
+    removeScan: (scanId) =>
+      set((state) => {
+        if (!scanId) return;
+        Object.keys(state.scans).forEach((key) => {
+          const list = state.scans[key];
+          if (!Array.isArray(list)) return;
+          state.scans[key] = list.filter((scan) => String(scan.id) !== String(scanId));
+        });
+      }),
   }))
 );
 

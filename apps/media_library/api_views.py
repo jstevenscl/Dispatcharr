@@ -13,7 +13,13 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.accounts.permissions import Authenticated
 from apps.media_library import models, serializers
-from apps.media_library.tasks import enqueue_library_scan, sync_metadata_task
+from apps.media_library.tasks import (
+    enqueue_library_scan,
+    sync_metadata_task,
+    cancel_library_scan,
+    revoke_scan_task,
+    start_next_library_scan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +59,7 @@ class LibraryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
 
-class LibraryScanViewSet(viewsets.ReadOnlyModelViewSet):
+class LibraryScanViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     queryset = models.LibraryScan.objects.select_related("library", "created_by")
     serializer_class = serializers.LibraryScanSerializer
     permission_classes = [Authenticated]
@@ -61,6 +67,31 @@ class LibraryScanViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["library", "status"]
     ordering_fields = ["created_at", "started_at", "finished_at"]
     ordering = ["-created_at"]
+    http_method_names = ["get", "head", "options", "delete", "post"]
+
+    def destroy(self, request, *args, **kwargs):
+        scan = self.get_object()
+
+        if scan.status != models.LibraryScan.STATUS_PENDING:
+            raise ValidationError({"detail": "Only pending scans can be removed from the queue."})
+
+        revoke_scan_task(scan.task_id, terminate=False)
+        library = scan.library
+        response = super().destroy(request, *args, **kwargs)
+        start_next_library_scan(library)
+        return response
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        scan = self.get_object()
+        summary = request.data.get("summary")
+        try:
+            cancelled = cancel_library_scan(scan, summary=summary)
+        except ValueError as exc:  # noqa: BLE001
+            raise ValidationError({"detail": str(exc)})
+
+        serializer = self.get_serializer(cancelled)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class MediaItemViewSet(viewsets.ModelViewSet):
