@@ -12,6 +12,8 @@ services:
       - 5678:5678 # Debugging port
     volumes:
       - ../:/app
+      - "D:/Server Backup/Movies:/library/Movies"
+      - "D:/Server Backup/TV Shows:/library/TVShows"
     environment:
       - DISPATCHARR_ENV=dev
       - DISPATCHARR_DEBUG=true

@@ -50,26 +50,13 @@ const SettingsPage = () => {
   const suppressWarning = useWarningsStore((s) => s.suppressWarning);
   const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
 
-  const {
-    libraries: mediaLibraries,
-    loading: librariesLoading,
-    fetchLibraries: fetchMediaLibraries,
-    createLibrary: createMediaLibrary,
-    updateLibrary: updateMediaLibrary,
-    deleteLibrary: deleteMediaLibrary,
-    triggerScan: triggerLibraryScan,
-  } = useLibraryStore(
-    (state) => ({
-      libraries: state.libraries,
-      loading: state.loading,
-      fetchLibraries: state.fetchLibraries,
-      createLibrary: state.createLibrary,
-      updateLibrary: state.updateLibrary,
-      deleteLibrary: state.deleteLibrary,
-      triggerScan: state.triggerScan,
-    }),
-    shallow
-  );
+  const mediaLibraries = useLibraryStore((state) => state.libraries);
+  const librariesLoading = useLibraryStore((state) => state.loading);
+  const fetchMediaLibraries = useLibraryStore((state) => state.fetchLibraries);
+  const createMediaLibrary = useLibraryStore((state) => state.createLibrary);
+  const updateMediaLibrary = useLibraryStore((state) => state.updateLibrary);
+  const deleteMediaLibrary = useLibraryStore((state) => state.deleteLibrary);
+  const triggerLibraryScan = useLibraryStore((state) => state.triggerScan);
 
   const [accordianValue, setAccordianValue] = useState(null);
   const [networkAccessSaved, setNetworkAccessSaved] = useState(false);
