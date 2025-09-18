@@ -51,24 +51,6 @@ const runtimeLabel = (runtimeMs) => {
 };
 
 const MediaDetailModal = ({ opened, onClose }) => {
-<<<<<<< Updated upstream
-  const activeItem = useMediaLibraryStore((state) => state.activeItem);
-  const activeItemLoading = useMediaLibraryStore((state) => state.activeItemLoading);
-  const activeProgress = useMediaLibraryStore((state) => state.activeProgress);
-  const resumePrompt = useMediaLibraryStore((state) => state.resumePrompt);
-  const requestResume = useMediaLibraryStore((state) => state.requestResume);
-  const clearResumePrompt = useMediaLibraryStore((state) => state.clearResumePrompt);
-  const setActiveProgress = useMediaLibraryStore((state) => state.setActiveProgress);
-  const showVideo = useVideoStore((state) => state.showVideo);
-  const [startingPlayback, setStartingPlayback] = useState(false);
-  const [resumeModalOpen, setResumeModalOpen] = useState(false);
-  const [resumeMode, setResumeMode] = useState('start');
-  const [episodes, setEpisodes] = useState([]);
-  const [episodesLoading, setEpisodesLoading] = useState(false);
-  const [episodePlayLoadingId, setEpisodePlayLoadingId] = useState(null);
-  const [episodeActionLoading, setEpisodeActionLoading] = useState({});
-
-=======
   const activeItem = useMediaLibraryStore((s) => s.activeItem);
   const activeItemLoading = useMediaLibraryStore((s) => s.activeItemLoading);
   const activeProgress = useMediaLibraryStore((s) => s.activeProgress);
@@ -87,7 +69,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
   const [episodePlayLoadingId, setEpisodePlayLoadingId] = useState(null);
   const [episodeActionLoading, setEpisodeActionLoading] = useState({});
 
->>>>>>> Stashed changes
   const setEpisodeLoading = useCallback((episodeId, action) => {
     setEpisodeActionLoading((prev) => ({ ...prev, [episodeId]: action }));
   }, []);
@@ -129,22 +110,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
   }, [activeItem]);
 
   const orderedEpisodes = useMemo(() => {
-<<<<<<< Updated upstream
-    if (!episodes || episodes.length === 0) {
-      return [];
-    }
-    return [...episodes].sort((a, b) => {
-      const seasonA = a.season_number ?? 0;
-      const seasonB = b.season_number ?? 0;
-      if (seasonA !== seasonB) {
-        return seasonA - seasonB;
-      }
-      const episodeA = a.episode_number ?? 0;
-      const episodeB = b.episode_number ?? 0;
-      if (episodeA !== episodeB) {
-        return episodeA - episodeB;
-      }
-=======
     if (!episodes || episodes.length === 0) return [];
     return [...episodes].sort((a, b) => {
       const seasonA = a.season_number ?? 0;
@@ -153,7 +118,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
       const episodeA = a.episode_number ?? 0;
       const episodeB = b.episode_number ?? 0;
       if (episodeA !== episodeB) return episodeA - episodeB;
->>>>>>> Stashed changes
       return (a.sort_title || '').localeCompare(b.sort_title || '');
     });
   }, [episodes]);
@@ -161,56 +125,11 @@ const MediaDetailModal = ({ opened, onClose }) => {
   const showWatchSummary = activeItem?.watch_summary || null;
 
   const playbackPlan = useMemo(() => {
-<<<<<<< Updated upstream
-    if (!activeItem || activeItem.item_type !== 'show') {
-      return null;
-    }
-    const sorted = orderedEpisodes;
-    if (!sorted || sorted.length === 0) {
-      return { sorted: [], resumeEpisode: null, nextEpisode: null };
-    }
-
-    const resumeId = showWatchSummary?.resume_episode_id;
-    const nextId = showWatchSummary?.next_episode_id;
-    let resumeEpisode = sorted.find((ep) => ep.id === resumeId) || null;
-    let nextEpisode = sorted.find((ep) => ep.id === nextId) || null;
-
-    if (!resumeEpisode) {
-      resumeEpisode = sorted.find(
-        (ep) => ep.watch_summary?.status === 'in_progress'
-      ) || null;
-    }
-
-    if (!resumeEpisode) {
-      resumeEpisode = sorted.find(
-        (ep) => ep.watch_summary?.status !== 'watched'
-      ) || sorted[0];
-    }
-
-    if (!nextEpisode && resumeEpisode) {
-      const currentIndex = sorted.findIndex((ep) => ep.id === resumeEpisode.id);
-      if (currentIndex >= 0 && currentIndex + 1 < sorted.length) {
-        nextEpisode = sorted[currentIndex + 1];
-      }
-    }
-
-    return {
-      sorted,
-      resumeEpisode,
-      nextEpisode,
-    };
-  }, [activeItem, orderedEpisodes, showWatchSummary]);
-
-  const canResume = useMemo(() => {
-    if (!activeProgress || !activeProgress.position_ms || !activeProgress.duration_ms) {
-      return false;
-=======
     if (!activeItem || activeItem.item_type !== 'show') return null;
 
     const sorted = orderedEpisodes;
     if (!sorted || sorted.length === 0) {
       return { sorted: [], resumeEpisode: null, nextEpisode: null };
->>>>>>> Stashed changes
     }
 
     const resumeId = showWatchSummary?.resume_episode_id;
@@ -262,28 +181,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
   }, [opened, activeItem?.id, activeItem?.item_type, loadEpisodes]);
 
   const castPeople = useMemo(() => {
-<<<<<<< Updated upstream
-    if (!activeItem?.cast) {
-      return [];
-    }
-    return activeItem.cast
-      .map((entry, index) => {
-        if (!entry) {
-          return null;
-        }
-        if (typeof entry === 'string') {
-          return {
-            key: `${entry}-${index}`,
-            name: entry,
-            role: null,
-            profile: null,
-          };
-        }
-        const name = entry.name || entry.character || entry.job;
-        if (!name) {
-          return null;
-        }
-=======
     if (!activeItem?.cast) return [];
     return activeItem.cast
       .map((entry, index) => {
@@ -293,7 +190,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
         }
         const name = entry.name || entry.character || entry.job;
         if (!name) return null;
->>>>>>> Stashed changes
         return {
           key: `${name}-${index}`,
           name,
@@ -305,28 +201,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
   }, [activeItem]);
 
   const crewPeople = useMemo(() => {
-<<<<<<< Updated upstream
-    if (!activeItem?.crew) {
-      return [];
-    }
-    return activeItem.crew
-      .map((entry, index) => {
-        if (!entry) {
-          return null;
-        }
-        if (typeof entry === 'string') {
-          return {
-            key: `${entry}-${index}`,
-            name: entry,
-            role: null,
-            profile: null,
-          };
-        }
-        const name = entry.name || entry.job || entry.department;
-        if (!name) {
-          return null;
-        }
-=======
     if (!activeItem?.crew) return [];
     return activeItem.crew
       .map((entry, index) => {
@@ -336,7 +210,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
         }
         const name = entry.name || entry.job || entry.department;
         if (!name) return null;
->>>>>>> Stashed changes
         return {
           key: `${name}-${index}`,
           name,
@@ -404,27 +277,7 @@ const MediaDetailModal = ({ opened, onClose }) => {
       setStartingPlayback(false);
     }
   };
-  const primaryButtonLabel = useMemo(() => {
-    if (!activeItem) {
-      return 'Play';
-    }
-    if (activeItem.item_type === 'show') {
-      if (showWatchSummary?.status === 'in_progress') {
-        return 'Continue Watching';
-      }
-      if (showWatchSummary?.status === 'watched') {
-        return 'Watch Again';
-      }
-      return 'Play';
-    }
-    if (canResume && (resumePrompt || activeProgress)) {
-      return 'Continue Watching';
-    }
-    return 'Play';
-  }, [activeItem, showWatchSummary, canResume, resumePrompt, activeProgress]);
 
-<<<<<<< Updated upstream
-=======
   const primaryButtonLabel = useMemo(() => {
     if (!activeItem) return 'Play';
     if (activeItem.item_type === 'show') {
@@ -436,18 +289,11 @@ const MediaDetailModal = ({ opened, onClose }) => {
     return 'Play';
   }, [activeItem, showWatchSummary, canResume, resumePrompt, activeProgress]);
 
->>>>>>> Stashed changes
   const handlePrimaryAction = () => {
     if (!activeItem) return;
     if (activeItem.item_type === 'show') {
       const targetEpisode =
-<<<<<<< Updated upstream
-        playbackPlan?.resumeEpisode ||
-        playbackPlan?.nextEpisode ||
-        playbackPlan?.sorted?.[0];
-=======
         playbackPlan?.resumeEpisode || playbackPlan?.nextEpisode || playbackPlan?.sorted?.[0];
->>>>>>> Stashed changes
       if (!targetEpisode) {
         notifications.show({
           title: 'No episodes available',
@@ -456,18 +302,8 @@ const MediaDetailModal = ({ opened, onClose }) => {
         });
         return;
       }
-<<<<<<< Updated upstream
-      const startIndex = playbackPlan.sorted.findIndex(
-        (ep) => ep.id === targetEpisode.id
-      );
-      void handlePlayEpisode(targetEpisode, {
-        sequence: playbackPlan.sorted,
-        startIndex,
-      });
-=======
       const startIndex = playbackPlan.sorted.findIndex((ep) => ep.id === targetEpisode.id);
       void handlePlayEpisode(targetEpisode, { sequence: playbackPlan.sorted, startIndex });
->>>>>>> Stashed changes
       return;
     }
     if (canResume && (resumePrompt || activeProgress)) {
@@ -496,13 +332,7 @@ const MediaDetailModal = ({ opened, onClose }) => {
         return;
       }
 
-<<<<<<< Updated upstream
-      const streamInfo = await API.streamMediaItem(episodeDetail.id, {
-        fileId: episodeFileId,
-      });
-=======
       const streamInfo = await API.streamMediaItem(episodeDetail.id, { fileId: episodeFileId });
->>>>>>> Stashed changes
       const playbackUrl = streamInfo?.url || streamInfo?.stream_url;
       if (!playbackUrl) {
         notifications.show({
@@ -520,14 +350,7 @@ const MediaDetailModal = ({ opened, onClose }) => {
       const computedIndex = startIndex ?? episodeIds.findIndex((id) => id === episode.id);
 
       const playbackSequence = episodeIds.length
-<<<<<<< Updated upstream
-        ? {
-            episodeIds,
-            currentIndex: computedIndex >= 0 ? computedIndex : 0,
-          }
-=======
         ? { episodeIds, currentIndex: computedIndex >= 0 ? computedIndex : 0 }
->>>>>>> Stashed changes
         : null;
 
       const episodeProgress = episodeDetail.watch_progress;
@@ -576,47 +399,23 @@ const MediaDetailModal = ({ opened, onClose }) => {
     const grouped = new Map();
     orderedEpisodes.forEach((episode) => {
       const season = episode.season_number || 1;
-<<<<<<< Updated upstream
-      if (!grouped.has(season)) {
-        grouped.set(season, []);
-      }
-=======
       if (!grouped.has(season)) grouped.set(season, []);
->>>>>>> Stashed changes
       grouped.get(season).push(episode);
     });
     return grouped;
   }, [orderedEpisodes]);
 
-<<<<<<< Updated upstream
-  const sortedSeasons = useMemo(() => {
-    return Array.from(episodesBySeason.keys()).sort((a, b) => a - b);
-  }, [episodesBySeason]);
-=======
   const sortedSeasons = useMemo(
     () => Array.from(episodesBySeason.keys()).sort((a, b) => a - b),
     [episodesBySeason]
   );
->>>>>>> Stashed changes
 
   const formatEpisodeCode = (episode) => {
     const season = episode.season_number || 0;
     const ep = episode.episode_number || 0;
-<<<<<<< Updated upstream
-    if (!season && !ep) {
-      return '';
-    }
-    if (!season) {
-      return `E${ep.toString().padStart(2, '0')}`;
-    }
-    if (!ep) {
-      return `S${season.toString().padStart(2, '0')}`;
-    }
-=======
     if (!season && !ep) return '';
     if (!season) return `E${ep.toString().padStart(2, '0')}`;
     if (!ep) return `S${season.toString().padStart(2, '0')}`;
->>>>>>> Stashed changes
     return `S${season.toString().padStart(2, '0')}E${ep.toString().padStart(2, '0')}`;
   };
 
@@ -704,14 +503,7 @@ const MediaDetailModal = ({ opened, onClose }) => {
           <ScrollArea h="70vh" offsetScrollbars>
             <Group align="flex-start" gap="xl" wrap="wrap">
               {activeItem.poster_url ? (
-<<<<<<< Updated upstream
-                <Box
-                  w={{ base: '100%', sm: 240 }}
-                  style={{ flexShrink: 0, maxWidth: 260 }}
-                >
-=======
                 <Box w={{ base: '100%', sm: 240 }} style={{ flexShrink: 0, maxWidth: 260 }}>
->>>>>>> Stashed changes
                   <Box
                     style={{
                       borderRadius: 16,
@@ -734,13 +526,8 @@ const MediaDetailModal = ({ opened, onClose }) => {
                 </Box>
               ) : null}
 
-<<<<<<< Updated upstream
-              <Stack spacing="xl" style={{ flex: 1, minWidth: 0 }}>
-                <Stack spacing="sm">
-=======
               <Stack spacing={SECTION_STACK} style={{ flex: 1, minWidth: 0 }}>
                 <Stack spacing={STACK_TIGHT}>
->>>>>>> Stashed changes
                   <Group justify="space-between" align="center">
                     <Title order={3}>{activeItem.title}</Title>
                     <Group gap="xs">
@@ -794,22 +581,12 @@ const MediaDetailModal = ({ opened, onClose }) => {
                     )}
                   </Group>
 
-<<<<<<< Updated upstream
-                  {activeItem.item_type === 'show' &&
-                    showWatchSummary?.total_episodes ? (
-                      <Text size="sm" c="dimmed">
-                        {showWatchSummary.completed_episodes || 0} of{' '}
-                        {showWatchSummary.total_episodes} episodes watched
-                      </Text>
-                    ) : null}
-=======
                   {activeItem.item_type === 'show' && showWatchSummary?.total_episodes ? (
                     <Text size="sm" c="dimmed">
                       {showWatchSummary.completed_episodes || 0} of{' '}
                       {showWatchSummary.total_episodes} episodes watched
                     </Text>
                   ) : null}
->>>>>>> Stashed changes
 
                   <Group gap="sm" mt="md" align="center" wrap="wrap">
                     <Button
@@ -861,11 +638,7 @@ const MediaDetailModal = ({ opened, onClose }) => {
                         {sortedSeasons.map((season) => {
                           const seasonEpisodes = episodesBySeason.get(season) || [];
                           return (
-<<<<<<< Updated upstream
-                            <Stack key={season} spacing={6}>
-=======
                             <Stack key={season} spacing={STACK_TIGHT}>
->>>>>>> Stashed changes
                               <Group justify="space-between" align="center">
                                 <Group gap="xs" align="center">
                                   <Title order={5}>Season {season}</Title>
@@ -875,11 +648,7 @@ const MediaDetailModal = ({ opened, onClose }) => {
                                   </Badge>
                                 </Group>
                               </Group>
-<<<<<<< Updated upstream
-                              <Stack spacing={6}>
-=======
                               <Stack spacing={STACK_TIGHT}>
->>>>>>> Stashed changes
                                 {seasonEpisodes.map((episode) => {
                                   const episodeProgress = episode.watch_progress;
                                   const episodeStatus = episode.watch_summary?.status;
@@ -901,15 +670,9 @@ const MediaDetailModal = ({ opened, onClose }) => {
                                         padding: '10px 12px',
                                       }}
                                     >
-<<<<<<< Updated upstream
-                                      <Stack spacing={4} style={{ flex: 1, minWidth: 0 }}>
-                                        <Group justify="space-between" align="center">
-                                          <Text fw={600} size="sm">
-=======
                                       <Stack spacing={STACK_TIGHT} style={{ flex: 1, minWidth: 0 }}>
                                         <Group justify="space-between" align="center">
                                           <Text fw={600} size="sm" lineClamp={1}>
->>>>>>> Stashed changes
                                             {[formatEpisodeCode(episode), episode.title]
                                               .filter(Boolean)
                                               .join(' ')}
@@ -947,20 +710,12 @@ const MediaDetailModal = ({ opened, onClose }) => {
                                           )}
                                         </Group>
                                         {(episode.synopsis || activeItem?.synopsis) && (
-<<<<<<< Updated upstream
-                                          <Text size="xs" c="dimmed" lineClamp={3}>
-=======
                                           <Text size="xs" c="dimmed" lineClamp={2}>
->>>>>>> Stashed changes
                                             {episode.synopsis || activeItem?.synopsis}
                                           </Text>
                                         )}
                                       </Stack>
-<<<<<<< Updated upstream
-                                      <Stack spacing={6} align="flex-end">
-=======
                                       <Stack spacing={STACK_TIGHT} align="flex-end">
->>>>>>> Stashed changes
                                         <Group gap={6}>
                                           <Button
                                             size="xs"
@@ -1015,13 +770,8 @@ const MediaDetailModal = ({ opened, onClose }) => {
 
                 <Divider label="Metadata" labelPosition="center" />
 
-<<<<<<< Updated upstream
-                <Stack spacing="sm">
-                  <Group gap="sm">
-=======
                 <Stack spacing={STACK_TIGHT}>
                   <Group gap="xs">
->>>>>>> Stashed changes
                     {activeItem.tmdb_id && (
                       <Badge
                         component="a"
@@ -1046,22 +796,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
                     )}
                   </Group>
 
-<<<<<<< Updated upstream
-                  {castPeople.length > 0 && (
-                    <Stack spacing="sm">
-                      <Text fw={500}>Cast</Text>
-                      <ScrollArea type="auto" offsetScrollbars>
-                        <Group gap="md" wrap="nowrap">
-                          {castPeople.map((person) => (
-                            <Stack
-                              key={person.key}
-                              spacing={6}
-                              align="center"
-                              style={{ width: 116 }}
-                            >
-                              <Avatar
-                                size={80}
-=======
                   {/* CAST */}
                   {castPeople.length > 0 && (
                     <Stack spacing={STACK_TIGHT}>
@@ -1085,21 +819,10 @@ const MediaDetailModal = ({ opened, onClose }) => {
                             >
                               <Avatar
                                 size={CAST_AVATAR_SIZE}
->>>>>>> Stashed changes
                                 radius="md"
                                 src={person.profile || undefined}
                                 alt={person.name}
                                 color="indigo"
-<<<<<<< Updated upstream
-                              >
-                                {!person.profile && person.name?.[0]}
-                              </Avatar>
-                              <Text size="sm" fw={500} ta="center" lineClamp={2}>
-                                {person.name}
-                              </Text>
-                              {person.role && (
-                                <Text size="xs" c="dimmed" ta="center" lineClamp={2}>
-=======
                                 styles={{ image: { objectFit: 'cover' } }}
                               >
                                 {!person.profile && person.name?.[0]}
@@ -1109,7 +832,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
                               </Text>
                               {person.role && (
                                 <Text size="xs" c="dimmed" ta="center" lineClamp={1} style={{ minHeight: 16 }}>
->>>>>>> Stashed changes
                                   {person.role}
                                 </Text>
                               )}
@@ -1120,22 +842,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
                     </Stack>
                   )}
 
-<<<<<<< Updated upstream
-                  {crewPeople.length > 0 && (
-                    <Stack spacing="sm">
-                      <Text fw={500}>Crew</Text>
-                      <ScrollArea type="auto" offsetScrollbars>
-                        <Group gap="md" wrap="nowrap">
-                          {crewPeople.map((person) => (
-                            <Stack
-                              key={person.key}
-                              spacing={6}
-                              align="center"
-                              style={{ width: 116 }}
-                            >
-                              <Avatar
-                                size={80}
-=======
                   {/* CREW */}
                   {crewPeople.length > 0 && (
                     <Stack spacing={STACK_TIGHT}>
@@ -1159,21 +865,10 @@ const MediaDetailModal = ({ opened, onClose }) => {
                             >
                               <Avatar
                                 size={CAST_AVATAR_SIZE}
->>>>>>> Stashed changes
                                 radius="md"
                                 src={person.profile || undefined}
                                 alt={person.name}
                                 color="grape"
-<<<<<<< Updated upstream
-                              >
-                                {!person.profile && person.name?.[0]}
-                              </Avatar>
-                              <Text size="sm" fw={500} ta="center" lineClamp={2}>
-                                {person.name}
-                              </Text>
-                              {person.role && (
-                                <Text size="xs" c="dimmed" ta="center" lineClamp={2}>
-=======
                                 styles={{ image: { objectFit: 'cover' } }}
                               >
                                 {!person.profile && person.name?.[0]}
@@ -1183,7 +878,6 @@ const MediaDetailModal = ({ opened, onClose }) => {
                               </Text>
                               {person.role && (
                                 <Text size="xs" c="dimmed" ta="center" lineClamp={1} style={{ minHeight: 16 }}>
->>>>>>> Stashed changes
                                   {person.role}
                                 </Text>
                               )}
