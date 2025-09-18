@@ -59,7 +59,8 @@ const parseDate = (value) => {
 const LibraryPage = () => {
   const navigate = useNavigate();
   const { mediaType } = useParams();
-  const normalizedMediaType = mediaType === 'shows' ? 'shows' : mediaType === 'movies' ? 'movies' : null;
+  const normalizedMediaType =
+    mediaType === 'shows' ? 'shows' : mediaType === 'movies' ? 'movies' : null;
 
   useEffect(() => {
     if (!normalizedMediaType) {
@@ -388,13 +389,21 @@ const LibraryPage = () => {
     return () => document.removeEventListener('click', handleOutsideClick);
   }, [contextMenu]);
 
-  const handleScanLibrary = async () => {
+  // --- SCAN CONTROLS ---
+
+  // Open the drawer only (do NOT start a scan)
+  const handleOpenScanDrawer = () => setScanDrawerOpen(true);
+
+  // Explicitly start a scan (quick or full)
+  const handleStartScan = async (full = false) => {
     if (!selectedLibraryId) return;
     try {
-      await triggerScan(selectedLibraryId, { full: false });
+      await triggerScan(selectedLibraryId, { full });
       notifications.show({
-        title: 'Scan started',
-        message: 'Library scan has been queued.',
+        title: full ? 'Full scan started' : 'Scan started',
+        message: full
+          ? 'A full library scan has been queued.'
+          : 'Library scan has been queued.',
         color: 'blue',
       });
       setScanDrawerOpen(true);
@@ -403,6 +412,44 @@ const LibraryPage = () => {
       notifications.show({
         title: 'Scan failed',
         message: 'Unable to start scan at this time.',
+        color: 'red',
+      });
+    }
+  };
+
+  // Cancel a running scan by job id
+  const handleCancelScanJob = async (jobId) => {
+    try {
+      await API.cancelLibraryScan(jobId); // implement in API
+      notifications.show({
+        title: 'Scan canceled',
+        message: 'The running scan has been stopped.',
+        color: 'yellow',
+      });
+    } catch (e) {
+      console.error(e);
+      notifications.show({
+        title: 'Cancel failed',
+        message: 'Could not cancel this scan.',
+        color: 'red',
+      });
+    }
+  };
+
+  // Remove a queued scan by job id
+  const handleDeleteQueuedScan = async (jobId) => {
+    try {
+      await API.deleteLibraryScan(jobId); // implement in API
+      notifications.show({
+        title: 'Removed from queue',
+        message: 'The queued scan was removed.',
+        color: 'green',
+      });
+    } catch (e) {
+      console.error(e);
+      notifications.show({
+        title: 'Remove failed',
+        message: 'Could not remove this queued scan.',
         color: 'red',
       });
     }
@@ -443,51 +490,51 @@ const LibraryPage = () => {
             <Select
               label="Sort by"
               data={SORT_OPTIONS}
-            value={sortOption}
-            onChange={(value) => setSortOption(value || 'default')}
-            w={220}
-          />
-          <Button
-            variant="subtle"
-            leftSection={<RefreshCcw size={16} />}
-            onClick={() => fetchItems(selectedLibraryId)}
-          >
-            Refresh
-          </Button>
-        </Group>
-        {sortOption === 'default' ? (
-          recommendedView
-        ) : sortOption === 'genre' ? (
-          <Stack spacing="xl">
-            {genreCarousels.map(({ genre, items: genreItems }) => (
-              <MediaCarousel
-                key={genre}
-                title={genre}
-                items={genreItems}
+              value={sortOption}
+              onChange={(value) => setSortOption(value || 'default')}
+              w={220}
+            />
+            <Button
+              variant="subtle"
+              leftSection={<RefreshCcw size={16} />}
+              onClick={() => fetchItems(selectedLibraryId)}
+            >
+              Refresh
+            </Button>
+          </Group>
+          {sortOption === 'default' ? (
+            recommendedView
+          ) : sortOption === 'genre' ? (
+            <Stack spacing="xl">
+              {genreCarousels.map(({ genre, items: genreItems }) => (
+                <MediaCarousel
+                  key={genre}
+                  title={genre}
+                  items={genreItems}
+                  onSelect={handleOpenItem}
+                  onContextMenu={handleContextMenu}
+                />
+              ))}
+            </Stack>
+          ) : (
+            <Box style={{ position: 'relative' }}>
+              {sortOption === 'alpha' && availableLetters.size > 0 && (
+                <AlphabetSidebar available={availableLetters} onSelect={handleLetterSelect} />
+              )}
+              <MediaGrid
+                items={sortedLibraryItems}
+                loading={itemsLoading}
                 onSelect={handleOpenItem}
                 onContextMenu={handleContextMenu}
+                groupByLetter={sortOption === 'alpha'}
+                letterRefs={letterRefs}
+                cardSize="md"
               />
-            ))}
-          </Stack>
-        ) : (
-          <Box style={{ position: 'relative' }}>
-            {sortOption === 'alpha' && availableLetters.size > 0 && (
-              <AlphabetSidebar available={availableLetters} onSelect={handleLetterSelect} />
-            )}
-            <MediaGrid
-              items={sortedLibraryItems}
-              loading={itemsLoading}
-              onSelect={handleOpenItem}
-              onContextMenu={handleContextMenu}
-              groupByLetter={sortOption === 'alpha'}
-              letterRefs={letterRefs}
-              cardSize="md"
-            />
-          </Box>
-        )}
-      </Stack>
-    </Box>
-  );
+            </Box>
+          )}
+        </Stack>
+      </Box>
+    );
   })();
 
   const categoriesView = (
@@ -533,29 +580,34 @@ const LibraryPage = () => {
               w={220}
               disabled={librariesLoading || libraries.length === 0}
             />
-            <Button
-              leftSection={<Plus size={16} />}
-              onClick={() => setFormOpen(true)}
-            >
+            <Button leftSection={<Plus size={16} />} onClick={() => setFormOpen(true)}>
               Add Library
             </Button>
+
+            {/* Open scan drawer ONLY */}
             <ActionIcon
               variant="light"
               color="blue"
-              onClick={handleScanLibrary}
+              onClick={handleOpenScanDrawer}
               title="View recent scans"
             >
               <ListChecks size={18} />
+            </ActionIcon>
+
+            {/* Start a scan explicitly */}
+            <ActionIcon
+              variant="filled"
+              color="blue"
+              onClick={() => handleStartScan(false)}
+              title="Start library scan"
+            >
+              <RefreshCcw size={18} />
             </ActionIcon>
           </Group>
         </Group>
 
         <Group justify="space-between" align="center" wrap="wrap">
-          <SegmentedControl
-            value={activeTab}
-            onChange={setActiveTab}
-            data={TABS}
-          />
+          <SegmentedControl value={activeTab} onChange={setActiveTab} data={TABS} />
           <Group align="center" gap="sm">
             <TextInput
               leftSection={<Search size={16} />}
@@ -608,6 +660,11 @@ const LibraryPage = () => {
         opened={scanDrawerOpen}
         onClose={() => setScanDrawerOpen(false)}
         libraryId={selectedLibraryId}
+        // NEW: enable controls inside the drawer
+        onCancelJob={handleCancelScanJob}
+        onDeleteQueuedJob={handleDeleteQueuedScan}
+        onStartScan={() => handleStartScan(false)}
+        onStartFullScan={() => handleStartScan(true)}
       />
 
       <MediaDetailModal
