@@ -6,10 +6,12 @@ from celery import shared_task
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.media_library.metadata import sync_metadata
 from apps.media_library.models import Library, LibraryScan, MediaFile, MediaItem
+from apps.media_library import serializers
 from apps.media_library.utils import (
     LibraryScanner,
     apply_probe_metadata,
@@ -19,6 +21,41 @@ from apps.media_library.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _start_next_scan(library: Library) -> None:
+    if library.scans.filter(status=LibraryScan.STATUS_RUNNING).exists():
+        return
+
+    if library.scans.filter(status=LibraryScan.STATUS_PENDING, task_id__isnull=False).exists():
+        return
+
+    pending_scan = (
+        library.scans.filter(
+            status=LibraryScan.STATUS_PENDING,
+            task_id__isnull=True,
+        )
+        .order_by("created_at")
+        .first()
+    )
+
+    if not pending_scan:
+        return
+
+    extra = pending_scan.extra or {}
+    force_full = bool(extra.get("force_full"))
+    rescan_item_id = extra.get("rescan_item_id")
+
+    async_result = scan_library_task.apply_async(
+        kwargs={
+            "scan_id": str(pending_scan.id),
+            "library_id": pending_scan.library_id,
+            "force_full": force_full,
+            "rescan_item_id": rescan_item_id,
+        }
+    )
+    pending_scan.task_id = async_result.id
+    pending_scan.save(update_fields=["task_id", "updated_at"])
 
 
 def enqueue_library_scan(
@@ -39,16 +76,7 @@ def enqueue_library_scan(
         },
     )
 
-    async_result = scan_library_task.apply_async(
-        kwargs={
-            "scan_id": str(scan.id),
-            "library_id": library_id,
-            "force_full": force_full,
-            "rescan_item_id": rescan_item_id,
-        }
-    )
-    scan.task_id = async_result.id
-    scan.save(update_fields=["task_id", "updated_at"])
+    _start_next_scan(library)
     return scan
 
 
@@ -61,6 +89,27 @@ def _send_scan_event(event: dict) -> None:
         return
     payload = {"success": True, "type": "media_scan"}
     payload.update(event)
+    async_to_sync(channel_layer.group_send)(
+        "updates",
+        {"type": "update", "data": payload},
+    )
+
+
+def _send_media_item_update(media_item: MediaItem, *, status: str = "updated") -> None:
+    try:
+        channel_layer = get_channel_layer()
+    except Exception:  # noqa: BLE001
+        return
+    if not channel_layer:
+        return
+
+    data = serializers.MediaItemListSerializer(media_item, context={"request": None}).data
+    payload = {
+        "type": "media_item_update",
+        "status": status,
+        "library_id": media_item.library_id,
+        "media_item": data,
+    }
     async_to_sync(channel_layer.group_send)(
         "updates",
         {"type": "update", "data": payload},
@@ -85,6 +134,11 @@ def scan_library_task(
     scan.mark_running(task_id=self.request.id if self.request else None)
     library = scan.library
     logger.info("Starting scan for library %s (id=%s)", library.name, library.id)
+    processed = 0
+    total_files = 0
+    matched = 0
+    unmatched = 0
+    media_item_ids: Set[int] = set()
     _send_scan_event(
         {
             "status": "started",
@@ -104,6 +158,7 @@ def scan_library_task(
 
         discoveries = _discover_media(scan=scan, scanner=scanner)
         logger.debug("Discovered %s files for library %s", len(discoveries), library.id)
+        scan.record_progress(processed=0, matched=0, unmatched=0)
         _send_scan_event(
             {
                 "status": "discovered",
@@ -112,14 +167,15 @@ def scan_library_task(
                 "files": len(discoveries),
                 "new_files": scan.new_files,
                 "updated_files": scan.updated_files,
+                "processed": 0,
+                "processed_files": 0,
+                "total": len(discoveries),
             }
         )
 
         scanner.mark_missing_files()
 
-        matched = 0
-        unmatched = 0
-        media_item_ids: Set[int] = set()
+        total_files = len(discoveries)
 
         for result in discoveries:
             identify_result = _identify_media_file(
@@ -130,14 +186,49 @@ def scan_library_task(
             matched += identify_result.get("matched", 0)
             unmatched += identify_result.get("unmatched", 0)
             media_id = identify_result.get("media_item_id")
-            if media_id:
-                media_item_ids.add(media_id)
+            parent_media_id = identify_result.get("parent_media_item_id")
+            candidate_ids = {
+                candidate_id
+                for candidate_id in (media_id, parent_media_id)
+                if candidate_id
+            }
+            for candidate_id in candidate_ids:
+                is_new_media = candidate_id not in media_item_ids
+                media_item_ids.add(candidate_id)
+                if is_new_media:
+                    try:
+                        media_obj = MediaItem.objects.select_related("library").get(pk=candidate_id)
+                    except MediaItem.DoesNotExist:
+                        continue
+                    else:
+                        _send_media_item_update(media_obj, status="progress")
 
             if result.requires_probe:
-                _probe_media_file(file_id=result.file_id)
+                probe_media_task.delay(result.file_id)
 
-        for media_item_id in media_item_ids:
-            _sync_metadata(media_item_id)
+            processed += 1
+            scan.record_progress(processed=processed, matched=matched, unmatched=unmatched)
+            _send_scan_event(
+                {
+                    "status": "progress",
+                    "scan_id": str(scan.id),
+                    "library_id": library.id,
+                    "processed": processed,
+                    "processed_files": processed,
+                    "total": total_files,
+                    "matched": matched,
+                    "unmatched": unmatched,
+                }
+            )
+
+        if media_item_ids:
+            metadata_qs = MediaItem.objects.filter(pk__in=media_item_ids).filter(
+                Q(metadata_last_synced_at__isnull=True)
+                | Q(poster_url__isnull=True)
+                | Q(poster_url="")
+            )
+            for item in metadata_qs:
+                sync_metadata_task.delay(item.id)
 
         summary = (
             f"Processed {scan.total_files} files; "
@@ -158,10 +249,20 @@ def scan_library_task(
                 "new_files": scan.new_files,
                 "updated_files": scan.updated_files,
                 "removed_files": scan.removed_files,
+                "processed": scan.total_files,
+                "processed_files": scan.total_files,
+                "total": scan.total_files,
             }
         )
+        _start_next_scan(library)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Library scan failed for %s", library.name)
+        scan.record_progress(
+            processed=processed,
+            matched=matched,
+            unmatched=unmatched,
+            summary=str(exc),
+        )
         scan.mark_failed(summary=str(exc))
         _send_scan_event(
             {
@@ -170,8 +271,12 @@ def scan_library_task(
                 "scan_id": str(scan.id),
                 "library_id": library.id,
                 "message": str(exc),
+                "processed": processed,
+                "processed_files": processed,
+                "total": total_files,
             }
         )
+        _start_next_scan(library)
         raise
 
 
@@ -203,6 +308,12 @@ def _identify_media_file(
         return {"matched": 0, "unmatched": 0}
 
     classification = classify_media_file(file_record.file_name)
+    if library.library_type == Library.LIBRARY_TYPE_MOVIES:
+        classification.detected_type = MediaItem.TYPE_MOVIE
+    elif library.library_type == Library.LIBRARY_TYPE_SHOWS:
+        if classification.detected_type == MediaItem.TYPE_MOVIE:
+            classification.detected_type = MediaItem.TYPE_SHOW
+    # mixed/other retain detected type
     target_item = None
     if target_item_id:
         target_item = MediaItem.objects.filter(pk=target_item_id, library=library).first()
@@ -223,6 +334,17 @@ def _identify_media_file(
             if media_item.status != MediaItem.STATUS_MATCHED:
                 media_item.status = MediaItem.STATUS_MATCHED
                 media_item.save(update_fields=["status", "updated_at"])
+            if (
+                classification.detected_type == MediaItem.TYPE_EPISODE
+                and media_item.parent_id
+            ):
+                parent = MediaItem.objects.filter(pk=media_item.parent_id).first()
+                if parent:
+                    if parent.status != MediaItem.STATUS_MATCHED:
+                        parent.status = MediaItem.STATUS_MATCHED
+                        parent.save(update_fields=["status", "updated_at"])
+                    if not parent.metadata_last_synced_at or not parent.poster_url:
+                        sync_metadata_task.delay(parent.id)
             matched = 1
     else:
         unmatched = 1
@@ -234,6 +356,7 @@ def _identify_media_file(
     return {
         "file_id": file_id,
         "media_item_id": media_item.id if media_item else None,
+        "parent_media_item_id": media_item.parent_id if media_item else None,
         "matched": matched,
         "unmatched": unmatched,
     }
@@ -267,7 +390,9 @@ def _sync_metadata(media_item_id: int) -> None:
         media_item = MediaItem.objects.get(pk=media_item_id)
     except MediaItem.DoesNotExist:
         return
-    sync_metadata(media_item)
+    result = sync_metadata(media_item)
+    if result:
+        _send_media_item_update(result, status="metadata")
 
 
 @shared_task(name="media_library.sync_metadata")

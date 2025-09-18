@@ -1,6 +1,23 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import API from '../api';
+import useMediaLibraryStore from './mediaLibrary';
+
+const normalizeScanEntry = (scan) => {
+  if (!scan) return scan;
+  let processed = scan.processed_files ?? scan.processed;
+  if (processed == null && scan.status === 'completed' && scan.total_files != null) {
+    processed = scan.total_files;
+  }
+  if (processed == null) {
+    processed = 0;
+  }
+  return {
+    ...scan,
+    processed,
+    processed_files: processed,
+  };
+};
 
 const useLibraryStore = create(
   immer((set, get) => ({
@@ -93,8 +110,9 @@ const useLibraryStore = create(
         if (!state.scans[id]) {
           state.scans[id] = [];
         }
-        state.scans[id] = [response, ...(state.scans[id] || [])];
-        state.scans['all'] = [response, ...(state.scans['all'] || [])];
+        const normalized = normalizeScanEntry(response);
+        state.scans[id] = [normalized, ...(state.scans[id] || [])];
+        state.scans['all'] = [normalized, ...(state.scans['all'] || [])];
       });
       return response;
     },
@@ -110,9 +128,10 @@ const useLibraryStore = create(
         }
         const response = await API.getLibraryScans(params);
         set((state) => {
-          state.scans[libraryId || 'all'] = Array.isArray(response)
+          const payload = Array.isArray(response)
             ? response
             : response.results || [];
+          state.scans[libraryId || 'all'] = payload.map((scan) => normalizeScanEntry(scan));
           state.scansLoading = false;
         });
       } catch (error) {
@@ -129,9 +148,19 @@ const useLibraryStore = create(
         const scanId = event.scan_id;
         const libraryId = event.library_id || null;
 
+        if (event.media_item) {
+          useMediaLibraryStore.getState().upsertItems([event.media_item]);
+        }
+
         const updateList = (list) => {
           const items = list ? [...list] : [];
           const index = items.findIndex((scan) => String(scan.id) === String(scanId));
+          const processedValue =
+            event.processed_files ??
+            event.processed ??
+            items[index]?.processed_files ??
+            items[index]?.processed ??
+            0;
           const updatedEntry = {
             id: scanId,
             library: libraryId,
@@ -140,10 +169,12 @@ const useLibraryStore = create(
             summary: event.summary || event.message || items[index]?.summary || '',
             matched_items: event.matched ?? items[index]?.matched_items ?? null,
             unmatched_files: event.unmatched ?? items[index]?.unmatched_files ?? null,
-            total_files: event.files ?? items[index]?.total_files ?? null,
+            total_files: event.total ?? event.files ?? items[index]?.total_files ?? null,
             new_files: event.new_files ?? items[index]?.new_files ?? null,
             updated_files: event.updated_files ?? items[index]?.updated_files ?? null,
             removed_files: event.removed_files ?? items[index]?.removed_files ?? null,
+            processed: processedValue,
+            processed_files: processedValue,
             created_at:
               (items[index]?.created_at || new Date().toISOString()),
             finished_at:
@@ -154,9 +185,9 @@ const useLibraryStore = create(
           };
 
           if (index >= 0) {
-            items[index] = { ...items[index], ...updatedEntry };
+            items[index] = normalizeScanEntry({ ...items[index], ...updatedEntry });
           } else {
-            items.unshift(updatedEntry);
+            items.unshift(normalizeScanEntry(updatedEntry));
           }
           return items;
         };

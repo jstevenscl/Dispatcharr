@@ -2,6 +2,34 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import API from '../api';
 
+const METADATA_REFRESH_COOLDOWN_MS = 60 * 1000;
+const metadataRequestCache = new Map();
+
+const shouldRefreshMetadata = (item) => {
+  if (!item || !item.id) return false;
+  return !item.poster_url || !item.metadata_last_synced_at;
+};
+
+const queueMetadataRefresh = (items, { force = false } = {}) => {
+  if (!Array.isArray(items) || items.length === 0) return;
+  const now = Date.now();
+  items.forEach((item) => {
+    if (!shouldRefreshMetadata(item)) {
+      if (item?.id) {
+        metadataRequestCache.delete(item.id);
+      }
+      return;
+    }
+    const lastRequested = metadataRequestCache.get(item.id) || 0;
+    if (!force && now - lastRequested < METADATA_REFRESH_COOLDOWN_MS) return;
+    metadataRequestCache.set(item.id, now);
+    API.refreshMediaItemMetadata(item.id).catch((error) => {
+      console.debug('Auto metadata refresh failed', error);
+      metadataRequestCache.delete(item.id);
+    });
+  });
+};
+
 const initialFilters = {
   type: 'all',
   search: '',
@@ -14,36 +42,74 @@ const useMediaLibraryStore = create(
     items: [],
     loading: false,
     error: null,
-    page: 1,
-    pageSize: 24,
     total: 0,
     activeItem: null,
     activeProgress: null,
     activeItemLoading: false,
     resumePrompt: null,
+    selectedLibraryId: null,
     filters: { ...initialFilters },
 
     setFilters: (updated) =>
       set((state) => {
         state.filters = { ...state.filters, ...updated };
-        state.page = 1;
       }),
 
-    setPage: (page) =>
+    setSelectedLibraryId: (libraryId) =>
       set((state) => {
-        state.page = page;
-      }),
-
-    setPageSize: (pageSize) =>
-      set((state) => {
-        state.pageSize = pageSize;
-        state.page = 1;
+        state.selectedLibraryId = libraryId;
       }),
 
     resetFilters: () =>
       set((state) => {
         state.filters = { ...initialFilters };
-        state.page = 1;
+      }),
+
+    upsertItems: (itemsToUpsert) =>
+      set((state) => {
+        if (!Array.isArray(itemsToUpsert) || itemsToUpsert.length === 0) {
+          return;
+        }
+
+        const selectedLibraryId = get().selectedLibraryId;
+        if (!selectedLibraryId) {
+          return;
+        }
+
+        const byId = new Map();
+        state.items.forEach((item) => {
+          byId.set(item.id, item);
+        });
+
+        itemsToUpsert.forEach((incoming) => {
+          if (!incoming || typeof incoming !== 'object' || !incoming.id) {
+            return;
+          }
+          if (
+            incoming.library &&
+            Number(incoming.library) !== Number(selectedLibraryId)
+          ) {
+            return;
+          }
+          const existing = byId.get(incoming.id) || {};
+          byId.set(incoming.id, { ...existing, ...incoming });
+        });
+
+        const sorted = Array.from(byId.values()).sort((a, b) => {
+          const aTitle = (a.sort_title || a.title || '').toLowerCase();
+          const bTitle = (b.sort_title || b.title || '').toLowerCase();
+          return aTitle.localeCompare(bTitle);
+        });
+
+        state.items = sorted;
+        state.total = sorted.length;
+      }),
+
+    removeItems: (ids) =>
+      set((state) => {
+        const idSet = new Set(Array.isArray(ids) ? ids : [ids]);
+        state.items = state.items.filter((item) => !idSet.has(item.id));
+        state.total = state.items.length;
       }),
 
     fetchItems: async (libraryId) => {
@@ -59,11 +125,9 @@ const useMediaLibraryStore = create(
         state.error = null;
       });
       try {
-        const { page, pageSize, filters } = get();
+        const { filters } = get();
         const params = new URLSearchParams();
         params.append('library', libraryId);
-        params.append('page', page);
-        params.append('page_size', pageSize);
         if (filters.type !== 'all') {
           params.append('item_type', filters.type);
         }
@@ -83,6 +147,8 @@ const useMediaLibraryStore = create(
           state.total = response.count || results.length || 0;
           state.loading = false;
         });
+        const itemsArray = Array.isArray(results) ? results : [];
+        queueMetadataRefresh(itemsArray);
       } catch (error) {
         console.error('Failed to fetch media items', error);
         set((state) => {
@@ -106,6 +172,8 @@ const useMediaLibraryStore = create(
           state.activeItemLoading = false;
           state.activeProgress = progress;
         });
+        get().upsertItems([response]);
+        queueMetadataRefresh([response], { force: true });
         return response;
       } catch (error) {
         console.error('Failed to load media item', error);

@@ -2,10 +2,11 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { copyToClipboard } from '../utils';
 import {
+  ChevronDown,
+  ChevronRight,
   ListOrdered,
   Play,
   Database,
-  SlidersHorizontal,
   LayoutGrid,
   Settings as LucideSettings,
   Copy,
@@ -107,8 +108,11 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           },
           {
             label: 'Media Library',
-            path: '/library',
             icon: <Library size={20} />,
+            children: [
+              { label: 'Movies', path: '/library/movies' },
+              { label: 'TV Shows', path: '/library/shows' },
+            ],
           },
           {
             label: 'M3U & EPG Manager',
@@ -145,8 +149,11 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
           { label: 'TV Guide', icon: <LayoutGrid size={20} />, path: '/guide' },
           {
             label: 'Media Library',
-            path: '/library',
             icon: <Library size={20} />,
+            children: [
+              { label: 'Movies', path: '/library/movies' },
+              { label: 'TV Shows', path: '/library/shows' },
+            ],
           },
           {
             label: 'Settings',
@@ -154,6 +161,16 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
             path: '/settings',
           },
         ];
+
+  const [libraryExpanded, setLibraryExpanded] = useState(
+    location.pathname.startsWith('/library')
+  );
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/library')) {
+      setLibraryExpanded(true);
+    }
+  }, [location.pathname]);
 
   // Fetch environment settings including version on component mount
   useEffect(() => {
@@ -255,7 +272,64 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       {/* Navigation Links */}
       <Stack gap="xs" mt="lg">
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path
+            ? location.pathname.startsWith(item.path)
+            : false;
+
+          if (item.children) {
+            const childActive = item.children.some((child) =>
+              location.pathname.startsWith(child.path)
+            );
+            const expanded = libraryExpanded || childActive;
+            return (
+              <Stack key={item.label} spacing={4}>
+                <UnstyledButton
+                  className={`navlink ${expanded ? 'navlink-active' : ''} ${collapsed ? 'navlink-collapsed' : ''}`}
+                  onClick={() => setLibraryExpanded((prev) => !prev)}
+                >
+                  {item.icon}
+                  {!collapsed && (
+                    <Group justify="space-between" w="100%" gap={0}>
+                      <Text
+                        sx={{
+                          opacity: collapsed ? 0 : 1,
+                          transition: 'opacity 0.2s ease-in-out',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          minWidth: collapsed ? 0 : 150,
+                        }}
+                      >
+                        {item.label}
+                      </Text>
+                      {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </Group>
+                  )}
+                </UnstyledButton>
+                {expanded && !collapsed && (
+                  <Stack spacing={2} ml={32}>
+                    {item.children.map((child) => {
+                      const active = location.pathname.startsWith(child.path);
+                      return (
+                        <UnstyledButton
+                          key={child.path}
+                          component={Link}
+                          to={child.path}
+                          className={`navlink ${active ? 'navlink-active' : ''}`}
+                          style={{
+                            paddingLeft: 18,
+                            fontSize: '0.85rem',
+                          }}
+                        >
+                          <Text size="sm">{child.label}</Text>
+                        </UnstyledButton>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </Stack>
+            );
+          }
 
           return (
             <NavLink

@@ -150,6 +150,7 @@ class LibraryScan(models.Model):
     started_at = models.DateTimeField(blank=True, null=True)
     finished_at = models.DateTimeField(blank=True, null=True)
     total_files = models.PositiveIntegerField(default=0)
+    processed_files = models.PositiveIntegerField(default=0)
     new_files = models.PositiveIntegerField(default=0)
     updated_files = models.PositiveIntegerField(default=0)
     removed_files = models.PositiveIntegerField(default=0)
@@ -169,21 +170,71 @@ class LibraryScan(models.Model):
     def mark_running(self, task_id: str | None = None):
         self.status = self.STATUS_RUNNING
         self.started_at = timezone.now()
+        self.processed_files = 0
         if task_id:
             self.task_id = task_id
-        self.save(update_fields=["status", "started_at", "task_id", "updated_at"])
+        self.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "task_id",
+                "processed_files",
+                "updated_at",
+            ]
+        )
 
     def mark_completed(self, summary: str = ""):
         self.status = self.STATUS_COMPLETED
         self.finished_at = timezone.now()
         self.summary = summary
-        self.save(update_fields=["status", "finished_at", "summary", "updated_at"])
+        self.processed_files = self.total_files
+        self.save(
+            update_fields=[
+                "status",
+                "finished_at",
+                "summary",
+                "processed_files",
+                "updated_at",
+            ]
+        )
 
     def mark_failed(self, summary: str = ""):
         self.status = self.STATUS_FAILED
         self.finished_at = timezone.now()
         self.summary = summary
         self.save(update_fields=["status", "finished_at", "summary", "updated_at"])
+
+    def record_progress(
+        self,
+        *,
+        processed: int | None = None,
+        matched: int | None = None,
+        unmatched: int | None = None,
+        summary: str | None = None,
+    ) -> None:
+        updates: dict[str, object] = {}
+
+        if processed is not None:
+            self.processed_files = processed
+            updates["processed_files"] = processed
+        if matched is not None:
+            self.matched_items = matched
+            updates["matched_items"] = matched
+        if unmatched is not None:
+            self.unmatched_files = unmatched
+            updates["unmatched_files"] = unmatched
+        if summary is not None:
+            self.summary = summary
+            updates["summary"] = summary
+
+        if not updates:
+            return
+
+        now = timezone.now()
+        updates["updated_at"] = now
+        self.__class__.objects.filter(pk=self.pk).update(**updates)
+        self.updated_at = now
+
 
 
 class MediaItem(models.Model):

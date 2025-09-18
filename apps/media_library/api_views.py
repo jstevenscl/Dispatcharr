@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 from django.core.signing import TimestampSigner
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.urls import reverse
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
@@ -38,6 +38,12 @@ class LibraryViewSet(viewsets.ModelViewSet):
         if library.auto_scan_enabled and self.request.data.get("trigger_scan"):
             enqueue_library_scan(library_id=library.id, user_id=self.request.user.id)
 
+    def perform_destroy(self, instance):
+        # Explicitly clean up related media items and files before removing the library
+        instance.items.all().delete()
+        instance.files.all().delete()
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=["post"], url_path="scan")
     def scan(self, request, pk=None):
         library = self.get_object()
@@ -58,28 +64,89 @@ class LibraryScanViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class MediaItemViewSet(viewsets.ModelViewSet):
-    queryset = (
-        models.MediaItem.objects.select_related(
+    serializer_class = serializers.MediaItemSerializer
+    permission_classes = [Authenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = [
+        "library",
+        "item_type",
+        "status",
+        "release_year",
+        "season_number",
+        "parent",
+    ]
+    search_fields = ["title", "synopsis", "tags"]
+    ordering_fields = [
+        "sort_title",
+        "release_year",
+        "first_imported_at",
+        "updated_at",
+        "season_number",
+        "episode_number",
+    ]
+    ordering = ["sort_title"]
+    http_method_names = ["get", "head", "options", "patch", "post"]
+    pagination_class = None
+    _stream_signer = TimestampSigner(salt="media-library-stream")
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return serializers.MediaItemListSerializer
+        return super().get_serializer_class()
+
+    def get_queryset(self):
+        user = getattr(self.request, "user", None)
+        if user and user.is_authenticated:
+            watch_prefetch = Prefetch(
+                "watch_progress",
+                queryset=models.WatchProgress.objects.filter(user=user),
+                to_attr="_user_watch_progress",
+            )
+            episode_watch_prefetch = Prefetch(
+                "watch_progress",
+                queryset=models.WatchProgress.objects.filter(user=user),
+                to_attr="_user_watch_progress",
+            )
+        else:
+            watch_prefetch = Prefetch(
+                "watch_progress",
+                queryset=models.WatchProgress.objects.none(),
+                to_attr="_user_watch_progress",
+            )
+            episode_watch_prefetch = Prefetch(
+                "watch_progress",
+                queryset=models.WatchProgress.objects.none(),
+                to_attr="_user_watch_progress",
+            )
+
+        base_queryset = models.MediaItem.objects.select_related(
             "library",
             "parent",
             "vod_movie",
             "vod_series",
             "vod_episode",
         )
-        .prefetch_related("files", "artwork", "watch_progress")
-    )
-    serializer_class = serializers.MediaItemSerializer
-    permission_classes = [Authenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ["library", "item_type", "status", "release_year", "season_number"]
-    search_fields = ["title", "synopsis", "tags"]
-    ordering_fields = ["sort_title", "release_year", "first_imported_at", "updated_at"]
-    ordering = ["sort_title"]
-    http_method_names = ["get", "head", "options", "patch"]
-    _stream_signer = TimestampSigner(salt="media-library-stream")
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
+        if self.action == "list":
+            children_qs = (
+                models.MediaItem.objects.filter(item_type=models.MediaItem.TYPE_EPISODE)
+                .select_related("parent")
+                .prefetch_related(episode_watch_prefetch)
+                .order_by("season_number", "episode_number", "id")
+            )
+            return base_queryset.prefetch_related(
+                watch_prefetch,
+                Prefetch(
+                    "children",
+                    queryset=children_qs,
+                    to_attr="_prefetched_children",
+                ),
+            )
+
+        return base_queryset.prefetch_related("files", "artwork", watch_prefetch)
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
         search = self.request.query_params.get("search")
         if search:
             search = search.strip()
@@ -144,7 +211,7 @@ class MediaItemViewSet(viewsets.ModelViewSet):
         payload = {"file_id": file.id, "user_id": request.user.id}
         token = self._stream_signer.sign_object(payload)
         stream_url = request.build_absolute_uri(
-            reverse("media:stream-file", args=[token])
+            reverse("api:media:stream-file", args=[token])
         )
         ttl = getattr(settings, "MEDIA_LIBRARY_STREAM_TOKEN_TTL", 3600)
         return Response(
@@ -180,6 +247,64 @@ class MediaItemViewSet(viewsets.ModelViewSet):
         )
         progress.update_progress(position_ms=duration or 0, duration_ms=duration or 0)
         return Response({"status": "ok"})
+
+    @action(detail=True, methods=["post"], url_path="mark-series-watched")
+    def mark_series_watched(self, request, pk=None):
+        item = self.get_object()
+        if item.item_type != models.MediaItem.TYPE_SHOW:
+            return Response(
+                {"detail": "Series-level actions are only available for shows."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        episodes = item.children.filter(item_type=models.MediaItem.TYPE_EPISODE)
+        updated = 0
+        for episode in episodes:
+            duration = episode.runtime_ms
+            if not duration:
+                primary_file = episode.files.order_by("-duration_ms").first()
+                duration = primary_file.duration_ms if primary_file else 0
+            if not duration:
+                duration = 1000
+            models.WatchProgress.objects.update_or_create(
+                user=request.user,
+                media_item=episode,
+                defaults={
+                    "position_ms": duration,
+                    "duration_ms": duration,
+                    "completed": True,
+                },
+            )
+            updated += 1
+
+        models.WatchProgress.objects.update_or_create(
+            user=request.user,
+            media_item=item,
+            defaults={
+                "position_ms": 0,
+                "duration_ms": item.runtime_ms or 0,
+                "completed": True,
+            },
+        )
+
+        serializer = self.get_serializer(item)
+        return Response({"updated": updated, "item": serializer.data})
+
+    @action(detail=True, methods=["post"], url_path="mark-series-unwatched")
+    def mark_series_unwatched(self, request, pk=None):
+        item = self.get_object()
+        if item.item_type != models.MediaItem.TYPE_SHOW:
+            return Response(
+                {"detail": "Series-level actions are only available for shows."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        episodes = item.children.filter(item_type=models.MediaItem.TYPE_EPISODE)
+        cleared, _ = models.WatchProgress.objects.filter(
+            user=request.user,
+            media_item__in=episodes,
+        ).delete()
+        models.WatchProgress.objects.filter(user=request.user, media_item=item).delete()
+        serializer = self.get_serializer(item)
+        return Response({"cleared": cleared, "item": serializer.data})
 
     @action(detail=True, methods=["post"], url_path="clear-progress")
     def clear_progress(self, request, pk=None):

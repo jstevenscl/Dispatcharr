@@ -148,7 +148,8 @@ const App = () => {
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/logos" element={<LogosPage />} />
                         <Route path="/vods" element={<VODsPage />} />
-                        <Route path="/library" element={<LibraryPage />} />
+                        <Route path="/library" element={<Navigate to="/library/movies" replace />} />
+                        <Route path="/library/:mediaType" element={<LibraryPage />} />
                       </>
                     ) : (
                       <Route path="/login" element={<Login needsSuperuser />} />

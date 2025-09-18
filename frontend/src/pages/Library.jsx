@@ -1,175 +1,267 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ActionIcon,
   Box,
   Button,
+  Divider,
   Group,
-  Loader,
-  Pagination,
-  SegmentedControl,
-  SimpleGrid,
+  Paper,
+  Portal,
+  Select,
   Stack,
   Text,
   TextInput,
   Title,
+  SegmentedControl,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useDebouncedValue } from '@mantine/hooks';
-import { Filter, ListChecks, Plus, RefreshCcw, ServerOff } from 'lucide-react';
+import {
+  ListChecks,
+  Play,
+  Plus,
+  RefreshCcw,
+  Search,
+  Trash2,
+} from 'lucide-react';
 
 import useLibraryStore from '../store/library';
 import useMediaLibraryStore from '../store/mediaLibrary';
-import LibraryCard from '../components/library/LibraryCard';
 import LibraryFormModal from '../components/library/LibraryFormModal';
-import MediaGrid from '../components/library/MediaGrid';
 import MediaDetailModal from '../components/library/MediaDetailModal';
 import LibraryScanDrawer from '../components/library/LibraryScanDrawer';
+import MediaCarousel from '../components/library/MediaCarousel';
+import MediaGrid from '../components/library/MediaGrid';
+import AlphabetSidebar from '../components/library/AlphabetSidebar';
+import API from '../api';
 
-const statusOptions = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'matched', label: 'Matched' },
-  { value: 'failed', label: 'Needs attention' },
+const TABS = [
+  { label: 'Recommended', value: 'recommended' },
+  { label: 'Library', value: 'library' },
+  { label: 'Categories', value: 'categories' },
 ];
 
-const LibraryPage = () => {
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingLibrary, setEditingLibrary] = useState(null);
-  const [scanDrawerOpen, setScanDrawerOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch] = useDebouncedValue(searchTerm, 400);
-  const [librarySearch, setLibrarySearch] = useState('');
-  const [debouncedLibrarySearch] = useDebouncedValue(librarySearch, 400);
-  const [playbackModalOpen, setPlaybackModalOpen] = useState(false);
-  const [formSubmitting, setFormSubmitting] = useState(false);
+const SORT_OPTIONS = [
+  { label: 'Default', value: 'default' },
+  { label: 'Name (A-Z)', value: 'alpha' },
+  { label: 'Release Year', value: 'year' },
+  { label: 'Recently Added', value: 'recent' },
+  { label: 'Genre', value: 'genre' },
+];
 
-  // ---- Library store (one selector per field/action) ----
+const parseDate = (value) => {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const LibraryPage = () => {
+  const navigate = useNavigate();
+  const { mediaType } = useParams();
+  const normalizedMediaType = mediaType === 'shows' ? 'shows' : mediaType === 'movies' ? 'movies' : null;
+
+  useEffect(() => {
+    if (!normalizedMediaType) {
+      navigate('/library/movies', { replace: true });
+    }
+  }, [normalizedMediaType, navigate]);
+
+  const isMovies = normalizedMediaType !== 'shows';
+  const itemTypeFilter = isMovies ? 'movie' : 'show';
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [scanDrawerOpen, setScanDrawerOpen] = useState(false);
+  const [playbackModalOpen, setPlaybackModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('recommended');
+  const [sortOption, setSortOption] = useState('default');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [contextMenu, setContextMenu] = useState(null);
+  const contextMenuPosition = useMemo(() => {
+    if (!contextMenu) return null;
+    if (typeof window === 'undefined') {
+      return { top: contextMenu.y, left: contextMenu.x };
+    }
+    return {
+      top: Math.min(contextMenu.y, window.innerHeight - 220),
+      left: Math.min(contextMenu.x, window.innerWidth - 260),
+    };
+  }, [contextMenu]);
+
+  const [debouncedSearch] = useDebouncedValue(searchTerm, 350);
+
+  // Library store hooks
   const libraries = useLibraryStore((s) => s.libraries);
   const librariesLoading = useLibraryStore((s) => s.loading);
   const fetchLibraries = useLibraryStore((s) => s.fetchLibraries);
   const createLibrary = useLibraryStore((s) => s.createLibrary);
-  const updateLibrary = useLibraryStore((s) => s.updateLibrary);
-  const deleteLibrary = useLibraryStore((s) => s.deleteLibrary);
   const triggerScan = useLibraryStore((s) => s.triggerScan);
   const selectedLibraryId = useLibraryStore((s) => s.selectedLibraryId);
   const setSelectedLibrary = useLibraryStore((s) => s.setSelectedLibrary);
-  const libraryFilters = useLibraryStore((s) => s.filters);
-  const setLibraryFilters = useLibraryStore((s) => s.setFilters);
 
-  // ---- Media store (one selector per field/action) ----
+  // Media store hooks
   const items = useMediaLibraryStore((s) => s.items);
   const itemsLoading = useMediaLibraryStore((s) => s.loading);
-  const total = useMediaLibraryStore((s) => s.total);
-  const page = useMediaLibraryStore((s) => s.page);
-  const pageSize = useMediaLibraryStore((s) => s.pageSize);
-  const setPage = useMediaLibraryStore((s) => s.setPage);
-  const itemFilters = useMediaLibraryStore((s) => s.filters);
   const setItemFilters = useMediaLibraryStore((s) => s.setFilters);
   const fetchItems = useMediaLibraryStore((s) => s.fetchItems);
+  const setSelectedMediaLibrary = useMediaLibraryStore((s) => s.setSelectedLibraryId);
   const openItem = useMediaLibraryStore((s) => s.openItem);
   const closeItem = useMediaLibraryStore((s) => s.closeItem);
+  const removeItems = useMediaLibraryStore((s) => s.removeItems);
+  const upsertItems = useMediaLibraryStore((s) => s.upsertItems);
 
-  // ---- Effects ----
-
-  // Initial library load (run once on mount)
+  // Fetch libraries on mount
   useEffect(() => {
     fetchLibraries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchLibraries]);
 
-  // Debounced media search change -> update filters & reset page
+  // Ensure a library is selected for the current media type
   useEffect(() => {
-    setItemFilters({ search: debouncedSearch });
-    setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
-
-  // Debounced library search change -> update filters & refresh libraries
-  useEffect(() => {
-    setLibraryFilters({ search: debouncedLibrarySearch });
-    fetchLibraries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedLibrarySearch]);
-
-  // Fetch items when selected library or paging/filter inputs change
-  useEffect(() => {
+    if (!libraries || libraries.length === 0) return;
     if (selectedLibraryId) {
-      fetchItems(selectedLibraryId);
+      const current = libraries.find((lib) => lib.id === selectedLibraryId);
+      if (current) return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    selectedLibraryId,
-    page,
-    pageSize,
-    itemFilters.type,
-    itemFilters.status,
-    itemFilters.year,
-    itemFilters.search,
-  ]);
+
+    const preferred = libraries.find((lib) =>
+      isMovies
+        ? lib.library_type === 'movies' || lib.library_type === 'mixed'
+        : lib.library_type === 'shows' || lib.library_type === 'mixed'
+    );
+
+    if (preferred) {
+      setSelectedLibrary(preferred.id);
+    } else if (libraries.length > 0) {
+      setSelectedLibrary(libraries[0].id);
+    }
+  }, [libraries, selectedLibraryId, setSelectedLibrary, isMovies]);
+
+  // Sync media filters with current type and search
+  useEffect(() => {
+    setItemFilters({
+      type: itemTypeFilter,
+      search: debouncedSearch,
+    });
+  }, [itemTypeFilter, debouncedSearch, setItemFilters]);
+
+  // Fetch items when library changes or filters update
+  useEffect(() => {
+    if (!selectedLibraryId) return;
+    setSelectedMediaLibrary(selectedLibraryId);
+    fetchItems(selectedLibraryId);
+  }, [selectedLibraryId, fetchItems, setSelectedMediaLibrary, debouncedSearch, itemTypeFilter]);
 
   const selectedLibrary = useMemo(
     () => libraries.find((lib) => lib.id === selectedLibraryId) || null,
     [libraries, selectedLibraryId]
   );
 
-  // ---- Handlers ----
-  const handleCreateOrUpdate = async (payload) => {
-    setFormSubmitting(true);
-    try {
-      if (editingLibrary) {
-        await updateLibrary(editingLibrary.id, payload);
-        notifications.show({
-          title: 'Library updated',
-          message: 'Changes saved successfully.',
-          color: 'green',
-        });
-      } else {
-        await createLibrary(payload);
-        notifications.show({
-          title: 'Library created',
-          message: 'New library added.',
-          color: 'green',
-        });
+  const filteredItems = useMemo(() => {
+    const typeFiltered = items.filter((item) => item.item_type === itemTypeFilter);
+    if (!debouncedSearch) return typeFiltered;
+    const query = debouncedSearch.toLowerCase();
+    return typeFiltered.filter((item) =>
+      (item.title || '').toLowerCase().includes(query)
+    );
+  }, [items, itemTypeFilter, debouncedSearch]);
+
+  const continueWatching = useMemo(() => {
+    return filteredItems
+      .filter((item) => {
+        if (item.item_type === 'show') {
+          return item.watch_summary?.status === 'in_progress';
+        }
+        const progress = item.watch_progress;
+        return progress && !progress.completed;
+      })
+      .sort((a, b) => {
+        const aTime = parseDate(a.watch_progress?.last_watched_at || a.updated_at);
+        const bTime = parseDate(b.watch_progress?.last_watched_at || b.updated_at);
+        return bTime - aTime;
+      })
+      .slice(0, 20);
+  }, [filteredItems]);
+
+  const recentlyReleased = useMemo(() => {
+    return [...filteredItems]
+      .filter((item) => item.release_year)
+      .sort((a, b) => (b.release_year || 0) - (a.release_year || 0))
+      .slice(0, 30);
+  }, [filteredItems]);
+
+  const recentlyAdded = useMemo(() => {
+    return [...filteredItems]
+      .sort((a, b) => parseDate(b.first_imported_at) - parseDate(a.first_imported_at))
+      .slice(0, 30);
+  }, [filteredItems]);
+
+  const genresMap = useMemo(() => {
+    const map = new Map();
+    filteredItems.forEach((item) => {
+      const genres = Array.isArray(item.genres) ? item.genres : [];
+      if (genres.length === 0) return;
+      const primary = genres[0];
+      if (!map.has(primary)) {
+        map.set(primary, []);
       }
-      setFormOpen(false);
-      setEditingLibrary(null);
-      fetchLibraries();
-    } catch (error) {
-      console.error('Failed to save library', error);
-    } finally {
-      setFormSubmitting(false);
+      map.get(primary).push(item);
+    });
+    return map;
+  }, [filteredItems]);
+
+  const genreCarousels = useMemo(() => {
+    const entries = Array.from(genresMap.entries());
+    return entries
+      .map(([genre, genreItems]) => ({
+        genre,
+        items: genreItems
+          .slice()
+          .sort((a, b) => parseDate(b.first_imported_at) - parseDate(a.first_imported_at))
+          .slice(0, 25),
+      }))
+      .filter((entry) => entry.items.length > 0)
+      .slice(0, 12);
+  }, [genresMap]);
+
+  const sortedLibraryItems = useMemo(() => {
+    switch (sortOption) {
+      case 'alpha':
+        return [...filteredItems].sort((a, b) => {
+          const aTitle = (a.sort_title || a.title || '').toLowerCase();
+          const bTitle = (b.sort_title || b.title || '').toLowerCase();
+          return aTitle.localeCompare(bTitle);
+        });
+      case 'year':
+        return [...filteredItems].sort((a, b) => (b.release_year || 0) - (a.release_year || 0));
+      case 'recent':
+        return [...filteredItems].sort((a, b) => parseDate(b.first_imported_at) - parseDate(a.first_imported_at));
+      default:
+        return filteredItems;
+    }
+  }, [filteredItems, sortOption]);
+
+  const availableLetters = useMemo(() => {
+    if (sortOption !== 'alpha') return new Set();
+    const letters = new Set();
+    sortedLibraryItems.forEach((item) => {
+      const name = item.sort_title || item.title || '';
+      const firstChar = name.charAt(0).toUpperCase();
+      const key = /[A-Z]/.test(firstChar) ? firstChar : '#';
+      letters.add(key);
+    });
+    return letters;
+  }, [sortedLibraryItems, sortOption]);
+
+  const letterRefs = useRef({});
+
+  const handleLetterSelect = (letter) => {
+    const node = letterRefs.current[letter];
+    if (node && node.scrollIntoView) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  const handleDelete = async (library) => {
-    if (!window.confirm(`Delete library "${library.name}"?`)) return;
-    try {
-      await deleteLibrary(library.id);
-      notifications.show({
-        title: 'Library removed',
-        message: 'The library has been deleted.',
-        color: 'green',
-      });
-    } catch (error) {
-      console.error('Failed to delete library', error);
-    }
-  };
-
-  const handleScan = async (id) => {
-    try {
-      await triggerScan(id, { full: false });
-      notifications.show({
-        title: 'Scan started',
-        message: 'Library scan has been queued.',
-        color: 'blue',
-      });
-      setScanDrawerOpen(true);
-    } catch (error) {
-      console.error('Failed to start scan', error);
-    }
-  };
-
-  const onMediaSelect = async (item) => {
+  const handleOpenItem = async (item) => {
     try {
       await openItem(item.id);
       setPlaybackModalOpen(true);
@@ -182,37 +274,275 @@ const LibraryPage = () => {
     }
   };
 
-  // ---- Render ----
+  const refreshItem = async (id) => {
+    try {
+      const data = await API.getMediaItem(id);
+      upsertItems([data]);
+    } catch (error) {
+      console.error('Failed to refresh media item', error);
+    }
+  };
+
+  const handleMarkWatched = async (item) => {
+    try {
+      if (item.item_type === 'show') {
+        const response = await API.markSeriesWatched(item.id);
+        if (response?.item) {
+          upsertItems([response.item]);
+        } else {
+          await refreshItem(item.id);
+        }
+        notifications.show({
+          title: 'Series updated',
+          message: 'All episodes marked as watched.',
+          color: 'green',
+        });
+      } else {
+        await API.markMediaItemWatched(item.id);
+        await refreshItem(item.id);
+        notifications.show({
+          title: 'Marked as watched',
+          message: `${item.title} marked as watched.`,
+          color: 'green',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to mark watched', error);
+      notifications.show({
+        title: 'Action failed',
+        message: 'Unable to mark item as watched at this time.',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleMarkUnwatched = async (item) => {
+    try {
+      if (item.item_type === 'show') {
+        const response = await API.markSeriesUnwatched(item.id);
+        if (response?.item) {
+          upsertItems([response.item]);
+        } else {
+          await refreshItem(item.id);
+        }
+        notifications.show({
+          title: 'Series updated',
+          message: 'Watch history cleared.',
+          color: 'blue',
+        });
+      } else {
+        await API.clearMediaItemProgress(item.id);
+        await refreshItem(item.id);
+        notifications.show({
+          title: 'Progress cleared',
+          message: `${item.title} marked as unwatched.`,
+          color: 'blue',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to mark unwatched', error);
+      notifications.show({
+        title: 'Action failed',
+        message: 'Unable to update watch state right now.',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleDeleteItem = async (item) => {
+    const label = item.item_type === 'show' ? 'series and all episodes' : 'media item';
+    if (!window.confirm(`Delete ${item.title}? This will remove the ${label} from your library.`)) {
+      return;
+    }
+    try {
+      await API.deleteMediaItem(item.id);
+      removeItems(item.id);
+      notifications.show({
+        title: 'Deleted',
+        message: `${item.title} removed from your library.`,
+        color: 'red',
+      });
+    } catch (error) {
+      console.error('Failed to delete media item', error);
+      notifications.show({
+        title: 'Delete failed',
+        message: 'Unable to delete this item right now.',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleContextMenu = (event, item) => {
+    event.preventDefault();
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      item,
+    });
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleOutsideClick = () => setContextMenu(null);
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [contextMenu]);
+
+  const handleScanLibrary = async () => {
+    if (!selectedLibraryId) return;
+    try {
+      await triggerScan(selectedLibraryId, { full: false });
+      notifications.show({
+        title: 'Scan started',
+        message: 'Library scan has been queued.',
+        color: 'blue',
+      });
+      setScanDrawerOpen(true);
+    } catch (error) {
+      console.error('Failed to start scan', error);
+      notifications.show({
+        title: 'Scan failed',
+        message: 'Unable to start scan at this time.',
+        color: 'red',
+      });
+    }
+  };
+
+  const recommendedView = (
+    <Stack spacing="xl">
+      <MediaCarousel
+        title="Continue Watching"
+        items={continueWatching}
+        onSelect={handleOpenItem}
+        onContextMenu={handleContextMenu}
+        emptyMessage="Start watching to see items here."
+      />
+      <MediaCarousel
+        title="Recently Released"
+        items={recentlyReleased}
+        onSelect={handleOpenItem}
+        onContextMenu={handleContextMenu}
+      />
+      <MediaCarousel
+        title="Recently Added"
+        items={recentlyAdded}
+        onSelect={handleOpenItem}
+        onContextMenu={handleContextMenu}
+      />
+    </Stack>
+  );
+
+  const libraryView = (() => {
+    if (sortOption === 'alpha') {
+      letterRefs.current = {};
+    }
+    return (
+      <Box style={{ position: 'relative' }}>
+        <Stack spacing="lg">
+          <Group justify="space-between" align="center">
+            <Select
+              label="Sort by"
+              data={SORT_OPTIONS}
+            value={sortOption}
+            onChange={(value) => setSortOption(value || 'default')}
+            w={220}
+          />
+          <Button
+            variant="subtle"
+            leftSection={<RefreshCcw size={16} />}
+            onClick={() => fetchItems(selectedLibraryId)}
+          >
+            Refresh
+          </Button>
+        </Group>
+        {sortOption === 'default' ? (
+          recommendedView
+        ) : sortOption === 'genre' ? (
+          <Stack spacing="xl">
+            {genreCarousels.map(({ genre, items: genreItems }) => (
+              <MediaCarousel
+                key={genre}
+                title={genre}
+                items={genreItems}
+                onSelect={handleOpenItem}
+                onContextMenu={handleContextMenu}
+              />
+            ))}
+          </Stack>
+        ) : (
+          <Box style={{ position: 'relative' }}>
+            {sortOption === 'alpha' && availableLetters.size > 0 && (
+              <AlphabetSidebar available={availableLetters} onSelect={handleLetterSelect} />
+            )}
+            <MediaGrid
+              items={sortedLibraryItems}
+              loading={itemsLoading}
+              onSelect={handleOpenItem}
+              onContextMenu={handleContextMenu}
+              groupByLetter={sortOption === 'alpha'}
+              letterRefs={letterRefs}
+              cardSize="md"
+            />
+          </Box>
+        )}
+      </Stack>
+    </Box>
+  );
+  })();
+
+  const categoriesView = (
+    <Stack spacing="xl">
+      {genreCarousels.length === 0 ? (
+        <Text c="dimmed">No categories available.</Text>
+      ) : (
+        genreCarousels.map(({ genre, items: genreItems }) => (
+          <MediaCarousel
+            key={genre}
+            title={genre}
+            items={genreItems}
+            onSelect={handleOpenItem}
+            onContextMenu={handleContextMenu}
+          />
+        ))
+      )}
+    </Stack>
+  );
+
+  const contextItem = contextMenu?.item;
+  const contextStatus = contextItem?.watch_summary?.status;
+
   return (
-    <Box p="md">
+    <Box p="lg">
       <Stack spacing="xl">
-        <Group justify="space-between" align="center">
-          <div>
-            <Title order={2}>Media Libraries</Title>
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <Stack spacing={4}>
+            <Title order={2}>{isMovies ? 'Movies' : 'TV Shows'}</Title>
             <Text c="dimmed" size="sm">
-              Create libraries, trigger scans, and manage your offline media collection.
+              {selectedLibrary ? selectedLibrary.name : 'Select a library to begin.'}
             </Text>
-          </div>
-          <Group>
+          </Stack>
+          <Group align="center" gap="sm">
+            <Select
+              placeholder={librariesLoading ? 'Loading libraries...' : 'Choose library'}
+              data={libraries.map((library) => ({
+                value: String(library.id),
+                label: library.name,
+              }))}
+              value={selectedLibraryId ? String(selectedLibraryId) : null}
+              onChange={(value) => setSelectedLibrary(Number(value))}
+              w={220}
+              disabled={librariesLoading || libraries.length === 0}
+            />
             <Button
               leftSection={<Plus size={16} />}
-              onClick={() => {
-                setEditingLibrary(null);
-                setFormOpen(true);
-              }}
+              onClick={() => setFormOpen(true)}
             >
-              New Library
+              Add Library
             </Button>
             <ActionIcon
               variant="light"
-              onClick={() => fetchLibraries()}
-              title="Refresh libraries"
-            >
-              <RefreshCcw size={18} />
-            </ActionIcon>
-            <ActionIcon
-              variant="light"
-              onClick={() => setScanDrawerOpen(true)}
+              color="blue"
+              onClick={handleScanLibrary}
               title="View recent scans"
             >
               <ListChecks size={18} />
@@ -220,148 +550,58 @@ const LibraryPage = () => {
           </Group>
         </Group>
 
-        <Group align="flex-end" grow>
-          <TextInput
-            label="Search"
-            placeholder="Search libraries"
-            leftSection={<Filter size={16} />}
-            value={librarySearch}
-            onChange={(event) => setLibrarySearch(event.currentTarget.value)}
-          />
+        <Group justify="space-between" align="center" wrap="wrap">
           <SegmentedControl
-            value={libraryFilters.type}
-            onChange={(value) => {
-              setLibraryFilters({ type: value });
-              fetchLibraries();
-            }}
-            data={[
-              { label: 'All types', value: 'all' },
-              { label: 'Movies', value: 'movies' },
-              { label: 'Shows', value: 'shows' },
-              { label: 'Mixed', value: 'mixed' },
-            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+            data={TABS}
           />
-          <SegmentedControl
-            value={libraryFilters.autoScan}
-            onChange={(value) => {
-              setLibraryFilters({ autoScan: value });
-              fetchLibraries();
-            }}
-            data={[
-              { label: 'Auto + Manual', value: 'all' },
-              { label: 'Auto only', value: 'enabled' },
-              { label: 'Manual', value: 'disabled' },
-            ]}
-          />
+          <Group align="center" gap="sm">
+            <TextInput
+              leftSection={<Search size={16} />}
+              placeholder="Search library"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.currentTarget.value)}
+              w={260}
+            />
+          </Group>
         </Group>
 
-        {librariesLoading ? (
-          <Group justify="center" py="xl">
-            <Loader />
-          </Group>
-        ) : libraries.length === 0 ? (
-          <Stack align="center" spacing="md" py="xl">
-            <ServerOff size={48} />
-            <Text c="dimmed">No libraries yet. Create one to get started.</Text>
-            <Button leftSection={<Plus size={16} />} onClick={() => setFormOpen(true)}>
-              Create your first library
-            </Button>
-          </Stack>
-        ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
-            {libraries.map((library) => (
-              <LibraryCard
-                key={library.id}
-                library={library}
-                selected={library.id === selectedLibraryId}
-                onSelect={(id) => {
-                  setSelectedLibrary(id);
-                  setPage(1);
-                }}
-                onEdit={(lib) => {
-                  setEditingLibrary(lib);
-                  setFormOpen(true);
-                }}
-                onDelete={handleDelete}
-                onScan={handleScan}
-              />
-            ))}
-          </SimpleGrid>
-        )}
-
         {selectedLibrary ? (
-          <Stack spacing="md">
-            <Group justify="space-between" align="center">
-              <div>
-                <Title order={3}>{selectedLibrary.name}</Title>
-                <Text size="sm" c="dimmed">
-                  Browsing items in this library.
-                </Text>
-              </div>
-              <Group>
-                <TextInput
-                  placeholder="Search media"
-                  leftSection={<Filter size={16} />}
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.currentTarget.value)}
-                  maw={260}
-                />
-                <SegmentedControl
-                  value={itemFilters.type}
-                  onChange={(value) => {
-                    setItemFilters({ type: value });
-                    setPage(1);
-                  }}
-                  data={[
-                    { label: 'All', value: 'all' },
-                    { label: 'Movies', value: 'movie' },
-                    { label: 'Shows', value: 'show' },
-                    { label: 'Episodes', value: 'episode' },
-                  ]}
-                />
-                <SegmentedControl
-                  value={itemFilters.status}
-                  onChange={(value) => {
-                    setItemFilters({ status: value });
-                    setPage(1);
-                  }}
-                  data={statusOptions}
-                />
-              </Group>
-            </Group>
-
-            <MediaGrid items={items} loading={itemsLoading} onSelect={onMediaSelect} />
-
-            {total > pageSize ? (
-              <Group justify="space-between">
-                <Text size="sm" c="dimmed">
-                  Showing {(page - 1) * pageSize + 1}–
-                  {Math.min(page * pageSize, total)} of {total}
-                </Text>
-                <Pagination
-                  total={Math.ceil(total / pageSize)}
-                  value={page}
-                  onChange={setPage}
-                />
-              </Group>
-            ) : null}
-          </Stack>
+          <div>
+            {activeTab === 'recommended' && recommendedView}
+            {activeTab === 'library' && libraryView}
+            {activeTab === 'categories' && categoriesView}
+          </div>
         ) : (
-          <Text c="dimmed" ta="center">
-            Select a library to explore its content.
-          </Text>
+          <Stack align="center" py="xl" spacing="md">
+            <Text c="dimmed">Select or create a media library to get started.</Text>
+          </Stack>
         )}
       </Stack>
 
       <LibraryFormModal
         opened={formOpen}
-        onClose={() => {
-          setFormOpen(false);
-          setEditingLibrary(null);
+        onClose={() => setFormOpen(false)}
+        library={null}
+        onSubmit={async (payload) => {
+          try {
+            const created = await createLibrary(payload);
+            notifications.show({
+              title: 'Library created',
+              message: 'New library added successfully.',
+              color: 'green',
+            });
+            setFormOpen(false);
+            fetchLibraries();
+            if (created?.id) {
+              setSelectedLibrary(created.id);
+            }
+          } catch (error) {
+            console.error('Failed to create library', error);
+          }
         }}
-        library={editingLibrary}
-        onSubmit={handleCreateOrUpdate}
-        submitting={formSubmitting}
+        submitting={false}
       />
 
       <LibraryScanDrawer
@@ -377,6 +617,85 @@ const LibraryPage = () => {
           closeItem();
         }}
       />
+
+      {contextMenu && contextItem && contextMenuPosition && (
+        <Portal>
+          <Paper
+            shadow="md"
+            p="xs"
+            withBorder
+            style={{
+              position: 'fixed',
+              top: contextMenuPosition.top,
+              left: contextMenuPosition.left,
+              zIndex: 1000,
+              minWidth: 220,
+              background: 'rgba(18, 21, 35, 0.97)',
+            }}
+          >
+            <Stack spacing={4}>
+              <Button
+                variant="subtle"
+                leftSection={<Play size={16} />}
+                onClick={() => {
+                  handleOpenItem(contextItem);
+                  setContextMenu(null);
+                }}
+              >
+                {contextStatus === 'in_progress' ? 'Continue Watching' : 'Play'}
+              </Button>
+              <Button
+                variant="subtle"
+                leftSection={<RefreshCcw size={16} />}
+                onClick={async () => {
+                  await API.refreshMediaItemMetadata(contextItem.id);
+                  notifications.show({
+                    title: 'Metadata queued',
+                    message: 'Metadata refresh has been requested.',
+                    color: 'blue',
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                Refresh Metadata
+              </Button>
+              <Divider my="xs" />
+              {contextStatus === 'watched' ? (
+                <Button
+                  variant="subtle"
+                  onClick={async () => {
+                    await handleMarkUnwatched(contextItem);
+                    setContextMenu(null);
+                  }}
+                >
+                  Mark unwatched
+                </Button>
+              ) : (
+                <Button
+                  variant="subtle"
+                  onClick={async () => {
+                    await handleMarkWatched(contextItem);
+                    setContextMenu(null);
+                  }}
+                >
+                  Mark watched
+                </Button>
+              )}
+              <Button
+                variant="subtle"
+                color="red"
+                leftSection={<Trash2 size={16} />}
+                onClick={async () => {
+                  await handleDeleteItem(contextItem);
+                  setContextMenu(null);
+                }}
+              >
+                Delete
+              </Button>
+            </Stack>
+          </Paper>
+        </Portal>
+      )}
     </Box>
   );
 };

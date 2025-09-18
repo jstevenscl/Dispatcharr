@@ -4,6 +4,7 @@ import {
   Drawer,
   Group,
   Loader,
+  Progress,
   ScrollArea,
   Stack,
   Text,
@@ -25,6 +26,7 @@ const statusColor = {
   running: 'blue',
   started: 'blue',
   discovered: 'indigo',
+  progress: 'blue',
   completed: 'green',
   failed: 'red',
   cancelled: 'yellow',
@@ -66,7 +68,39 @@ const LibraryScanDrawer = ({ opened, onClose, libraryId }) => {
                 bullet={<Badge color={statusColor[scan.status] || 'gray'}>{scan.status}</Badge>}
               >
                 <Stack spacing={4} mt="xs">
-                  <Text size="sm">Summary: {scan.summary || 'No summary yet'}</Text>
+                  {(() => {
+                    const total = scan.total_files ?? scan.files ?? 0;
+                    if (!total) return null;
+                    const processedRaw =
+                      scan.status === 'completed'
+                        ? scan.total_files ?? scan.processed_files ?? scan.processed ?? 0
+                        : scan.processed_files ?? scan.processed ?? 0;
+                    const processed = Math.min(processedRaw, total);
+                    const percent = total
+                      ? Math.min(100, Math.round((processed / total) * 100))
+                      : 0;
+                    return (
+                      <Stack spacing={2}>
+                        <Group justify="space-between">
+                          <Text size="xs" fw={500}>
+                            {processed} / {total} processed
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {percent}%
+                          </Text>
+                        </Group>
+                        <Progress
+                          value={percent}
+                          size="md"
+                          striped
+                          animated={scan.status !== 'completed' && scan.status !== 'failed'}
+                        />
+                      </Stack>
+                    );
+                  })()}
+                  <Text size="sm">
+                    Summary: {scan.summary || 'No summary yet'}
+                  </Text>
                   <Text size="xs" c="dimmed">
                     Started {scan.started_at ? dayjs(scan.started_at).fromNow() : 'n/a'}
                   </Text>

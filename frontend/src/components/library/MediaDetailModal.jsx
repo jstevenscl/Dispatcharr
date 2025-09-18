@@ -1,17 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
+  Avatar,
   Badge,
+  Box,
   Button,
   Divider,
   Group,
   Image,
-  List,
   Loader,
   Modal,
   ScrollArea,
   Stack,
-  Table,
   Text,
   Title,
 } from '@mantine/core';
@@ -20,11 +20,11 @@ import {
   CheckCircle2,
   Clock,
   DownloadCloud,
-  FolderOpen,
   Info,
   PlayCircle,
   RefreshCcw,
   Undo2,
+  Trash2,
 } from 'lucide-react';
 
 import API from '../../api';
@@ -43,38 +43,122 @@ const runtimeLabel = (runtimeMs) => {
 };
 
 const MediaDetailModal = ({ opened, onClose }) => {
-  const {
-    activeItem,
-    activeItemLoading,
-    activeProgress,
-    resumePrompt,
-    requestResume,
-    clearResumePrompt,
-    setActiveProgress,
-  } = useMediaLibraryStore((state) => ({
-    activeItem: state.activeItem,
-    activeItemLoading: state.activeItemLoading,
-    activeProgress: state.activeProgress,
-    resumePrompt: state.resumePrompt,
-    requestResume: state.requestResume,
-    clearResumePrompt: state.clearResumePrompt,
-    setActiveProgress: state.setActiveProgress,
-  }));
+  const activeItem = useMediaLibraryStore((state) => state.activeItem);
+  const activeItemLoading = useMediaLibraryStore((state) => state.activeItemLoading);
+  const activeProgress = useMediaLibraryStore((state) => state.activeProgress);
+  const resumePrompt = useMediaLibraryStore((state) => state.resumePrompt);
+  const requestResume = useMediaLibraryStore((state) => state.requestResume);
+  const clearResumePrompt = useMediaLibraryStore((state) => state.clearResumePrompt);
+  const setActiveProgress = useMediaLibraryStore((state) => state.setActiveProgress);
   const showVideo = useVideoStore((state) => state.showVideo);
-  const [selectedFileId, setSelectedFileId] = useState(null);
   const [startingPlayback, setStartingPlayback] = useState(false);
   const [resumeModalOpen, setResumeModalOpen] = useState(false);
   const [resumeMode, setResumeMode] = useState('start');
-  const [markingWatched, setMarkingWatched] = useState(false);
-  const [clearingProgress, setClearingProgress] = useState(false);
+  const [episodes, setEpisodes] = useState([]);
+  const [episodesLoading, setEpisodesLoading] = useState(false);
+  const [episodePlayLoadingId, setEpisodePlayLoadingId] = useState(null);
+  const [episodeActionLoading, setEpisodeActionLoading] = useState({});
 
-  useEffect(() => {
-    if (activeItem?.files?.length) {
-      setSelectedFileId(activeItem.files[0].id);
-    } else {
-      setSelectedFileId(null);
+  const setEpisodeLoading = useCallback((episodeId, action) => {
+    setEpisodeActionLoading((prev) => ({ ...prev, [episodeId]: action }));
+  }, []);
+
+  const clearEpisodeLoading = useCallback((episodeId) => {
+    setEpisodeActionLoading((prev) => {
+      const updated = { ...prev };
+      delete updated[episodeId];
+      return updated;
+    });
+  }, []);
+
+  const loadEpisodes = useCallback(async () => {
+    if (!activeItem || activeItem.item_type !== 'show') {
+      setEpisodes([]);
+      setEpisodesLoading(false);
+      return;
+    }
+    setEpisodesLoading(true);
+    try {
+      const results = await API.getMediaItemEpisodes(activeItem.id);
+      setEpisodes(Array.isArray(results) ? results : []);
+    } catch (error) {
+      console.error('Failed to load episodes for show', error);
+      notifications.show({
+        title: 'Episodes unavailable',
+        message: 'Unable to load episodes for this series right now.',
+        color: 'red',
+      });
+      setEpisodes([]);
+    } finally {
+      setEpisodesLoading(false);
     }
   }, [activeItem]);
+
+  const refreshActiveItem = useCallback(async () => {
+    if (!activeItem) return null;
+    return useMediaLibraryStore.getState().openItem(activeItem.id);
+  }, [activeItem]);
+
+  const orderedEpisodes = useMemo(() => {
+    if (!episodes || episodes.length === 0) {
+      return [];
+    }
+    return [...episodes].sort((a, b) => {
+      const seasonA = a.season_number ?? 0;
+      const seasonB = b.season_number ?? 0;
+      if (seasonA !== seasonB) {
+        return seasonA - seasonB;
+      }
+      const episodeA = a.episode_number ?? 0;
+      const episodeB = b.episode_number ?? 0;
+      if (episodeA !== episodeB) {
+        return episodeA - episodeB;
+      }
+      return (a.sort_title || '').localeCompare(b.sort_title || '');
+    });
+  }, [episodes]);
+
+  const showWatchSummary = activeItem?.watch_summary || null;
+
+  const playbackPlan = useMemo(() => {
+    if (!activeItem || activeItem.item_type !== 'show') {
+      return null;
+    }
+    const sorted = orderedEpisodes;
+    if (!sorted || sorted.length === 0) {
+      return { sorted: [], resumeEpisode: null, nextEpisode: null };
+    }
+
+    const resumeId = showWatchSummary?.resume_episode_id;
+    const nextId = showWatchSummary?.next_episode_id;
+    let resumeEpisode = sorted.find((ep) => ep.id === resumeId) || null;
+    let nextEpisode = sorted.find((ep) => ep.id === nextId) || null;
+
+    if (!resumeEpisode) {
+      resumeEpisode = sorted.find(
+        (ep) => ep.watch_summary?.status === 'in_progress'
+      ) || null;
+    }
+
+    if (!resumeEpisode) {
+      resumeEpisode = sorted.find(
+        (ep) => ep.watch_summary?.status !== 'watched'
+      ) || sorted[0];
+    }
+
+    if (!nextEpisode && resumeEpisode) {
+      const currentIndex = sorted.findIndex((ep) => ep.id === resumeEpisode.id);
+      if (currentIndex >= 0 && currentIndex + 1 < sorted.length) {
+        nextEpisode = sorted[currentIndex + 1];
+      }
+    }
+
+    return {
+      sorted,
+      resumeEpisode,
+      nextEpisode,
+    };
+  }, [activeItem, orderedEpisodes, showWatchSummary]);
 
   const canResume = useMemo(() => {
     if (!activeProgress || !activeProgress.position_ms || !activeProgress.duration_ms) {
@@ -84,18 +168,101 @@ const MediaDetailModal = ({ opened, onClose }) => {
     return remaining > activeProgress.duration_ms * 0.04;
   }, [activeProgress]);
 
+  const activeProgressId = activeProgress?.id;
+
   useEffect(() => {
-    if (canResume && activeProgress?.id) {
-      requestResume(activeProgress.id);
+    if (canResume && activeProgressId && !resumePrompt) {
+      requestResume(activeProgressId);
     }
-  }, [canResume, activeProgress, requestResume]);
+  }, [canResume, activeProgressId, resumePrompt, requestResume]);
+
+  useEffect(() => {
+    if (!opened) {
+      setEpisodes([]);
+      setEpisodesLoading(false);
+      setEpisodePlayLoadingId(null);
+      return;
+    }
+    if (activeItem?.item_type === 'show') {
+      void loadEpisodes();
+    } else {
+      setEpisodes([]);
+    }
+  }, [opened, activeItem?.id, activeItem?.item_type, loadEpisodes]);
+
+  const castPeople = useMemo(() => {
+    if (!activeItem?.cast) {
+      return [];
+    }
+    return activeItem.cast
+      .map((entry, index) => {
+        if (!entry) {
+          return null;
+        }
+        if (typeof entry === 'string') {
+          return {
+            key: `${entry}-${index}`,
+            name: entry,
+            role: null,
+            profile: null,
+          };
+        }
+        const name = entry.name || entry.character || entry.job;
+        if (!name) {
+          return null;
+        }
+        return {
+          key: `${name}-${index}`,
+          name,
+          role: entry.character || entry.role || entry.job || null,
+          profile: entry.profile_url || entry.profile || null,
+        };
+      })
+      .filter(Boolean);
+  }, [activeItem]);
+
+  const crewPeople = useMemo(() => {
+    if (!activeItem?.crew) {
+      return [];
+    }
+    return activeItem.crew
+      .map((entry, index) => {
+        if (!entry) {
+          return null;
+        }
+        if (typeof entry === 'string') {
+          return {
+            key: `${entry}-${index}`,
+            name: entry,
+            role: null,
+            profile: null,
+          };
+        }
+        const name = entry.name || entry.job || entry.department;
+        if (!name) {
+          return null;
+        }
+        return {
+          key: `${name}-${index}`,
+          name,
+          role: entry.job || entry.department || entry.role || null,
+          profile: entry.profile_url || entry.profile || null,
+        };
+      })
+      .filter(Boolean);
+  }, [activeItem]);
 
   const handleStartPlayback = async (mode = 'start') => {
     if (!activeItem) return;
-    if (!selectedFileId && activeItem.files?.length) {
-      setSelectedFileId(activeItem.files[0].id);
+    const fileId = activeItem.files?.[0]?.id;
+    if (!fileId) {
+      notifications.show({
+        title: 'Playback unavailable',
+        message: 'No media file is linked to this item yet.',
+        color: 'red',
+      });
+      return;
     }
-    const fileId = selectedFileId || activeItem.files?.[0]?.id;
     setResumeMode(mode);
     setStartingPlayback(true);
     try {
@@ -144,8 +311,49 @@ const MediaDetailModal = ({ opened, onClose }) => {
       setStartingPlayback(false);
     }
   };
+  const primaryButtonLabel = useMemo(() => {
+    if (!activeItem) {
+      return 'Play';
+    }
+    if (activeItem.item_type === 'show') {
+      if (showWatchSummary?.status === 'in_progress') {
+        return 'Continue Watching';
+      }
+      if (showWatchSummary?.status === 'watched') {
+        return 'Watch Again';
+      }
+      return 'Play';
+    }
+    if (canResume && (resumePrompt || activeProgress)) {
+      return 'Continue Watching';
+    }
+    return 'Play';
+  }, [activeItem, showWatchSummary, canResume, resumePrompt, activeProgress]);
 
-  const onPlayClick = () => {
+  const handlePrimaryAction = () => {
+    if (!activeItem) return;
+    if (activeItem.item_type === 'show') {
+      const targetEpisode =
+        playbackPlan?.resumeEpisode ||
+        playbackPlan?.nextEpisode ||
+        playbackPlan?.sorted?.[0];
+      if (!targetEpisode) {
+        notifications.show({
+          title: 'No episodes available',
+          message: 'This series does not have any episodes to play yet.',
+          color: 'yellow',
+        });
+        return;
+      }
+      const startIndex = playbackPlan.sorted.findIndex(
+        (ep) => ep.id === targetEpisode.id
+      );
+      void handlePlayEpisode(targetEpisode, {
+        sequence: playbackPlan.sorted,
+        startIndex,
+      });
+      return;
+    }
     if (canResume && (resumePrompt || activeProgress)) {
       setResumeMode('resume');
       setResumeModalOpen(true);
@@ -154,61 +362,179 @@ const MediaDetailModal = ({ opened, onClose }) => {
     }
   };
 
-  const handleMarkWatched = async () => {
-    if (!activeItem) return;
-    setMarkingWatched(true);
+  const handlePlayEpisode = async (
+    episode,
+    { sequence = orderedEpisodes, startIndex = null } = {}
+  ) => {
+    if (!episode) return;
+    setEpisodePlayLoadingId(episode.id);
     try {
-      await API.markMediaItemWatched(activeItem.id);
-      let duration =
-        activeItem.runtime_ms || activeItem.files?.[0]?.duration_ms || 0;
-      if (!duration) {
-        duration = 1000;
+      const episodeDetail = await API.getMediaItem(episode.id);
+      const episodeFileId = episodeDetail.files?.[0]?.id;
+      if (!episodeFileId) {
+        notifications.show({
+          title: 'Playback unavailable',
+          message: 'No media file is linked to this episode yet.',
+          color: 'red',
+        });
+        return;
       }
-      const progressData = {
-        id: activeProgress?.id || null,
-        position_ms: duration,
-        duration_ms: duration,
-        completed: true,
-        percentage: duration ? 1 : 0,
-      };
-      setActiveProgress(progressData);
-      notifications.show({
-        title: 'Progress updated',
-        message: 'Marked as watched.',
-        color: 'green',
+
+      const streamInfo = await API.streamMediaItem(episodeDetail.id, {
+        fileId: episodeFileId,
+      });
+      const playbackUrl = streamInfo?.url || streamInfo?.stream_url;
+      if (!playbackUrl) {
+        notifications.show({
+          title: 'Playback error',
+          message: 'Streaming endpoint did not return a playable URL.',
+          color: 'red',
+        });
+        return;
+      }
+
+      const resolvedSequence = Array.isArray(sequence) ? sequence : [];
+      const episodeIds = resolvedSequence.length
+        ? resolvedSequence.map((ep) => ep.id)
+        : orderedEpisodes.map((ep) => ep.id);
+      const computedIndex = startIndex ?? episodeIds.findIndex((id) => id === episode.id);
+
+      const playbackSequence = episodeIds.length
+        ? {
+            episodeIds,
+            currentIndex: computedIndex >= 0 ? computedIndex : 0,
+          }
+        : null;
+
+      const episodeProgress = episodeDetail.watch_progress;
+      const episodeSummary = episodeDetail.watch_summary;
+      const resumePositionMs =
+        episodeSummary?.status === 'in_progress'
+          ? episodeSummary.position_ms || 0
+          : episodeProgress?.position_ms || 0;
+
+      const durationMs =
+        episodeSummary?.duration_ms || episodeProgress?.duration_ms || episodeDetail.runtime_ms;
+
+      showVideo(playbackUrl, 'library', {
+        mediaItemId: episodeDetail.id,
+        mediaTitle: episodeDetail.title,
+        showId: activeItem?.id,
+        showTitle: activeItem?.title,
+        name: episodeDetail.title,
+        year: episodeDetail.release_year,
+        logo:
+          episodeDetail.poster_url
+            ? { url: episodeDetail.poster_url }
+            : activeItem?.poster_url
+            ? { url: activeItem.poster_url }
+            : undefined,
+        showPoster: activeItem?.poster_url,
+        progressId: episodeProgress?.id,
+        resumePositionMs,
+        durationMs,
+        fileId: episodeFileId,
+        playbackSequence,
       });
     } catch (error) {
-      console.error('Failed to mark watched', error);
+      console.error('Failed to play episode', error);
       notifications.show({
-        title: 'Error',
-        message: 'Unable to mark as watched.',
+        title: 'Playback error',
+        message: 'Unable to start playback for this episode.',
         color: 'red',
       });
     } finally {
-      setMarkingWatched(false);
+      setEpisodePlayLoadingId(null);
     }
   };
 
-  const handleClearProgress = async () => {
-    if (!activeItem) return;
-    setClearingProgress(true);
+  const episodesBySeason = useMemo(() => {
+    const grouped = new Map();
+    orderedEpisodes.forEach((episode) => {
+      const season = episode.season_number || 1;
+      if (!grouped.has(season)) {
+        grouped.set(season, []);
+      }
+      grouped.get(season).push(episode);
+    });
+    return grouped;
+  }, [orderedEpisodes]);
+
+  const sortedSeasons = useMemo(() => {
+    return Array.from(episodesBySeason.keys()).sort((a, b) => a - b);
+  }, [episodesBySeason]);
+
+  const formatEpisodeCode = (episode) => {
+    const season = episode.season_number || 0;
+    const ep = episode.episode_number || 0;
+    if (!season && !ep) {
+      return '';
+    }
+    if (!season) {
+      return `E${ep.toString().padStart(2, '0')}`;
+    }
+    if (!ep) {
+      return `S${season.toString().padStart(2, '0')}`;
+    }
+    return `S${season.toString().padStart(2, '0')}E${ep.toString().padStart(2, '0')}`;
+  };
+
+  const handleEpisodeMarkWatched = async (episode) => {
+    if (!episode) return;
+    setEpisodeLoading(episode.id, 'watch');
     try {
-      await API.clearMediaItemProgress(activeItem.id);
-      setActiveProgress(null);
+      await API.markMediaItemWatched(episode.id);
+      await refreshActiveItem();
+      await loadEpisodes();
       notifications.show({
-        title: 'Progress cleared',
-        message: 'Watch progress removed.',
+        title: 'Episode updated',
+        message: `${episode.title} marked as watched.`,
         color: 'green',
       });
     } catch (error) {
-      console.error('Failed to clear progress', error);
+      console.error('Failed to mark episode watched', error);
+    } finally {
+      clearEpisodeLoading(episode.id);
+    }
+  };
+
+  const handleEpisodeMarkUnwatched = async (episode) => {
+    if (!episode) return;
+    setEpisodeLoading(episode.id, 'unwatch');
+    try {
+      await API.clearMediaItemProgress(episode.id);
+      await refreshActiveItem();
+      await loadEpisodes();
       notifications.show({
-        title: 'Error',
-        message: 'Unable to clear progress.',
+        title: 'Episode updated',
+        message: `${episode.title} marked as unwatched.`,
+        color: 'blue',
+      });
+    } catch (error) {
+      console.error('Failed to clear episode progress', error);
+    } finally {
+      clearEpisodeLoading(episode.id);
+    }
+  };
+
+  const handleEpisodeDelete = async (episode) => {
+    if (!episode) return;
+    if (!window.confirm(`Delete episode "${episode.title}"?`)) return;
+    setEpisodeLoading(episode.id, 'delete');
+    try {
+      await API.deleteMediaItem(episode.id);
+      useMediaLibraryStore.getState().removeItems(episode.id);
+      await refreshActiveItem();
+      await loadEpisodes();
+      notifications.show({
+        title: 'Episode deleted',
+        message: `${episode.title} removed from the library.`,
         color: 'red',
       });
+    } catch (error) {
+      console.error('Failed to delete episode', error);
     } finally {
-      setClearingProgress(false);
+      clearEpisodeLoading(episode.id);
     }
   };
 
@@ -235,17 +561,36 @@ const MediaDetailModal = ({ opened, onClose }) => {
           <Text c="dimmed">Select a media item to see its details.</Text>
         ) : (
           <ScrollArea h="70vh" offsetScrollbars>
-            <Stack spacing="xl" pr="sm">
-              <Group align="flex-start" gap="xl">
-                {activeItem.poster_url ? (
-                  <Image
-                    src={activeItem.poster_url}
-                    alt={activeItem.title}
-                    radius="md"
-                    width={220}
-                  />
-                ) : null}
-                <Stack spacing="sm" style={{ flex: 1 }}>
+            <Group align="flex-start" gap="xl" wrap="wrap">
+              {activeItem.poster_url ? (
+                <Box
+                  w={{ base: '100%', sm: 240 }}
+                  style={{ flexShrink: 0, maxWidth: 260 }}
+                >
+                  <Box
+                    style={{
+                      borderRadius: 16,
+                      overflow: 'hidden',
+                      background: 'rgba(15, 23, 42, 0.75)',
+                      maxHeight: '65vh',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Image
+                      src={activeItem.poster_url}
+                      alt={activeItem.title}
+                      width="100%"
+                      height="100%"
+                      fit="contain"
+                    />
+                  </Box>
+                </Box>
+              ) : null}
+
+              <Stack spacing="xl" style={{ flex: 1, minWidth: 0 }}>
+                <Stack spacing="sm">
                   <Group justify="space-between" align="center">
                     <Title order={3}>{activeItem.title}</Title>
                     <Group gap="xs">
@@ -260,6 +605,16 @@ const MediaDetailModal = ({ opened, onClose }) => {
                       <Badge color="violet" variant="light">
                         {activeItem.item_type}
                       </Badge>
+                      {activeItem.item_type === 'show' &&
+                        showWatchSummary?.status === 'watched' && (
+                          <Badge color="green">Watched</Badge>
+                        )}
+                      {activeItem.item_type === 'show' &&
+                        showWatchSummary?.status === 'in_progress' && (
+                          <Badge color="yellow" variant="light">
+                            In progress
+                          </Badge>
+                        )}
                     </Group>
                   </Group>
 
@@ -293,36 +648,29 @@ const MediaDetailModal = ({ opened, onClose }) => {
                     )}
                   </Group>
 
-                  <Group gap="sm" mt="md">
+                  {activeItem.item_type === 'show' &&
+                    showWatchSummary?.total_episodes ? (
+                      <Text size="sm" c="dimmed">
+                        {showWatchSummary.completed_episodes || 0} of{' '}
+                        {showWatchSummary.total_episodes} episodes watched
+                      </Text>
+                    ) : null}
+
+                  <Group gap="sm" mt="md" align="center" wrap="wrap">
                     <Button
                       leftSection={<PlayCircle size={18} />}
-                      onClick={onPlayClick}
-                      loading={startingPlayback}
+                      onClick={handlePrimaryAction}
+                      loading={
+                        activeItem?.item_type === 'show'
+                          ? episodePlayLoadingId !== null
+                          : startingPlayback
+                      }
                     >
-                      Play
+                      {primaryButtonLabel}
                     </Button>
-                    <Button
-                      variant="light"
-                      leftSection={<CheckCircle2 size={16} />}
-                      onClick={handleMarkWatched}
-                      loading={markingWatched}
-                    >
-                      Mark watched
-                    </Button>
-                    {activeProgress && (
-                      <ActionIcon
-                        variant="light"
-                        color="red"
-                        onClick={handleClearProgress}
-                        loading={clearingProgress}
-                        title="Clear watch progress"
-                      >
-                        <Undo2 size={16} />
-                      </ActionIcon>
-                    )}
-                    {canResume && (
+                    {canResume && activeItem?.item_type !== 'show' && (
                       <Text size="sm" c="dimmed">
-                        Resume available at{' '}
+                        Resume at{' '}
                         {runtimeLabel(
                           resumePrompt?.position_ms ||
                             activeProgress?.position_ms
@@ -343,127 +691,255 @@ const MediaDetailModal = ({ opened, onClose }) => {
                     </ActionIcon>
                   </Group>
                 </Stack>
-              </Group>
 
-              <Divider label="Files" labelPosition="center" />
+                {activeItem.item_type === 'show' && (
+                  <>
+                    <Divider label="Episodes" labelPosition="center" />
+                    {episodesLoading ? (
+                      <Group justify="center" py="md">
+                        <Loader size="sm" />
+                      </Group>
+                    ) : sortedSeasons.length === 0 ? (
+                      <Text size="sm" c="dimmed">
+                        No episodes discovered yet.
+                      </Text>
+                    ) : (
+                      <Stack spacing="md">
+                        {sortedSeasons.map((season) => {
+                          const seasonEpisodes = episodesBySeason.get(season) || [];
+                          return (
+                            <Stack key={season} spacing={6}>
+                              <Group justify="space-between" align="center">
+                                <Group gap="xs" align="center">
+                                  <Title order={5}>Season {season}</Title>
+                                  <Badge variant="outline" size="xs">
+                                    {seasonEpisodes.length} episode
+                                    {seasonEpisodes.length === 1 ? '' : 's'}
+                                  </Badge>
+                                </Group>
+                              </Group>
+                              <Stack spacing={6}>
+                                {seasonEpisodes.map((episode) => {
+                                  const episodeProgress = episode.watch_progress;
+                                  const episodeStatus = episode.watch_summary?.status;
+                                  const progressPercent = episodeProgress?.percentage
+                                    ? Math.round(episodeProgress.percentage * 100)
+                                    : null;
+                                  const isWatched = episodeStatus === 'watched';
+                                  const isInProgress = episodeStatus === 'in_progress';
+                                  const episodeLoading = episodeActionLoading[episode.id];
+                                  return (
+                                    <Group
+                                      key={episode.id}
+                                      justify="space-between"
+                                      align="flex-start"
+                                      gap="md"
+                                      style={{
+                                        border: '1px solid rgba(148, 163, 184, 0.15)',
+                                        borderRadius: 12,
+                                        padding: '10px 12px',
+                                      }}
+                                    >
+                                      <Stack spacing={4} style={{ flex: 1, minWidth: 0 }}>
+                                        <Group justify="space-between" align="center">
+                                          <Text fw={600} size="sm">
+                                            {[formatEpisodeCode(episode), episode.title]
+                                              .filter(Boolean)
+                                              .join(' ')}
+                                          </Text>
+                                          <Group gap={6}>
+                                            {isWatched && (
+                                              <Badge size="xs" color="green">
+                                                Watched
+                                              </Badge>
+                                            )}
+                                            {isInProgress && (
+                                              <Badge size="xs" color="yellow" variant="light">
+                                                In progress
+                                              </Badge>
+                                            )}
+                                            {progressPercent !== null && (
+                                              <Badge
+                                                size="xs"
+                                                color={episodeProgress?.completed ? 'green' : 'cyan'}
+                                                variant="light"
+                                              >
+                                                {progressPercent}%
+                                              </Badge>
+                                            )}
+                                          </Group>
+                                        </Group>
+                                        <Group gap={8} wrap="wrap">
+                                          {runtimeLabel(episode.runtime_ms) && (
+                                            <Group gap={4} align="center">
+                                              <Clock size={14} />
+                                              <Text size="xs" c="dimmed">
+                                                {runtimeLabel(episode.runtime_ms)}
+                                              </Text>
+                                            </Group>
+                                          )}
+                                        </Group>
+                                        {(episode.synopsis || activeItem?.synopsis) && (
+                                          <Text size="xs" c="dimmed" lineClamp={3}>
+                                            {episode.synopsis || activeItem?.synopsis}
+                                          </Text>
+                                        )}
+                                      </Stack>
+                                      <Stack spacing={6} align="flex-end">
+                                        <Group gap={6}>
+                                          <Button
+                                            size="xs"
+                                            variant="light"
+                                            leftSection={<PlayCircle size={16} />}
+                                            onClick={() =>
+                                              handlePlayEpisode(episode, {
+                                                sequence: playbackPlan?.sorted,
+                                              })
+                                            }
+                                            loading={episodePlayLoadingId === episode.id}
+                                          >
+                                            Play
+                                          </Button>
+                                          <Button
+                                            size="xs"
+                                            variant="subtle"
+                                            leftSection={
+                                              isWatched ? <Undo2 size={14} /> : <CheckCircle2 size={14} />
+                                            }
+                                            onClick={() =>
+                                              isWatched
+                                                ? handleEpisodeMarkUnwatched(episode)
+                                                : handleEpisodeMarkWatched(episode)
+                                            }
+                                            loading={episodeLoading === 'watch' || episodeLoading === 'unwatch'}
+                                          >
+                                            {isWatched ? 'Unwatch' : 'Mark watched'}
+                                          </Button>
+                                          <ActionIcon
+                                            color="red"
+                                            variant="subtle"
+                                            onClick={() => handleEpisodeDelete(episode)}
+                                            loading={episodeLoading === 'delete'}
+                                            title="Delete episode"
+                                          >
+                                            <Trash2 size={16} />
+                                          </ActionIcon>
+                                        </Group>
+                                      </Stack>
+                                    </Group>
+                                  );
+                                })}
+                              </Stack>
+                            </Stack>
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  </>
+                )}
 
-              {files.length === 0 ? (
-                <Text c="dimmed">No media files linked yet.</Text>
-              ) : (
-                <Table highlightOnHover withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>File</Table.Th>
-                      <Table.Th>Codec</Table.Th>
-                      <Table.Th>Resolution</Table.Th>
-                      <Table.Th>Duration</Table.Th>
-                      <Table.Th>Bitrate</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {files.map((file) => (
-                      <Table.Tr
-                        key={file.id}
-                        onClick={() => setSelectedFileId(file.id)}
-                        style={{
-                          cursor: 'pointer',
-                          backgroundColor:
-                            selectedFileId === file.id
-                              ? 'rgba(99, 102, 241, 0.1)'
-                              : undefined,
-                        }}
+                <Divider label="Metadata" labelPosition="center" />
+
+                <Stack spacing="sm">
+                  <Group gap="sm">
+                    {activeItem.tmdb_id && (
+                      <Badge
+                        component="a"
+                        href={`https://www.themoviedb.org/${
+                          activeItem.item_type === 'movie' ? 'movie' : 'tv'
+                        }/${activeItem.tmdb_id}`}
+                        target="_blank"
+                        leftSection={<Info size={14} />}
                       >
-                        <Table.Td>
-                          <Stack spacing={2}>
-                            <Group gap={6}>
-                              <FolderOpen size={16} />
-                              <Text size="sm">{file.file_name}</Text>
-                            </Group>
-                            <Text size="xs" c="dimmed">
-                              {file.relative_path}
-                            </Text>
-                          </Stack>
-                        </Table.Td>
-                        <Table.Td>
-                          <Stack spacing={2}>
-                            <Text size="xs" c="dimmed">
-                              Video: {file.video_codec || 'n/a'}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              Audio: {file.audio_codec || 'n/a'}
-                            </Text>
-                          </Stack>
-                        </Table.Td>
-                        <Table.Td>
-                          {file.width && file.height
-                            ? `${file.width}x${file.height}`
-                            : '—'}
-                        </Table.Td>
-                        <Table.Td>
-                          {runtimeLabel(file.duration_ms) || '—'}
-                        </Table.Td>
-                        <Table.Td>
-                          {file.bit_rate
-                            ? `${(file.bit_rate / 1000000).toFixed(2)} Mbps`
-                            : '—'}
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              )}
+                        TMDB {activeItem.tmdb_id}
+                      </Badge>
+                    )}
+                    {activeItem.imdb_id && (
+                      <Badge
+                        component="a"
+                        href={`https://www.imdb.com/title/${activeItem.imdb_id}`}
+                        target="_blank"
+                        leftSection={<Info size={14} />}
+                      >
+                        IMDB {activeItem.imdb_id}
+                      </Badge>
+                    )}
+                  </Group>
 
-              <Divider label="Metadata" labelPosition="center" />
-
-              <Stack spacing="sm">
-                <Group gap="sm">
-                  {activeItem.tmdb_id && (
-                    <Badge
-                      component="a"
-                      href={`https://www.themoviedb.org/${
-                        activeItem.item_type === 'movie' ? 'movie' : 'tv'
-                      }/${activeItem.tmdb_id}`}
-                      target="_blank"
-                      leftSection={<Info size={14} />}
-                    >
-                      TMDB {activeItem.tmdb_id}
-                    </Badge>
+                  {castPeople.length > 0 && (
+                    <Stack spacing="sm">
+                      <Text fw={500}>Cast</Text>
+                      <ScrollArea type="auto" offsetScrollbars>
+                        <Group gap="md" wrap="nowrap">
+                          {castPeople.map((person) => (
+                            <Stack
+                              key={person.key}
+                              spacing={6}
+                              align="center"
+                              style={{ width: 116 }}
+                            >
+                              <Avatar
+                                size={80}
+                                radius="md"
+                                src={person.profile || undefined}
+                                alt={person.name}
+                                color="indigo"
+                              >
+                                {!person.profile && person.name?.[0]}
+                              </Avatar>
+                              <Text size="sm" fw={500} ta="center" lineClamp={2}>
+                                {person.name}
+                              </Text>
+                              {person.role && (
+                                <Text size="xs" c="dimmed" ta="center" lineClamp={2}>
+                                  {person.role}
+                                </Text>
+                              )}
+                            </Stack>
+                          ))}
+                        </Group>
+                      </ScrollArea>
+                    </Stack>
                   )}
-                  {activeItem.imdb_id && (
-                    <Badge
-                      component="a"
-                      href={`https://www.imdb.com/title/${activeItem.imdb_id}`}
-                      target="_blank"
-                      leftSection={<Info size={14} />}
-                    >
-                      IMDB {activeItem.imdb_id}
-                    </Badge>
+
+                  {crewPeople.length > 0 && (
+                    <Stack spacing="sm">
+                      <Text fw={500}>Crew</Text>
+                      <ScrollArea type="auto" offsetScrollbars>
+                        <Group gap="md" wrap="nowrap">
+                          {crewPeople.map((person) => (
+                            <Stack
+                              key={person.key}
+                              spacing={6}
+                              align="center"
+                              style={{ width: 116 }}
+                            >
+                              <Avatar
+                                size={80}
+                                radius="md"
+                                src={person.profile || undefined}
+                                alt={person.name}
+                                color="grape"
+                              >
+                                {!person.profile && person.name?.[0]}
+                              </Avatar>
+                              <Text size="sm" fw={500} ta="center" lineClamp={2}>
+                                {person.name}
+                              </Text>
+                              {person.role && (
+                                <Text size="xs" c="dimmed" ta="center" lineClamp={2}>
+                                  {person.role}
+                                </Text>
+                              )}
+                            </Stack>
+                          ))}
+                        </Group>
+                      </ScrollArea>
+                    </Stack>
                   )}
-                </Group>
-
-                {activeItem.cast && activeItem.cast.length > 0 && (
-                  <Stack spacing={4}>
-                    <Text fw={500}>Cast</Text>
-                    <List size="sm" spacing={2}>
-                      {activeItem.cast.map((person) => (
-                        <List.Item key={person}>{person}</List.Item>
-                      ))}
-                    </List>
-                  </Stack>
-                )}
-
-                {activeItem.crew && activeItem.crew.length > 0 && (
-                  <Stack spacing={4}>
-                    <Text fw={500}>Crew</Text>
-                    <List size="sm" spacing={2}>
-                      {activeItem.crew.map((person) => (
-                        <List.Item key={person}>{person}</List.Item>
-                      ))}
-                    </List>
-                  </Stack>
-                )}
+                </Stack>
               </Stack>
-            </Stack>
+            </Group>
           </ScrollArea>
         )}
       </Modal>

@@ -1,25 +1,31 @@
 import React from 'react';
-import {
-  Badge,
-  Box,
-  Card,
-  Group,
-  Image,
-  Loader,
-  RingProgress,
-  SimpleGrid,
-  Stack,
-  Text,
-} from '@mantine/core';
-import { Film, Library, Tv2 } from 'lucide-react';
+import { Group, Loader, SimpleGrid, Stack, Text } from '@mantine/core';
+import MediaCard from './MediaCard';
 
-const typeIcon = {
-  movie: <Film size={18} />,
-  episode: <Tv2 size={18} />,
-  show: <Library size={18} />,
+const groupItemsByLetter = (items) => {
+  const map = new Map();
+  items.forEach((item) => {
+    const name = item.sort_title || item.title || '';
+    const firstChar = name.charAt(0).toUpperCase();
+    const key = /[A-Z]/.test(firstChar) ? firstChar : '#';
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+    map.get(key).push(item);
+  });
+  return map;
 };
 
-const MediaGrid = ({ items, loading, onSelect }) => {
+const MediaGrid = ({
+  items,
+  loading,
+  onSelect,
+  onContextMenu,
+  groupByLetter = false,
+  letterRefs,
+  columns = { base: 1, sm: 2, md: 4, lg: 5 },
+  cardSize = 'md',
+}) => {
   if (loading) {
     return (
       <Group justify="center" py="xl">
@@ -31,94 +37,55 @@ const MediaGrid = ({ items, loading, onSelect }) => {
   if (!items || items.length === 0) {
     return (
       <Text c="dimmed" ta="center" py="xl">
-        No media found. Adjust filters or trigger a scan.
+        No media found.
       </Text>
     );
   }
 
-  return (
-    <SimpleGrid cols={{ base: 1, sm: 2, md: 4, lg: 5 }} spacing="lg">
-      {items.map((item) => (
-        <Card
-          key={item.id}
-          shadow="sm"
-          padding="sm"
-          radius="md"
-          withBorder
-          style={{ cursor: 'pointer' }}
-          onClick={() => onSelect(item)}
-        >
-          <Stack spacing="xs">
-            <Box style={{ position: 'relative' }}>
-              {item.poster_url ? (
-                <Image
-                  src={item.poster_url}
-                  alt={item.title}
-                  height={200}
-                  radius="md"
-                  fit="cover"
-                />
-              ) : (
-                <Stack
-                  align="center"
-                  justify="center"
-                  h={200}
-                  style={{
-                    borderRadius: 12,
-                    background: 'rgba(30, 41, 59, 0.6)',
-                  }}
-                >
-                  {typeIcon[item.item_type] || <Library size={24} />}
-                </Stack>
-              )}
-              {item.watch_progress && item.watch_progress.percentage ? (
-                <RingProgress
-                  style={{ position: 'absolute', top: 10, right: 10 }}
-                  size={48}
-                  thickness={4}
-                  sections={[{
-                    value: Math.min(100, item.watch_progress.percentage * 100),
-                    color: item.watch_progress.completed ? 'green' : 'cyan',
-                  }]}
-                  label={
-                    <Text size="xs" c="white">
-                      {Math.round(item.watch_progress.percentage * 100)}%
-                    </Text>
-                  }
-                />
-              ) : null}
-            </Box>
-            <Stack spacing={2}>
-              <Group justify="space-between" align="start">
-                <Text fw={600} size="sm" lineClamp={2}>
-                  {item.title}
-                </Text>
-                {item.release_year && (
-                  <Badge variant="outline" size="xs">
-                    {item.release_year}
-                  </Badge>
-                )}
-              </Group>
-              <Group gap="xs">
-                <Badge size="xs" color="violet" variant="light">
-                  {item.item_type}
-                </Badge>
-                <Badge
-                  size="xs"
-                  color={item.status === 'matched' ? 'green' : item.status === 'failed' ? 'red' : 'yellow'}
-                  variant="outline"
-                >
-                  {item.status}
-                </Badge>
-              </Group>
-              {item.runtime_ms && (
-                <Text size="xs" c="dimmed">
-                  {(item.runtime_ms / 60000).toFixed(0)} min
-                </Text>
-              )}
+  if (groupByLetter) {
+    const grouped = groupItemsByLetter(items);
+    const sortedKeys = Array.from(grouped.keys()).sort();
+    return (
+      <Stack spacing="xl">
+        {sortedKeys.map((letter) => {
+          const refCallback = (el) => {
+            if (letterRefs && el) {
+              letterRefs.current[letter] = el;
+            }
+          };
+          return (
+            <Stack key={letter} spacing="md" ref={refCallback}>
+              <Text fw={700} size="lg">
+                {letter}
+              </Text>
+              <SimpleGrid cols={columns} spacing="lg">
+                {grouped.get(letter).map((item) => (
+                  <MediaCard
+                    key={item.id}
+                    item={item}
+                    onClick={onSelect}
+                    onContextMenu={onContextMenu}
+                    size={cardSize}
+                  />
+                ))}
+              </SimpleGrid>
             </Stack>
-          </Stack>
-        </Card>
+          );
+        })}
+      </Stack>
+    );
+  }
+
+  return (
+    <SimpleGrid cols={columns} spacing="lg">
+      {items.map((item) => (
+        <MediaCard
+          key={item.id}
+          item={item}
+          onClick={onSelect}
+          onContextMenu={onContextMenu}
+          size={cardSize}
+        />
       ))}
     </SimpleGrid>
   );

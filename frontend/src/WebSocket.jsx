@@ -13,6 +13,7 @@ import useLogosStore from './store/logos';
 import usePlaylistsStore from './store/playlists';
 import useEPGsStore from './store/epgs';
 import useLibraryStore from './store/library';
+import useMediaLibraryStore from './store/mediaLibrary';
 import { Box, Button, Stack, Alert, Group } from '@mantine/core';
 import API from './api';
 import useSettingsStore from './store/settings';
@@ -228,8 +229,20 @@ export const WebsocketProvider = ({ children }) => {
             }
             case 'media_scan': {
               applyMediaScanUpdate(parsedEvent.data);
+              if (parsedEvent.data.media_item) {
+                useMediaLibraryStore.getState().upsertItems([
+                  parsedEvent.data.media_item,
+                ]);
+              }
 
               if (parsedEvent.data.status === 'completed') {
+                const { library_id: libraryId } = parsedEvent.data;
+                if (
+                  libraryId &&
+                  useMediaLibraryStore.getState().selectedLibraryId === libraryId
+                ) {
+                  useMediaLibraryStore.getState().fetchItems(libraryId);
+                }
                 notifications.show({
                   title: 'Library scan complete',
                   message: parsedEvent.data.summary || 'Library scan finished successfully.',
@@ -241,6 +254,14 @@ export const WebsocketProvider = ({ children }) => {
                   message: parsedEvent.data.message || 'Check logs for details.',
                   color: 'red',
                 });
+              }
+              break;
+            }
+            case 'media_item_update': {
+              if (parsedEvent.data.media_item) {
+                useMediaLibraryStore.getState().upsertItems([
+                  parsedEvent.data.media_item,
+                ]);
               }
               break;
             }

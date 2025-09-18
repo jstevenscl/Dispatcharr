@@ -3,7 +3,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import Draggable from 'react-draggable';
 import useVideoStore from '../store/useVideoStore';
 import mpegts from 'mpegts.js';
-import { CloseButton, Flex, Loader, Text, Box } from '@mantine/core';
+import { CloseButton, Flex, Loader, Text, Box, Button, Progress, Group } from '@mantine/core';
+import { Play } from 'lucide-react';
 import API from '../api';
 import useAuthStore from '../store/auth';
 
@@ -21,6 +22,11 @@ export default function FloatingVideo() {
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayTimeoutRef = useRef(null);
   const lastProgressSentRef = useRef(0);
+  const [nextAutoplay, setNextAutoplay] = useState(null);
+  const [autoplayCountdown, setAutoplayCountdown] = useState(null);
+  const autoPlayTimerRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const AUTOPLAY_SECONDS = 10;
   const authUser = useAuthStore((s) => s.user);
 
   const sendLibraryProgress = (positionSeconds, durationSeconds, completed = false) => {
@@ -36,6 +42,19 @@ export default function FloatingVideo() {
     API.setMediaWatchProgress(payload).catch((error) => {
       console.debug('Failed to update watch progress', error);
     });
+  };
+
+  const clearAutoPlayTimers = () => {
+    if (autoPlayTimerRef.current) {
+      clearTimeout(autoPlayTimerRef.current);
+      autoPlayTimerRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setNextAutoplay(null);
+    setAutoplayCountdown(null);
   };
 
   // Safely destroy the mpegts player to prevent errors
@@ -81,6 +100,8 @@ export default function FloatingVideo() {
       clearTimeout(overlayTimeoutRef.current);
       overlayTimeoutRef.current = null;
     }
+
+    clearAutoPlayTimers();
   };
 
   // Start overlay auto-hide timer
@@ -91,6 +112,104 @@ export default function FloatingVideo() {
     overlayTimeoutRef.current = setTimeout(() => {
       setShowOverlay(false);
     }, 4000); // Hide after 4 seconds
+  };
+
+  const playEpisodeAtIndex = async (index) => {
+    const sequence = metadata?.playbackSequence;
+    const episodeIds = sequence?.episodeIds || [];
+    const nextEpisodeId = episodeIds[index];
+    if (!nextEpisodeId) {
+      clearAutoPlayTimers();
+      return;
+    }
+
+    clearAutoPlayTimers();
+    try {
+      const episodeDetail = await API.getMediaItem(nextEpisodeId);
+      const fileId = episodeDetail.files?.[0]?.id;
+      if (!fileId) {
+        setLoadError('Next episode is missing media files.');
+        return;
+      }
+      const streamInfo = await API.streamMediaItem(episodeDetail.id, {
+        fileId,
+      });
+      const playbackUrl = streamInfo?.url || streamInfo?.stream_url;
+      if (!playbackUrl) {
+        setLoadError('Streaming endpoint did not return a playable URL.');
+        return;
+      }
+
+      const summary = episodeDetail.watch_summary;
+      const resumePositionMs =
+        summary?.status === 'in_progress'
+          ? summary.position_ms || 0
+          : episodeDetail.watch_progress?.position_ms || 0;
+      const durationMs =
+        summary?.duration_ms || episodeDetail.watch_progress?.duration_ms || episodeDetail.runtime_ms;
+
+      const playbackSequence = {
+        episodeIds,
+        currentIndex: index,
+      };
+
+      useVideoStore.getState().showVideo(playbackUrl, 'library', {
+        mediaItemId: episodeDetail.id,
+        mediaTitle: episodeDetail.title,
+        showId: metadata?.showId,
+        showTitle: metadata?.showTitle,
+        name: episodeDetail.title,
+        year: episodeDetail.release_year,
+        logo:
+          episodeDetail.poster_url
+            ? { url: episodeDetail.poster_url }
+            : metadata?.logo || (metadata?.showPoster ? { url: metadata.showPoster } : undefined),
+        progressId: episodeDetail.watch_progress?.id,
+        resumePositionMs,
+        durationMs,
+        fileId,
+        playbackSequence,
+      });
+    } catch (error) {
+      console.error('Failed to auto-play next episode', error);
+      setLoadError('Unable to start the next episode automatically.');
+    }
+  };
+
+  const startAutoPlayCountdown = (nextIndex) => {
+    const sequence = metadata?.playbackSequence;
+    if (!sequence?.episodeIds || nextIndex >= sequence.episodeIds.length) {
+      return;
+    }
+    clearAutoPlayTimers();
+    setNextAutoplay({ index: nextIndex, episodeId: sequence.episodeIds[nextIndex] });
+    setAutoplayCountdown(AUTOPLAY_SECONDS);
+    countdownIntervalRef.current = setInterval(() => {
+      setAutoplayCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    autoPlayTimerRef.current = setTimeout(() => {
+      playEpisodeAtIndex(nextIndex);
+    }, AUTOPLAY_SECONDS * 1000);
+  };
+
+  const cancelAutoPlay = () => {
+    clearAutoPlayTimers();
+  };
+
+  const playNextEpisodeNow = () => {
+    if (nextAutoplay) {
+      playEpisodeAtIndex(nextAutoplay.index);
+    }
   };
 
   // Initialize VOD player (native HTML5 with enhanced controls)
@@ -189,6 +308,13 @@ export default function FloatingVideo() {
       if (contentType !== 'library') return;
       if (!video.duration || Number.isNaN(video.duration)) return;
       sendLibraryProgress(video.duration, video.duration, true);
+      const sequence = metadata?.playbackSequence;
+      if (sequence?.episodeIds?.length) {
+        const nextIndex = (sequence.currentIndex ?? -1) + 1;
+        if (nextIndex < sequence.episodeIds.length) {
+          startAutoPlayCountdown(nextIndex);
+        }
+      }
     };
 
     // Add event listeners
@@ -358,6 +484,10 @@ export default function FloatingVideo() {
     };
   }, [isVisible, streamUrl, contentType]);
 
+  useEffect(() => {
+    clearAutoPlayTimers();
+  }, [metadata?.mediaItemId]);
+
   // Modified hideVideo handler to clean up player first
   const handleClose = (e) => {
     if (e) {
@@ -505,6 +635,65 @@ export default function FloatingVideo() {
               <Text color="white" size="sm" mt={10}>
                 Loading {contentType === 'vod' ? 'video' : 'stream'}...
               </Text>
+            </Box>
+          )}
+
+          {nextAutoplay && autoplayCountdown !== null && (
+            <Box
+              style={{
+                position: 'absolute',
+                bottom: 12,
+                left: 12,
+                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                padding: '10px 12px',
+                borderRadius: 12,
+                color: 'white',
+                width: 'calc(100% - 70px)',
+                maxWidth: 260,
+                zIndex: 6,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Text size="xs" fw={500} mb={6}>
+                Next episode starts in {autoplayCountdown}s
+              </Text>
+              <Progress
+                value={Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    ((AUTOPLAY_SECONDS - autoplayCountdown) / AUTOPLAY_SECONDS) * 100
+                  )
+                )}
+                size="sm"
+                radius="md"
+                color="cyan"
+              />
+              <Group gap="xs" mt={6} justify="flex-end">
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cancelAutoPlay();
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="xs"
+                  variant="filled"
+                  color="cyan"
+                  leftSection={<Play size={14} />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    playNextEpisodeNow();
+                  }}
+                >
+                  Play now
+                </Button>
+              </Group>
             </Box>
           )}
         </Box>

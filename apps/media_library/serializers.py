@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Prefetch
 from rest_framework import serializers
 
 from apps.media_library import models
@@ -112,6 +113,7 @@ class LibraryScanSerializer(serializers.ModelSerializer):
             "started_at",
             "finished_at",
             "total_files",
+            "processed_files",
             "new_files",
             "updated_files",
             "removed_files",
@@ -132,6 +134,7 @@ class LibraryScanSerializer(serializers.ModelSerializer):
             "started_at",
             "finished_at",
             "total_files",
+            "processed_files",
             "new_files",
             "updated_files",
             "removed_files",
@@ -206,11 +209,161 @@ class MediaFileSerializer(serializers.ModelSerializer):
         ]
 
 
-class MediaItemSerializer(serializers.ModelSerializer):
-    files = MediaFileSerializer(many=True, read_only=True)
-    artwork = ArtworkAssetSerializer(many=True, read_only=True)
+class MediaItemBaseSerializer(serializers.ModelSerializer):
     parent_id = serializers.PrimaryKeyRelatedField(source="parent", read_only=True)
     watch_progress = serializers.SerializerMethodField()
+    watch_summary = serializers.SerializerMethodField()
+
+    def _get_user(self):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+        return user
+
+    def _get_progress(self, obj, user):
+        prefetched = getattr(obj, "_user_watch_progress", None)
+        if prefetched is not None:
+            return prefetched[0] if prefetched else None
+        return obj.watch_progress.filter(user=user).first()
+
+    def get_watch_progress(self, obj):
+        user = self._get_user()
+        if not user:
+            return None
+        progress = self._get_progress(obj, user)
+        if not progress:
+            return None
+        duration = progress.duration_ms or obj.runtime_ms
+        percentage = (progress.position_ms / duration) if duration else 0
+        return {
+            "id": progress.id,
+            "position_ms": progress.position_ms,
+            "duration_ms": duration,
+            "completed": progress.completed,
+            "percentage": percentage,
+            "last_watched_at": progress.last_watched_at,
+        }
+
+    def get_watch_summary(self, obj):
+        user = self._get_user()
+        if not user:
+            return None
+
+        if obj.item_type == models.MediaItem.TYPE_SHOW:
+            episodes = getattr(obj, "_prefetched_children", None)
+            if episodes is None:
+                episodes = list(
+                    models.MediaItem.objects.filter(
+                        parent=obj, item_type=models.MediaItem.TYPE_EPISODE
+                    )
+                    .prefetch_related(
+                        Prefetch(
+                            "watch_progress",
+                            queryset=models.WatchProgress.objects.filter(user=user),
+                            to_attr="_user_watch_progress",
+                        )
+                    )
+                    .order_by("season_number", "episode_number", "id")
+                )
+            total = len([ep for ep in episodes if ep.item_type == models.MediaItem.TYPE_EPISODE])
+            completed = 0
+            resume_episode = None
+            resume_progress_time = None
+            next_episode = None
+            last_completed_episode = None
+            last_completed_time = None
+
+            for episode in episodes:
+                if episode.item_type != models.MediaItem.TYPE_EPISODE:
+                    continue
+                progress = self._get_progress(episode, user)
+                if progress and progress.completed:
+                    completed += 1
+                    if not last_completed_time or progress.last_watched_at > last_completed_time:
+                        last_completed_time = progress.last_watched_at
+                        last_completed_episode = episode
+                elif progress and progress.position_ms:
+                    if (
+                        resume_progress_time is None
+                        or progress.last_watched_at > resume_progress_time
+                    ):
+                        resume_progress_time = progress.last_watched_at
+                        resume_episode = episode
+                else:
+                    if not next_episode:
+                        next_episode = episode
+
+            status = "unwatched"
+            if total == 0:
+                status = "unwatched"
+            elif completed >= total and total > 0:
+                status = "watched"
+                next_episode = None
+            elif resume_episode or completed > 0:
+                status = "in_progress"
+                if not resume_episode:
+                    resume_episode = next_episode
+
+            return {
+                "status": status,
+                "total_episodes": total,
+                "completed_episodes": completed,
+                "resume_episode_id": resume_episode.id if resume_episode else None,
+                "next_episode_id": next_episode.id if next_episode else None,
+                "last_completed_episode_id": last_completed_episode.id if last_completed_episode else None,
+            }
+
+        progress = self._get_progress(obj, user)
+        if not progress:
+            return {"status": "unwatched"}
+        if progress.completed:
+            return {
+                "status": "watched",
+                "position_ms": progress.position_ms,
+                "duration_ms": progress.duration_ms,
+            }
+        return {
+            "status": "in_progress",
+            "position_ms": progress.position_ms,
+            "duration_ms": progress.duration_ms,
+            "percentage": (progress.position_ms / progress.duration_ms)
+            if progress.duration_ms
+            else 0,
+        }
+
+
+class MediaItemListSerializer(MediaItemBaseSerializer):
+    class Meta:
+        model = models.MediaItem
+        fields = [
+            "id",
+            "library",
+            "parent_id",
+            "item_type",
+            "status",
+            "title",
+            "sort_title",
+            "poster_url",
+            "backdrop_url",
+            "runtime_ms",
+            "release_year",
+            "season_number",
+            "episode_number",
+            "genres",
+            "tags",
+            "tagline",
+            "metadata_last_synced_at",
+            "metadata_source",
+            "watch_progress",
+            "watch_summary",
+        ]
+        read_only_fields = fields
+
+
+class MediaItemSerializer(MediaItemBaseSerializer):
+    files = MediaFileSerializer(many=True, read_only=True)
+    artwork = ArtworkAssetSerializer(many=True, read_only=True)
 
     class Meta:
         model = models.MediaItem
@@ -251,6 +404,7 @@ class MediaItemSerializer(serializers.ModelSerializer):
             "files",
             "artwork",
             "watch_progress",
+            "watch_summary",
         ]
         read_only_fields = [
             "id",
@@ -277,23 +431,6 @@ class MediaItemSerializer(serializers.ModelSerializer):
             "metadata": {"required": False, "allow_null": True},
         }
 
-    def get_watch_progress(self, obj):
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        if not user or not user.is_authenticated:
-            return None
-        progress = obj.watch_progress.filter(user=user).first()
-        if not progress:
-            return None
-        duration = progress.duration_ms or obj.runtime_ms
-        return {
-            "id": progress.id,
-            "position_ms": progress.position_ms,
-            "duration_ms": duration,
-            "completed": progress.completed,
-            "percentage": (progress.position_ms / duration) if duration else 0,
-        }
-
 
 class WatchProgressSerializer(serializers.ModelSerializer):
     user_display = serializers.CharField(source="user.username", read_only=True)
@@ -312,11 +449,14 @@ class WatchProgressSerializer(serializers.ModelSerializer):
             "completed",
             "last_watched_at",
         ]
-        read_only_fields = ["id", "user_display", "media_title", "last_watched_at"]
+        read_only_fields = ["id", "user", "user_display", "media_title", "last_watched_at"]
+        extra_kwargs = {"user": {"required": False}}
+        validators = []  # DB constraint enforces uniqueness; allow update-or-create writes
 
     def create(self, validated_data):
+        user = self.context["request"].user
         progress, _ = models.WatchProgress.objects.update_or_create(
-            user=validated_data["user"],
+            user=user,
             media_item=validated_data["media_item"],
             defaults={
                 "position_ms": validated_data.get("position_ms", 0),

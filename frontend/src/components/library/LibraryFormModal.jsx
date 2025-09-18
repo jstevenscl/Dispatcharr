@@ -129,6 +129,7 @@ const LibraryFormModal = ({ opened, onClose, library, onSubmit, submitting }) =>
             <Select
               label="Library Type"
               data={LIBRARY_TYPES}
+              comboboxProps={{ withinPortal: false }}
               {...form.getInputProps('library_type')}
             />
             <NumberInput

@@ -4,13 +4,27 @@ import os
 import subprocess
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from django.db import transaction
 from django.utils import timezone
 from guessit import guessit
+
+try:
+    from guessit.rules.properties import website as guessit_website
+except Exception:  # noqa: BLE001
+    guessit_website = None
+else:
+    # Python 3.13's importlib.resources.files no longer returns a context manager;
+    # wrap it so guessit can still use `with files(...)`.
+    def _compatible_files(package: str):  # type: ignore[override]
+        return importlib_resources.as_file(importlib_resources.files(package))
+
+    if guessit_website:
+        guessit_website.files = _compatible_files
 from pymediainfo import MediaInfo
 
 from apps.media_library.models import (
@@ -25,6 +39,17 @@ from apps.media_library.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _json_safe(value):
+    """Ensure value can be serialized via json.dumps."""
+    if isinstance(value, dict):
+        return {key: _json_safe(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 @dataclass
@@ -145,6 +170,7 @@ class LibraryScanner:
         self.scan.log = "\n".join(self.log_messages)
         self.scan.finished_at = timezone.now()
         self.scan.status = LibraryScan.STATUS_COMPLETED
+        self.scan.processed_files = self.scan.total_files
         self.scan.save(
             update_fields=[
                 "matched_items",
@@ -153,6 +179,7 @@ class LibraryScanner:
                 "log",
                 "finished_at",
                 "status",
+                "processed_files",
                 "updated_at",
             ]
         )
@@ -166,7 +193,7 @@ class LibraryScanner:
     ) -> Optional[tuple[MediaFile, bool]]:
         relative_path = os.path.relpath(file_path, location.path)
         stat = file_path.stat()
-        last_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+        last_modified = datetime.fromtimestamp(stat.st_mtime, tz=dt_timezone.utc)
 
         file_record, created = MediaFile.objects.select_for_update().get_or_create(
             library=self.library,
@@ -235,6 +262,8 @@ def classify_media_file(file_name: str) -> ClassificationResult:
             data={"error": str(exc)},
         )
 
+    data = _json_safe(data)
+
     guess_type = data.get("type")
     detected_type = MediaItem.TYPE_OTHER
 
@@ -278,16 +307,22 @@ def resolve_media_item(
     normalized = normalize_title(title)
 
     if classification.detected_type == MediaItem.TYPE_MOVIE:
-        match = (
-            MediaItem.objects.filter(
-                library=library,
-                item_type=MediaItem.TYPE_MOVIE,
-                normalized_title=normalized,
-                release_year=classification.year,
-            ).first()
+        queryset = MediaItem.objects.filter(
+            library=library,
+            item_type=MediaItem.TYPE_MOVIE,
+            normalized_title=normalized,
         )
+        match = None
+        if classification.year:
+            match = queryset.filter(release_year=classification.year).first()
+        if not match:
+            match = queryset.first()
         if match:
+            if classification.year and match.release_year != classification.year:
+                match.release_year = classification.year
+                match.save(update_fields=["release_year", "updated_at"])
             return match
+        metadata_payload = _json_safe(classification.data or {})
         return MediaItem.objects.create(
             library=library,
             item_type=MediaItem.TYPE_MOVIE,
@@ -296,17 +331,16 @@ def resolve_media_item(
             sort_title=title,
             normalized_title=normalized,
             release_year=classification.year,
-            metadata=classification.data or {},
+            metadata=metadata_payload,
         )
 
     if classification.detected_type == MediaItem.TYPE_SHOW:
-        match = (
-            MediaItem.objects.filter(
-                library=library,
-                item_type=MediaItem.TYPE_SHOW,
-                normalized_title=normalized,
-            ).first()
-        )
+        metadata_payload = _json_safe(classification.data or {})
+        match = MediaItem.objects.filter(
+            library=library,
+            item_type=MediaItem.TYPE_SHOW,
+            normalized_title=normalized,
+        ).first()
         if match:
             return match
         return MediaItem.objects.create(
@@ -316,7 +350,7 @@ def resolve_media_item(
             title=title,
             sort_title=title,
             normalized_title=normalized,
-            metadata=classification.data or {},
+            metadata=metadata_payload,
         )
 
     if classification.detected_type == MediaItem.TYPE_EPISODE:
@@ -333,6 +367,7 @@ def resolve_media_item(
             ).first()
         )
         if not series_item:
+            series_metadata = _json_safe(classification.data or {})
             series_item = MediaItem.objects.create(
                 library=library,
                 item_type=MediaItem.TYPE_SHOW,
@@ -340,7 +375,7 @@ def resolve_media_item(
                 title=series_title,
                 sort_title=series_title,
                 normalized_title=series_normalized,
-                metadata=classification.data or {},
+                metadata=series_metadata,
             )
 
         episode_item = (
@@ -367,6 +402,7 @@ def resolve_media_item(
             )
         )
 
+        metadata_payload = _json_safe(classification.data or {})
         return MediaItem.objects.create(
             library=library,
             parent=series_item,
@@ -378,9 +414,17 @@ def resolve_media_item(
             release_year=classification.year,
             season_number=classification.season,
             episode_number=classification.episode,
-            metadata=classification.data or {},
+            metadata=metadata_payload,
         )
 
+    metadata_payload = _json_safe(classification.data or {})
+    match = MediaItem.objects.filter(
+        library=library,
+        item_type=MediaItem.TYPE_OTHER,
+        normalized_title=normalized,
+    ).first()
+    if match:
+        return match
     return MediaItem.objects.create(
         library=library,
         item_type=MediaItem.TYPE_OTHER,
@@ -388,7 +432,7 @@ def resolve_media_item(
         title=title,
         sort_title=title,
         normalized_title=normalized,
-        metadata=classification.data or {},
+        metadata=metadata_payload,
     )
 
 

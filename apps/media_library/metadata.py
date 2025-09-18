@@ -46,12 +46,25 @@ def build_image_url(path: Optional[str]) -> Optional[str]:
     return f"{TMDB_IMAGE_BASE}{path}"
 
 
+def _to_serializable(obj):
+    """Ensure TMDB data is safe to store in JSON fields."""
+    if isinstance(obj, dict):
+        return {key: _to_serializable(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_to_serializable(item) for item in obj]
+    # Keep primitive JSON types; convert everything else to string
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    return str(obj)
+
+
 def fetch_tmdb_metadata(media_item: MediaItem) -> Optional[Dict[str, Any]]:
     api_key = get_tmdb_api_key()
     if not _configure_tmdb(api_key):
         return None
 
-    cache_key = f"media-metadata:{media_item.item_type}:{media_item.normalized_title}:{media_item.release_year}"
+    normalized = (media_item.normalized_title or "").replace(" ", "_")
+    cache_key = f"media-metadata:{media_item.item_type}:{normalized}:{media_item.release_year}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -102,13 +115,33 @@ def fetch_tmdb_metadata(media_item: MediaItem) -> Optional[Dict[str, Any]]:
         episode_run_time = info.get("episode_run_time") or []
         runtime = episode_run_time[0] if episode_run_time else None
 
-    cast = [c.get("name") for c in credits.get("cast", [])[:10] if c.get("name")]
+    cast = []
+    for cast_member in credits.get("cast", [])[:12]:
+        name = cast_member.get("name")
+        if not name:
+            continue
+        cast.append(
+            {
+                "name": name,
+                "character": cast_member.get("character"),
+                "profile_url": build_image_url(cast_member.get("profile_path")),
+            }
+        )
+
     crew = []
     for member in credits.get("crew", [])[:15]:
         name = member.get("name")
         job = member.get("job")
-        if name and job:
-            crew.append(f"{name} ({job})")
+        if not name:
+            continue
+        crew.append(
+            {
+                "name": name,
+                "job": job,
+                "department": member.get("department"),
+                "profile_url": build_image_url(member.get("profile_path")),
+            }
+        )
 
     release_year = media_item.release_year
     release_date = info.get("release_date") or info.get("first_air_date")
@@ -118,7 +151,8 @@ def fetch_tmdb_metadata(media_item: MediaItem) -> Optional[Dict[str, Any]]:
         except (ValueError, TypeError):  # noqa: PERF203
             release_year = media_item.release_year
 
-    metadata = {
+    metadata = _to_serializable(
+        {
         "tmdb_id": str(tmdb_id),
         "imdb_id": info.get("imdb_id") or media_item.imdb_id,
         "title": info.get("title") or info.get("name") or media_item.title,
@@ -132,6 +166,7 @@ def fetch_tmdb_metadata(media_item: MediaItem) -> Optional[Dict[str, Any]]:
         "cast": cast,
         "crew": crew,
     }
+    )
 
     cache.set(cache_key, metadata, METADATA_CACHE_TIMEOUT)
     return metadata

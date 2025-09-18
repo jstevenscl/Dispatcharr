@@ -2312,6 +2312,21 @@ export default class API {
     }
   }
 
+  static async getMediaItemEpisodes(parentId) {
+    try {
+      const params = new URLSearchParams();
+      params.append('parent', parentId);
+      params.append('ordering', 'season_number,episode_number');
+      const response = await request(
+        `${host}/api/media/items/?${params.toString()}`
+      );
+      return response.results || response;
+    } catch (e) {
+      errorNotification('Failed to load episodes', e);
+      throw e;
+    }
+  }
+
   static async refreshMediaItemMetadata(id) {
     try {
       const response = await request(
@@ -2323,6 +2338,48 @@ export default class API {
       return response;
     } catch (e) {
       errorNotification('Failed to queue metadata refresh', e);
+      throw e;
+    }
+  }
+
+  static async markSeriesWatched(id) {
+    try {
+      const response = await request(
+        `${host}/api/media/items/${id}/mark-series-watched/`,
+        {
+          method: 'POST',
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to mark series watched', e);
+      throw e;
+    }
+  }
+
+  static async markSeriesUnwatched(id) {
+    try {
+      const response = await request(
+        `${host}/api/media/items/${id}/mark-series-unwatched/`,
+        {
+          method: 'POST',
+        }
+      );
+      return response;
+    } catch (e) {
+      errorNotification('Failed to mark series unwatched', e);
+      throw e;
+    }
+  }
+
+  static async deleteMediaItem(id) {
+    try {
+      await request(`${host}/api/media/items/${id}/`, {
+        method: 'DELETE',
+      });
+      return true;
+    } catch (e) {
+      errorNotification('Failed to delete media item', e);
       throw e;
     }
   }
