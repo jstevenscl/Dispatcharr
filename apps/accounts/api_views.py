@@ -113,24 +113,6 @@ class TokenRefreshView(TokenRefreshView):
             )
             return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Check if user account is still active before issuing new access token
-        raw_token = request.data.get("refresh")
-        if raw_token:
-            try:
-                from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenClass
-                token = RefreshTokenClass(raw_token)
-                user_id = token.payload.get("user_id")
-                if user_id:
-                    user = User.objects.filter(id=user_id).first()
-                    if user and not user.is_active:
-                        logger.info(f"Token refresh blocked for disabled user: user_id={user_id}")
-                        return Response(
-                            {"error": "Account is disabled"},
-                            status=status.HTTP_403_FORBIDDEN
-                        )
-            except Exception:
-                pass  # Let parent handle invalid tokens
-
         return super().post(request, *args, **kwargs)
 
 

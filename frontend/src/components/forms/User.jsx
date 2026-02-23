@@ -42,7 +42,6 @@ const User = ({ user = null, isOpen, onClose }) => {
       xc_password: '',
       channel_profiles: [],
       hide_adult_content: false,
-      is_active: true,
     },
 
     validate: (values) => ({
@@ -135,7 +134,6 @@ const User = ({ user = null, isOpen, onClose }) => {
             : ['0'],
         xc_password: customProps.xc_password || '',
         hide_adult_content: customProps.hide_adult_content || false,
-        is_active: user.is_active !== false,
       });
 
       if (customProps.xc_password) {
@@ -203,30 +201,6 @@ const User = ({ user = null, isOpen, onClose }) => {
               />
             )}
 
-            {isAdmin && (
-              <Box>
-                <Tooltip
-                  label={isEditingSelf
-                    ? "You cannot disable your own account"
-                    : "Disabled accounts cannot log in or access any resources"
-                  }
-                  position="top"
-                  withArrow
-                >
-                  <div style={isEditingSelf ? { cursor: 'not-allowed' } : undefined}>
-                    <Switch
-                      label="Account Enabled"
-                      {...form.getInputProps('is_active', {
-                        type: 'checkbox',
-                      })}
-                      key={form.key('is_active')}
-                      disabled={isEditingSelf}
-                      styles={isEditingSelf ? { track: { pointerEvents: 'none' } } : undefined}
-                    />
-                  </div>
-                </Tooltip>
-              </Box>
-            )}
           </Stack>
 
           <Stack gap="xs" style={{ flex: 1 }}>
