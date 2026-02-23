@@ -2653,6 +2653,7 @@ def refresh_single_m3u_account(account_id):
         account = M3UAccount.objects.get(id=account_id, is_active=True)
         if not account.is_active:
             logger.debug(f"Account {account_id} is not active, skipping.")
+            lock_renewer.stop()
             release_task_lock("refresh_single_m3u_account", account_id)
             return
 
@@ -2682,6 +2683,7 @@ def refresh_single_m3u_account(account_id):
         else:
             logger.debug(f"No orphaned task found for M3U account {account_id}")
 
+        lock_renewer.stop()
         release_task_lock("refresh_single_m3u_account", account_id)
         return f"M3UAccount with ID={account_id} not found or inactive, task cleaned up"
 
@@ -2732,6 +2734,7 @@ def refresh_single_m3u_account(account_id):
                 logger.error(
                     f"Failed to refresh M3U groups for account {account_id}: {result}"
                 )
+                lock_renewer.stop()
                 release_task_lock("refresh_single_m3u_account", account_id)
                 return "Failed to update m3u account - download failed or other error"
 
@@ -2765,6 +2768,7 @@ def refresh_single_m3u_account(account_id):
                 status="error",
                 error=f"Error refreshing M3U groups: {str(e)}",
             )
+            lock_renewer.stop()
             release_task_lock("refresh_single_m3u_account", account_id)
             return "Failed to update m3u account"
 
@@ -2788,6 +2792,7 @@ def refresh_single_m3u_account(account_id):
             status="error",
             error="No data available for processing",
         )
+        lock_renewer.stop()
         release_task_lock("refresh_single_m3u_account", account_id)
         return "Failed to update m3u account, no data available"
 
@@ -3100,8 +3105,7 @@ def refresh_single_m3u_account(account_id):
         raise  # Re-raise the exception for Celery to handle
     finally:
         lock_renewer.stop()
-
-    release_task_lock("refresh_single_m3u_account", account_id)
+        release_task_lock("refresh_single_m3u_account", account_id)
 
     # Aggressive garbage collection
     # Only delete variables if they exist
