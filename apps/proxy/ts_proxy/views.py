@@ -514,6 +514,9 @@ def stream_ts(request, channel_id):
 def stream_xc(request, username, password, channel_id):
     user = get_object_or_404(User, username=username)
 
+    if not user.is_active:
+        return JsonResponse({"error": "Account is disabled"}, status=403)
+
     extension = pathlib.Path(channel_id).suffix
     channel_id = pathlib.Path(channel_id).stem
 

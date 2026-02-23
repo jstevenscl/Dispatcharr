@@ -8,6 +8,7 @@ import useWarningsStore from '../../store/warnings';
 import { SquarePlus, SquareMinus, SquarePen, Eye, EyeOff } from 'lucide-react';
 import {
   ActionIcon,
+  Badge,
   Box,
   Text,
   Paper,
@@ -145,6 +146,20 @@ const UsersTable = () => {
         size: 120,
         cell: ({ getValue }) => (
           <Text size="sm">{USER_LEVEL_LABELS[getValue()]}</Text>
+        ),
+      },
+      {
+        header: 'Status',
+        accessorKey: 'is_active',
+        size: 90,
+        cell: ({ getValue }) => (
+          <Badge
+            size="sm"
+            color={getValue() !== false ? 'green' : 'red'}
+            variant="light"
+          >
+            {getValue() !== false ? 'Active' : 'Disabled'}
+          </Badge>
         ),
       },
       {
@@ -316,6 +331,7 @@ const UsersTable = () => {
       name: renderHeaderCell,
       email: renderHeaderCell,
       user_level: renderHeaderCell,
+      is_active: renderHeaderCell,
       last_login: renderHeaderCell,
       date_joined: renderHeaderCell,
       custom_properties: renderHeaderCell,

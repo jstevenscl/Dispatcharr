@@ -42,6 +42,7 @@ const User = ({ user = null, isOpen, onClose }) => {
       xc_password: '',
       channel_profiles: [],
       hide_adult_content: false,
+      is_active: true,
     },
 
     validate: (values) => ({
@@ -134,6 +135,7 @@ const User = ({ user = null, isOpen, onClose }) => {
             : ['0'],
         xc_password: customProps.xc_password || '',
         hide_adult_content: customProps.hide_adult_content || false,
+        is_active: user.is_active !== false,
       });
 
       if (customProps.xc_password) {
@@ -154,8 +156,9 @@ const User = ({ user = null, isOpen, onClose }) => {
     return <></>;
   }
 
-  const showPermissions =
-    authUser.user_level == USER_LEVELS.ADMIN && authUser.id !== user?.id;
+  const isAdmin = authUser.user_level == USER_LEVELS.ADMIN;
+  const isEditingSelf = authUser.id === user?.id;
+  const showPermissions = isAdmin && !isEditingSelf;
 
   return (
     <Modal opened={isOpen} onClose={onClose} title="User" size="xl">
@@ -198,6 +201,31 @@ const User = ({ user = null, isOpen, onClose }) => {
                 {...form.getInputProps('user_level')}
                 key={form.key('user_level')}
               />
+            )}
+
+            {isAdmin && (
+              <Box>
+                <Tooltip
+                  label={isEditingSelf
+                    ? "You cannot disable your own account"
+                    : "Disabled accounts cannot log in or access any resources"
+                  }
+                  position="top"
+                  withArrow
+                >
+                  <div style={isEditingSelf ? { cursor: 'not-allowed' } : undefined}>
+                    <Switch
+                      label="Account Enabled"
+                      {...form.getInputProps('is_active', {
+                        type: 'checkbox',
+                      })}
+                      key={form.key('is_active')}
+                      disabled={isEditingSelf}
+                      styles={isEditingSelf ? { track: { pointerEvents: 'none' } } : undefined}
+                    />
+                  </div>
+                </Tooltip>
+              </Box>
             )}
           </Stack>
 

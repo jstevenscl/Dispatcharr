@@ -113,13 +113,31 @@ class TokenRefreshView(TokenRefreshView):
             )
             return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
 
+        # Check if user account is still active before issuing new access token
+        raw_token = request.data.get("refresh")
+        if raw_token:
+            try:
+                from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenClass
+                token = RefreshTokenClass(raw_token)
+                user_id = token.payload.get("user_id")
+                if user_id:
+                    user = User.objects.filter(id=user_id).first()
+                    if user and not user.is_active:
+                        logger.info(f"Token refresh blocked for disabled user: user_id={user_id}")
+                        return Response(
+                            {"error": "Account is disabled"},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+            except Exception:
+                pass  # Let parent handle invalid tokens
+
         return super().post(request, *args, **kwargs)
 
 
 @csrf_exempt  # In production, consider CSRF protection strategies or ensure this endpoint is only accessible when no superuser exists.
 def initialize_superuser(request):
-    # If a superuser already exists, always indicate that
-    if User.objects.filter(is_superuser=True).exists():
+    # If an admin-level user already exists, the system is configured
+    if User.objects.filter(user_level__gte=10).exists():
         return JsonResponse({"superuser_exists": True})
 
     if request.method == "POST":
