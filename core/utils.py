@@ -404,7 +404,7 @@ def dispatch_event_system(event_type, channel_id=None, channel_name=None, **deta
         from core.models import StreamProfile
         from core.utils import RedisClient
 
-        payload = {}
+        payload = dict(details)
 
         channel_obj = None
         if channel_id:
@@ -463,6 +463,11 @@ def dispatch_event_system(event_type, channel_id=None, channel_name=None, **deta
             profile_used = None
 
         payload["profile_used"] = profile_used
+
+        # remove empty keys
+        for k in list(payload.keys()):
+            if not payload[k]:
+                del payload[k]
 
         trigger_event(event_type, payload)
 
