@@ -1946,9 +1946,6 @@ def xc_get_user(request):
 
     user = get_object_or_404(User, username=username)
 
-    if not user.is_active:
-        return None
-
     custom_properties = user.custom_properties or {}
 
     if "xc_password" not in custom_properties:
@@ -2928,9 +2925,6 @@ def xc_movie_stream(request, username, password, stream_id, extension):
 
     user = get_object_or_404(User, username=username)
 
-    if not user.is_active:
-        return JsonResponse({"error": "Account is disabled"}, status=403)
-
     custom_properties = user.custom_properties or {}
 
     if "xc_password" not in custom_properties:
@@ -2967,9 +2961,6 @@ def xc_series_stream(request, username, password, stream_id, extension):
     from apps.vod.models import M3UEpisodeRelation
 
     user = get_object_or_404(User, username=username)
-
-    if not user.is_active:
-        return JsonResponse({"error": "Account is disabled"}, status=403)
 
     custom_properties = user.custom_properties or {}
 

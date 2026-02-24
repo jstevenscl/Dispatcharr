@@ -40,7 +40,6 @@ class UserSerializer(serializers.ModelSerializer):
             "channel_profiles",
             "custom_properties",
             "avatar_config",
-            "is_active",
             "is_staff",
             "is_superuser",
             "last_login",
@@ -52,10 +51,8 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         channel_profiles = validated_data.pop("channel_profiles", [])
 
-        is_active = validated_data.pop("is_active", True)
         user = User(**validated_data)
         user.set_password(validated_data["password"])
-        user.is_active = is_active
         user.save()
 
         user.channel_profiles.set(channel_profiles)
@@ -63,17 +60,6 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
     def update(self, instance, validated_data):
-        # Prevent disabling the last active admin account
-        if 'is_active' in validated_data and not validated_data['is_active']:
-            other_active_admins = User.objects.filter(
-                user_level__gte=10,
-                is_active=True
-            ).exclude(id=instance.id).exists()
-            if not other_active_admins:
-                raise serializers.ValidationError(
-                    {"is_active": "Cannot disable the last active admin account."}
-                )
-
         password = validated_data.pop("password", None)
         channel_profiles = validated_data.pop("channel_profiles", None)
 
