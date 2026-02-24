@@ -5,7 +5,6 @@ import {
   ListOrdered,
   Play,
   Database,
-  SlidersHorizontal,
   LayoutGrid,
   Settings as LucideSettings,
   Copy,
@@ -32,10 +31,8 @@ import {
   UnstyledButton,
   TextInput,
   ActionIcon,
-  Menu,
   ScrollArea,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import logo from '../images/logo.png';
 import useChannelsStore from '../store/channels';
 import './sidebar.css';
@@ -202,7 +199,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
             ],
           },
           {
-            label: 'Settings',
+            label: 'System',
             icon: <LucideSettings size={20} />,
             paths: [
               {
@@ -216,7 +213,7 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
                 path: '/logos',
               },
               {
-                label: 'System',
+                label: 'Settings',
                 icon: <MonitorCog size={20} />,
                 path: '/settings',
               },
@@ -246,11 +243,6 @@ const Sidebar = ({ collapsed, toggleDrawer, drawerWidth, miniDrawerWidth }) => {
       successTitle: 'Success',
       successMessage: 'Public IP copied to clipboard',
     });
-  };
-
-  const onLogout = async () => {
-    await logout();
-    window.location.reload();
   };
 
   return (
