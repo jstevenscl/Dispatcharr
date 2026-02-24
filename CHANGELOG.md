@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- API key authentication: Added support for API key-based authentication as an alternative to JWT tokens. Users can generate and revoke their own personal API key from their profile page, enabling programmatic access for scripts, automations, and third-party integrations without exposing account credentials. Keys authenticate via the `Authorization: ApiKey <key>` header or the `X-API-Key: <key>` header. Admin users can additionally generate and revoke keys on behalf of any user.
 - Lightweight channel summary API endpoint: Added a new `/api/channels/summary/` endpoint that returns only the minimal channel data needed for TV Guide and DVR scheduling (id, name, logo), avoiding the overhead of serializing full channel objects for high-frequency UI operations.
 - Custom Dummy EPG subtitle template support: Added optional subtitle template field to custom dummy EPG configuration. Users can now define subtitle patterns using extracted regex groups and time/date placeholders (e.g., `{starttime} - {endtime}`). (Closes #942)
 - Event-driven webhooks and script execution (Connect): Added new Connect feature that enables event-driven execution of custom scripts and webhooks in response to system events. Supports multiple event types including channel lifecycle (start, stop, reconnect, error, failover), stream operations (switch), recording events (start, end), data refreshes (EPG, M3U), and client activity (connect, disconnect). Event data is available as environment variables in scripts (prefixed with `DISPATCHARR_`), POST payloads for webhooks, and plugin execution payloads. Plugins can now subscribe to events by specifying an `events` array in their action definitions. Includes connection testing endpoint with dummy payloads for validation. (Closes #203)
@@ -149,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin loader now supports `plugin.py` without `__init__.py`, including folders with non-identifier names, by loading modules directly from file paths.
 - Plugin action handling stabilized: avoids registry race conditions and only shows loading on the active action.
 - Plugin enable/disable toggles now update immediately without requiring a full page refresh.
+- M3U/EPG tasks downloading endlessly for large files: Fixed the root cause where the Redis task lock (300s TTL) expired during long downloads, allowing Celery Beat to start competing duplicate tasks that never completed. Added a `TaskLockRenewer` daemon thread that periodically extends the lock TTL while a task is actively working, applied to all long-running task paths (M3U refresh, M3U group refresh, EPG refresh, EPG program parsing). Also adds an HTTP timeout to M3U download requests, streams M3U downloads directly to a temp file on disk instead of accumulating the entire file in memory, and adds Celery task time limits as a safety net against runaway tasks. (Fixes #861) - Thanks [@CodeBormen](https://github.com/CodeBormen)
 
 ## [0.18.1] - 2026-01-27
 
