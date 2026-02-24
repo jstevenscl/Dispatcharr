@@ -2904,6 +2904,33 @@ export default class API {
     }
   }
 
+  static async revokeApiKey({ user_id = null } = {}) {
+    try {
+      const body = {};
+      if (user_id) {
+        body.user_id = user_id;
+      }
+
+      const response = await request(`${host}/api/accounts/api-keys/revoke/`, {
+        method: 'POST',
+        body,
+      });
+
+      // If the backend returned an updated user, refresh the users store
+      try {
+        if (response && response.user) {
+          useUsersStore.getState().updateUser(response.user);
+        }
+      } catch (e) {
+        // ignore store update errors
+      }
+
+      return response;
+    } catch (e) {
+      errorNotification('Failed to revoke API key', e);
+    }
+  }
+
   static async updateUser(id, body) {
     try {
       const response = await request(`${host}/api/accounts/users/${id}/`, {

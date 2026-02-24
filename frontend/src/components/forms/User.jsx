@@ -15,8 +15,11 @@ import {
   Switch,
   Box,
   Tooltip,
+  Grid,
+  SimpleGrid,
+  useMantineTheme,
 } from '@mantine/core';
-import { RotateCcwKey, X } from 'lucide-react';
+import { RotateCcwKey, RotateCw, X } from 'lucide-react';
 import { Copy, Key } from 'lucide-react';
 import { useForm } from '@mantine/form';
 import useChannelsStore from '../../store/channels';
@@ -34,6 +37,8 @@ const User = ({ user = null, isOpen, onClose }) => {
   const [generating, setGenerating] = useState(false);
   const [generatedKey, setGeneratedKey] = useState(null);
   const [userAPIKey, setUserAPIKey] = useState(user?.api_key || null);
+
+  const theme = useMantineTheme();
 
   const form = useForm({
     mode: 'uncontrolled',
@@ -120,6 +125,7 @@ const User = ({ user = null, isOpen, onClose }) => {
     }
 
     form.reset();
+    setUserAPIKey(null);
     onClose();
   };
 
@@ -145,9 +151,7 @@ const User = ({ user = null, isOpen, onClose }) => {
         setEnableXC(true);
       }
 
-      if (user?.api_key) {
-        setUserAPIKey(user.api_key);
-      }
+      setUserAPIKey(user.api_key || null);
     } else {
       form.reset();
     }
@@ -186,6 +190,34 @@ const User = ({ user = null, isOpen, onClose }) => {
       if (newKey) {
         setGeneratedKey(newKey);
         setUserAPIKey(newKey);
+      }
+    } catch (e) {
+      // API shows notifications
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const onRevokeKey = async () => {
+    if (!canGenerateKey) return;
+
+    setGenerating(true);
+    try {
+      const payload = {};
+      if (authUser.user_level == USER_LEVELS.ADMIN && user?.id) {
+        payload.user_id = user.id;
+      }
+
+      const resp = await API.revokeApiKey(payload);
+      // backend returns { success: true } - clear local state
+      if (resp && resp.success) {
+        setGeneratedKey(null);
+        setUserAPIKey(null);
+
+        // If we're revoking the current authenticated user's key, update auth store
+        if (user?.id && authUser?.id === user.id) {
+          setUser({ ...authUser, api_key: null });
+        }
       }
     } catch (e) {
       // API shows notifications
@@ -333,16 +365,32 @@ const User = ({ user = null, isOpen, onClose }) => {
                   />
                 )}
 
-                <Button
-                  leftSection={<Key size={14} />}
-                  size="xs"
-                  onClick={onGenerateKey}
-                  loading={generating}
-                  color="blue"
-                  variant="light"
-                >
-                  {userAPIKey ? 'Regenerate API Key' : 'Generate API Key'}
-                </Button>
+                <Group gap="xs" grow>
+                  <Button
+                    leftSection={<Key size={14} />}
+                    size="xs"
+                    onClick={onGenerateKey}
+                    loading={generating}
+                    variant="light"
+                    fullWidth
+                  >
+                    {userAPIKey ? 'Regenerate API Key' : 'Generate API Key'}
+                  </Button>
+
+                  {userAPIKey && (
+                    <Button
+                      leftSection={<X size={14} />}
+                      size="xs"
+                      onClick={onRevokeKey}
+                      loading={generating}
+                      color={theme.colors.red[5]}
+                      variant="light"
+                      fullWidth
+                    >
+                      Revoke API Key
+                    </Button>
+                  )}
+                </Group>
               </Stack>
             )}
           </Stack>
