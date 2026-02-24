@@ -415,7 +415,7 @@ LOGGING = {
 
 # Connect script execution safety settings
 # Allowed base directories for custom scripts; real paths must be inside
-_allowed_dirs_env = os.environ.get("DISPATCHARR_ALLOWED_SCRIPT_DIRS", "/data/plugins")
+_allowed_dirs_env = os.environ.get("DISPATCHARR_ALLOWED_SCRIPT_DIRS", "/data/scripts")
 CONNECT_ALLOWED_SCRIPT_DIRS = [p for p in _allowed_dirs_env.split(":") if p]
 
 # Max execution time (seconds) for scripts
