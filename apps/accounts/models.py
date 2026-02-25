@@ -1,12 +1,16 @@
 # apps/accounts/models.py
 from django.db import models
-from django.contrib.auth.models import AbstractUser, Permission
-from django.conf import settings
-from django.utils import timezone
-from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.models import AbstractUser, Permission, UserManager
+
+
+class CustomUserManager(UserManager):
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('user_level', 10)
+        return super().create_superuser(username, email, password, **extra_fields)
 
 
 class User(AbstractUser):
+    objects = CustomUserManager()
     """
     Custom user model for Dispatcharr.
     Inherits from Django's AbstractUser to add additional fields if needed.

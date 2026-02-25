@@ -1945,6 +1945,7 @@ def xc_get_user(request):
         return None
 
     user = get_object_or_404(User, username=username)
+
     custom_properties = user.custom_properties or {}
 
     if "xc_password" not in custom_properties:

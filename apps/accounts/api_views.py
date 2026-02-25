@@ -119,8 +119,8 @@ class TokenRefreshView(TokenRefreshView):
 
 @csrf_exempt  # In production, consider CSRF protection strategies or ensure this endpoint is only accessible when no superuser exists.
 def initialize_superuser(request):
-    # If a superuser already exists, always indicate that
-    if User.objects.filter(is_superuser=True).exists():
+    # If an admin-level user already exists, the system is configured
+    if User.objects.filter(user_level__gte=10).exists():
         return JsonResponse({"superuser_exists": True})
 
     if request.method == "POST":

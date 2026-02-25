@@ -42,7 +42,6 @@ class UserSerializer(serializers.ModelSerializer):
             "channel_profiles",
             "custom_properties",
             "avatar_config",
-            "is_active",
             "is_staff",
             "is_superuser",
             "last_login",
@@ -56,7 +55,6 @@ class UserSerializer(serializers.ModelSerializer):
 
         user = User(**validated_data)
         user.set_password(validated_data["password"])
-        user.is_active = True
         user.save()
 
         user.channel_profiles.set(channel_profiles)

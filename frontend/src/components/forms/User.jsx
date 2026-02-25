@@ -167,8 +167,9 @@ const User = ({ user = null, isOpen, onClose }) => {
     return <></>;
   }
 
-  const showPermissions =
-    authUser.user_level == USER_LEVELS.ADMIN && authUser.id !== user?.id;
+  const isAdmin = authUser.user_level == USER_LEVELS.ADMIN;
+  const isEditingSelf = authUser.id === user?.id;
+  const showPermissions = isAdmin && !isEditingSelf;
 
   const canGenerateKey =
     authUser.user_level == USER_LEVELS.ADMIN || authUser.id === user?.id;
@@ -268,6 +269,7 @@ const User = ({ user = null, isOpen, onClose }) => {
                 key={form.key('user_level')}
               />
             )}
+
           </Stack>
 
           <Stack gap="xs" style={{ flex: 1 }}>
