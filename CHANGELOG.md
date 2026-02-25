@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stream Profile form rework: Replaced the plain command text field with a dropdown listing built-in tools (FFmpeg, Streamlink, VLC, yt-dlp) plus a Custom option that reveals a free-text input. Each built-in now shows its default parameter string as a live example in the Parameters field description, updating as the command selection changes. Added descriptive help text to all fields to improve clarity.
 - Custom Dummy EPG form UI improvements: Reorganized the form into collapsible accordion sections (Pattern Configuration, Output Templates, Upcoming/Ended Templates, Fallback Templates, EPG Settings) for better organization. Field descriptions now appear in info icon popovers instead of taking up vertical space, making the form more compact and easier to navigate while keeping help text accessible.
 - XC API M3U stream URLs: M3U generation for Xtream Codes API endpoints now use proper XC-style stream URLs (`/live/username/password/channel_id`) instead of UUID-based stream endpoints, ensuring full compatibility with XC clients. (Fixes #839)
+- XC API `get_series` now includes `tmdb_id` and `imdb_id` fields, matching `get_vod_streams`. Clients that use TMDB enrichment (e.g. Chillio) can now resolve clean series titles and poster images. - Thanks [@firestaerter3](https://github.com/firestaerter3)
 
 ### Fixed
 
