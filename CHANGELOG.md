@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Each mode includes its own configuration options accessible via the "Channel Numbering Mode" dropdown in auto sync settings. (Closes #956, #433)
 - Legacy NumPy for modular Docker: Added entrypoint detection and automatic installation for the Celery container (use `USE_LEGACY_NUMPY`) to support older CPUs. - Thanks [@patrickjmcd](https://github.com/patrickjmcd)
 - `series_relation` foreign key on `M3UEpisodeRelation`: episode relations now carry a direct FK to their parent `M3USeriesRelation`. This enables correct CASCADE deletion (removing a series relation automatically removes its episode relations), precise per-provider scoping during stale-stream cleanup.
+- Streamer accounts attempting to log into the web UI now receive a clear notification explaining they cannot access the UI but their stream URLs still work. Previously the login button would silently stop with no feedback.
 
 ### Changed
 
@@ -68,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed admin permission checks inconsistently using `is_superuser`/`is_staff` instead of `user_level>=10`, causing API-created admin accounts to intermittently see the setup page, lose access to backup endpoints, and miss admin-only notifications. `manage.py createsuperuser` now also correctly sets `user_level=10`. (Fixes #954) - Thanks [@CodeBormen](https://github.com/CodeBormen)
 - Channel table group filter sort order: The group dropdown in the channel table is now sorted alphabetically.
 - DVR one-time recording scheduling: Fixed a bug where scheduling a one-time recording for a future program caused the recording to start immediately instead of at the scheduled time.
 - XC API `added` field type inconsistencies: `get_live_streams` and `get_vod_info` now return the `added` field as a string (e.g., `"1708300800"`) instead of an integer, fixing compatibility with XC clients that have strict JSON serializers (such as Jellyfin's Xtream Library plugin). (Closes #978)
