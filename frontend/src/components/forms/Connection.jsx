@@ -346,7 +346,7 @@ const ConnectionForm = ({ connection = null, isOpen, onClose }) => {
                               <Accordion.Panel>
                                 <Textarea
                                   placeholder={
-                                    'Optional Jinja2 payload template (use variables from event payload)'
+                                    'Optional Jinja2 template (ex: {"content": "Channel {{ channel_name }} just started streaming!"} )'
                                   }
                                   minRows={3}
                                   value={payloadTemplates[opt.value] || ''}
