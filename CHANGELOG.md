@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-02-26
+
 ### Fixed
 
 - Login form disabled after token expiry: The login button was permanently rendered as disabled ("Logging you in...") on page load after a session expired, preventing users from logging back in. A regression in v0.20.0 caused `LoginForm` to check `if (user)` to detect an already-authenticated reload, but the Zustand auth store initializes `user` as a truthy empty object `{ username: '', email: '', user_level: '' }`, so the loading state was set immediately on every mount. Reverted to pre-regression behavior. (Fixes #1029)
