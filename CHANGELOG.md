@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Channel table onboarding shown when filter returns zero results: The channel store refactor changed to loading only channel IDs instead of full channel objects, leaving `Object.keys(channels).length` always `0` and incorrectly triggering the onboarding state on any empty filter. Fixed by checking `channelIds.length` instead.
+
 ## [0.20.1] - 2026-02-26
 
 ### Fixed

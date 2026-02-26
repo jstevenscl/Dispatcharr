@@ -282,6 +282,7 @@ const ChannelsTable = ({ onReady }) => {
 
   // store/channels
   const channels = useChannelsStore((s) => s.channels);
+  const channelIds = useChannelsStore((s) => s.channelIds);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
   const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
@@ -1438,13 +1439,12 @@ const ChannelsTable = ({ onReady }) => {
 
           {/* Table or ghost empty state inside Paper */}
           <Box>
-            {channelsTableLength === 0 &&
-              Object.keys(channels).length === 0 && (
-                <ChannelsTableOnboarding editChannel={editChannel} />
-              )}
+            {channelsTableLength === 0 && channelIds.length === 0 && (
+              <ChannelsTableOnboarding editChannel={editChannel} />
+            )}
           </Box>
 
-          {(channelsTableLength > 0 || Object.keys(channels).length > 0) && (
+          {(channelsTableLength > 0 || channelIds.length > 0) && (
             <Box
               style={{
                 display: 'flex',
