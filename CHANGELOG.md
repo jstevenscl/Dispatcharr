@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Custom Dummy EPG form UI improvements: Reorganized the form into collapsible accordion sections (Pattern Configuration, Output Templates, Upcoming/Ended Templates, Fallback Templates, EPG Settings) for better organization. Field descriptions now appear in info icon popovers instead of taking up vertical space, making the form more compact and easier to navigate while keeping help text accessible.
 - XC API M3U stream URLs: M3U generation for Xtream Codes API endpoints now use proper XC-style stream URLs (`/live/username/password/channel_id`) instead of UUID-based stream endpoints, ensuring full compatibility with XC clients. (Fixes #839)
 - XC API `get_series` now includes `tmdb_id` and `imdb_id` fields, matching `get_vod_streams`. Clients that use TMDB enrichment (e.g. Chillio) can now resolve clean series titles and poster images. - Thanks [@firestaerter3](https://github.com/firestaerter3)
+- Stats page "Now Playing" EPG lookup updated to use `channel_uuids` directly (the proxy stats already key active channels by UUID), removing the need for a UUID→integer ID conversion step introduced alongside the lazy channel-fetch refactor. Stream preview sessions (which use a content hash rather than a UUID as their channel ID) are now filtered out before any API call is made, preventing a backend `ValidationError` on both the `current-programs` and `by-uuids` endpoints when a stream preview is active on the Stats page.
 
 ### Fixed
 

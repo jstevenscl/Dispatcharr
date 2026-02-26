@@ -1331,11 +1331,11 @@ export default class API {
     }
   }
 
-  static async getCurrentPrograms(channelIds = null) {
+  static async getCurrentPrograms(channelUUIDs = null) {
     try {
       const response = await request(`${host}/api/epg/current-programs/`, {
         method: 'POST',
-        body: { channel_ids: channelIds },
+        body: { channel_uuids: channelUUIDs },
       });
 
       return response;
