@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-02-26
+
 ### Security
 
 - Updated Django 5.2.9 → 5.2.11, resolving the following CVEs:
