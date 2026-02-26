@@ -26,7 +26,6 @@ const LoginForm = () => {
   const logout = useAuthStore((s) => s.logout);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initData = useAuthStore((s) => s.initData);
-  const user = useAuthStore((s) => s.user);
   const fetchVersion = useSettingsStore((s) => s.fetchVersion);
   const storedVersion = useSettingsStore((s) => s.version);
 
@@ -88,15 +87,10 @@ const LoginForm = () => {
   }, []);
 
   useEffect(() => {
-    // If user is loaded, set isLoading to true so the UI indicates login is complete and is loading data
-    if (user) {
-      setIsLoading(true);
-    }
-
     if (isAuthenticated) {
       navigate('/channels');
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, navigate]);
 
   const handleInputChange = (e) => {
     setFormData({
