@@ -15,6 +15,13 @@ class Command(BaseCommand):
         host = db_settings.get('HOST', 'localhost')
         port = db_settings.get('PORT', 5432)
 
+        # Read TLS parameters from Django OPTIONS (populated when POSTGRES_SSL=true)
+        db_options = db_settings.get('OPTIONS', {})
+        ssl_kwargs = {}
+        for key in ('sslmode', 'sslrootcert', 'sslcert', 'sslkey'):
+            if key in db_options:
+                ssl_kwargs[key] = db_options[key]
+
         self.stdout.write(self.style.WARNING(
             f"WARNING: This will irreversibly drop the entire database '{db_name}'!"
         ))
@@ -30,7 +37,7 @@ class Command(BaseCommand):
         maintenance_db = 'postgres'
         try:
             self.stdout.write("Connecting to maintenance database...")
-            conn = psycopg2.connect(dbname=maintenance_db, user=user, password=password, host=host, port=port)
+            conn = psycopg2.connect(dbname=maintenance_db, user=user, password=password, host=host, port=port, **ssl_kwargs)
             conn.autocommit = True
             cur = conn.cursor()
             self.stdout.write(f"Dropping database '{db_name}'...")

@@ -615,13 +615,15 @@ def head_vod(request, content_type, content_id, session_id=None, profile_id=None
             redis_db = int(getattr(settings, 'REDIS_DB', 0))
             redis_password = getattr(settings, 'REDIS_PASSWORD', '')
             redis_user = getattr(settings, 'REDIS_USER', '')
+            ssl_params = getattr(settings, 'REDIS_SSL_PARAMS', {})
             r = redis.StrictRedis(
                 host=redis_host,
                 port=redis_port,
                 db=redis_db,
                 password=redis_password if redis_password else None,
                 username=redis_user if redis_user else None,
-                decode_responses=True
+                decode_responses=True,
+                **ssl_params
             )
             content_length_key = f"vod_content_length:{session_id}"
             r.set(content_length_key, total_size, ex=1800)  # Store for 30 minutes
