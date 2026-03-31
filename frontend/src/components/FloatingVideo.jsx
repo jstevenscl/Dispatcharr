@@ -313,10 +313,17 @@ export default function FloatingVideo() {
         return;
       }
 
+      // mpegts.js workers run in WorkerGlobalScope where relative URLs are
+      // not resolved against the page origin. Always pass an absolute URL.
+      const absoluteStreamUrl =
+        streamUrl.startsWith('/') && typeof window !== 'undefined'
+          ? `${window.location.origin}${streamUrl}`
+          : streamUrl;
+
       const player = mpegts.createPlayer(
         {
           type: 'mpegts',
-          url: streamUrl,
+          url: absoluteStreamUrl,
           isLive: true,
           cors: true,
         },
