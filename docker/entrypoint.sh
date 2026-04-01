@@ -30,7 +30,14 @@ echo_with_timestamp() {
 # Set PostgreSQL environment variables
 export POSTGRES_DB=${POSTGRES_DB:-dispatcharr}
 export POSTGRES_USER=${POSTGRES_USER:-dispatch}
-export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
+# AIO mode: default to 'secret' for internal DB.
+# Modular mode + TLS: no default — cert-only auth (mTLS) uses no password.
+# Modular mode + no TLS: preserve 'secret' default for backward compatibility.
+if [[ "${DISPATCHARR_ENV:-}" == "modular" && "${POSTGRES_SSL:-}" == "true" ]]; then
+    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
+else
+    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-secret}"
+fi
 export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
 export POSTGRES_PORT=${POSTGRES_PORT:-5432}
 export PG_VERSION=$(ls /usr/lib/postgresql/ | sort -V | tail -n 1)
@@ -96,6 +103,20 @@ echo "Environment DISPATCHARR_LOG_LEVEL set to: '${DISPATCHARR_LOG_LEVEL}'"
 # Also make the log level available in /etc/environment for all login shells
 #grep -q "DISPATCHARR_LOG_LEVEL" /etc/environment || echo "DISPATCHARR_LOG_LEVEL=${DISPATCHARR_LOG_LEVEL}" >> /etc/environment
 
+# Translate Dispatcharr POSTGRES_SSL_* env vars into libpq-recognized PGSSL*
+# env vars. Called once before any external PostgreSQL connection; all child
+# processes (psql, pg_dump, pg_isready, createdb, dropdb) inherit these
+# automatically. No-op when POSTGRES_SSL is not "true".
+setup_pg_ssl_env() {
+    if [ "${POSTGRES_SSL:-false}" != "true" ]; then
+        return 0
+    fi
+    export PGSSLMODE="${POSTGRES_SSL_MODE:-verify-full}"
+    if [ -n "${POSTGRES_SSL_CA_CERT:-}" ]; then export PGSSLROOTCERT="$POSTGRES_SSL_CA_CERT"; fi
+    if [ -n "${POSTGRES_SSL_CERT:-}" ];    then export PGSSLCERT="$POSTGRES_SSL_CERT"; fi
+    if [ -n "${POSTGRES_SSL_KEY:-}" ];     then export PGSSLKEY="$POSTGRES_SSL_KEY"; fi
+}
+
 # READ-ONLY - don't let users change these
 export POSTGRES_DIR=/data/db
 
@@ -153,6 +174,22 @@ fi
 # Run init scripts
 echo "Starting user setup..."
 . /app/docker/init/01-user-setup.sh
+
+# Fix TLS client key permissions/ownership BEFORE any external PG connections.
+# Must run after 01-user-setup.sh (user exists for chown) and before
+# 02-postgres.sh / pg_isready (which make the first external PG connections).
+FIXED_KEY_PATH="/data/.pg-client.key"
+. /app/docker/init/00-fix-pg-ssl-key.sh
+# Propagate the fixed path to login shells (su - strips env vars)
+if [ "${POSTGRES_SSL_KEY:-}" = "$FIXED_KEY_PATH" ]; then
+    sed -i "/^POSTGRES_SSL_KEY=/d" /etc/environment
+    echo "POSTGRES_SSL_KEY='$FIXED_KEY_PATH'" >> /etc/environment
+    sed -i "s|export POSTGRES_SSL_KEY=.*|export POSTGRES_SSL_KEY='$FIXED_KEY_PATH'|" /etc/profile.d/dispatcharr.sh
+fi
+
+# Export libpq TLS env vars so all subsequent psql/pg_dump/pg_isready calls
+# (in 02-postgres.sh, modular-mode checks, etc.) use TLS automatically.
+setup_pg_ssl_env
 
 # Initialize PostgreSQL (script handles modular vs internal mode internally)
 echo "Setting up PostgreSQL..."
@@ -234,28 +271,6 @@ if [ "$USE_LEGACY_NUMPY" = "true" ]; then
         echo_with_timestamp "✅ Legacy NumPy installed"
     else
         echo_with_timestamp "✅ Legacy NumPy (no baseline) already installed, skipping reinstallation"
-    fi
-fi
-
-# Fix TLS client key permissions for PostgreSQL.
-# libpq requires the client key to be 0600 or stricter. Volume-mounted files
-# from Windows/macOS hosts often have 0755 permissions, so copy the key to a
-# writable location with correct permissions if needed.
-if [ -n "${POSTGRES_SSL_KEY:-}" ] && [ -f "$POSTGRES_SSL_KEY" ]; then
-    _key_perms=$(stat -c '%a' "$POSTGRES_SSL_KEY" 2>/dev/null)
-    if [ "$_key_perms" != "600" ] && [ "$_key_perms" != "640" ]; then
-        _fixed_key="/data/.pg-client.key"
-        cp "$POSTGRES_SSL_KEY" "$_fixed_key"
-        chmod 600 "$_fixed_key"
-        if [ "$(id -u)" = "0" ] && [ -n "${PUID:-}" ]; then
-            chown "${PUID}:${PGID:-$PUID}" "$_fixed_key"
-        fi
-        export POSTGRES_SSL_KEY="$_fixed_key"
-        # Update /etc/environment so login shells see the fixed path
-        sed -i "/^POSTGRES_SSL_KEY=/d" /etc/environment
-        echo "POSTGRES_SSL_KEY='$_fixed_key'" >> /etc/environment
-        sed -i "s|export POSTGRES_SSL_KEY=.*|export POSTGRES_SSL_KEY='$_fixed_key'|" /etc/profile.d/dispatcharr.sh
-        echo "Fixed PostgreSQL client key permissions (${_key_perms} → 600)"
     fi
 fi
 
