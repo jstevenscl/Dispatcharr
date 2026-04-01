@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-04-01
+
 ### Security
 
 - Updated `requests` 2.32.5 → 2.33.0, resolving the following CVE:
