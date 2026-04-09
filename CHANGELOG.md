@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactored frontend form components (`AccountInfoModal`, `AssignChannelNumbers`, `Channel`, `ChannelBatch`, `ChannelGroup`, `Connection`, `CronBuilder`, `DummyEPG`, and `EPG`) to extract business logic into dedicated utility modules under `src/utils/forms/`. Each extracted module is covered by unit tests. Mantine compound component references (`Table.Tbody`, `Popover.Target`, `Accordion.Item`, etc.) have been updated to use flat named imports. — Thanks [@nick4810](https://github.com/nick4810)
+
 - Improved the EPG BOM fix from v0.22.1: replaced the `lstrip(b'\xef\xbb\xbf')` / `startswith` approach with `start.find(b'<?xml')`, which locates the XML declaration regardless of any leading bytes BOM, whitespace, or other encoding markers without needing to know what those bytes are.
 
 ## [0.22.1] - 2026-04-05
