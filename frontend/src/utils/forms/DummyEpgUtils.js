@@ -130,9 +130,7 @@ const formatTime12Long = (h, m) => {
 };
 
 const formatTime24 = (h, m) =>
-  m > 0
-    ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-    : `${String(h).padStart(2, '0')}:00`;
+  `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 
 export const buildTimePlaceholders = (
   timeGroups,
@@ -205,7 +203,6 @@ export const buildTimePlaceholders = (
       starttime: formatTime12(h24, min),
       starttime_long: formatTime12Long(h24, min),
       starttime24: formatTime24(h24, min),
-      starttime24_long: formatTime24(h24, min),
       endtime: formatTime12(endH24, endMin),
       endtime_long: formatTime12Long(endH24, endMin),
       endtime24: formatTime24(endH24, endMin),
