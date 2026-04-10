@@ -280,17 +280,6 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "API documentation for Dispatcharr",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    "SECURITY": [{"BearerAuth": []}],
-    "COMPONENTS": {
-        "securitySchemes": {
-            "BearerAuth": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-                "description": "Enter your JWT access token. The 'Bearer ' prefix is added automatically.",
-            }
-        }
-    },
 }
 
 LANGUAGE_CODE = "en-us"
