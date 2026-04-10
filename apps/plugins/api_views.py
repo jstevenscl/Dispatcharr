@@ -200,14 +200,18 @@ def _install_plugin_from_zip(zip_file, plugins_dir, *, file_name="plugin.zip", a
             with zf.open(member, "r") as src, open(dest_path, "wb") as dst:
                 shutil.copyfileobj(src, dst)
 
-        # Find candidate directory containing plugin.py or __init__.py
+        # Single walk: find candidate plugin dirs AND logo.png simultaneously
         candidates = []
+        logo_candidates_raw = []
         for dirpath, dirnames, filenames in os.walk(tmp_root):
+            depth = len(os.path.relpath(dirpath, tmp_root).split(os.sep))
             has_pluginpy = "plugin.py" in filenames
             has_init = "__init__.py" in filenames
             if has_pluginpy or has_init:
-                depth = len(os.path.relpath(dirpath, tmp_root).split(os.sep))
                 candidates.append((0 if has_pluginpy else 1, depth, dirpath))
+            for filename in filenames:
+                if filename.lower() == "logo.png":
+                    logo_candidates_raw.append((depth, os.path.join(dirpath, filename)))
         if not candidates:
             return {"success": False, "error": "Invalid plugin: missing plugin.py or package __init__.py"}
 
@@ -223,23 +227,18 @@ def _install_plugin_from_zip(zip_file, plugins_dir, *, file_name="plugin.zip", a
         if len(plugin_key) > 128:
             plugin_key = plugin_key[:128]
 
-        # Extract logo
+        # Extract logo (prefer one inside the chosen plugin dir, then shallowest)
         logo_bytes = None
         try:
             chosen_abs = os.path.abspath(chosen)
             logo_candidates = []
-            for dirpath, _, filenames in os.walk(tmp_root):
-                for filename in filenames:
-                    if filename.lower() != "logo.png":
-                        continue
-                    full_path = os.path.join(dirpath, filename)
-                    full_abs = os.path.abspath(full_path)
-                    try:
-                        in_chosen = os.path.commonpath([chosen_abs, full_abs]) == chosen_abs
-                    except Exception:
-                        in_chosen = False
-                    depth = len(os.path.relpath(dirpath, tmp_root).split(os.sep))
-                    logo_candidates.append((0 if in_chosen else 1, depth, full_path))
+            for depth, full_path in logo_candidates_raw:
+                full_abs = os.path.abspath(full_path)
+                try:
+                    in_chosen = os.path.commonpath([chosen_abs, full_abs]) == chosen_abs
+                except Exception:
+                    in_chosen = False
+                logo_candidates.append((0 if in_chosen else 1, depth, full_path))
             if logo_candidates:
                 logo_candidates.sort()
                 with open(logo_candidates[0][2], "rb") as fh:
@@ -667,9 +666,10 @@ def _is_official_sounding(name):
 def _fetch_manifest(url, public_key_text=None):
     """Fetch a remote manifest JSON, validate structure, return (data, verified)."""
     _validate_fetch_url(url)
-    resp = http_requests.get(url, timeout=MANIFEST_FETCH_TIMEOUT)
-    resp.raise_for_status()
-    data = resp.json()
+    with http_requests.get(url, timeout=MANIFEST_FETCH_TIMEOUT, stream=True) as resp:
+        resp.raise_for_status()
+        body = b"".join(resp.iter_content(8192))
+    data = json.loads(body)
     # Accept both top-level {manifest: {plugins: [...]}} and {plugins: [...]}
     if "manifest" in data and "plugins" in data["manifest"]:
         signature = data.get("signature")
@@ -708,7 +708,7 @@ class PluginRepoListCreateAPIView(PluginAuthMixin, APIView):
             logger.warning("Initial manifest fetch failed for %s: %s", repo.url, e)
             repo.delete()
             return Response(
-                {"error": f"Failed to fetch manifest: {e}"},
+                {"error": "Failed to fetch manifest. Check the URL and try again."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         err = _save_fetched_manifest_to_repo(repo, data, verified)
@@ -874,7 +874,7 @@ class PluginRepoRefreshAPIView(PluginAuthMixin, APIView):
         except Exception as e:
             logger.exception("Manifest fetch failed for %s", repo.url)
             return Response(
-                {"error": f"Failed to fetch manifest: {e}"},
+                {"error": "Failed to fetch manifest. Check the URL and try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         err = _save_fetched_manifest_to_repo(repo, data, verified)
@@ -894,21 +894,6 @@ class AvailablePluginsAPIView(PluginAuthMixin, APIView):
         })},
     )
     def get(self, request):
-        repos = PluginRepo.objects.filter(enabled=True)
-
-        # Auto-fetch manifest for repos that have never been refreshed
-        for repo in repos:
-            if not repo.cached_manifest:
-                try:
-                    key_text = repo.public_key if not repo.is_official else None
-                    data, verified = _fetch_manifest(repo.url, public_key_text=key_text)
-                    err = _save_fetched_manifest_to_repo(repo, data, verified)
-                    if err:
-                        logger.warning("Skipping repo %s: %s", repo.url, err)
-                except Exception:
-                    pass
-
-        # Re-read in case we just updated
         repos = PluginRepo.objects.filter(enabled=True)
         configs = list(PluginConfig.objects.select_related("source_repo").all())
         # Build lookup: slug -> (version, repo_id, repo_name) for managed plugins,
@@ -1154,7 +1139,7 @@ class PluginInstallFromRepoAPIView(PluginAuthMixin, APIView):
         except Exception as e:
             logger.exception("Failed to download plugin from %s", download_url)
             return Response(
-                {"error": f"Failed to download plugin: {e}"},
+                {"error": "Failed to download plugin. Check the URL and try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
