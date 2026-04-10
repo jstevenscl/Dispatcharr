@@ -19,6 +19,7 @@ from rest_framework.permissions import AllowAny
 from apps.accounts.models import User
 from apps.accounts.permissions import IsAdmin
 from apps.proxy.utils import check_user_stream_limits
+from dispatcharr.utils import network_access_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +304,9 @@ def stream_vod(request, content_type, content_id, session_id=None, profile_id=No
         session_id: Optional session ID from URL path (for persistent connections)
         profile_id: Optional M3U profile ID for authentication
     """
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     logger.info(f"[VOD-REQUEST] Starting VOD stream request: {content_type}/{content_id}, session: {session_id}, profile: {profile_id}")
     logger.info(f"[VOD-REQUEST] Full request path: {request.get_full_path()}")
     logger.info(f"[VOD-REQUEST] Request method: {request.method}")
@@ -509,6 +513,9 @@ def head_vod(request, content_type, content_id, session_id=None, profile_id=None
 
     Returns content length and session URL header for subsequent GET requests
     """
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     logger.info(f"[VOD-HEAD] HEAD request: {content_type}/{content_id}, session: {session_id}, profile: {profile_id}")
 
     try:
@@ -992,6 +999,9 @@ def stop_vod_client(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def stream_xc_movie(request, username, password, stream_id, extension):
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     from apps.vod.models import M3UMovieRelation
 
     session_id = request.GET.get('session_id')
@@ -1023,6 +1033,9 @@ def stream_xc_movie(request, username, password, stream_id, extension):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def stream_xc_episode(request, username, password, stream_id, extension):
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     from apps.vod.models import M3UEpisodeRelation
 
     session_id = request.GET.get('session_id')
