@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActionIcon,
   Avatar,
@@ -143,19 +143,6 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
     plugin.latest_version && plugin.installed_version &&
     compareVersions(plugin.latest_version, plugin.installed_version) < 0;
 
-  const descContainerRef = useRef(null);
-  const [descLines, setDescLines] = useState(3);
-  useEffect(() => {
-    const el = descContainerRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver(() => {
-      const lh = parseFloat(getComputedStyle(el).lineHeight) || 22;
-      setDescLines(Math.max(1, Math.min(3, Math.floor(el.clientHeight / lh))));
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
   const doInstall = (params) => {
     if (plugin.deprecated) {
       setPendingDeprecatedInstall(params);
@@ -291,7 +278,7 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: 220,
+        minHeight: 220,
         ...(multiRepo && plugin.is_official_repo ? { borderColor: '#0e6459' } : {}),
       }}
     >
@@ -311,7 +298,9 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
             </Text>
             <Group gap={6} align="center" wrap="nowrap">
               {plugin.author && (
-                <Text size="xs" c="dimmed">by {plugin.author}</Text>
+                <Text size="xs" c="dimmed" truncate style={{ minWidth: 0, maxWidth: '100%' }}>
+                  {plugin.author}
+                </Text>
               )}
               <StatusBadge
                 status={plugin.install_status}
@@ -333,14 +322,14 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
       </Group>
 
       <Box style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div ref={descContainerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <Text size="sm" c="dimmed" lineClamp={descLines}>
+        <div style={{ overflow: 'hidden' }}>
+          <Text size="sm" c="dimmed" lineClamp={3} mb={0}>
             {plugin.description}
           </Text>
         </div>
 
-        <Stack gap={4} style={{ flexShrink: 0 }}>
-          <Group gap="xs" wrap="wrap">
+        <Stack gap={2} mt="auto" pt={4} style={{ flexShrink: 0 }}>
+        <Group gap="xs" wrap="wrap">
             {plugin.latest_version && (
               <Badge size="xs" variant="default">
                 <span style={{ opacity: 0.5, marginRight: 4 }}>LATEST</span>

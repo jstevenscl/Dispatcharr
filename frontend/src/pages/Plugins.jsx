@@ -144,7 +144,7 @@ const PluginsList = ({ onRequestDelete, onRequireTrust, onRequestConfirm }) => {
 
       {filteredPlugins.length > 0 && (
         <SimpleGrid
-          cols={{ base: 1, sm: 2, lg: 3 }}
+          cols={{ base: 1, md: 2, xl: 3 }}
           spacing="md"
         >
           <ErrorBoundary>

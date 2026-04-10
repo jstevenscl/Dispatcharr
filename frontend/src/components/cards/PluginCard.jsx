@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { showNotification } from '../../utils/notificationUtils.js';
 import { Field } from '../Field.jsx';
 import {
@@ -129,18 +129,6 @@ const PluginCard = ({
   const [installing, setInstalling] = useState(false);
   const [uninstalling] = useState(false);
 
-  const descContainerRef = useRef(null);
-  const [descLines, setDescLines] = useState(3);
-  useEffect(() => {
-    const el = descContainerRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver(() => {
-      const lh = parseFloat(getComputedStyle(el).lineHeight) || 22;
-      setDescLines(Math.max(1, Math.min(3, Math.floor(el.clientHeight / lh))));
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
   const installPlugin = usePluginStore((s) => s.installPlugin);
 
   // Keep local enabled state in sync with props
@@ -391,10 +379,11 @@ const PluginCard = ({
                   <Text
                     size="xs"
                     c="dimmed"
+                    truncate
                     onClick={isManaged ? () => openModal('details') : undefined}
-                    style={isManaged ? { cursor: 'pointer' } : undefined}
+                    style={{ minWidth: 0, maxWidth: '100%', ...(isManaged ? { cursor: 'pointer' } : {}) }}
                   >
-                    by {plugin.author}
+                    {plugin.author}
                   </Text>
                 )}
                 {plugin.help_url && (
@@ -466,9 +455,9 @@ const PluginCard = ({
           </Group>
         </Group>
 
-        {/* Description — flex: 1 pushes bottom content down */}
-        <div ref={descContainerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <Text size="sm" c="dimmed" lineClamp={descLines} mb="xs">
+        {/* Description */}
+        <div style={{ overflow: 'hidden' }}>
+          <Text size="sm" c="dimmed" lineClamp={3} mb={0}>
             {plugin.description}
           </Text>
         </div>
@@ -483,7 +472,7 @@ const PluginCard = ({
         )}
 
         {/* Bottom metadata pills */}
-        <Stack gap={4} style={{ flexShrink: 0 }}>
+        <Stack gap={2} mt="auto" pt={4} style={{ flexShrink: 0 }}>
           <Group gap="xs" wrap="wrap">
             <Badge size="xs" variant="default">
               <span style={{ opacity: 0.5, marginRight: 4 }}>VERSION</span>
