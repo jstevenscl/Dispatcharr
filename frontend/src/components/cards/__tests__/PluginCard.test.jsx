@@ -138,7 +138,7 @@ describe('PluginCard', () => {
       expect(screen.getByText('Test Plugin')).toBeInTheDocument();
       expect(screen.getByText('A test plugin')).toBeInTheDocument();
       expect(screen.getByText('v1.0.0')).toBeInTheDocument();
-      expect(screen.getByText('by Test Author')).toBeInTheDocument();
+      expect(screen.getByText('Test Author')).toBeInTheDocument();
     });
 
     it('should render plugin logo when logo_url is provided', () => {
