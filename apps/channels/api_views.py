@@ -24,7 +24,7 @@ from apps.accounts.permissions import (
 )
 
 from core.models import UserAgent, CoreSettings
-from core.utils import RedisClient
+from core.utils import RedisClient, safe_upload_path
 
 from .models import (
     Stream,
@@ -1901,10 +1901,13 @@ class LogoViewSet(viewsets.ModelViewSet):
                 {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        file_name = file.name
-        file_path = os.path.join("/data/logos", file_name)
+        # Sanitize filename: strip directory components to prevent path traversal
+        try:
+            file_path = safe_upload_path(file.name, "/data/logos")
+        except ValueError:
+            return Response({"error": "Invalid filename."}, status=status.HTTP_400_BAD_REQUEST)
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        os.makedirs("/data/logos", exist_ok=True)
         with open(file_path, "wb+") as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
@@ -1924,7 +1927,7 @@ class LogoViewSet(viewsets.ModelViewSet):
 
         # Get custom name from request data, fallback to filename
         custom_name = request.data.get('name', '').strip()
-        logo_name = custom_name if custom_name else file_name
+        logo_name = custom_name if custom_name else os.path.basename(file_path)
 
         logo, _ = Logo.objects.get_or_create(
             url=file_path,
