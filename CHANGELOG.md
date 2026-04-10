@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `@xmldom/xmldom` 0.8.11 → 0.8.12, resolving **high** XML injection via unsafe CDATA serialization allowing attacker-controlled markup insertion ([GHSA-wh4c-j3r5-mjhp](https://github.com/advisories/GHSA-wh4c-j3r5-mjhp))
   - Updated `lodash` 4.17.23 → 4.18.1, resolving **high** Code Injection via `_.template` imports key names ([GHSA-r5fr-rjxr-66jc](https://github.com/advisories/GHSA-r5fr-rjxr-66jc)) and **high** Prototype Pollution via array path bypass in `_.unset` and `_.omit` ([GHSA-f23m-r3pf-42rh](https://github.com/advisories/GHSA-f23m-r3pf-42rh))
   - Updated `vite` 7.3.1 → 7.3.2, resolving **high** Path Traversal in optimized deps `.map` handling ([GHSA-4w7w-66w2-5vf9](https://github.com/advisories/GHSA-4w7w-66w2-5vf9)), **high** `server.fs.deny` bypass with queries ([GHSA-v2wj-q39q-566r](https://github.com/advisories/GHSA-v2wj-q39q-566r)), and **high** Arbitrary File Read via dev server WebSocket ([GHSA-p9ff-h696-f583](https://github.com/advisories/GHSA-p9ff-h696-f583))
+- Updated `Django` 6.0.3 → 6.0.4, resolving the following CVEs:
+  - **CVE-2026-33033**: Potential DoS via `MultiPartParser` through crafted multipart uploads.
+  - **CVE-2026-33034**: SGI requests with a missing or understated `Content-Length` header could bypass the `DATA_UPLOAD_MAX_MEMORY_SIZE` limit.
+  - **CVE-2026-4292**: Privilege abuse in `ModelAdmin.list_editable`.
+  - **CVE-2026-3902**: ASGI header spoofing via underscore/hyphen conflation.
+  - **CVE-2026-4277**: Privilege abuse in `GenericInlineModelAdmin`.
 
 ### Removed
 
@@ -32,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refactored frontend form components (`AccountInfoModal`, `AssignChannelNumbers`, `Channel`, `ChannelBatch`, `ChannelGroup`, `Connection`, `CronBuilder`, `DummyEPG`, and `EPG`) to extract business logic into dedicated utility modules under `src/utils/forms/`. Each extracted module is covered by unit tests. Mantine compound component references (`Table.Tbody`, `Popover.Target`, `Accordion.Item`, etc.) have been updated to use flat named imports. — Thanks [@nick4810](https://github.com/nick4810)
 - Improved the EPG BOM fix from v0.22.1: replaced the `lstrip(b'\xef\xbb\xbf')` / `startswith` approach with `start.find(b'<?xml')`, which locates the XML declaration regardless of any leading bytes BOM, whitespace, or other encoding markers without needing to know what those bytes are.
+- Dependency updates:
+  - `Django` 6.0.3 → 6.0.4 (security patch; see Security section)
+  - `djangorestframework` 3.16.1 → 3.17.1
+  - `requests` 2.33.0 → 2.33.1
+  - `gevent` 25.9.1 → 26.4.0
+  - `rapidfuzz` 3.14.3 → 3.14.5
+  - `sentence-transformers` 5.3.0 → 5.4.0
+  - `lxml` 6.0.2 → 6.0.3
+  - Added `python-gnupg` for GPG signature verification of official and third-party plugin repository manifests.
 
 ## [0.22.1] - 2026-04-05
 
