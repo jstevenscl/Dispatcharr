@@ -7,10 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Hardened the HLS proxy `change_stream` endpoint by converting it from a plain Django view to a DRF `@api_view` with `@permission_classes([IsAdmin])`, ensuring the endpoint actually enforces admin-only access. The previous decorator arrangement (`@csrf_exempt` + `@permission_classes`) had no effect on a plain Django view.
+
+### Removed
+
+- Removed dead `VODConnectionManager` class (`apps/proxy/vod_proxy/connection_manager.py`) and its associated helpers, which had been superseded by `MultiWorkerVODConnectionManager`. All active code already used the multi-worker implementation. Removed the unused `VODConnectionManager` import from `vod_proxy/views.py`, the unscheduled `cleanup_vod_connections` task from `apps/proxy/tasks.py`, and the unscheduled `cleanup_vod_persistent_connections` task from `core/tasks.py`.
+- Removed dead VOD URL routes: `VODPlaylistView` (playlist generation), `VODPositionView` (position tracking), and the class-based `VODStatsView` (replaced by the existing function-based `vod_stats` view).
+- Removed dead `updateVODPosition()` API method from `frontend/src/api.js`, which called the now-removed position tracking endpoint.
+
 ### Changed
 
 - Refactored frontend form components (`AccountInfoModal`, `AssignChannelNumbers`, `Channel`, `ChannelBatch`, `ChannelGroup`, `Connection`, `CronBuilder`, `DummyEPG`, and `EPG`) to extract business logic into dedicated utility modules under `src/utils/forms/`. Each extracted module is covered by unit tests. Mantine compound component references (`Table.Tbody`, `Popover.Target`, `Accordion.Item`, etc.) have been updated to use flat named imports. — Thanks [@nick4810](https://github.com/nick4810)
-
 - Improved the EPG BOM fix from v0.22.1: replaced the `lstrip(b'\xef\xbb\xbf')` / `startswith` approach with `start.find(b'<?xml')`, which locates the XML declaration regardless of any leading bytes BOM, whitespace, or other encoding markers without needing to know what those bytes are.
 
 ## [0.22.1] - 2026-04-05

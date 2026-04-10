@@ -3212,21 +3212,6 @@ export default class API {
     }
   }
 
-  static async updateVODPosition(vodUuid, clientId, position) {
-    try {
-      const response = await request(
-        `${host}/proxy/vod/stream/${vodUuid}/position/`,
-        {
-          method: 'POST',
-          body: { client_id: clientId, position },
-        }
-      );
-      return response;
-    } catch (e) {
-      errorNotification('Failed to update playback position', e);
-    }
-  }
-
   static async getSystemEvents(limit = 100, offset = 0, eventType = null) {
     try {
       const params = new URLSearchParams();
