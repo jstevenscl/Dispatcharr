@@ -279,6 +279,7 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
         display: 'flex',
         flexDirection: 'column',
         minHeight: 220,
+        backgroundColor: '#27272A',
         ...(multiRepo && plugin.is_official_repo ? { borderColor: '#0e6459' } : {}),
       }}
     >

@@ -349,6 +349,7 @@ const PluginCard = ({
           flexDirection: 'column',
           height: '100%',
           minHeight: 220,
+          backgroundColor: '#27272A',
           opacity: !missing && enabled ? 1 : 0.6,
         }}
       >

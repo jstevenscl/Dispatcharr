@@ -685,7 +685,15 @@ export default function PluginBrowsePage() {
                 onBlur={() => { if (!newRepoPublicKey) setGpgKeyFocused(false); }}
                 styles={repoPreview?.valid && repoPreview?.signature_verified === false && !newRepoPublicKey.trim() ? { input: { borderColor: 'var(--mantine-color-yellow-6)' } } : undefined}
               />
-              <Group gap="xs">
+              <Group gap="xs" justify="flex-end">
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={() => { setShowAddRepo(false); setNewRepoUrl(''); setNewRepoPublicKey(''); setRepoPreview(null); }}
+                >
+                  Cancel
+                </Button>
                 <Button
                   onClick={handleAddRepo}
                   loading={addingRepo}
@@ -694,14 +702,6 @@ export default function PluginBrowsePage() {
                   size="sm"
                 >
                   Add Repo
-                </Button>
-                <Button
-                  variant="subtle"
-                  color="gray"
-                  size="sm"
-                  onClick={() => { setShowAddRepo(false); setNewRepoUrl(''); setNewRepoPublicKey(''); setRepoPreview(null); }}
-                >
-                  Cancel
                 </Button>
               </Group>
             </>
