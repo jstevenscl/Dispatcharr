@@ -159,8 +159,7 @@ class AuthViewSet(viewsets.ViewSet):
         Login doesn't require auth, but logout does
         """
         if self.action == 'logout':
-            from rest_framework.permissions import IsAuthenticated
-            return [IsAuthenticated()]
+            return [Authenticated()]
         return []
 
     @extend_schema(

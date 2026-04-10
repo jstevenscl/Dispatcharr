@@ -15,6 +15,7 @@ from apps.m3u.models import  M3UAccountProfile
 from apps.proxy.vod_proxy.multi_worker_connection_manager import MultiWorkerVODConnectionManager, infer_content_type_from_url, get_vod_client_stop_key
 from .utils import get_client_info
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from apps.accounts.models import User
 from apps.accounts.permissions import IsAdmin
 from apps.proxy.utils import check_user_stream_limits
@@ -291,6 +292,7 @@ def _transform_url(original_url, m3u_profile):
         return original_url
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def stream_vod(request, content_type, content_id, session_id=None, profile_id=None, user=None):
     """
     Stream VOD content (movies or series episodes) with session-based connection reuse
@@ -500,6 +502,7 @@ def stream_vod(request, content_type, content_id, session_id=None, profile_id=No
         return HttpResponse(f"Streaming error: {str(e)}", status=500)
 
 @api_view(["HEAD"])
+@permission_classes([AllowAny])
 def head_vod(request, content_type, content_id, session_id=None, profile_id=None):
     """
     Handle HEAD requests for FUSE filesystem integration
@@ -987,6 +990,7 @@ def stop_vod_client(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def stream_xc_movie(request, username, password, stream_id, extension):
     from apps.vod.models import M3UMovieRelation
 
@@ -1017,6 +1021,7 @@ def stream_xc_movie(request, username, password, stream_id, extension):
     return stream_vod(request._request, 'movie', movie_relation.movie.uuid, session_id, profile_id, user)
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def stream_xc_episode(request, username, password, stream_id, extension):
     from apps.vod.models import M3UEpisodeRelation
 
