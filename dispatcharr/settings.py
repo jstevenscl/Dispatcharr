@@ -269,6 +269,10 @@ REST_FRAMEWORK = {
         "apps.accounts.permissions.Authenticated",
     ],
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
+    "DEFAULT_THROTTLE_CLASSES": [],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "3/minute",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
