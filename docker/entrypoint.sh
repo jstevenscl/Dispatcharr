@@ -4,7 +4,20 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Function to clean up only running processes
 cleanup() {
+    set +e  # Disable exit-on-error so cleanup always runs fully
     echo "🔥 Cleanup triggered! Stopping services..."
+
+    # Explicitly stop uwsgi workers - children of 'su' wrapper, not tracked in pids[]
+    echo "⛔ Stopping uwsgi workers..."
+    pkill -TERM -f uwsgi 2>/dev/null || true
+
+    # Stop celery, daphne, redis - also not tracked in pids[]
+    echo "⛔ Stopping celery, daphne, redis..."
+    pkill -TERM -f "celery" 2>/dev/null || true
+    pkill -TERM -f "daphne" 2>/dev/null || true
+    pkill -TERM -f "redis-server" 2>/dev/null || true
+
+    # Stop tracked processes (postgres, nginx, su/uwsgi wrapper)
     for pid in "${pids[@]}"; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             echo "⛔ Stopping process (PID: $pid)..."
@@ -13,7 +26,17 @@ cleanup() {
             echo "✅ Process (PID: $pid) already stopped."
         fi
     done
+
+    # Give everything time to shut down gracefully
+    sleep 3
+
+    # Force kill anything still lingering
+    pkill -KILL -f uwsgi 2>/dev/null || true
+    pkill -KILL -f "celery" 2>/dev/null || true
+    pkill -KILL -f "daphne" 2>/dev/null || true
+
     wait
+    echo "✅ All processes stopped cleanly."
 }
 
 # Catch termination signals (CTRL+C, Docker Stop, etc.)
@@ -309,38 +332,6 @@ nice -n "$UWSGI_NICE_LEVEL" su - "$POSTGRES_USER" -c "cd /app && exec $VIRTUAL_E
 echo "✅ uwsgi started with PID $uwsgi_pid (nice $UWSGI_NICE_LEVEL)"
 pids+=("$uwsgi_pid")
 
-# sed -i 's/protected-mode yes/protected-mode no/g' /etc/redis/redis.conf
-# su - "$POSTGRES_USER" -c "redis-server --protected-mode no &"
-# redis_pid=$(pgrep redis)
-# echo "✅ redis started with PID $redis_pid"
-# pids+=("$redis_pid")
-
-# echo "🚀 Starting gunicorn..."
-# su - "$POSTGRES_USER" -c "cd /app && gunicorn dispatcharr.asgi:application \
-#   --bind 0.0.0.0:5656 \
-#   --worker-class uvicorn.workers.UvicornWorker \
-#   --workers 2 \
-#   --threads 1 \
-#   --timeout 0 \
-#   --keep-alive 30 \
-#   --access-logfile - \
-#   --error-logfile - &"
-# gunicorn_pid=$(pgrep gunicorn | sort | head -n1)
-# echo "✅ gunicorn started with PID $gunicorn_pid"
-# pids+=("$gunicorn_pid")
-
-# echo "Starting celery and beat..."
-# su - "$POSTGRES_USER" -c "cd /app && celery -A dispatcharr worker -l info --autoscale=8,2 &"
-# celery_pid=$(pgrep celery | sort | head -n1)
-# echo "✅ celery started with PID $celery_pid"
-# pids+=("$celery_pid")
-
-# su - "$POSTGRES_USER" -c "cd /app && celery -A dispatcharr beat -l info &"
-# beat_pid=$(pgrep beat | sort | head -n1)
-# echo "✅ celery beat started with PID $beat_pid"
-# pids+=("$beat_pid")
-
-
 # Wait for services to fully initialize before checking hardware
 echo "⏳ Waiting for services to fully initialize before hardware check..."
 sleep 5
@@ -352,6 +343,7 @@ echo "🔍 Running hardware acceleration check..."
 # Wait for at least one process to exit and log the process that exited first
 if [ ${#pids[@]} -gt 0 ]; then
     echo "⏳ Dispatcharr is running. Monitoring processes..."
+    set +e
     while kill -0 "${pids[@]}" 2>/dev/null; do
         sleep 1  # Wait for a second before checking again
     done
