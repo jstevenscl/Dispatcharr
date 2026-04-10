@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **CVE-2026-3902**: ASGI header spoofing via underscore/hyphen conflation.
   - **CVE-2026-4277**: Privilege abuse in `GenericInlineModelAdmin`.
 
+### Added
+
+- **Plugin Hub**: administrators can now browse, install, and update plugins directly from remote repositories via a new Plugin Hub page in Settings. (Closes #393) — Thanks [@sethwv](https://github.com/sethwv)
+  - Install plugins directly from the hub: the release zip is downloaded, SHA256 integrity is verified, and the plugin is installed atomically.
+  - Update managed plugins when a newer version is available from their source repo. Version compatibility constraints (`min_dispatcharr_version` / `max_dispatcharr_version`) are enforced at install time.
+  - Browse available plugins from all enabled repos with name, description, version, author, and icon.
+  - Plugins installed from a repo are tracked as "managed": source repo, slug, installed version, prerelease flag, and deprecated status are all persisted and surfaced in the UI.
+  - Add plugin repositories by manifest URL. The official Dispatcharr Plugins repository is pre-configured; third-party repos are supported by supplying an optional GPG public key.
+  - Manifest signatures are verified via GPG; the official repo uses a bundled public key. Signature status is displayed per-repo.
+  - Preview a repository URL before adding it - validates the manifest and reports plugin count and signature status without saving anything.
+  - Configurable automatic manifest refresh interval (in hours; 0 to disable) runs as a Celery background task.
+
 ### Removed
 
 - Removed dead `VODConnectionManager` class (`apps/proxy/vod_proxy/connection_manager.py`) and its associated helpers, which had been superseded by `MultiWorkerVODConnectionManager`. All active code already used the multi-worker implementation. Removed the unused `VODConnectionManager` import from `vod_proxy/views.py`, the unscheduled `cleanup_vod_connections` task from `apps/proxy/tasks.py`, and the unscheduled `cleanup_vod_persistent_connections` task from `core/tasks.py`.
