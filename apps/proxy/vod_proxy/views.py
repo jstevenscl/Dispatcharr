@@ -15,9 +15,11 @@ from apps.m3u.models import  M3UAccountProfile
 from apps.proxy.vod_proxy.multi_worker_connection_manager import MultiWorkerVODConnectionManager, infer_content_type_from_url, get_vod_client_stop_key
 from .utils import get_client_info
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from apps.accounts.models import User
 from apps.accounts.permissions import IsAdmin
 from apps.proxy.utils import check_user_stream_limits
+from dispatcharr.utils import network_access_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +293,7 @@ def _transform_url(original_url, m3u_profile):
         return original_url
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def stream_vod(request, content_type, content_id, session_id=None, profile_id=None, user=None):
     """
     Stream VOD content (movies or series episodes) with session-based connection reuse
@@ -301,6 +304,9 @@ def stream_vod(request, content_type, content_id, session_id=None, profile_id=No
         session_id: Optional session ID from URL path (for persistent connections)
         profile_id: Optional M3U profile ID for authentication
     """
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     logger.info(f"[VOD-REQUEST] Starting VOD stream request: {content_type}/{content_id}, session: {session_id}, profile: {profile_id}")
     logger.info(f"[VOD-REQUEST] Full request path: {request.get_full_path()}")
     logger.info(f"[VOD-REQUEST] Request method: {request.method}")
@@ -500,12 +506,16 @@ def stream_vod(request, content_type, content_id, session_id=None, profile_id=No
         return HttpResponse(f"Streaming error: {str(e)}", status=500)
 
 @api_view(["HEAD"])
+@permission_classes([AllowAny])
 def head_vod(request, content_type, content_id, session_id=None, profile_id=None):
     """
     Handle HEAD requests for FUSE filesystem integration
 
     Returns content length and session URL header for subsequent GET requests
     """
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     logger.info(f"[VOD-HEAD] HEAD request: {content_type}/{content_id}, session: {session_id}, profile: {profile_id}")
 
     try:
@@ -987,7 +997,11 @@ def stop_vod_client(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def stream_xc_movie(request, username, password, stream_id, extension):
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     from apps.vod.models import M3UMovieRelation
 
     session_id = request.GET.get('session_id')
@@ -1017,7 +1031,11 @@ def stream_xc_movie(request, username, password, stream_id, extension):
     return stream_vod(request._request, 'movie', movie_relation.movie.uuid, session_id, profile_id, user)
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def stream_xc_episode(request, username, password, stream_id, extension):
+    if not network_access_allowed(request, "STREAMS"):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
     from apps.vod.models import M3UEpisodeRelation
 
     session_id = request.GET.get('session_id')

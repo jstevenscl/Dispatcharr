@@ -6,6 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework import viewsets, status, serializers
+from rest_framework.throttling import AnonRateThrottle
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from drf_spectacular.types import OpenApiTypes
 import json
@@ -20,9 +21,14 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 logger = logging.getLogger(__name__)
 
 
+class LoginRateThrottle(AnonRateThrottle):
+    scope = "login"
+
+
 class TokenObtainPairView(TokenObtainPairView):
+    throttle_classes = [LoginRateThrottle]
+
     def post(self, request, *args, **kwargs):
-        # Custom logic here
         if not network_access_allowed(request, "UI"):
             # Log blocked login attempt due to network restrictions
             from core.utils import log_system_event
@@ -153,8 +159,7 @@ class AuthViewSet(viewsets.ViewSet):
         Login doesn't require auth, but logout does
         """
         if self.action == 'logout':
-            from rest_framework.permissions import IsAuthenticated
-            return [IsAuthenticated()]
+            return [Authenticated()]
         return []
 
     @extend_schema(
@@ -290,6 +295,14 @@ class UserViewSet(viewsets.ModelViewSet):
 
             for key in disallowed:
                 request.data.pop(key, None)
+
+            # Strip admin-managed keys from custom_properties so users cannot
+            # set their own XC credentials via this endpoint.
+            ADMIN_ONLY_PROPS = {"xc_password"}
+            cp = request.data.get("custom_properties")
+            if isinstance(cp, dict):
+                for key in ADMIN_ONLY_PROPS:
+                    cp.pop(key, None)
 
             serializer = UserSerializer(user, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)

@@ -265,7 +265,14 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "apps.accounts.authentication.ApiKeyAuthentication",
     ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "apps.accounts.permissions.IsAdmin",
+    ],
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
+    "DEFAULT_THROTTLE_CLASSES": [],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "3/minute",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -413,7 +420,6 @@ BACKUP_DATA_DIRS = [
 SERVER_IP = "127.0.0.1"
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = ["http://*", "https://*"]
 APPEND_SLASH = True
 
