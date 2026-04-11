@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed dead VOD URL routes: `VODPlaylistView` (playlist generation), `VODPositionView` (position tracking), and the class-based `VODStatsView` (replaced by the existing function-based `vod_stats` view).
 - Removed dead `updateVODPosition()` API method from `frontend/src/api.js`, which called the now-removed position tracking endpoint.
 
+### Fixed
+
+- Fixed `PATCH /api/channels/channels/edit/bulk/` returning a 500 error when the request body included a `streams` list. The bulk edit handler was iterating `validated_data` directly and calling `setattr(channel, "streams", value)`, which Django prohibits on ManyToMany fields. Also added an `@extend_schema` decorator so the Swagger UI correctly documents the endpoint as accepting a JSON array and shows the `streams` field. (Fixes #883)
+
 ### Changed
 
 - Rewrote the M3U line parser as an `iter_m3u_entries` generator that owns the full per-entry state machine. Intermediate directive lines between `#EXTINF` and the stream URL are now handled correctly rather than corrupting the pending entry or being silently misassigned. A `#EXTINF` with no following URL is discarded with a warning instead of carrying over a `url`-less entry into batch processing. Attribute keys are normalised to lowercase during parsing (provider attribute names remain case-insensitive end-to-end). The `#EXTINF` attribute regex is pre-compiled at module load, and attribute lookups use O(1) `dict.get()` instead of linear scans — approximately 10% faster parsing on large M3U files.

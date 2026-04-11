@@ -30,6 +30,7 @@ from .models import (
     Stream,
     Channel,
     ChannelGroup,
+    ChannelStream,
     Logo,
     ChannelProfile,
     ChannelProfileMembership,
@@ -630,6 +631,53 @@ class ChannelViewSet(viewsets.ModelViewSet):
         context["include_streams"] = include_streams
         return context
 
+    @extend_schema(
+        methods=["PATCH"],
+        description=(
+            "Bulk edit multiple channels in a single request. "
+            "Accepts a JSON array of channel update objects. Each object must include `id` (the channel's primary key). "
+            "All other fields are optional and support partial updates. "
+            "The `streams` field accepts a list of stream IDs and will replace the channel's current stream assignments. "
+            "All updates are validated before any changes are applied and executed in a single database transaction."
+        ),
+        request=inline_serializer(
+            name="ChannelBulkEditRequest",
+            fields={
+                "id": serializers.IntegerField(help_text="ID of the channel to update (required)."),
+                "name": serializers.CharField(required=False),
+                "channel_number": serializers.FloatField(required=False),
+                "channel_group_id": serializers.IntegerField(required=False, allow_null=True),
+                "streams": serializers.ListField(
+                    child=serializers.IntegerField(),
+                    required=False,
+                    help_text="List of stream IDs to assign to this channel (replaces existing assignments).",
+                ),
+                "stream_profile_id": serializers.IntegerField(required=False, allow_null=True),
+                "logo_id": serializers.IntegerField(required=False, allow_null=True),
+                "tvg_id": serializers.CharField(required=False, allow_blank=True),
+                "tvc_guide_stationid": serializers.CharField(required=False, allow_blank=True),
+                "epg_data_id": serializers.IntegerField(required=False, allow_null=True),
+                "user_level": serializers.IntegerField(required=False),
+                "is_adult": serializers.BooleanField(required=False),
+            },
+            many=True,
+        ),
+        responses={
+            200: inline_serializer(
+                name="ChannelBulkEditResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "channels": ChannelSerializer(many=True),
+                },
+            ),
+            400: inline_serializer(
+                name="ChannelBulkEditErrorResponse",
+                fields={
+                    "errors": serializers.ListField(child=serializers.DictField()),
+                },
+            ),
+        },
+    )
     @action(detail=False, methods=["patch"], url_path="edit/bulk")
     def edit_bulk(self, request):
         """
@@ -709,25 +757,56 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
         # Apply all updates in a transaction
         with transaction.atomic():
+            streams_updates = []
             for channel, validated_data in validated_updates:
+                # Pop streams before setattr loop — M2M fields can't be set via setattr
+                streams = validated_data.pop("streams", None)
+                if streams is not None:
+                    streams_updates.append((channel, streams))
                 for key, value in validated_data.items():
                     setattr(channel, key, value)
 
             # Single bulk_update query instead of individual saves
             channels_to_update = [channel for channel, _ in validated_updates]
             if channels_to_update:
-                # Collect all unique field names from all updates
+                # Collect all unique field names from all updates (streams already popped)
                 all_fields = set()
                 for _, validated_data in validated_updates:
                     all_fields.update(validated_data.keys())
 
-                # Only call bulk_update if there are fields to update
+                # Only call bulk_update if there are non-M2M fields to update
                 if all_fields:
                     Channel.objects.bulk_update(
                         channels_to_update,
                         fields=list(all_fields),
                         batch_size=100
                     )
+
+            # Handle streams M2M updates separately
+            for channel, streams in streams_updates:
+                normalized_ids = [
+                    stream.id if hasattr(stream, "id") else stream for stream in streams
+                ]
+                current_links = {
+                    cs.stream_id: cs for cs in channel.channelstream_set.all()
+                }
+                existing_ids = set(current_links.keys())
+                new_ids = set(normalized_ids)
+
+                to_remove = existing_ids - new_ids
+                if to_remove:
+                    channel.channelstream_set.filter(stream_id__in=to_remove).delete()
+
+                for order, stream_id in enumerate(normalized_ids):
+                    if stream_id in current_links:
+                        cs = current_links[stream_id]
+                        if cs.order != order:
+                            cs.order = order
+                            cs.save(update_fields=["order"])
+                    else:
+                        ChannelStream.objects.create(
+                            channel=channel, stream_id=stream_id, order=order
+                        )
 
         # Return the updated objects (already in memory)
         serialized_channels = ChannelSerializer(
