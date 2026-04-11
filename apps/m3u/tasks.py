@@ -514,12 +514,10 @@ def parse_extinf_line(line: str) -> dict:
         else:
             display_name = content.strip()
 
-    # Use tvg-name attribute if available; otherwise try tvc-guide-title, then fall back to display name.
-    name = get_case_insensitive_attr(attrs, "tvg-name", None)
-    if not name:
-        name = get_case_insensitive_attr(attrs, "tvc-guide-title", None)
-    if not name:
-        name = display_name
+    # Per the base #EXTINF spec, the comma text is the canonical human-readable title.
+    # Fall back to tvc-guide-title, then tvg-name (which some providers use as an EPG key,
+    # not a display label), and finally the raw content if everything else is empty.
+    name = display_name or get_case_insensitive_attr(attrs, "tvc-guide-title", None) or get_case_insensitive_attr(attrs, "tvg-name", None) or content.strip()
     return {"attributes": attrs, "display_name": display_name, "name": name}
 
 
