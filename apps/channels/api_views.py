@@ -1565,7 +1565,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         name="EpgAssociation",
                         fields={
                             "channel_id": serializers.IntegerField(),
-                            "epg_data_id": serializers.IntegerField(),
+                            "epg_data_id": serializers.IntegerField(
+                                required=False,
+                                allow_null=True,
+                                help_text="EPG data ID to link. Pass null to remove EPG linkage.",
+                            ),
                         },
                     ),
                 )
@@ -1741,7 +1745,12 @@ class BulkDeleteLogosAPIView(APIView):
                 "logo_ids": serializers.ListField(
                     child=serializers.IntegerField(),
                     help_text="Logo IDs to delete",
-                )
+                ),
+                "delete_files": serializers.BooleanField(
+                    required=False,
+                    default=False,
+                    help_text="Whether to also delete local logo files from disk.",
+                ),
             },
         ),
     )

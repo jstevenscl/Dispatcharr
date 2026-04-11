@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed `PATCH /api/channels/channels/edit/bulk/` returning a 500 error when the request body included a `streams` list. The bulk edit handler was iterating `validated_data` directly and calling `setattr(channel, "streams", value)`, which Django prohibits on ManyToMany fields. Also added an `@extend_schema` decorator so the Swagger UI correctly documents the endpoint as accepting a JSON array and shows the `streams` field. (Fixes #883)
+- Fixed several incorrect or incomplete OpenAPI (`@extend_schema`) schemas across the API:
+  - `POST /api/epg/import/` — request body was undocumented; now correctly shows the `id` field. Description updated from "import" to "refresh" to match frontend and backend terminology.
+  - `DELETE /api/channels/logos/bulk-delete/` — `delete_files` boolean was missing from the documented request body.
+  - `POST /api/channels/channels/batch-set-epg/` — `epg_data_id` inside each association object was not marked `allow_null`/`required=False`, even though passing `null` is the correct way to remove an EPG link.
+  - `PUT /api/connect/integrations/{id}/subscriptions/set/` — endpoint had no `@extend_schema` at all; now documents that the request body is a JSON array of subscription objects.
 
 ### Changed
 
