@@ -227,6 +227,8 @@ class ProxyServer:
                                         # Handle stream switch request
                                         new_url = data.get("url")
                                         user_agent = data.get("user_agent")
+                                        event_stream_id = data.get("stream_id")
+                                        event_m3u_profile_id = data.get("m3u_profile_id")
 
                                         if new_url and channel_id in self.stream_managers:
                                             # Update metadata in Redis
@@ -240,9 +242,9 @@ class ProxyServer:
                                                 status_key = RedisKeys.switch_status(channel_id)
                                                 self.redis_client.set(status_key, "switching")
 
-                                            # Perform the stream switch
+                                            # Perform the stream switch, forwarding stream_id and m3u_profile_id
                                             stream_manager = self.stream_managers[channel_id]
-                                            success = stream_manager.update_url(new_url)
+                                            success = stream_manager.update_url(new_url, event_stream_id, event_m3u_profile_id)
 
                                             if success:
                                                 logger.info(f"Stream switch initiated for channel {channel_id}")
