@@ -1251,7 +1251,7 @@ const ChannelsTable = ({ onReady }) => {
                   </Button>
                 </Popover.Target>
                 <Popover.Dropdown>
-                  <Group
+                  <Stack
                     gap="sm"
                     style={{
                       minWidth: 250,
@@ -1259,16 +1259,27 @@ const ChannelsTable = ({ onReady }) => {
                       width: 'max-content',
                     }}
                   >
-                    <TextInput value={hdhrUrl} size="small" readOnly />
-                    <ActionIcon
-                      onClick={copyHDHRUrl}
+                    <Text size="sm" c="dimmed">
+                      Use this URL in HDHomeRun-compatible apps and IPTV
+                      clients.
+                    </Text>
+                    <TextInput
+                      value={hdhrUrl}
                       size="sm"
-                      variant="transparent"
-                      color="gray.5"
-                    >
-                      <Copy size="18" fontSize="small" />
-                    </ActionIcon>
-                  </Group>
+                      readOnly
+                      style={{ width: '100%' }}
+                      rightSection={
+                        <ActionIcon
+                          onClick={copyHDHRUrl}
+                          size="sm"
+                          variant="transparent"
+                          color="gray.5"
+                        >
+                          <Copy size="16" />
+                        </ActionIcon>
+                      }
+                    />
+                  </Stack>
                 </Popover.Dropdown>
               </Popover>
               <Popover
@@ -1303,9 +1314,13 @@ const ChannelsTable = ({ onReady }) => {
                     onClick={stopPropagation}
                     onMouseDown={stopPropagation}
                   >
+                    <Text size="sm" c="dimmed">
+                      Use this URL in your media player or IPTV app to load your
+                      channel list.
+                    </Text>
                     <TextInput
                       value={buildM3UUrl()}
-                      size="xs"
+                      size="sm"
                       readOnly
                       label="Generated URL"
                       rightSection={
@@ -1319,35 +1334,34 @@ const ChannelsTable = ({ onReady }) => {
                         </ActionIcon>
                       }
                     />
-                    <Group justify="space-between">
-                      <Text size="sm">Use cached logos</Text>
-                      <Switch
-                        size="sm"
-                        checked={m3uParams.cachedlogos}
-                        onChange={(event) =>
-                          setM3uParams((prev) => ({
-                            ...prev,
-                            cachedlogos: event.target.checked,
-                          }))
-                        }
-                      />
-                    </Group>
-                    <Group justify="space-between">
-                      <Text size="sm">Direct stream URLs</Text>
-                      <Switch
-                        size="sm"
-                        checked={m3uParams.direct}
-                        onChange={(event) =>
-                          setM3uParams((prev) => ({
-                            ...prev,
-                            direct: event.target.checked,
-                          }))
-                        }
-                      />
-                    </Group>{' '}
+                    <Switch
+                      label="Use cached logos"
+                      description="Proxy channel logos through Dispatcharr"
+                      size="sm"
+                      checked={m3uParams.cachedlogos}
+                      onChange={(event) =>
+                        setM3uParams((prev) => ({
+                          ...prev,
+                          cachedlogos: event.target.checked,
+                        }))
+                      }
+                    />
+                    <Switch
+                      label="Direct stream URLs"
+                      description="Bypass the Dispatcharr proxy; client connects directly to the source"
+                      size="sm"
+                      checked={m3uParams.direct}
+                      onChange={(event) =>
+                        setM3uParams((prev) => ({
+                          ...prev,
+                          direct: event.target.checked,
+                        }))
+                      }
+                    />
                     <Select
                       label="TVG-ID Source"
-                      size="xs"
+                      description="Value used as the tvg-id attribute in the M3U"
+                      size="sm"
                       value={m3uParams.tvg_id_source}
                       onChange={(value) =>
                         setM3uParams((prev) => ({
@@ -1398,9 +1412,15 @@ const ChannelsTable = ({ onReady }) => {
                     onClick={stopPropagation}
                     onMouseDown={stopPropagation}
                   >
+                    <Text size="sm" c="dimmed">
+                      Use this URL in your IPTV app for program guide data.
+                      Per-user defaults for days forward/back can be set in
+                      account settings, which apply automatically for XC
+                      clients.
+                    </Text>
                     <TextInput
                       value={buildEPGUrl()}
-                      size="xs"
+                      size="sm"
                       readOnly
                       label="Generated URL"
                       rightSection={
@@ -1414,22 +1434,22 @@ const ChannelsTable = ({ onReady }) => {
                         </ActionIcon>
                       }
                     />
-                    <Group justify="space-between">
-                      <Text size="sm">Use cached logos</Text>
-                      <Switch
-                        size="sm"
-                        checked={epgParams.cachedlogos}
-                        onChange={(event) =>
-                          setEpgParams((prev) => ({
-                            ...prev,
-                            cachedlogos: event.target.checked,
-                          }))
-                        }
-                      />
-                    </Group>
+                    <Switch
+                      label="Use cached logos"
+                      description="Proxy channel logos through Dispatcharr"
+                      size="sm"
+                      checked={epgParams.cachedlogos}
+                      onChange={(event) =>
+                        setEpgParams((prev) => ({
+                          ...prev,
+                          cachedlogos: event.target.checked,
+                        }))
+                      }
+                    />
                     <Select
                       label="TVG-ID Source"
-                      size="xs"
+                      description="Value used to match EPG channels to M3U streams"
+                      size="sm"
                       value={epgParams.tvg_id_source}
                       onChange={(value) =>
                         setEpgParams((prev) => ({
@@ -1446,7 +1466,8 @@ const ChannelsTable = ({ onReady }) => {
                     />
                     <NumberInput
                       label="Days forward (0 = all)"
-                      size="xs"
+                      description="Limit EPG to this many future days; 0 returns all available data"
+                      size="sm"
                       min={0}
                       max={365}
                       value={epgParams.days}
@@ -1459,7 +1480,8 @@ const ChannelsTable = ({ onReady }) => {
                     />
                     <NumberInput
                       label="Days back (0 = none)"
-                      size="xs"
+                      description="Include this many past days of EPG data (max 30)"
+                      size="sm"
                       min={0}
                       max={30}
                       value={epgParams.prev_days}
