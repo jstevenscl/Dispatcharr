@@ -231,14 +231,8 @@ class ProxyServer:
                                         event_m3u_profile_id = data.get("m3u_profile_id")
 
                                         if new_url and channel_id in self.stream_managers:
-                                            # Update metadata in Redis
+                                            # Mark the switch as in-progress in Redis so other workers know to wait
                                             if self.redis_client:
-                                                metadata_key = RedisKeys.channel_metadata(channel_id)
-                                                self.redis_client.hset(metadata_key, "url", new_url)
-                                                if user_agent:
-                                                    self.redis_client.hset(metadata_key, "user_agent", user_agent)
-
-                                                # Set switch status
                                                 status_key = RedisKeys.switch_status(channel_id)
                                                 self.redis_client.set(status_key, "switching")
 
@@ -248,6 +242,13 @@ class ProxyServer:
 
                                             if success:
                                                 logger.info(f"Stream switch initiated for channel {channel_id}")
+
+                                                # Confirm the URL in metadata now that the switch happened
+                                                if self.redis_client:
+                                                    metadata_key = RedisKeys.channel_metadata(channel_id)
+                                                    self.redis_client.hset(metadata_key, "url", new_url)
+                                                    if user_agent:
+                                                        self.redis_client.hset(metadata_key, "user_agent", user_agent)
 
                                                 # Publish confirmation
                                                 switch_result = {
@@ -267,6 +268,14 @@ class ProxyServer:
                                                     self.redis_client.set(status_key, "switched")
                                             else:
                                                 logger.error(f"Failed to switch stream for channel {channel_id}")
+
+                                                # Roll back the URL in metadata to what the manager will
+                                                # actually reconnect to. The non-owner may have pre-written
+                                                # the desired URL; use stream_manager.url (the ground truth)
+                                                # so Redis is consistent with the live stream.
+                                                if self.redis_client:
+                                                    metadata_key = RedisKeys.channel_metadata(channel_id)
+                                                    self.redis_client.hset(metadata_key, "url", stream_manager.url)
 
                                                 # Publish failure
                                                 switch_result = {
