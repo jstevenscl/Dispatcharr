@@ -2340,8 +2340,19 @@ def xc_get_epg(request, user, short=False):
 
     limit = int(request.GET.get('limit', 4))
     user_custom = user.custom_properties or {}
-    prev_days = max(0, min(int(user_custom.get('epg_prev_days', 0)), 30))
-    lookback_cutoff = django_timezone.now() - timedelta(days=prev_days)
+    try:
+        num_days = int(request.GET.get('days', user_custom.get('epg_days', 0)))
+        num_days = max(0, min(num_days, 365))
+    except (ValueError, TypeError):
+        num_days = 0
+    try:
+        prev_days = int(request.GET.get('prev_days', user_custom.get('epg_prev_days', 0)))
+        prev_days = max(0, min(prev_days, 30))
+    except (ValueError, TypeError):
+        prev_days = 0
+    now = django_timezone.now()
+    lookback_cutoff = now - timedelta(days=prev_days)
+    forward_cutoff = now + timedelta(days=num_days) if num_days > 0 else None
     if channel.epg_data:
         # Check if this is a dummy EPG that generates on-demand
         if channel.epg_data.epg_source and channel.epg_data.epg_source.source_type == 'dummy':
@@ -2354,24 +2365,28 @@ def xc_get_epg(request, user, short=False):
                 )
             else:
                 # Has stored programs, use them
-                if short == False:
+                if short:
+                    # Short EPG: current and upcoming only (never historical), limited count
                     programs = channel.epg_data.programs.filter(
-                        end_time__gt=lookback_cutoff
-                    ).order_by('start_time')
-                else:
-                    programs = channel.epg_data.programs.filter(
-                        end_time__gt=lookback_cutoff
+                        end_time__gt=now
                     ).order_by('start_time')[:limit]
+                else:
+                    qs = channel.epg_data.programs.filter(end_time__gt=lookback_cutoff)
+                    if forward_cutoff:
+                        qs = qs.filter(start_time__lt=forward_cutoff)
+                    programs = qs.order_by('start_time')
         else:
             # Regular EPG with stored programs
-            if short == False:
+            if short:
+                # Short EPG: current and upcoming only (never historical), limited count
                 programs = channel.epg_data.programs.filter(
-                    end_time__gt=lookback_cutoff
-                ).order_by('start_time')
+                    end_time__gt=now
+                ).order_by('start_time')[:limit]
             else:
-                programs = channel.epg_data.programs.filter(
-                        end_time__gt=lookback_cutoff
-                    ).order_by('start_time')[:limit]
+                qs = channel.epg_data.programs.filter(end_time__gt=lookback_cutoff)
+                if forward_cutoff:
+                    qs = qs.filter(start_time__lt=forward_cutoff)
+                programs = qs.order_by('start_time')
     else:
         # No EPG data assigned, generate default dummy
         programs = generate_dummy_programs(channel_id=channel_id, channel_name=channel.name, epg_source=None)
