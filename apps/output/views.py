@@ -1268,7 +1268,28 @@ def generate_epg(request, profile_name=None, user=None):
     """
     # Check cache for recent identical request (helps with double-GET from browsers)
     from django.core.cache import cache
-    cache_params = f"{profile_name or 'all'}:{user.username if user else 'anonymous'}:{request.GET.urlencode()}"
+    # Resolve all effective parameter values once here so they are reused for both
+    # the cache key and inside epg_generator() via closure.
+    # The cache key is built from resolved values only — not from the raw query string —
+    # so equivalent requests (e.g. days=7 via URL param vs. user default of 7) share
+    # the same cache entry regardless of how the value was supplied.
+    user_custom = (user.custom_properties or {}) if user else {}
+    try:
+        num_days = int(request.GET.get('days', user_custom.get('epg_days', 0)))
+        num_days = max(0, min(num_days, 365))
+    except (ValueError, TypeError):
+        num_days = 0
+    try:
+        prev_days = int(request.GET.get('prev_days', user_custom.get('epg_prev_days', 0)))
+        prev_days = max(0, min(prev_days, 30))
+    except (ValueError, TypeError):
+        prev_days = 0
+    use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
+    tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
+    cache_params = (
+        f"{profile_name or 'all'}:{user.username if user else 'anonymous'}"
+        f":d={num_days}:p={prev_days}:logos={use_cached_logos}:tvgid={tvg_id_source}"
+    )
     content_cache_key = f"epg_content:{cache_params}"
 
     cached_content = cache.get(content_cache_key)
@@ -1331,35 +1352,6 @@ def generate_epg(request, profile_name=None, user=None):
             else:
                 channels = Channel.objects.all().order_by("channel_number")
 
-        # Check if the request wants to use direct logo URLs instead of cache
-        use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
-
-        # Get the source to use for tvg-id value
-        # Options: 'channel_number' (default), 'tvg_id', 'gracenote'
-        tvg_id_source = request.GET.get('tvg_id_source', 'channel_number').lower()
-
-        # Get the number of days for EPG data
-        # The user account default (custom_properties['epg_days']) is used when the
-        # URL parameter is absent, so XC clients that cannot pass query params still benefit.
-        user_custom = (user.custom_properties or {}) if user else {}
-        try:
-            default_days = int(user_custom.get('epg_days', 0))
-            days_param = request.GET.get('days', str(default_days))
-            num_days = int(days_param)
-            # Set reasonable limits
-            num_days = max(0, min(num_days, 365))  # Between 0 and 365 days
-        except ValueError:
-            num_days = 0  # Default to all data if invalid value
-
-        # Get number of previous/historical days to include (for catch-up/timeshift support).
-        # The user account default (custom_properties['epg_prev_days']) is used when the
-        # URL parameter is absent, so XC clients that cannot pass query params still benefit.
-        try:
-            default_prev_days = int(user_custom.get('epg_prev_days', 0))
-            prev_days = int(request.GET.get('prev_days', default_prev_days))
-            prev_days = max(0, min(prev_days, 30))  # Hard cap at 30 days lookback
-        except (ValueError, TypeError):
-            prev_days = 0
 
         # For dummy EPG, use either the specified value or default to 3 days
         dummy_days = num_days if num_days > 0 else 3
