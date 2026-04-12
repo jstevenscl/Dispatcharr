@@ -334,8 +334,9 @@ const User = ({ user = null, isOpen, onClose }) => {
           <Tabs.Panel value="epg">
             <Stack gap="sm">
               <Text size="sm" c="dimmed">
-                These defaults apply when no URL parameters are specified —
-                useful for XC clients that cannot pass custom query parameters.
+                These defaults apply when no URL parameters are specified and
+                can be useful for XC clients that cannot pass custom query
+                parameters.
               </Text>
               <Group grow align="flex-start">
                 <NumberInput
@@ -362,7 +363,12 @@ const User = ({ user = null, isOpen, onClose }) => {
             <Stack gap="sm">
               <TextInput
                 label="XC Password"
-                description="Clear to disable XC API"
+                description={
+                  isAdmin
+                    ? 'Clear to disable XC API'
+                    : 'XC password can only be changed by an administrator'
+                }
+                disabled={!isAdmin}
                 {...form.getInputProps('xc_password')}
                 key={form.key('xc_password')}
                 rightSectionWidth={30}
@@ -372,6 +378,7 @@ const User = ({ user = null, isOpen, onClose }) => {
                     size="sm"
                     color="white"
                     onClick={generateXCPassword}
+                    disabled={!isAdmin}
                   >
                     <RotateCcwKey />
                   </ActionIcon>
