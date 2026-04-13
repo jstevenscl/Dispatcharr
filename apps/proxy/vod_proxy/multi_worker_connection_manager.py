@@ -993,7 +993,8 @@ class MultiWorkerVODConnectionManager:
 
             # Create streaming generator
             def stream_generator():
-                decremented = False
+                stream_decremented = False
+                profile_decremented = False
                 stop_signal_detected = False
                 try:
                     logger.info(f"[{client_id}] Worker {self.worker_id} - Starting Redis-backed stream")
@@ -1046,15 +1047,16 @@ class MultiWorkerVODConnectionManager:
                         logger.info(f"[{client_id}] Worker {self.worker_id} - Stream stopped by signal: {bytes_sent} bytes sent")
                     else:
                         logger.info(f"[{client_id}] Worker {self.worker_id} - Redis-backed stream completed: {bytes_sent} bytes sent")
-                    decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
+                    stream_decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
 
                     # Schedule smart cleanup if no active streams after normal completion
-                    if decremented and not has_remaining:
+                    if stream_decremented and not has_remaining and not profile_decremented:
                         # Decrement profile counter immediately — don't defer to daemon thread
                         state = redis_connection._get_connection_state()
                         profile_id = state.m3u_profile_id if state else m3u_profile.id
                         if profile_id:
                             self._decrement_profile_connections(profile_id)
+                            profile_decremented = True
                             logger.info(f"[{client_id}] Profile counter decremented for profile {profile_id} on normal completion")
 
                         def delayed_cleanup():
@@ -1071,18 +1073,19 @@ class MultiWorkerVODConnectionManager:
 
                 except GeneratorExit:
                     logger.info(f"[{client_id}] Worker {self.worker_id} - Client disconnected from Redis-backed stream")
-                    if not decremented:
-                        decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
+                    if not stream_decremented:
+                        stream_decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
                     else:
                         has_remaining = redis_connection.has_active_streams()
 
                     # Schedule smart cleanup if no active streams
-                    if not has_remaining:
+                    if not has_remaining and not profile_decremented:
                         # Decrement profile counter immediately — don't defer to daemon thread
                         state = redis_connection._get_connection_state()
                         profile_id = state.m3u_profile_id if state else m3u_profile.id
                         if profile_id:
                             self._decrement_profile_connections(profile_id)
+                            profile_decremented = True
                             logger.info(f"[{client_id}] Profile counter decremented for profile {profile_id} on client disconnect")
 
                         def delayed_cleanup():
@@ -1099,17 +1102,18 @@ class MultiWorkerVODConnectionManager:
 
                 except Exception as e:
                     logger.error(f"[{client_id}] Worker {self.worker_id} - Error in Redis-backed stream: {e}")
-                    if not decremented:
-                        decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
+                    if not stream_decremented:
+                        stream_decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
                     else:
                         has_remaining = redis_connection.has_active_streams()
 
                     # Decrement profile counter immediately if no other active streams
-                    if not has_remaining:
+                    if not has_remaining and not profile_decremented:
                         state = redis_connection._get_connection_state()
                         profile_id = state.m3u_profile_id if state else m3u_profile.id
                         if profile_id:
                             self._decrement_profile_connections(profile_id)
+                            profile_decremented = True
                             logger.info(f"[{client_id}] Profile counter decremented for profile {profile_id} on stream error")
                         # Smart cleanup on error - immediate cleanup since we're in error state
                         # No connection_manager — profile already decremented above
@@ -1117,13 +1121,14 @@ class MultiWorkerVODConnectionManager:
                     yield b"Error: Stream interrupted"
 
                 finally:
-                    if not decremented:
-                        decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
-                        if decremented and not has_remaining:
+                    if not stream_decremented:
+                        stream_decremented, has_remaining = redis_connection.decrement_active_streams_and_check()
+                        if stream_decremented and not has_remaining and not profile_decremented:
                             state = redis_connection._get_connection_state()
                             profile_id = state.m3u_profile_id if state else m3u_profile.id
                             if profile_id:
                                 self._decrement_profile_connections(profile_id)
+                                profile_decremented = True
                                 logger.info(f"[{client_id}] Profile counter decremented for profile {profile_id} in finally block")
 
             # Create streaming response
