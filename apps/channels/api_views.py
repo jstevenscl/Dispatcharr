@@ -24,12 +24,13 @@ from apps.accounts.permissions import (
 )
 
 from core.models import UserAgent, CoreSettings
-from core.utils import RedisClient
+from core.utils import RedisClient, safe_upload_path
 
 from .models import (
     Stream,
     Channel,
     ChannelGroup,
+    ChannelStream,
     Logo,
     ChannelProfile,
     ChannelProfileMembership,
@@ -630,6 +631,53 @@ class ChannelViewSet(viewsets.ModelViewSet):
         context["include_streams"] = include_streams
         return context
 
+    @extend_schema(
+        methods=["PATCH"],
+        description=(
+            "Bulk edit multiple channels in a single request. "
+            "Accepts a JSON array of channel update objects. Each object must include `id` (the channel's primary key). "
+            "All other fields are optional and support partial updates. "
+            "The `streams` field accepts a list of stream IDs and will replace the channel's current stream assignments. "
+            "All updates are validated before any changes are applied and executed in a single database transaction."
+        ),
+        request=inline_serializer(
+            name="ChannelBulkEditRequest",
+            fields={
+                "id": serializers.IntegerField(help_text="ID of the channel to update (required)."),
+                "name": serializers.CharField(required=False),
+                "channel_number": serializers.FloatField(required=False),
+                "channel_group_id": serializers.IntegerField(required=False, allow_null=True),
+                "streams": serializers.ListField(
+                    child=serializers.IntegerField(),
+                    required=False,
+                    help_text="List of stream IDs to assign to this channel (replaces existing assignments).",
+                ),
+                "stream_profile_id": serializers.IntegerField(required=False, allow_null=True),
+                "logo_id": serializers.IntegerField(required=False, allow_null=True),
+                "tvg_id": serializers.CharField(required=False, allow_blank=True),
+                "tvc_guide_stationid": serializers.CharField(required=False, allow_blank=True),
+                "epg_data_id": serializers.IntegerField(required=False, allow_null=True),
+                "user_level": serializers.IntegerField(required=False),
+                "is_adult": serializers.BooleanField(required=False),
+            },
+            many=True,
+        ),
+        responses={
+            200: inline_serializer(
+                name="ChannelBulkEditResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "channels": ChannelSerializer(many=True),
+                },
+            ),
+            400: inline_serializer(
+                name="ChannelBulkEditErrorResponse",
+                fields={
+                    "errors": serializers.ListField(child=serializers.DictField()),
+                },
+            ),
+        },
+    )
     @action(detail=False, methods=["patch"], url_path="edit/bulk")
     def edit_bulk(self, request):
         """
@@ -709,25 +757,56 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
         # Apply all updates in a transaction
         with transaction.atomic():
+            streams_updates = []
             for channel, validated_data in validated_updates:
+                # Pop streams before setattr loop — M2M fields can't be set via setattr
+                streams = validated_data.pop("streams", None)
+                if streams is not None:
+                    streams_updates.append((channel, streams))
                 for key, value in validated_data.items():
                     setattr(channel, key, value)
 
             # Single bulk_update query instead of individual saves
             channels_to_update = [channel for channel, _ in validated_updates]
             if channels_to_update:
-                # Collect all unique field names from all updates
+                # Collect all unique field names from all updates (streams already popped)
                 all_fields = set()
                 for _, validated_data in validated_updates:
                     all_fields.update(validated_data.keys())
 
-                # Only call bulk_update if there are fields to update
+                # Only call bulk_update if there are non-M2M fields to update
                 if all_fields:
                     Channel.objects.bulk_update(
                         channels_to_update,
                         fields=list(all_fields),
                         batch_size=100
                     )
+
+            # Handle streams M2M updates separately
+            for channel, streams in streams_updates:
+                normalized_ids = [
+                    stream.id if hasattr(stream, "id") else stream for stream in streams
+                ]
+                current_links = {
+                    cs.stream_id: cs for cs in channel.channelstream_set.all()
+                }
+                existing_ids = set(current_links.keys())
+                new_ids = set(normalized_ids)
+
+                to_remove = existing_ids - new_ids
+                if to_remove:
+                    channel.channelstream_set.filter(stream_id__in=to_remove).delete()
+
+                for order, stream_id in enumerate(normalized_ids):
+                    if stream_id in current_links:
+                        cs = current_links[stream_id]
+                        if cs.order != order:
+                            cs.order = order
+                            cs.save(update_fields=["order"])
+                    else:
+                        ChannelStream.objects.create(
+                            channel=channel, stream_id=stream_id, order=order
+                        )
 
         # Return the updated objects (already in memory)
         serialized_channels = ChannelSerializer(
@@ -1078,6 +1157,10 @@ class ChannelViewSet(viewsets.ModelViewSet):
         elif channel_number == 0:
             # Special case: 0 means ignore provider numbers and auto-assign
             channel_number = None
+        elif channel_number == -1:
+            # Special case: -1 means assign the number after the current highest
+            highest = Channel.objects.order_by('-channel_number').values_list('channel_number', flat=True).first()
+            channel_number = (int(highest) + 1) if highest is not None else 1
 
         if channel_number is None:
             # Still None, auto-assign the next available channel number
@@ -1482,7 +1565,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         name="EpgAssociation",
                         fields={
                             "channel_id": serializers.IntegerField(),
-                            "epg_data_id": serializers.IntegerField(),
+                            "epg_data_id": serializers.IntegerField(
+                                required=False,
+                                allow_null=True,
+                                help_text="EPG data ID to link. Pass null to remove EPG linkage.",
+                            ),
                         },
                     ),
                 )
@@ -1658,7 +1745,12 @@ class BulkDeleteLogosAPIView(APIView):
                 "logo_ids": serializers.ListField(
                     child=serializers.IntegerField(),
                     help_text="Logo IDs to delete",
-                )
+                ),
+                "delete_files": serializers.BooleanField(
+                    required=False,
+                    default=False,
+                    help_text="Whether to also delete local logo files from disk.",
+                ),
             },
         ),
     )
@@ -1897,10 +1989,13 @@ class LogoViewSet(viewsets.ModelViewSet):
                 {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        file_name = file.name
-        file_path = os.path.join("/data/logos", file_name)
+        # Sanitize filename: strip directory components to prevent path traversal
+        try:
+            file_path = safe_upload_path(file.name, "/data/logos")
+        except ValueError:
+            return Response({"error": "Invalid filename."}, status=status.HTTP_400_BAD_REQUEST)
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        os.makedirs("/data/logos", exist_ok=True)
         with open(file_path, "wb+") as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
@@ -1920,7 +2015,7 @@ class LogoViewSet(viewsets.ModelViewSet):
 
         # Get custom name from request data, fallback to filename
         custom_name = request.data.get('name', '').strip()
-        logo_name = custom_name if custom_name else file_name
+        logo_name = custom_name if custom_name else os.path.basename(file_path)
 
         logo, _ = Logo.objects.get_or_create(
             url=file_path,
@@ -2670,7 +2765,49 @@ class RecordingViewSet(viewsets.ModelViewSet):
         recording_id = instance.pk
         channel_name = instance.channel.name
 
-        # Capture state before the DB row is deleted
+        # Attempt to close the DVR client connection for this channel if active
+        try:
+            channel_uuid = str(instance.channel.uuid)
+            # Lazy imports to avoid module overhead if proxy isn't used
+            from core.utils import RedisClient
+            from apps.proxy.ts_proxy.redis_keys import RedisKeys
+            from apps.proxy.ts_proxy.services.channel_service import ChannelService
+
+            r = RedisClient.get_client()
+            if r:
+                client_set_key = RedisKeys.clients(channel_uuid)
+                client_ids = r.smembers(client_set_key) or []
+                stopped = 0
+                for cid in client_ids:
+                    try:
+                        meta_key = RedisKeys.client_metadata(channel_uuid, cid)
+                        ua = r.hget(meta_key, "user_agent")
+                        # Identify DVR recording client by its user agent
+                        if ua and "Dispatcharr-DVR" in ua:
+                            try:
+                                ChannelService.stop_client(channel_uuid, cid)
+                                stopped += 1
+                            except Exception as inner_e:
+                                logger.debug(f"Failed to stop DVR client {cid} for channel {channel_uuid}: {inner_e}")
+                    except Exception as inner:
+                        logger.debug(f"Error while checking client metadata: {inner}")
+                if stopped:
+                    logger.info(f"Stopped {stopped} DVR client(s) for channel {channel_uuid} due to recording cancellation")
+                # If no clients remain after stopping DVR clients, proactively stop the channel
+                try:
+                    remaining = r.scard(client_set_key) or 0
+                except Exception:
+                    remaining = 0
+                if remaining == 0:
+                    try:
+                        ChannelService.stop_channel(channel_uuid)
+                        logger.info(f"Stopped channel {channel_uuid} (no clients remain)")
+                    except Exception as sc_e:
+                        logger.debug(f"Unable to stop channel {channel_uuid}: {sc_e}")
+        except Exception as e:
+            logger.debug(f"Unable to stop DVR clients for cancelled recording: {e}")
+
+        # Capture paths before deletion
         cp = instance.custom_properties or {}
         rec_status = cp.get("status", "")
         file_path = cp.get("file_path")

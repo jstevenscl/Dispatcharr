@@ -1,6 +1,7 @@
 # apps/m3u/tasks.py
 import logging
 import re
+import regex
 import requests
 import os
 import gc
@@ -11,7 +12,7 @@ from celery.result import AsyncResult
 from celery import shared_task, current_app, group
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
+from django.db import models, transaction
 from .models import M3UAccount
 from apps.channels.models import Stream, ChannelGroup, ChannelGroupM3UAccount
 from asgiref.sync import async_to_sync
@@ -37,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 1500  # Optimized batch size for threading
 m3u_dir = os.path.join(settings.MEDIA_ROOT, "cached_m3u")
+
+_EXTINF_ATTR_RE = re.compile(r'([^\s=]+)\s*=\s*(["\'])(.*?)\2')
 
 
 def fetch_m3u_lines(account, use_cache=False):
@@ -484,18 +487,13 @@ def parse_extinf_line(line: str) -> dict:
         return None
     content = line[len("#EXTINF:") :].strip()
 
-    # Single pass: extract all attributes AND track the last attribute position
-    # This regex matches both key="value" and key='value' patterns
+    # Single pass: extract all attributes AND track the last attribute position.
+    # Keys are normalised to lowercase so downstream code can use plain dict.get()
     attrs = {}
     last_attr_end = 0
 
-    # Use a single regex that handles both quote types.
-    # Keys must stop at '=' so values like base64-padded URLs ending with '=='
-    # don't get folded into the preceding attribute name.
-    for match in re.finditer(r'([^\s=]+)\s*=\s*(["\'])(.*?)\2', content):
-        key = match.group(1)
-        value = match.group(3)
-        attrs[key] = value
+    for match in _EXTINF_ATTR_RE.finditer(content):
+        attrs[match.group(1).lower()] = match.group(3)
         last_attr_end = match.end()
 
     # Everything after the last attribute (skipping leading comma and whitespace) is the display name
@@ -513,13 +511,78 @@ def parse_extinf_line(line: str) -> dict:
         else:
             display_name = content.strip()
 
-    # Use tvg-name attribute if available; otherwise try tvc-guide-title, then fall back to display name.
-    name = get_case_insensitive_attr(attrs, "tvg-name", None)
-    if not name:
-        name = get_case_insensitive_attr(attrs, "tvc-guide-title", None)
-    if not name:
-        name = display_name
+    # Per the base #EXTINF spec, the comma text is the canonical human-readable title.
+    # Fall back to tvc-guide-title, then tvg-name (which some providers use as an EPG key,
+    # not a display label), and finally the raw content if everything else is empty.
+    name = display_name or attrs.get("tvc-guide-title") or attrs.get("tvg-name") or content.strip()
     return {"attributes": attrs, "display_name": display_name, "name": name}
+
+
+def iter_m3u_entries(lines):
+    """
+    Generator that yields fully-assembled M3U stream entries from raw lines.
+
+    Each yielded dict is guaranteed to contain a ``url`` key in addition to the
+    fields produced by :func:`parse_extinf_line` (``attributes``, ``display_name``,
+    ``name``).  Recognised extended-tag lines that appear *between* an ``#EXTINF``
+    and its URL are accumulated into the pending entry so they are available for
+    downstream processing:
+
+    - ``#EXTGRP`` — sets ``attributes["group-title"]`` when no ``group-title``
+      attribute was present on the ``#EXTINF`` line (explicit attribute wins).
+    - ``#EXTVLCOPT`` — stored as a list under the ``vlc_opts`` key.
+
+    Unknown directives (``#KODIPROP``, etc.) and blank lines are
+    silently skipped while keeping the pending entry intact.  A second ``#EXTINF``
+    before a URL discards the first entry with a warning.  A trailing ``#EXTINF``
+    at end-of-file with no URL is also discarded.
+
+    Adding support for a new directive requires only a new ``elif`` branch here;
+    no other code needs to change.
+    """
+    pending = None
+    pending_line_num = None
+    for line_num, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line.startswith("#EXTINF"):
+            if pending is not None:
+                logger.warning(
+                    f"Line {pending_line_num}: #EXTINF had no URL (next #EXTINF at line {line_num}); "
+                    f"discarding entry: {list(pending['attributes'].items())[:3]}"
+                )
+            parsed = parse_extinf_line(line)
+            if parsed is None:
+                logger.warning(f"Line {line_num}: Failed to parse #EXTINF: {line[:200]}")
+            pending = parsed  # None if malformed; URL branch guards on `pending is not None`
+            pending_line_num = line_num
+
+        elif line.startswith("#EXTGRP:"):
+            # Only apply when group-title is absent — explicit attribute wins.
+            if pending is not None and "group-title" not in pending["attributes"]:
+                pending["attributes"]["group-title"] = line[len("#EXTGRP:"):].strip()
+            # else: #EXTGRP outside an entry, or group-title already set — silently skip
+
+        elif line.startswith("#EXTVLCOPT:"):
+            if pending is not None:
+                pending.setdefault("vlc_opts", []).append(line[len("#EXTVLCOPT:"):])
+            # else: #EXTVLCOPT outside an entry — silently skip
+
+        elif pending is not None and line.startswith(("http", "rtsp", "rtp", "udp")):
+            pending["url"] = normalize_stream_url(line) if line.startswith("udp") else line
+            yield pending
+            pending = None
+            pending_line_num = None
+
+        # else: unknown directive or bare content — skip, keeping pending intact
+
+    if pending is not None:
+        logger.warning(
+            f"Line {pending_line_num}: #EXTINF at end of file had no URL; "
+            f"discarding entry: {list(pending['attributes'].items())[:3]}"
+        )
 
 
 @shared_task
@@ -1114,7 +1177,7 @@ def process_m3u_batch_direct(account_id, batch, groups, hash_keys):
                 "m3u_account": account,
                 "channel_group_id": int(groups.get(group_title)),
                 "stream_hash": stream_hash,
-                "custom_properties": stream_info["attributes"],
+                "custom_properties": {**stream_info["attributes"], "vlc_opts": stream_info["vlc_opts"]} if "vlc_opts" in stream_info else stream_info["attributes"],
                 "is_adult": parse_is_adult(stream_info["attributes"].get("is_adult", 0)),
                 "is_stale": False,
                 "stream_id": provider_stream_id,
@@ -1482,7 +1545,6 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False, scan_sta
             release_task_lock("refresh_m3u_account_groups", account_id)
             return error_msg, None
     else:
-        # Here's the key change - use the success flag from fetch_m3u_lines
         lines, success = fetch_m3u_lines(account, use_cache)
         if not success:
             # If fetch failed, don't continue processing
@@ -1493,71 +1555,20 @@ def refresh_m3u_groups(account_id, use_cache=False, full_refresh=False, scan_sta
         # Log basic file structure for debugging
         logger.debug(f"Processing {len(lines)} lines from M3U file")
 
-        line_count = 0
-        extinf_count = 0
-        url_count = 0
         valid_stream_count = 0
-        problematic_lines = []
 
-        for line_index, line in enumerate(lines):
-            line_count += 1
-            line = line.strip()
+        for entry in iter_m3u_entries(lines):
+            valid_stream_count += 1
+            group_title_attr = get_case_insensitive_attr(entry["attributes"], "group-title", "")
+            if group_title_attr and group_title_attr not in groups:
+                logger.debug(f"Found new group for M3U account {account_id}: '{group_title_attr}'")
+                groups[group_title_attr] = {}
+            extinf_data.append(entry)
 
-            if line.startswith("#EXTINF"):
-                extinf_count += 1
-                parsed = parse_extinf_line(line)
-                if parsed:
-                    group_title_attr = get_case_insensitive_attr(
-                        parsed["attributes"], "group-title", ""
-                    )
-                    if group_title_attr:
-                        group_name = group_title_attr
-                        # Log new groups as they're discovered
-                        if group_name not in groups:
-                            logger.debug(
-                                f"Found new group for M3U account {account_id}: '{group_name}'"
-                            )
-                        groups[group_name] = {}
+            if valid_stream_count % 1000 == 0:
+                logger.debug(f"Processed {valid_stream_count} valid streams so far for M3U account: {account_id}")
 
-                    extinf_data.append(parsed)
-                else:
-                    # Log problematic EXTINF lines
-                    logger.warning(
-                        f"Failed to parse EXTINF at line {line_index+1}: {line[:200]}"
-                    )
-                    problematic_lines.append((line_index + 1, line[:200]))
-
-            elif extinf_data and (line.startswith("http") or line.startswith("rtsp") or line.startswith("rtp") or line.startswith("udp")):
-                url_count += 1
-                # Normalize UDP URLs only (e.g., remove VLC-specific @ prefix)
-                normalized_url = normalize_stream_url(line) if line.startswith("udp") else line
-                # Associate URL with the last EXTINF line
-                extinf_data[-1]["url"] = normalized_url
-                valid_stream_count += 1
-
-                # Periodically log progress for large files
-                if valid_stream_count % 1000 == 0:
-                    logger.debug(
-                        f"Processed {valid_stream_count} valid streams so far for M3U account: {account_id}"
-                    )
-
-        # Log summary statistics
-        logger.info(
-            f"M3U parsing complete - Lines: {line_count}, EXTINF: {extinf_count}, URLs: {url_count}, Valid streams: {valid_stream_count}"
-        )
-
-        if problematic_lines:
-            logger.warning(
-                f"Found {len(problematic_lines)} problematic lines during parsing"
-            )
-            for i, (line_num, content) in enumerate(
-                problematic_lines[:10]
-            ):  # Log max 10 examples
-                logger.warning(f"Problematic line #{i+1} at line {line_num}: {content}")
-            if len(problematic_lines) > 10:
-                logger.warning(
-                    f"... and {len(problematic_lines) - 10} more problematic lines"
-                )
+        logger.info(f"M3U parsing complete - Valid streams: {valid_stream_count}")
 
         # Log group statistics
         logger.info(
@@ -2399,11 +2410,13 @@ def get_transformed_credentials(account, profile=None):
         # Apply profile-specific transformations if profile is provided
         if profile and profile.search_pattern and profile.replace_pattern:
             try:
-                # Handle backreferences in the replacement pattern
-                safe_replace_pattern = re.sub(r'\$(\d+)', r'\\\1', profile.replace_pattern)
+                # Handle backreferences: convert JS-style $<name> -> \g<name>, $1 -> \1
+                # regex module accepts JS-style (?<name>...) named groups natively
+                safe_replace_pattern = regex.sub(r'\$<([^>]+)>', r'\\g<\1>', profile.replace_pattern)
+                safe_replace_pattern = regex.sub(r'\$(\d+)', r'\\\1', safe_replace_pattern)
 
                 # Apply transformation to the complete URL
-                transformed_complete_url = re.sub(profile.search_pattern, safe_replace_pattern, complete_url)
+                transformed_complete_url = regex.sub(profile.search_pattern, safe_replace_pattern, complete_url)
                 logger.info(f"Transformed complete URL: {complete_url} -> {transformed_complete_url}")
 
                 # Extract components from the transformed URL
@@ -3185,3 +3198,163 @@ def send_m3u_update(account_id, action, progress, **kwargs):
 
     # Explicitly clear data reference to help garbage collection
     data = None
+
+
+def evaluate_profile_expiration_notification(profile):
+    """
+    Evaluate a single M3UAccountProfile's expiration date and create, update,
+    or delete the corresponding SystemNotification accordingly.
+
+    Returns the notification key that should remain active (warning or expired),
+    or None if the profile is not expiring soon and any stale notifications were removed.
+    This return value is used by the bulk task to track active keys for stale cleanup.
+    """
+    from core.models import SystemNotification
+    from core.utils import send_websocket_notification, send_notification_dismissed
+
+    exp = profile.exp_date
+    if not exp:
+        return None
+
+    now = timezone.now()
+    warning_threshold = now + timezone.timedelta(days=7)
+    warning_key = f"xc-exp-warning-{profile.id}"
+    expired_key = f"xc-exp-expired-{profile.id}"
+
+    if exp <= now:
+        # Already expired — delete warning, create/update expired notification
+        deleted_warning = list(
+            SystemNotification.objects.filter(notification_key=warning_key)
+            .values_list("notification_key", flat=True)
+        )
+        SystemNotification.objects.filter(notification_key=warning_key).delete()
+        for key in deleted_warning:
+            send_notification_dismissed(key)
+
+        notification, created = SystemNotification.objects.update_or_create(
+            notification_key=expired_key,
+            defaults={
+                "notification_type": SystemNotification.NotificationType.WARNING,
+                "priority": SystemNotification.Priority.HIGH,
+                "title": f"Account Expired: {profile.name}",
+                "message": (
+                    f'Profile "{profile.name}" on M3U account '
+                    f'"{profile.m3u_account.name}" has expired '
+                    f"(expired {exp.strftime('%Y-%m-%d %H:%M UTC')})."
+                ),
+                "action_data": {
+                    "profile_id": profile.id,
+                    "account_id": profile.m3u_account.id,
+                    "account_name": profile.m3u_account.name,
+                    "profile_name": profile.name,
+                    "exp_date": exp.isoformat(),
+                },
+                "is_active": True,
+                "admin_only": True,
+            },
+        )
+        send_websocket_notification(notification)
+        return expired_key
+
+    elif exp <= warning_threshold:
+        # Expiring within 7 days — delete expired notification, create/update warning
+        deleted_expired = list(
+            SystemNotification.objects.filter(notification_key=expired_key)
+            .values_list("notification_key", flat=True)
+        )
+        SystemNotification.objects.filter(notification_key=expired_key).delete()
+        for key in deleted_expired:
+            send_notification_dismissed(key)
+
+        days_left = (exp - now).days
+        if days_left == 0:
+            expires_in_str = "today"
+        elif days_left == 1:
+            expires_in_str = "in 1 day"
+        else:
+            expires_in_str = f"in {days_left} days"
+
+        notification, created = SystemNotification.objects.update_or_create(
+            notification_key=warning_key,
+            defaults={
+                "notification_type": SystemNotification.NotificationType.WARNING,
+                "priority": SystemNotification.Priority.NORMAL,
+                "title": f"Account Expiring: {profile.name}",
+                "message": (
+                    f'Profile "{profile.name}" on M3U account '
+                    f'"{profile.m3u_account.name}" expires {expires_in_str} '
+                    f"(expires {exp.strftime('%Y-%m-%d %H:%M UTC')})."
+                ),
+                "action_data": {
+                    "profile_id": profile.id,
+                    "account_id": profile.m3u_account.id,
+                    "account_name": profile.m3u_account.name,
+                    "profile_name": profile.name,
+                    "exp_date": exp.isoformat(),
+                },
+                "is_active": True,
+                "admin_only": True,
+            },
+        )
+        send_websocket_notification(notification)
+        return warning_key
+
+    else:
+        # Not expiring soon — delete any stale notifications
+        deleted_keys = list(
+            SystemNotification.objects.filter(
+                notification_key__in=[warning_key, expired_key]
+            ).values_list("notification_key", flat=True)
+        )
+        SystemNotification.objects.filter(
+            notification_key__in=[warning_key, expired_key]
+        ).delete()
+        for key in deleted_keys:
+            send_notification_dismissed(key)
+        return None
+
+
+@shared_task
+def check_account_expirations():
+    """
+    Daily task: check all account profiles for upcoming expirations.
+    Creates/updates SystemNotifications for profiles expiring within 7 days.
+    Uses separate notification keys for warning vs expired so users can
+    dismiss the 7-day warning and still receive the expired notification.
+    """
+    from apps.m3u.models import M3UAccountProfile
+    from core.models import SystemNotification
+    from core.utils import send_notification_dismissed
+
+    # Find all active profiles with an exp_date that is set
+    expiring_profiles = (
+        M3UAccountProfile.objects.filter(
+            m3u_account__is_active=True,
+            is_active=True,
+            exp_date__isnull=False,
+        )
+        .select_related("m3u_account")
+    )
+
+    active_notification_keys = set()
+
+    for profile in expiring_profiles:
+        active_key = evaluate_profile_expiration_notification(profile)
+        if active_key:
+            active_notification_keys.add(active_key)
+
+    # Delete stale notifications for profiles whose expiration was extended
+    stale = SystemNotification.objects.filter(
+        is_active=True,
+    ).filter(
+        models.Q(notification_key__startswith="xc-exp-warning-") |
+        models.Q(notification_key__startswith="xc-exp-expired-")
+    ).exclude(notification_key__in=active_notification_keys)
+    stale_keys = list(stale.values_list("notification_key", flat=True))
+    stale.delete()
+    for key in stale_keys:
+        send_notification_dismissed(key)
+
+    logger.info(
+        f"Account expiration check complete: {len(active_notification_keys)} active notifications"
+    )

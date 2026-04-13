@@ -166,6 +166,7 @@ class ProxyServer:
                         redis_password = os.environ.get("REDIS_PASSWORD", getattr(settings, 'REDIS_PASSWORD', ''))
                         redis_user = os.environ.get("REDIS_USER", getattr(settings, 'REDIS_USER', ''))
 
+                        ssl_params = getattr(settings, 'REDIS_SSL_PARAMS', {})
                         pubsub_client = redis.Redis(
                             host=redis_host,
                             port=redis_port,
@@ -175,7 +176,9 @@ class ProxyServer:
                             socket_timeout=60,
                             socket_connect_timeout=10,
                             socket_keepalive=True,
-                            health_check_interval=30
+                            health_check_interval=30,
+                            decode_responses=True,
+                            **ssl_params
                         )
                         logger.info("Created fallback Redis PubSub client for event listener")
 
@@ -196,8 +199,8 @@ class ProxyServer:
                             continue
 
                         try:
-                            channel = message["channel"].decode("utf-8")
-                            data = json.loads(message["data"].decode("utf-8"))
+                            channel = message["channel"]
+                            data = json.loads(message["data"])
 
                             event_type = data.get("event")
                             channel_id = data.get("channel_id")
@@ -224,25 +227,28 @@ class ProxyServer:
                                         # Handle stream switch request
                                         new_url = data.get("url")
                                         user_agent = data.get("user_agent")
+                                        event_stream_id = data.get("stream_id")
+                                        event_m3u_profile_id = data.get("m3u_profile_id")
 
                                         if new_url and channel_id in self.stream_managers:
-                                            # Update metadata in Redis
+                                            # Mark the switch as in-progress in Redis so other workers know to wait
                                             if self.redis_client:
-                                                metadata_key = RedisKeys.channel_metadata(channel_id)
-                                                self.redis_client.hset(metadata_key, "url", new_url)
-                                                if user_agent:
-                                                    self.redis_client.hset(metadata_key, "user_agent", user_agent)
-
-                                                # Set switch status
                                                 status_key = RedisKeys.switch_status(channel_id)
                                                 self.redis_client.set(status_key, "switching")
 
-                                            # Perform the stream switch
+                                            # Perform the stream switch, forwarding stream_id and m3u_profile_id
                                             stream_manager = self.stream_managers[channel_id]
-                                            success = stream_manager.update_url(new_url)
+                                            success = stream_manager.update_url(new_url, event_stream_id, event_m3u_profile_id)
 
                                             if success:
                                                 logger.info(f"Stream switch initiated for channel {channel_id}")
+
+                                                # Confirm the URL in metadata now that the switch happened
+                                                if self.redis_client:
+                                                    metadata_key = RedisKeys.channel_metadata(channel_id)
+                                                    self.redis_client.hset(metadata_key, "url", new_url)
+                                                    if user_agent:
+                                                        self.redis_client.hset(metadata_key, "user_agent", user_agent)
 
                                                 # Publish confirmation
                                                 switch_result = {
@@ -262,6 +268,14 @@ class ProxyServer:
                                                     self.redis_client.set(status_key, "switched")
                                             else:
                                                 logger.error(f"Failed to switch stream for channel {channel_id}")
+
+                                                # Roll back the URL in metadata to what the manager will
+                                                # actually reconnect to. The non-owner may have pre-written
+                                                # the desired URL; use stream_manager.url (the ground truth)
+                                                # so Redis is consistent with the live stream.
+                                                if self.redis_client:
+                                                    metadata_key = RedisKeys.channel_metadata(channel_id)
+                                                    self.redis_client.hset(metadata_key, "url", stream_manager.url)
 
                                                 # Publish failure
                                                 switch_result = {
@@ -373,7 +387,7 @@ class ProxyServer:
             if result is None:
                 return None
             try:
-                return result.decode('utf-8')
+                return result
             except (AttributeError, UnicodeDecodeError) as e:
                 logger.error(f"Error decoding channel owner for {channel_id}: {e}, raw={result!r}")
                 return None
@@ -412,7 +426,7 @@ class ProxyServer:
             current_owner = self._execute_redis_command(
                 lambda: self.redis_client.get(lock_key)
             )
-            if current_owner and current_owner.decode('utf-8') == self.worker_id:
+            if current_owner and current_owner == self.worker_id:
                 # Refresh TTL
                 self._execute_redis_command(
                     lambda: self.redis_client.expire(lock_key, ttl)
@@ -437,7 +451,7 @@ class ProxyServer:
 
             # Only delete if we're the current owner to prevent race conditions
             current = self.redis_client.get(lock_key)
-            if current and current.decode('utf-8') == self.worker_id:
+            if current and current == self.worker_id:
                 self.redis_client.delete(lock_key)
                 logger.info(f"Released ownership of channel {channel_id}")
 
@@ -471,7 +485,7 @@ class ProxyServer:
                         return False
                 return False
 
-            if current.decode('utf-8') == self.worker_id:
+            if current == self.worker_id:
                 self.redis_client.expire(lock_key, ttl)
                 return True
 
@@ -488,15 +502,15 @@ class ProxyServer:
                 metadata_key = RedisKeys.channel_metadata(channel_id)
                 if self.redis_client.exists(metadata_key):
                     metadata = self.redis_client.hgetall(metadata_key)
-                    if b'state' in metadata:
-                        state = metadata[b'state'].decode('utf-8')
+                    if 'state' in metadata:
+                        state = metadata['state']
                         active_states = [ChannelState.INITIALIZING, ChannelState.CONNECTING,
                                         ChannelState.WAITING_FOR_CLIENTS, ChannelState.ACTIVE, ChannelState.BUFFERING]
                         if state in active_states:
                             logger.info(f"Channel {channel_id} already being initialized with state {state}")
                             # Create buffer and client manager only if we don't have them
                             if channel_id not in self.stream_buffers:
-                                self.stream_buffers[channel_id] = StreamBuffer(channel_id, redis_client=self.redis_client)
+                                self.stream_buffers[channel_id] = StreamBuffer(channel_id, redis_client=RedisClient.get_buffer())
                             if channel_id not in self.client_managers:
                                 self.client_managers[channel_id] = ClientManager(
                                     channel_id,
@@ -507,7 +521,7 @@ class ProxyServer:
 
             # Create buffer and client manager instances (or reuse if they exist)
             if channel_id not in self.stream_buffers:
-                buffer = StreamBuffer(channel_id, redis_client=self.redis_client)
+                buffer = StreamBuffer(channel_id, redis_client=RedisClient.get_buffer())
                 self.stream_buffers[channel_id] = buffer
 
             if channel_id not in self.client_managers:
@@ -546,18 +560,18 @@ class ProxyServer:
 
                 # If no url was passed, try to get from Redis
                 if not url and existing_metadata:
-                    url_bytes = existing_metadata.get(b'url')
+                    url_bytes = existing_metadata.get('url')
                     if url_bytes:
-                        channel_url = url_bytes.decode('utf-8')
+                        channel_url = url_bytes
 
-                    ua_bytes = existing_metadata.get(b'user_agent')
+                    ua_bytes = existing_metadata.get('user_agent')
                     if ua_bytes:
-                        channel_user_agent = ua_bytes.decode('utf-8')
+                        channel_user_agent = ua_bytes
 
                 # Get stream ID from metadata if not provided
-                if not channel_stream_id and b'stream_id' in existing_metadata:
+                if not channel_stream_id and 'stream_id' in existing_metadata:
                     try:
-                        channel_stream_id = int(existing_metadata[b'stream_id'].decode('utf-8'))
+                        channel_stream_id = int(existing_metadata['stream_id'])
                         logger.debug(f"Found stream_id {channel_stream_id} in metadata for channel {channel_id}")
                     except (ValueError, TypeError) as e:
                         logger.debug(f"Could not parse stream_id from metadata: {e}")
@@ -572,7 +586,7 @@ class ProxyServer:
 
                 # Create buffer but not stream manager (only if not already exists)
                 if channel_id not in self.stream_buffers:
-                    buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
+                    buffer = StreamBuffer(channel_id=channel_id, redis_client=RedisClient.get_buffer())
                     self.stream_buffers[channel_id] = buffer
 
                 # Create client manager with channel_id and redis_client (only if not already exists)
@@ -595,7 +609,7 @@ class ProxyServer:
 
                 # Create buffer but not stream manager (only if not already exists)
                 if channel_id not in self.stream_buffers:
-                    buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
+                    buffer = StreamBuffer(channel_id=channel_id, redis_client=RedisClient.get_buffer())
                     self.stream_buffers[channel_id] = buffer
 
                 # Create client manager with channel_id and redis_client (only if not already exists)
@@ -634,12 +648,12 @@ class ProxyServer:
                 # Verify the stream_id was set correctly in Redis
                 stream_id_value = self.redis_client.hget(metadata_key, "stream_id")
                 if stream_id_value:
-                    logger.info(f"Verified stream_id {stream_id_value.decode('utf-8')} is set in Redis for channel {channel_id}")
+                    logger.info(f"Verified stream_id {stream_id_value} is set in Redis for channel {channel_id}")
                 else:
                     logger.warning(f"Failed to set stream_id in Redis for channel {channel_id}")
 
             # Create stream buffer
-            buffer = StreamBuffer(channel_id=channel_id, redis_client=self.redis_client)
+            buffer = StreamBuffer(channel_id=channel_id, redis_client=RedisClient.get_buffer())
             logger.debug(f"Created StreamBuffer for channel {channel_id}")
             self.stream_buffers[channel_id] = buffer
 
@@ -733,8 +747,8 @@ class ProxyServer:
                 metadata = self.redis_client.hgetall(metadata_key)
 
                 # Get channel state and owner
-                state = metadata.get(b'state', b'unknown').decode('utf-8')
-                owner = metadata.get(b'owner', b'').decode('utf-8')
+                state = metadata.get('state', 'unknown')
+                owner = metadata.get('owner', '')
 
                 # States that indicate the channel is running properly or shutting down
                 valid_states = [ChannelState.ACTIVE, ChannelState.WAITING_FOR_CLIENTS,
@@ -772,8 +786,8 @@ class ProxyServer:
                     return False
                 else:
                     # Unknown or initializing state, check how long it's been in this state
-                    if b'state_changed_at' in metadata:
-                        state_changed_at = float(metadata[b'state_changed_at'].decode('utf-8'))
+                    if 'state_changed_at' in metadata:
+                        state_changed_at = float(metadata['state_changed_at'])
                         state_age = time.time() - state_changed_at
 
                         # If in initializing state for too long, consider it stale
@@ -811,8 +825,8 @@ class ProxyServer:
 
             # If we have metadata, log details for debugging
             if metadata:
-                state = metadata.get(b'state', b'unknown').decode('utf-8')
-                owner = metadata.get(b'owner', b'unknown').decode('utf-8')
+                state = metadata.get('state', 'unknown')
+                owner = metadata.get('owner', 'unknown')
                 logger.info(f"Zombie channel details - state: {state}, owner: {owner}")
 
             # Clean up Redis keys
@@ -937,16 +951,16 @@ class ProxyServer:
                         metadata = self.redis_client.hgetall(metadata_key)
                         if metadata:
                             # Calculate runtime from init_time
-                            if b'init_time' in metadata:
+                            if 'init_time' in metadata:
                                 try:
-                                    init_time = float(metadata[b'init_time'].decode('utf-8'))
+                                    init_time = float(metadata['init_time'])
                                     runtime = round(time.time() - init_time, 2)
                                 except Exception:
                                     pass
                             # Get total bytes transferred
-                            if b'total_bytes' in metadata:
+                            if 'total_bytes' in metadata:
                                 try:
-                                    total_bytes = int(metadata[b'total_bytes'].decode('utf-8'))
+                                    total_bytes = int(metadata['total_bytes'])
                                 except Exception:
                                     pass
 
@@ -1057,8 +1071,8 @@ class ProxyServer:
                             if self.redis_client:
                                 metadata_key = RedisKeys.channel_metadata(channel_id)
                                 metadata = self.redis_client.hgetall(metadata_key)
-                                if metadata and b'state' in metadata:
-                                    channel_state = metadata[b'state'].decode('utf-8')
+                                if metadata and 'state' in metadata:
+                                    channel_state = metadata['state']
 
                             # Check if channel has any clients left
                             total_clients = 0
@@ -1080,7 +1094,7 @@ class ProxyServer:
                                 logger.info(f"Channel {channel_id} has {total_clients} clients, state: {channel_state}")
 
                             # If in connecting or waiting_for_clients state, check grace period
-                            if channel_state in [ChannelState.CONNECTING, ChannelState.WAITING_FOR_CLIENTS]:
+                            if channel_state in [ChannelState.INITIALIZING, ChannelState.CONNECTING, ChannelState.WAITING_FOR_CLIENTS]:
                                 # Check if channel is already stopping
                                 if self.redis_client:
                                     stop_key = RedisKeys.channel_stopping(channel_id)
@@ -1090,9 +1104,9 @@ class ProxyServer:
 
                                 # Get connection_ready_time from metadata (indicates if channel reached ready state)
                                 connection_ready_time = None
-                                if metadata and b'connection_ready_time' in metadata:
+                                if metadata and 'connection_ready_time' in metadata:
                                     try:
-                                        connection_ready_time = float(metadata[b'connection_ready_time'].decode('utf-8'))
+                                        connection_ready_time = float(metadata['connection_ready_time'])
                                     except (ValueError, TypeError):
                                         pass
 
@@ -1104,15 +1118,15 @@ class ProxyServer:
                                         attempt_value = self.redis_client.get(attempt_key)
                                         if attempt_value:
                                             try:
-                                                connection_attempt_time = float(attempt_value.decode('utf-8'))
+                                                connection_attempt_time = float(attempt_value)
                                             except (ValueError, TypeError):
                                                 pass
 
                                     # Also get init time as a fallback
                                     init_time = None
-                                    if metadata and b'init_time' in metadata:
+                                    if metadata and 'init_time' in metadata:
                                         try:
-                                            init_time = float(metadata[b'init_time'].decode('utf-8'))
+                                            init_time = float(metadata['init_time'])
                                         except (ValueError, TypeError):
                                             pass
 
@@ -1183,7 +1197,7 @@ class ProxyServer:
                                     disconnect_value = self.redis_client.get(disconnect_key)
                                     if disconnect_value:
                                         try:
-                                            disconnect_time = float(disconnect_value.decode('utf-8'))
+                                            disconnect_time = float(disconnect_value)
                                         except (ValueError, TypeError) as e:
                                             logger.error(f"Invalid disconnect time for channel {channel_id}: {e}")
 
@@ -1304,7 +1318,7 @@ class ProxyServer:
 
             for key in channel_keys:
                 try:
-                    channel_id = key.decode('utf-8').split(':')[2]
+                    channel_id = key.split(':')[2]
 
                     # Check if this channel has an owner
                     owner = self.get_channel_owner(channel_id)
@@ -1349,7 +1363,7 @@ class ProxyServer:
 
             for key in channel_keys:
                 try:
-                    channel_id = key.decode('utf-8').split(':')[2]
+                    channel_id = key.split(':')[2]
 
                     # Get metadata first
                     metadata = self.redis_client.hgetall(key)
@@ -1364,7 +1378,7 @@ class ProxyServer:
                         continue
 
                     # Get owner
-                    owner = metadata.get(b'owner', b'').decode('utf-8') if b'owner' in metadata else ''
+                    owner = metadata.get('owner', '') if 'owner' in metadata else ''
 
                     # Check if owner is still alive
                     owner_alive = False
@@ -1378,7 +1392,7 @@ class ProxyServer:
 
                     # If no owner and no clients, clean it up
                     if not owner_alive and client_count == 0:
-                        state = metadata.get(b'state', b'unknown').decode('utf-8') if b'state' in metadata else 'unknown'
+                        state = metadata.get('state', 'unknown')
                         logger.warning(f"Found orphaned metadata for channel {channel_id} (state: {state}, owner: {owner}, clients: {client_count}) - cleaning up")
 
                         # If we have it locally, stop it properly to clean up transcode/proxy processes
@@ -1389,8 +1403,30 @@ class ProxyServer:
                             # Just clean up Redis keys for remote channels
                             self._clean_redis_keys(channel_id)
                     elif not owner_alive and client_count > 0:
-                        # Owner is gone but clients remain - just log for now
-                        logger.warning(f"Found orphaned channel {channel_id} with {client_count} clients but no owner - may need ownership takeover")
+                        # SCARD may include ghost entries from a dead worker's
+                        # expired metadata hashes. Validate before deciding.
+                        stale_ids = ClientManager.remove_ghost_clients(
+                            self.redis_client, channel_id
+                        )
+                        real_count = max(0, client_count - len(stale_ids))
+                        if real_count <= 0:
+                            # No real clients remain — safe to clean up.
+                            state = metadata.get('state', 'unknown')
+                            logger.warning(
+                                f"Orphaned channel {channel_id} (state: {state}, "
+                                f"owner: {owner}) had {client_count} ghost client(s) "
+                                f"- cleaning up"
+                            )
+                            if channel_id in self.stream_managers or channel_id in self.client_managers:
+                                self.stop_channel(channel_id)
+                            else:
+                                self._clean_redis_keys(channel_id)
+                        else:
+                            logger.warning(
+                                f"Orphaned channel {channel_id} still has "
+                                f"{real_count} live client(s) after ghost removal "
+                                f"- may need ownership takeover"
+                            )
 
                 except Exception as e:
                     logger.error(f"Error processing metadata key {key}: {e}", exc_info=True)
@@ -1470,8 +1506,8 @@ class ProxyServer:
             # Get current state for logging
             current_state = None
             metadata = self.redis_client.hgetall(metadata_key)
-            if metadata and b'state' in metadata:
-                current_state = metadata[b'state'].decode('utf-8')
+            if metadata and 'state' in metadata:
+                current_state = metadata['state']
 
             # Only update if state is actually changing
             if current_state == new_state:
