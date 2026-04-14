@@ -62,7 +62,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
 from apps.vod.models import Movie, Series
 from django.db.models import Q
-from django.http import StreamingHttpResponse, FileResponse, Http404
+from django.http import HttpResponse, StreamingHttpResponse, FileResponse, Http404
 from django.utils import timezone
 import mimetypes
 from django.conf import settings
@@ -2057,7 +2057,7 @@ class LogoViewSet(viewsets.ModelViewSet):
             return response
 
         else:  # Remote image
-            # Skip URLs that recently failed to avoid blocking Daphne workers
+            # Skip URLs that recently failed to avoid blocking workers
             # on unreachable hosts (e.g., dead CDNs referenced by old recordings).
             fail_expiry = _logo_fetch_failures.get(logo_url)
             if fail_expiry and time.monotonic() < fail_expiry:
@@ -2073,16 +2073,38 @@ class LogoViewSet(viewsets.ModelViewSet):
                     # Fallback to hardcoded if default not found
                     user_agent = 'Dispatcharr/1.0'
 
-                # Add proper timeouts to prevent hanging
+                # Hard total timeout (connect + full download) prevents a slow
+                # server dripping bytes from holding a greenlet indefinitely.
+                _LOGO_TOTAL_TIMEOUT = 10  # seconds
+                _LOGO_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+
                 remote_response = requests.get(
                     logo_url,
                     stream=True,
-                    timeout=(3, 5),  # (connect_timeout, read_timeout)
+                    timeout=(3, 5),  # (connect_timeout, read_timeout per chunk)
                     headers={'User-Agent': user_agent}
                 )
                 if remote_response.status_code == 200:
                     # Success — clear any previous failure entry
                     _logo_fetch_failures.pop(logo_url, None)
+
+                    # Eagerly read the full image with a total time + size cap
+                    # so the greenlet is released quickly.
+                    chunks = []
+                    total = 0
+                    deadline = time.monotonic() + _LOGO_TOTAL_TIMEOUT
+                    for chunk in remote_response.iter_content(chunk_size=8192):
+                        total += len(chunk)
+                        if total > _LOGO_MAX_BYTES:
+                            remote_response.close()
+                            raise Http404("Remote image too large")
+                        if time.monotonic() > deadline:
+                            remote_response.close()
+                            now = time.monotonic()
+                            _logo_fetch_failures[logo_url] = now + _LOGO_FAIL_TTL
+                            raise Http404("Remote image fetch timed out")
+                        chunks.append(chunk)
+                    body = b"".join(chunks)
 
                     # Try to get content type from response headers first
                     content_type = remote_response.headers.get("Content-Type")
@@ -2095,13 +2117,14 @@ class LogoViewSet(viewsets.ModelViewSet):
                     if not content_type:
                         content_type = "image/jpeg"
 
-                    response = StreamingHttpResponse(
-                        remote_response.iter_content(chunk_size=8192),
+                    response = HttpResponse(
+                        body,
                         content_type=content_type,
                     )
-                    if(remote_response.headers.get("Cache-Control")):
+                    response["Content-Length"] = str(len(body))
+                    if remote_response.headers.get("Cache-Control"):
                         response["Cache-Control"] = remote_response.headers.get("Cache-Control")
-                    if(remote_response.headers.get("Last-Modified")):
+                    if remote_response.headers.get("Last-Modified"):
                         response["Last-Modified"] = remote_response.headers.get("Last-Modified")
                     response["Content-Disposition"] = 'inline; filename="{}"'.format(
                         os.path.basename(logo_url)
