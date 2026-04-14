@@ -33,7 +33,10 @@ export POSTGRES_USER=${POSTGRES_USER:-dispatch}
 export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
 export DISPATCHARR_ENV=${DISPATCHARR_ENV:-aio}
 if [[ "$DISPATCHARR_ENV" == "aio" ]]; then
-    export POSTGRES_HOST=${POSTGRES_HOST:-/var/run/postgresql}
+    # Use Unix socket for loopback values (unset, localhost, 127.0.0.1)
+    if [[ -z "$POSTGRES_HOST" || "$POSTGRES_HOST" == "localhost" || "$POSTGRES_HOST" == "127.0.0.1" ]]; then
+        export POSTGRES_HOST=/var/run/postgresql
+    fi
 else
     export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
 fi
