@@ -1131,6 +1131,22 @@ class MultiWorkerVODConnectionManager:
                                 profile_decremented = True
                                 logger.info(f"[{client_id}] Profile counter decremented for profile {profile_id} in finally block")
 
+                            # Delayed cleanup: wait 1s for seeking clients to reconnect
+                            # before closing the provider connection and Redis keys.
+                            # cleanup() re-checks active_streams under lock, so a
+                            # reconnecting client that increments active_streams in
+                            # time will prevent Redis key deletion.
+                            def delayed_cleanup():
+                                time.sleep(1)
+                                logger.info(f"[{client_id}] Worker {self.worker_id} - Checking for smart cleanup in finally block")
+                                # No connection_manager — profile already decremented above
+                                redis_connection.cleanup(current_worker_id=self.worker_id)
+
+                            import threading
+                            cleanup_thread = threading.Thread(target=delayed_cleanup)
+                            cleanup_thread.daemon = True
+                            cleanup_thread.start()
+
             # Create streaming response
             response = StreamingHttpResponse(
                 streaming_content=stream_generator(),
