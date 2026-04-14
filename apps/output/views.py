@@ -138,7 +138,7 @@ def generate_m3u(request, profile_name=None, user=None):
                 # Hide adult content if user preference is set
                 if (user.custom_properties or {}).get('hide_adult_content', False):
                     filters["is_adult"] = False
-                channels = Channel.objects.filter(**filters).order_by("channel_number")
+                channels = Channel.objects.filter(**filters).select_related('channel_group', 'logo').order_by("channel_number")
             else:
                 # User has specific limited profiles assigned
                 filters = {
@@ -149,9 +149,9 @@ def generate_m3u(request, profile_name=None, user=None):
                 # Hide adult content if user preference is set
                 if (user.custom_properties or {}).get('hide_adult_content', False):
                     filters["is_adult"] = False
-                channels = Channel.objects.filter(**filters).distinct().order_by("channel_number")
+                channels = Channel.objects.filter(**filters).select_related('channel_group', 'logo').distinct().order_by("channel_number")
         else:
-            channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
+            channels = Channel.objects.filter(user_level__lte=user.user_level).select_related('channel_group', 'logo').order_by(
                 "channel_number"
             )
 
@@ -165,9 +165,9 @@ def generate_m3u(request, profile_name=None, user=None):
             channels = Channel.objects.filter(
                 channelprofilemembership__channel_profile=channel_profile,
                 channelprofilemembership__enabled=True
-            ).order_by('channel_number')
+            ).select_related('channel_group', 'logo').order_by('channel_number')
         else:
-            channels = Channel.objects.order_by("channel_number")
+            channels = Channel.objects.select_related('channel_group', 'logo').order_by("channel_number")
 
     # Check if the request wants to use direct logo URLs instead of cache
     use_cached_logos = request.GET.get('cachedlogos', 'true').lower() != 'false'
@@ -1322,7 +1322,7 @@ def generate_epg(request, profile_name=None, user=None):
                     # Hide adult content if user preference is set
                     if (user.custom_properties or {}).get('hide_adult_content', False):
                         filters["is_adult"] = False
-                    channels = Channel.objects.filter(**filters).order_by("channel_number")
+                    channels = Channel.objects.filter(**filters).select_related('logo').order_by("channel_number")
                 else:
                     # User has specific limited profiles assigned
                     filters = {
@@ -1333,9 +1333,9 @@ def generate_epg(request, profile_name=None, user=None):
                     # Hide adult content if user preference is set
                     if (user.custom_properties or {}).get('hide_adult_content', False):
                         filters["is_adult"] = False
-                    channels = Channel.objects.filter(**filters).distinct().order_by("channel_number")
+                    channels = Channel.objects.filter(**filters).select_related('logo').distinct().order_by("channel_number")
             else:
-                channels = Channel.objects.filter(user_level__lte=user.user_level).order_by(
+                channels = Channel.objects.filter(user_level__lte=user.user_level).select_related('logo').order_by(
                     "channel_number"
                 )
         else:
@@ -1348,9 +1348,9 @@ def generate_epg(request, profile_name=None, user=None):
                 channels = Channel.objects.filter(
                     channelprofilemembership__channel_profile=channel_profile,
                     channelprofilemembership__enabled=True,
-                ).order_by("channel_number")
+                ).select_related('logo').order_by("channel_number")
             else:
-                channels = Channel.objects.all().order_by("channel_number")
+                channels = Channel.objects.all().select_related('logo').order_by("channel_number")
 
 
         # For dummy EPG, use either the specified value or default to 3 days
@@ -2188,7 +2188,7 @@ def xc_get_live_streams(request, user, category_id=None):
             # Hide adult content if user preference is set
             if (user.custom_properties or {}).get('hide_adult_content', False):
                 filters["is_adult"] = False
-            channels = Channel.objects.filter(**filters).order_by("channel_number")
+            channels = Channel.objects.filter(**filters).select_related('channel_group', 'logo').order_by("channel_number")
         else:
             # User has specific limited profiles assigned
             filters = {
@@ -2201,14 +2201,14 @@ def xc_get_live_streams(request, user, category_id=None):
             # Hide adult content if user preference is set
             if (user.custom_properties or {}).get('hide_adult_content', False):
                 filters["is_adult"] = False
-            channels = Channel.objects.filter(**filters).distinct().order_by("channel_number")
+            channels = Channel.objects.filter(**filters).select_related('channel_group', 'logo').distinct().order_by("channel_number")
     else:
         if not category_id:
-            channels = Channel.objects.filter(user_level__lte=user.user_level).order_by("channel_number")
+            channels = Channel.objects.filter(user_level__lte=user.user_level).select_related('channel_group', 'logo').order_by("channel_number")
         else:
             channels = Channel.objects.filter(
                 channel_group__id=category_id, user_level__lte=user.user_level
-            ).order_by("channel_number")
+            ).select_related('channel_group', 'logo').order_by("channel_number")
 
     # Build collision-free mapping for XC clients (which require integers)
     # This ensures channels with float numbers don't conflict with existing integers
