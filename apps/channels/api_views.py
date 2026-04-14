@@ -2085,9 +2085,6 @@ class LogoViewSet(viewsets.ModelViewSet):
                     headers={'User-Agent': user_agent}
                 )
                 if remote_response.status_code == 200:
-                    # Success — clear any previous failure entry
-                    _logo_fetch_failures.pop(logo_url, None)
-
                     # Eagerly read the full image with a total time + size cap
                     # so the greenlet is released quickly.
                     chunks = []
@@ -2105,6 +2102,9 @@ class LogoViewSet(viewsets.ModelViewSet):
                             raise Http404("Remote image fetch timed out")
                         chunks.append(chunk)
                     body = b"".join(chunks)
+
+                    # Full read succeeded, clear any previous failure entry
+                    _logo_fetch_failures.pop(logo_url, None)
 
                     # Try to get content type from response headers first
                     content_type = remote_response.headers.get("Content-Type")

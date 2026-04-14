@@ -856,9 +856,6 @@ class VODLogoViewSet(viewsets.ModelViewSet):
                     _vod_logo_fetch_failures[logo.url] = now + _VOD_LOGO_FAIL_TTL
                     return HttpResponse(status=404)
 
-                # Success — clear any previous failure entry
-                _vod_logo_fetch_failures.pop(logo.url, None)
-
                 # Eagerly read the full image with a total time + size cap
                 # so the greenlet is released quickly.
                 chunks = []
@@ -876,6 +873,9 @@ class VODLogoViewSet(viewsets.ModelViewSet):
                         return HttpResponse(status=404)
                     chunks.append(chunk)
                 body = b"".join(chunks)
+
+                # Full read succeeded, clear any previous failure entry
+                _vod_logo_fetch_failures.pop(logo.url, None)
 
                 content_type = remote_response.headers.get('Content-Type', 'image/png')
 
