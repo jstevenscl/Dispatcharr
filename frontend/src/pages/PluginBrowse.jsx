@@ -18,7 +18,15 @@ import {
   TextInput,
 } from '@mantine/core';
 import API from '../api.js';
-import { RefreshCcw, Trash2, Plus, Search, KeyRound, ShieldCheck, ShieldAlert } from 'lucide-react';
+import {
+  RefreshCcw,
+  Trash2,
+  Plus,
+  Search,
+  KeyRound,
+  ShieldCheck,
+  ShieldAlert,
+} from 'lucide-react';
 import { usePluginStore } from '../store/plugins.jsx';
 import useSettingsStore from '../store/settings.jsx';
 import AvailablePluginCard from '../components/cards/AvailablePluginCard.jsx';
@@ -56,6 +64,7 @@ export default function PluginBrowsePage() {
   const previewTimer = useRef(null);
   const [refreshInterval, setRefreshInterval] = useState(6);
   const [savingInterval, setSavingInterval] = useState(false);
+  const saveIntervalTimer = useRef(null);
 
   const recentlyInstalledSlugs = useRef(new Set());
   const recentlyUninstalledSlugs = useRef(new Set());
@@ -106,7 +115,10 @@ export default function PluginBrowsePage() {
     if (!newRepoUrl.trim()) return;
     setAddingRepo(true);
     try {
-      await addRepo({ url: newRepoUrl.trim(), public_key: newRepoPublicKey.trim() });
+      await addRepo({
+        url: newRepoUrl.trim(),
+        public_key: newRepoPublicKey.trim(),
+      });
       setNewRepoUrl('');
       setNewRepoPublicKey('');
       setRepoPreview(null);
@@ -150,32 +162,49 @@ export default function PluginBrowsePage() {
       await updateRepo(editingKeyRepoId, { public_key: editKeyValue });
       await refreshRepo(editingKeyRepoId);
       await fetchAvailablePlugins();
-      showNotification({ title: 'Updated', message: 'Public key updated', color: 'green' });
+      showNotification({
+        title: 'Updated',
+        message: 'Public key updated',
+        color: 'green',
+      });
       setEditingKeyRepoId(null);
       setEditKeyValue('');
     } catch {
-      showNotification({ title: 'Error', message: 'Failed to update key', color: 'red' });
+      showNotification({
+        title: 'Error',
+        message: 'Failed to update key',
+        color: 'red',
+      });
     } finally {
       setSavingKey(false);
     }
-  }, [editingKeyRepoId, editKeyValue, updateRepo, refreshRepo, fetchAvailablePlugins]);
+  }, [
+    editingKeyRepoId,
+    editKeyValue,
+    updateRepo,
+    refreshRepo,
+    fetchAvailablePlugins,
+  ]);
 
   const loadRepoSettings = useCallback(async () => {
     const data = await API.getPluginRepoSettings();
     if (data) setRefreshInterval(data.refresh_interval_hours ?? 6);
   }, []);
 
-  const handleSaveInterval = useCallback(async (val) => {
+  const handleSaveInterval = useCallback((val) => {
     const hours = val ?? 0;
     setRefreshInterval(hours);
-    setSavingInterval(true);
-    try {
-      await API.updatePluginRepoSettings({ refresh_interval_hours: hours });
-    } catch {
-      // Error notification handled by API layer
-    } finally {
-      setSavingInterval(false);
-    }
+    if (saveIntervalTimer.current) clearTimeout(saveIntervalTimer.current);
+    saveIntervalTimer.current = setTimeout(async () => {
+      setSavingInterval(true);
+      try {
+        await API.updatePluginRepoSettings({ refresh_interval_hours: hours });
+      } catch {
+        // Error notification handled by API layer
+      } finally {
+        setSavingInterval(false);
+      }
+    }, 800);
   }, []);
 
   // Debounced manifest preview
@@ -194,12 +223,11 @@ export default function PluginBrowsePage() {
     }, 600);
   }, []);
 
-  // Cleanup any pending preview timer on unmount
+  // Cleanup any pending timers on unmount
   useEffect(() => {
     return () => {
-      if (previewTimer.current) {
-        clearTimeout(previewTimer.current);
-      }
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      if (saveIntervalTimer.current) clearTimeout(saveIntervalTimer.current);
     };
   }, []);
   // Load settings when modal opens
@@ -250,8 +278,12 @@ export default function PluginBrowsePage() {
       list = list.filter((p) => !p.installed);
     } else if (filterStatus === 'compatible') {
       list = list.filter((p) => {
-        const meetsMin = !p.min_dispatcharr_version || compareVersions(appVersion, p.min_dispatcharr_version) >= 0;
-        const meetsMax = !p.max_dispatcharr_version || compareVersions(appVersion, p.max_dispatcharr_version) <= 0;
+        const meetsMin =
+          !p.min_dispatcharr_version ||
+          compareVersions(appVersion, p.min_dispatcharr_version) >= 0;
+        const meetsMax =
+          !p.max_dispatcharr_version ||
+          compareVersions(appVersion, p.max_dispatcharr_version) <= 0;
         return meetsMin && meetsMax;
       });
     }
@@ -263,8 +295,12 @@ export default function PluginBrowsePage() {
       const weight = (p) => {
         if (recentlyInstalledSlugs.current.has(p.slug)) return 0;
         if (recentlyUninstalledSlugs.current.has(p.slug)) return 2;
-        const meetsMin = !p.min_dispatcharr_version || compareVersions(appVersion, p.min_dispatcharr_version) >= 0;
-        const meetsMax = !p.max_dispatcharr_version || compareVersions(appVersion, p.max_dispatcharr_version) <= 0;
+        const meetsMin =
+          !p.min_dispatcharr_version ||
+          compareVersions(appVersion, p.min_dispatcharr_version) >= 0;
+        const meetsMax =
+          !p.max_dispatcharr_version ||
+          compareVersions(appVersion, p.max_dispatcharr_version) <= 0;
         if (p.deprecated) return 1;
         if (p.installed) return 2;
         if (!meetsMin || !meetsMax) return 3;
@@ -289,7 +325,14 @@ export default function PluginBrowsePage() {
     });
 
     return list;
-  }, [availablePlugins, searchQuery, filterRepo, filterStatus, sortBy, appVersion]);
+  }, [
+    availablePlugins,
+    searchQuery,
+    filterRepo,
+    filterStatus,
+    sortBy,
+    appVersion,
+  ]);
 
   // Reset to page 1 when filters/search change
   React.useEffect(() => {
@@ -297,7 +340,10 @@ export default function PluginBrowsePage() {
   }, [searchQuery, filterRepo, filterStatus, sortBy]);
 
   const totalPages = Math.ceil(filteredPlugins.length / perPage);
-  const paginatedPlugins = filteredPlugins.slice((page - 1) * perPage, page * perPage);
+  const paginatedPlugins = filteredPlugins.slice(
+    (page - 1) * perPage,
+    page * perPage
+  );
 
   return (
     <AppShellMain p={16}>
@@ -307,10 +353,14 @@ export default function PluginBrowsePage() {
             Find Plugins
           </Text>
           {availablePlugins.length > 0 && (
-            <Badge variant="light" color="gray" size="sm">{availablePlugins.length} Plugins Available</Badge>
+            <Badge variant="light" color="gray" size="sm">
+              {availablePlugins.length} Plugins Available
+            </Badge>
           )}
           {repos.length > 1 && (
-            <Badge variant="light" color="gray" size="sm">{repos.length} Repos</Badge>
+            <Badge variant="light" color="gray" size="sm">
+              {repos.length} Repos
+            </Badge>
           )}
         </Group>
         <Group>
@@ -383,13 +433,16 @@ export default function PluginBrowsePage() {
         </Group>
       )}
 
-      {!loading && filteredPlugins.length === 0 && availablePlugins.length > 0 && (
-        <Box>
-          <Text c="dimmed">
-            No plugins match your filters. Try adjusting your search or filter criteria.
-          </Text>
-        </Box>
-      )}
+      {!loading &&
+        filteredPlugins.length === 0 &&
+        availablePlugins.length > 0 && (
+          <Box>
+            <Text c="dimmed">
+              No plugins match your filters. Try adjusting your search or filter
+              criteria.
+            </Text>
+          </Box>
+        )}
 
       {!loading && availablePlugins.length === 0 && (
         <Box>
@@ -402,19 +455,23 @@ export default function PluginBrowsePage() {
 
       {!loading && filteredPlugins.length > 0 && (
         <>
-          <SimpleGrid
-            cols={{ base: 1, md: 2, xl: 3 }}
-            spacing="md"
-          >
+          <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
             {paginatedPlugins.map((p) => (
               <AvailablePluginCard
                 key={`${p.repo_id}-${p.slug}`}
                 plugin={p}
                 appVersion={appVersion}
                 multiRepo={repos.length > 1}
-                onBeforeInstall={(slug) => { if (slug) recentlyInstalledSlugs.current.add(slug); }}
-                onInstalled={(slug) => { if (slug) recentlyInstalledSlugs.current.add(slug); fetchAvailablePlugins(); }}
-                onUninstalled={(slug) => { if (slug) recentlyUninstalledSlugs.current.add(slug); }}
+                onBeforeInstall={(slug) => {
+                  if (slug) recentlyInstalledSlugs.current.add(slug);
+                }}
+                onInstalled={(slug) => {
+                  if (slug) recentlyInstalledSlugs.current.add(slug);
+                  fetchAvailablePlugins();
+                }}
+                onUninstalled={(slug) => {
+                  if (slug) recentlyUninstalledSlugs.current.add(slug);
+                }}
               />
             ))}
           </SimpleGrid>
@@ -445,7 +502,9 @@ export default function PluginBrowsePage() {
               </Text>
             </div>
             <div style={{ textAlign: 'left', flexShrink: 0 }}>
-              <Text size="sm" fw={500} mb={2}>Refresh Interval</Text>
+              <Text size="sm" fw={500} mb={2}>
+                Refresh Interval
+              </Text>
               <NumberInput
                 value={refreshInterval}
                 onChange={handleSaveInterval}
@@ -455,119 +514,160 @@ export default function PluginBrowsePage() {
                 disabled={savingInterval}
                 w={115}
               />
-              <Text size="xs" c="dimmed" mt={2}>Hours, 0 to disable</Text>
+              <Text size="xs" c="dimmed" mt={2}>
+                Hours, 0 to disable
+              </Text>
             </div>
           </Group>
         }
         centered
         size="lg"
-        styles={{ title: { width: '100%' }, header: { alignItems: 'flex-start' } }}
+        styles={{
+          title: { width: '100%' },
+          header: { alignItems: 'flex-start' },
+        }}
       >
         <Stack gap="md">
           {reposLoading && repos.length === 0 && <Loader size="sm" />}
 
           {repos.map((repo) => (
             <React.Fragment key={repo.id}>
-            <Group
-              justify="space-between"
-              align="center"
-              wrap="nowrap"
-              style={{
-                padding: '8px 12px',
-                borderRadius: 8,
-                backgroundColor: 'var(--mantine-color-dark-6)',
-              }}
-            >
-              <Box style={{ minWidth: 0, flex: 1 }}>
-                <Group gap="xs" align="center">
-                  <Text fw={500} size="sm" lineClamp={1}>
-                    {repo.name}
-                  </Text>
-                  {repo.is_official && (
-                    <Badge size="xs" variant="filled" style={{ backgroundColor: '#14917E' }}>
-                      Official Repo
-                    </Badge>
-                  )}
-                  {repo.signature_verified === true && (
-                    <Badge size="xs" variant="light" color="green" leftSection={<ShieldCheck size={10} />}>
-                      Verified Signature
-                    </Badge>
-                  )}
-                  {repo.signature_verified === false && (
-                    <Badge size="xs" variant="light" color="red" leftSection={<ShieldAlert size={10} />}>
-                      Invalid Signature
-                    </Badge>
-                  )}
-
-                </Group>
-                {repo.registry_url ? (
+              <Group
+                justify="space-between"
+                align="center"
+                wrap="nowrap"
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  backgroundColor: 'var(--mantine-color-dark-6)',
+                }}
+              >
+                <Box style={{ minWidth: 0, flex: 1 }}>
+                  <Group gap="xs" align="center">
+                    <Text fw={500} size="sm" lineClamp={1}>
+                      {repo.name}
+                    </Text>
+                    {repo.is_official && (
+                      <Badge
+                        size="xs"
+                        variant="filled"
+                        style={{ backgroundColor: '#14917E' }}
+                      >
+                        Official Repo
+                      </Badge>
+                    )}
+                    {repo.signature_verified === true && (
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color="green"
+                        leftSection={<ShieldCheck size={10} />}
+                      >
+                        Verified Signature
+                      </Badge>
+                    )}
+                    {repo.signature_verified === false && (
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color="red"
+                        leftSection={<ShieldAlert size={10} />}
+                      >
+                        Invalid Signature
+                      </Badge>
+                    )}
+                  </Group>
+                  {repo.registry_url ? (
+                    <Text size="xs" c="dimmed" lineClamp={1}>
+                      <a
+                        href={repo.registry_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: 'var(--mantine-color-blue-4)',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {repo.registry_url}
+                      </a>
+                    </Text>
+                  ) : null}
                   <Text size="xs" c="dimmed" lineClamp={1}>
-                    <a
-                      href={repo.registry_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: 'var(--mantine-color-blue-4)', textDecoration: 'none' }}
+                    {repo.url}
+                  </Text>
+                  {repo.last_fetched && (
+                    <Text
+                      size="xs"
+                      c={
+                        repo.last_fetch_status &&
+                        repo.last_fetch_status !== '200'
+                          ? 'red'
+                          : 'dimmed'
+                      }
                     >
-                      {repo.registry_url}
-                    </a>
-                  </Text>
-                ) : null}
-                <Text size="xs" c="dimmed" lineClamp={1}>
-                  {repo.url}
-                </Text>
-                {repo.last_fetched && (
-                  <Text size="xs" c={repo.last_fetch_status && repo.last_fetch_status !== '200' ? 'red' : 'dimmed'}>
-                    Last fetched:{' '}
-                    {new Date(repo.last_fetched).toLocaleString()}
-                    {repo.last_fetch_status && repo.last_fetch_status !== '200'
-                      ? ` · ${repo.last_fetch_status}`
-                      : repo.plugin_count != null
-                        ? ` · ${repo.plugin_count} plugin${repo.plugin_count !== 1 ? 's' : ''} available`
-                        : ''}
-                  </Text>
+                      Last fetched:{' '}
+                      {new Date(repo.last_fetched).toLocaleString()}
+                      {repo.last_fetch_status &&
+                      repo.last_fetch_status !== '200'
+                        ? ` · ${repo.last_fetch_status}`
+                        : repo.plugin_count != null
+                          ? ` · ${repo.plugin_count} plugin${repo.plugin_count !== 1 ? 's' : ''} available`
+                          : ''}
+                    </Text>
+                  )}
+                </Box>
+                {!repo.is_official && (
+                  <Stack gap={4} align="center">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      title="Edit public key"
+                      onClick={() => handleEditKey(repo)}
+                    >
+                      <KeyRound size={16} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      title="Remove repo"
+                      onClick={() => setDeleteConfirmId(repo.id)}
+                    >
+                      <Trash2 size={16} />
+                    </ActionIcon>
+                  </Stack>
                 )}
-              </Box>
-              {!repo.is_official && (
-                <Stack gap={4} align="center">
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    title="Edit public key"
-                    onClick={() => handleEditKey(repo)}
-                  >
-                    <KeyRound size={16} />
-                  </ActionIcon>
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    title="Remove repo"
-                    onClick={() => setDeleteConfirmId(repo.id)}
-                  >
-                    <Trash2 size={16} />
-                  </ActionIcon>
+              </Group>
+              {editingKeyRepoId === repo.id && (
+                <Stack gap="xs" mt="xs">
+                  <Textarea
+                    placeholder={
+                      '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nOptional: Paste public GPG key here\n\n-----END PGP PUBLIC KEY BLOCK-----'
+                    }
+                    value={editKeyValue}
+                    onChange={(e) => setEditKeyValue(e.currentTarget.value)}
+                    size="xs"
+                    minRows={3}
+                    autosize
+                  />
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      onClick={handleSaveKey}
+                      loading={savingKey}
+                    >
+                      Save Key
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setEditingKeyRepoId(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </Group>
                 </Stack>
               )}
-            </Group>
-            {editingKeyRepoId === repo.id && (
-              <Stack gap="xs" mt="xs">
-                <Textarea
-                  placeholder={"-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nOptional: Paste public GPG key here\n\n-----END PGP PUBLIC KEY BLOCK-----"}
-                  value={editKeyValue}
-                  onChange={(e) => setEditKeyValue(e.currentTarget.value)}
-                  size="xs"
-                  minRows={3}
-                  autosize
-                />
-                <Group gap="xs">
-                  <Button size="xs" onClick={handleSaveKey} loading={savingKey}>
-                    Save Key
-                  </Button>
-                  <Button size="xs" variant="subtle" color="gray" onClick={() => setEditingKeyRepoId(null)}>
-                    Cancel
-                  </Button>
-                </Group>
-              </Stack>
-            )}
             </React.Fragment>
           ))}
 
@@ -593,15 +693,18 @@ export default function PluginBrowsePage() {
                   display: 'flex',
                   alignItems: 'center',
                   backgroundColor: 'var(--mantine-color-dark-6)',
-                  border: repoPreview && !previewLoading && !repoPreview.valid
-                    ? '1px solid var(--mantine-color-red-7)'
-                    : 'none',
+                  border:
+                    repoPreview && !previewLoading && !repoPreview.valid
+                      ? '1px solid var(--mantine-color-red-7)'
+                      : 'none',
                 }}
               >
                 {previewLoading ? (
                   <Group gap="xs" align="center">
                     <Loader size={14} />
-                    <Text size="xs" c="dimmed">Checking manifest...</Text>
+                    <Text size="xs" c="dimmed">
+                      Checking manifest...
+                    </Text>
                   </Group>
                 ) : repoPreview ? (
                   repoPreview.valid ? (
@@ -611,16 +714,32 @@ export default function PluginBrowsePage() {
                           {repoPreview.registry_name}
                         </Text>
                         {repoPreview.signature_verified === true && (
-                          <Badge size="xs" variant="light" color="green" leftSection={<ShieldCheck size={10} />}>
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color="green"
+                            leftSection={<ShieldCheck size={10} />}
+                          >
                             Verified Signature
                           </Badge>
                         )}
                         {repoPreview.signature_verified === false && (
                           <>
-                            <Badge size="xs" variant="light" color="gray" leftSection={<ShieldCheck size={10} />}>
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color="gray"
+                              leftSection={<ShieldCheck size={10} />}
+                            >
                               Signed Manifest
                             </Badge>
-                            <Text size="xs" c="var(--mantine-color-yellow-6)" fs="italic">Public key required for verification</Text>
+                            <Text
+                              size="xs"
+                              c="var(--mantine-color-yellow-6)"
+                              fs="italic"
+                            >
+                              Public key required for verification
+                            </Text>
                           </>
                         )}
                         {repoPreview.signature_verified == null && (
@@ -635,7 +754,10 @@ export default function PluginBrowsePage() {
                             href={repoPreview.registry_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: 'var(--mantine-color-blue-4)', textDecoration: 'none' }}
+                            style={{
+                              color: 'var(--mantine-color-blue-4)',
+                              textDecoration: 'none',
+                            }}
                           >
                             {repoPreview.registry_url}
                           </a>
@@ -645,7 +767,8 @@ export default function PluginBrowsePage() {
                         {newRepoUrl.trim()}
                       </Text>
                       <Text size="xs" c="dimmed">
-                        {repoPreview.plugin_count} plugin{repoPreview.plugin_count !== 1 ? 's' : ''} available
+                        {repoPreview.plugin_count} plugin
+                        {repoPreview.plugin_count !== 1 ? 's' : ''} available
                       </Text>
                     </Box>
                   ) : (
@@ -655,8 +778,11 @@ export default function PluginBrowsePage() {
                   )
                 ) : (
                   <Text size="xs" c="yellow">
-                    Third-party repositories are not reviewed by the Dispatcharr team.
-                    <br />Adding sources and installing plugins is done at your own risk.
+                    Third-party repositories are not reviewed by the Dispatcharr
+                    team.
+                    <br />
+                    Adding sources and installing plugins is done at your own
+                    risk.
                   </Text>
                 )}
               </Box>
@@ -670,7 +796,11 @@ export default function PluginBrowsePage() {
                 size="sm"
               />
               <Textarea
-                placeholder={gpgKeyFocused ? "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nPaste public GPG key here\n\n-----END PGP PUBLIC KEY BLOCK-----" : "Optional: Paste public GPG key here"}
+                placeholder={
+                  gpgKeyFocused
+                    ? '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nPaste public GPG key here\n\n-----END PGP PUBLIC KEY BLOCK-----'
+                    : 'Optional: Paste public GPG key here'
+                }
                 value={newRepoPublicKey}
                 onChange={(e) => {
                   const value = e.currentTarget.value;
@@ -682,15 +812,30 @@ export default function PluginBrowsePage() {
                 maxRows={8}
                 autosize
                 onFocus={() => setGpgKeyFocused(true)}
-                onBlur={() => { if (!newRepoPublicKey) setGpgKeyFocused(false); }}
-                styles={repoPreview?.valid && repoPreview?.signature_verified === false && !newRepoPublicKey.trim() ? { input: { borderColor: 'var(--mantine-color-yellow-6)' } } : undefined}
+                onBlur={() => {
+                  if (!newRepoPublicKey) setGpgKeyFocused(false);
+                }}
+                styles={
+                  repoPreview?.valid &&
+                  repoPreview?.signature_verified === false &&
+                  !newRepoPublicKey.trim()
+                    ? {
+                        input: { borderColor: 'var(--mantine-color-yellow-6)' },
+                      }
+                    : undefined
+                }
               />
               <Group gap="xs" justify="flex-end">
                 <Button
                   variant="subtle"
                   color="gray"
                   size="sm"
-                  onClick={() => { setShowAddRepo(false); setNewRepoUrl(''); setNewRepoPublicKey(''); setRepoPreview(null); }}
+                  onClick={() => {
+                    setShowAddRepo(false);
+                    setNewRepoUrl('');
+                    setNewRepoPublicKey('');
+                    setRepoPreview(null);
+                  }}
                 >
                   Cancel
                 </Button>
@@ -718,10 +863,21 @@ export default function PluginBrowsePage() {
         centered
       >
         <Text size="sm">Are you sure you want to remove this repository?</Text>
-        <Text size="xs" c="dimmed" mt="xs">Plugins installed from this repo will remain installed but become unmanaged.</Text>
+        <Text size="xs" c="dimmed" mt="xs">
+          Plugins installed from this repo will remain installed but become
+          unmanaged.
+        </Text>
         <Group mt="md" justify="flex-end" gap="xs">
-          <Button variant="subtle" color="gray" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-          <Button color="red" onClick={() => handleDeleteRepo(deleteConfirmId)}>Remove</Button>
+          <Button
+            variant="subtle"
+            color="gray"
+            onClick={() => setDeleteConfirmId(null)}
+          >
+            Cancel
+          </Button>
+          <Button color="red" onClick={() => handleDeleteRepo(deleteConfirmId)}>
+            Remove
+          </Button>
         </Group>
       </Modal>
     </AppShellMain>
