@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-04-17
+
 ### Security
 
 - Set `DEFAULT_PERMISSION_CLASSES` to `IsAdmin` in the DRF configuration. All viewsets and function-based views that require non-admin or unauthenticated access were explicitly annotated: proxy streaming endpoints (`stream_ts`, `stream_xc`, `stream_vod`, `head_vod`, `stream_xc_movie`, `stream_xc_episode`) use `@permission_classes([AllowAny])` (access is controlled by the per-stream-type network allow-list inside the view body); the `UserAgentViewSet`, `StreamProfileViewSet`, `CoreSettingsViewSet`, and `ProxySettingsViewSet` gained `get_permissions()` methods mapping read actions to `IsStandardUser` and write actions to `IsAdmin`; and `AuthViewSet.logout` was updated to return `[Authenticated()]`.
