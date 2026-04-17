@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+
+- Eliminated repeated DB queries in the `ts_proxy` hot path. `StreamManager`, `StreamGenerator`, and `ProxyServer` were each calling `Channel.objects.get(uuid=...)` on every retry, reconnect, failover, and buffering event solely to retrieve `channel.name` for log events. `StreamManager` and `StreamGenerator` now fetch the channel name once at construction via a lightweight `values_list` query and store it as `self.channel_name`. `ProxyServer` caches the name in a `_channel_names` dict keyed by channel ID at channel-start time and pops it at channel-stop time. (Fixes #1138)
+
 ## [0.23.0] - 2026-04-17
 
 ### Security
