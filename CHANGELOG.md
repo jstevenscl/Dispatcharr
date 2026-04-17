@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin file sizes**: the plugin hub now displays the download size of a plugin directly on the Install / Update / Downgrade / Overwrite buttons (e.g. `Install  142 KB`) when the repository manifest includes size data. The size is also shown in the version detail panel. Falls back gracefully to a plain button when no size is provided. A `formatKB` utility was added to convert raw KB values to human-readable strings (KB/MB). A "Publish Your Plugin" button linking to the contributing guide was added to the plugin store toolbar. — Thanks [@sethwv](https://github.com/sethwv)
+
 ## [0.23.0] - 2026-04-17
 
 ### Security
