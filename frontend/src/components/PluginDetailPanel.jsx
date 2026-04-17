@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ActionIcon,
   Alert,
@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { AlertTriangle, Ban, Check, Download, RefreshCw, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import { compareVersions } from './pluginUtils.js';
+import { formatKB } from '../utils/networkUtils.js';
 
 export const GitHubIcon = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -365,6 +366,12 @@ const PluginDetailPanel = ({
                   <Table.Tr>
                     <Table.Td fw={500} style={{ whiteSpace: 'nowrap' }}>Built</Table.Td>
                     <Table.Td>{new Date(selectedVersionData.build_timestamp).toLocaleString()}</Table.Td>
+                  </Table.Tr>
+                )}
+                {Number.isFinite(selectedVersionData.size) && (
+                  <Table.Tr>
+                    <Table.Td fw={500} style={{ whiteSpace: 'nowrap' }}>File Size</Table.Td>
+                    <Table.Td>{formatKB(selectedVersionData.size)}</Table.Td>
                   </Table.Tr>
                 )}
                 {selectedVersionData.min_dispatcharr_version && (

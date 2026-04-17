@@ -177,6 +177,7 @@ const PluginCard = ({
             min_dispatcharr_version: avail.min_dispatcharr_version,
             max_dispatcharr_version: avail.max_dispatcharr_version,
             build_timestamp: avail.last_updated,
+            size: avail.latest_size,
           }] : [],
           latest: avail.latest_version ? { version: avail.latest_version } : null,
         },
@@ -363,6 +364,7 @@ const PluginCard = ({
               alt={`${plugin.name} logo`}
               onClick={isManaged ? () => openModal('details') : undefined}
               style={isManaged ? { cursor: 'pointer' } : undefined}
+              imageProps={{ draggable: false }}
             >
               {plugin.name?.[0]?.toUpperCase()}
             </Avatar>
@@ -529,7 +531,7 @@ const PluginCard = ({
         onClose={() => setModalOpen(false)}
         title={
           <Group gap="xs" align="center">
-            <Avatar src={plugin.logo_url} radius="sm" size={28} alt={`${plugin.name} logo`}>
+            <Avatar src={plugin.logo_url} radius="sm" size={28} alt={`${plugin.name} logo`} imageProps={{ draggable: false }}>
               {plugin.name?.[0]?.toUpperCase()}
             </Avatar>
             <Text fw={600}>{plugin.name}</Text>

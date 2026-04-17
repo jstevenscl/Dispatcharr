@@ -20,6 +20,7 @@ import API from '../../api';
 import { usePluginStore } from '../../store/plugins';
 import PluginDetailPanel from '../PluginDetailPanel.jsx';
 import { compareVersions } from '../pluginUtils.js';
+import { formatKB } from '../../utils/networkUtils.js';
 
 const RepoBadge = ({ isOfficial, repoName, signatureVerified }) => {
   if (isOfficial) {
@@ -110,6 +111,56 @@ const StatusBadge = ({ status, deprecated, isPrerelease, isLatestDowngrade, inst
     );
   }
   return null;
+};
+
+const SizedInstallButton = ({ latest_size, children, color, loading, disabled, onClick, ...buttonProps }) => {
+  const [hovered, setHovered] = useState(false);
+  if (!Number.isFinite(latest_size)) {
+    return <Button color={color} loading={loading} disabled={disabled} onClick={onClick} {...buttonProps}>{children}</Button>;
+  }
+  const isDisabled = disabled || loading;
+  const colorVar = color ? `var(--mantine-color-${color}-filled)` : 'var(--mantine-primary-color-filled)';
+  return (
+    <Group
+      gap={0}
+      align="stretch"
+      wrap="nowrap"
+      onMouseEnter={() => { if (!isDisabled) setHovered(true); }}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Button
+        color={color}
+        loading={loading}
+        disabled={disabled}
+        onClick={onClick}
+        styles={hovered && !isDisabled ? { root: { background: color ? `var(--mantine-color-${color}-filled-hover)` : 'var(--mantine-primary-color-filled-hover)' } } : undefined}
+        {...buttonProps}
+        style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+      >
+        {children}
+      </Button>
+      <Box
+        onClick={!isDisabled ? onClick : undefined}
+        style={{
+          background: isDisabled ? colorVar : hovered ? (color ? `var(--mantine-color-${color}-filled-hover)` : 'var(--mantine-primary-color-filled-hover)') : colorVar,
+          filter: isDisabled ? 'brightness(0.65) saturate(0.7)' : hovered ? 'brightness(0.86)' : 'brightness(0.82)',
+          borderLeft: '1px solid rgba(0,0,0,0.2)',
+          borderTopRightRadius: 'var(--mantine-radius-sm)',
+          borderBottomRightRadius: 'var(--mantine-radius-sm)',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 9px',
+          fontSize: 11,
+          color: '#fff',
+          cursor: isDisabled ? 'default' : 'pointer',
+          userSelect: 'none',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {formatKB(latest_size)}
+      </Box>
+    </Group>
+  );
 };
 
 const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDetail = false, onDetailClose, onInstalled, onUninstalled, onBeforeInstall }) => {
@@ -236,6 +287,7 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
             min_dispatcharr_version: plugin.min_dispatcharr_version,
             max_dispatcharr_version: plugin.max_dispatcharr_version,
             build_timestamp: plugin.last_updated,
+            size: plugin.latest_size,
           }] : [],
           latest: plugin.latest_version ? { version: plugin.latest_version } : null,
         },
@@ -290,6 +342,7 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
             radius="sm"
             size={48}
             alt={`${plugin.name} logo`}
+            imageProps={{ draggable: false }}
           >
             {plugin.name?.[0]?.toUpperCase()}
           </Avatar>
@@ -402,30 +455,32 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
         </Button>
         {(plugin.install_status === 'unmanaged') && plugin.latest_version && plugin.latest_url && (
           <Tooltip label="Installed manually - installing from this repo will take over management">
-            <Button
+            <SizedInstallButton
               size="xs"
               variant="filled"
               color="orange"
+              latest_size={plugin.latest_size}
               leftSection={installing ? <Loader size={14} /> : <Download size={14} />}
               disabled={!meetsVersion || installing}
               onClick={() => doInstall(latestInstallParams)}
             >
               {installing ? 'Installing...' : 'Overwrite'}
-            </Button>
+            </SizedInstallButton>
           </Tooltip>
         )}
         {(plugin.install_status === 'different_repo') && plugin.latest_url && (
           <Tooltip label={`Managed by ${plugin.installed_source_repo_name || 'another repo'} - installing will transfer management to this repo`}>
-            <Button
+            <SizedInstallButton
               size="xs"
               variant="filled"
               color="orange"
+              latest_size={plugin.latest_size}
               leftSection={installing ? <Loader size={14} /> : <Download size={14} />}
               disabled={!meetsVersion || installing}
               onClick={() => doInstall(latestInstallParams)}
             >
               {installing ? 'Installing...' : 'Overwrite'}
-            </Button>
+            </SizedInstallButton>
           </Tooltip>
         )}
         {(plugin.install_status === 'installed') && (
@@ -440,10 +495,11 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
           </Button>
         )}
         {(plugin.install_status === 'update_available') && (
-          <Button
+          <SizedInstallButton
             size="xs"
             variant="filled"
             color={isLatestDowngrade ? 'orange' : 'yellow'}
+            latest_size={plugin.latest_size}
             leftSection={installing ? <Loader size={14} /> : isLatestDowngrade ? <AlertTriangle size={14} /> : <RefreshCw size={14} />}
             disabled={!meetsVersion || installing}
             onClick={() => doInstall(latestInstallParams)}
@@ -451,18 +507,19 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
             {installing
               ? (isLatestDowngrade ? 'Downgrading...' : 'Updating...')
               : (isLatestDowngrade ? 'Downgrade' : 'Update')}
-          </Button>
+          </SizedInstallButton>
         )}
         {(!plugin.install_status || plugin.install_status === 'not_installed') && plugin.latest_url && (
-          <Button
+          <SizedInstallButton
             size="xs"
             variant="filled"
+            latest_size={plugin.latest_size}
             leftSection={installing ? <Loader size={14} /> : <Download size={14} />}
             disabled={!meetsVersion || installing}
             onClick={() => doInstall(latestInstallParams)}
           >
             {installing ? 'Installing...' : 'Install'}
-          </Button>
+          </SizedInstallButton>
         )}
         </Group>
       </Group>
@@ -478,6 +535,7 @@ const AvailablePluginCard = ({ plugin, appVersion, multiRepo = false, autoOpenDe
               radius="sm"
               size={28}
               alt={`${plugin.name} logo`}
+              imageProps={{ draggable: false }}
             >
               {plugin.name?.[0]?.toUpperCase()}
             </Avatar>
