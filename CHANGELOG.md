@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin file sizes**: the plugin hub now displays the download size of a plugin directly on the Install / Update / Downgrade / Overwrite buttons (e.g. `Install  142 KB`) when the repository manifest includes size data. The size is also shown in the version detail panel. Falls back gracefully to a plain button when no size is provided. A `formatKB` utility was added to convert raw KB values to human-readable strings (KB/MB). A "Publish Your Plugin" button linking to the contributing guide was added to the plugin store toolbar. — Thanks [@sethwv](https://github.com/sethwv)
+
 ### Performance
 
 - Eliminated repeated DB queries in the `ts_proxy` hot path. `StreamManager`, `StreamGenerator`, and `ProxyServer` were each calling `Channel.objects.get(uuid=...)` on every retry, reconnect, failover, and buffering event solely to retrieve `channel.name` for log events. `StreamManager` and `StreamGenerator` now fetch the channel name once at construction via a lightweight `values_list` query and store it as `self.channel_name`. `ProxyServer` caches the name in a `_channel_names` dict keyed by channel ID at channel-start time and pops it at channel-stop time. (Fixes #1138)
