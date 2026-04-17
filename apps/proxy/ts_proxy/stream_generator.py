@@ -43,6 +43,12 @@ class StreamGenerator:
         self.client_user_agent = client_user_agent
         self.channel_initializing = channel_initializing
         self.user = user
+        # Cache channel name once to avoid repeated DB queries for logging
+        try:
+            _name = Channel.objects.filter(uuid=channel_id).values_list('name', flat=True).first()
+            self.channel_name = _name if _name else str(channel_id)
+        except Exception:
+            self.channel_name = str(channel_id)
 
         # Performance and state tracking
         self.stream_start_time = time.time()
@@ -107,11 +113,10 @@ class StreamGenerator:
 
             # Log client connect event
             try:
-                channel_obj = Channel.objects.get(uuid=self.channel_id)
                 log_system_event(
                     'client_connect',
                     channel_id=self.channel_id,
-                    channel_name=channel_obj.name,
+                    channel_name=self.channel_name,
                     client_ip=self.client_ip,
                     client_id=self.client_id,
                     user_agent=self.client_user_agent[:100] if self.client_user_agent else None,
@@ -587,11 +592,10 @@ class StreamGenerator:
 
             # Log client disconnect event
             try:
-                channel_obj = Channel.objects.get(uuid=self.channel_id)
                 log_system_event(
                     'client_disconnect',
                     channel_id=self.channel_id,
-                    channel_name=channel_obj.name,
+                    channel_name=self.channel_name,
                     client_ip=self.client_ip,
                     client_id=self.client_id,
                     user_agent=self.client_user_agent[:100] if self.client_user_agent else None,
