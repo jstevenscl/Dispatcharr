@@ -27,6 +27,13 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import { DiscordIcon } from '../PluginDetailPanel.jsx';
+import {
+  PluginDowngradeWarning,
+  PluginInfoNote,
+  PluginSecurityWarning,
+  PluginSupportDisclaimer,
+} from '../PluginWarnings.jsx';
 import { useNavigate, useLocation } from 'react-router-dom';
 import API from '../../api';
 import { usePluginStore } from '../../store/plugins';
@@ -730,6 +737,13 @@ const AvailablePluginCard = ({
             stop working with future versions of Dispatcharr. It is recommended
             to look for an alternative.
           </Text>
+          <PluginSecurityWarning>
+            Plugins run server-side code with full access to your Dispatcharr
+            instance and its data. Only install plugins from developers you
+            trust. Malicious plugins could read or modify data, call internal
+            APIs, or perform unwanted actions.
+          </PluginSecurityWarning>
+          <PluginSupportDisclaimer />
           <Text size="sm" fw={500}>
             Do you still want to proceed?
           </Text>
@@ -830,38 +844,37 @@ const AvailablePluginCard = ({
                 )}
                 .
               </Text>
-              <Text size="sm" c="dimmed">
+              <PluginSecurityWarning>
                 Plugins run server-side code with full access to your
                 Dispatcharr instance and its data. Only install plugins from
                 developers you trust. Malicious plugins could read or modify
                 data, call internal APIs, or perform unwanted actions.
-              </Text>
+              </PluginSecurityWarning>
+              <PluginSupportDisclaimer />
               {isDowngrade && (
-                <Text size="sm" c="orange">
-                  <b>Warning:</b> Downgrading may cause issues with saved
-                  settings or data.
-                </Text>
+                <PluginDowngradeWarning>
+                  Downgrading may cause issues with saved settings or data.
+                </PluginDowngradeWarning>
               )}
               {isBadSig && (
-                <Text size="sm" c="red">
-                  <b>Warning:</b> This repository has an invalid or unverified
-                  signature. Installing plugins from unverified sources may be
-                  risky.
-                </Text>
+                <PluginSecurityWarning>
+                  This repository has an invalid or unverified signature.
+                  Installing plugins from unverified sources may be risky.
+                </PluginSecurityWarning>
               )}
               {plugin.install_status === 'unmanaged' && (
-                <Text size="sm" c="orange">
-                  <b>Note:</b> This plugin was installed manually. Installing
-                  from this repo will bring it under repo management and enable
-                  future update checks.
-                </Text>
+                <PluginInfoNote>
+                  This plugin was installed manually. Installing from this repo
+                  will bring it under repo management and enable future update
+                  checks.
+                </PluginInfoNote>
               )}
               {plugin.install_status === 'different_repo' && (
-                <Text size="sm" c="orange">
-                  <b>Note:</b> This plugin is currently managed by{' '}
+                <PluginInfoNote>
+                  This plugin is currently managed by{' '}
                   <b>{plugin.installed_source_repo_name || 'another repo'}</b>.
                   Installing will transfer management to this repo.
-                </Text>
+                </PluginInfoNote>
               )}
               <Text size="sm" fw={500}>
                 Are you sure you want to proceed?
