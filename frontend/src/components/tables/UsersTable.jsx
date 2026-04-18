@@ -19,6 +19,7 @@ import {
   LoadingOverlay,
   Stack,
   Badge,
+  Tooltip,
 } from '@mantine/core';
 import { CustomTable, useTable } from './CustomTable';
 import ConfirmationDialog from '../ConfirmationDialog';
@@ -155,6 +156,7 @@ const UsersTable = () => {
         header: 'User Level',
         accessorKey: 'user_level',
         size: 120,
+        minSize: 80,        
         cell: ({ getValue }) => (
           <Text size="sm">{USER_LEVEL_LABELS[getValue()]}</Text>
         ),
@@ -162,7 +164,8 @@ const UsersTable = () => {
       {
         header: 'Username',
         accessorKey: 'username',
-        size: 150,
+        size: 120,
+        minSize: 75,
         cell: ({ getValue }) => (
           <Box
             style={{
@@ -178,6 +181,8 @@ const UsersTable = () => {
       {
         id: 'name',
         header: 'Name',
+        size: 120,
+        minSize: 50,
         accessorFn: (row) =>
           `${row.first_name || ''} ${row.last_name || ''}`.trim(),
         cell: ({ getValue }) => (
@@ -195,7 +200,8 @@ const UsersTable = () => {
       {
         header: 'Email',
         accessorKey: 'email',
-        grow: true,
+        size: 200,
+        minSize: 50,        
         cell: ({ getValue }) => (
           <Box
             style={{
@@ -211,7 +217,8 @@ const UsersTable = () => {
       {
         header: 'Date Joined',
         accessorKey: 'date_joined',
-        size: 125,
+        size: 90,
+        minSize: 90,        
         cell: ({ getValue }) => {
           const date = getValue();
           return (
@@ -223,6 +230,7 @@ const UsersTable = () => {
         header: 'Last Login',
         accessorKey: 'last_login',
         size: 175,
+        minSize: 85,
         cell: ({ getValue }) => {
           const date = getValue();
           return (
@@ -235,7 +243,8 @@ const UsersTable = () => {
       {
         header: 'XC Password',
         accessorKey: 'custom_properties',
-        size: 125,
+        size: 100,
+        minSize: 95,
         enableSorting: false,
         cell: ({ getValue, row }) => {
           const userId = row.original.id;
@@ -247,10 +256,17 @@ const UsersTable = () => {
           password = customProps.xc_password || 'N/A';
 
           return (
-            <Group gap={4} style={{ alignItems: 'center' }}>
+            <Group gap={4} style={{ alignItems: 'center', overflow: 'hidden', flexWrap: 'nowrap' }}>
               <Text
                 size="sm"
-                style={{ fontFamily: 'monospace', minWidth: '60px' }}
+                style={{
+                  fontFamily: 'monospace',
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
               >
                 {password === 'N/A' ? 'N/A' : isVisible ? password : '••••••••'}
               </Text>
@@ -271,6 +287,8 @@ const UsersTable = () => {
       {
         header: 'Channel Profiles',
         accessorKey: 'channel_profiles',
+        size: 120,
+        minSize: 116,         
         grow: true,
         cell: ({ getValue }) => {
           const userProfiles = getValue() || [];
@@ -281,14 +299,15 @@ const UsersTable = () => {
             <Group gap={4} wrap="wrap" py={4}>
               {profileNames.length > 0 ? (
                 profileNames.map((name, index) => (
-                  <Badge
-                    key={index}
-                    size="sm"
-                    variant="light"
-                    color="gray"
-                  >
-                    {name}
-                  </Badge>
+                  <Tooltip key={index} label={name} withArrow>
+                    <Badge
+                      size="sm"
+                      variant="light"
+                      color="gray"
+                    >
+                      {name}
+                    </Badge>
+                  </Tooltip>
                 ))
               ) : (
                 <Badge size="sm" variant="light" color="gray">
@@ -301,9 +320,10 @@ const UsersTable = () => {
       },      
       {
         id: 'actions',
-        size: 80,
+        size: 65,
         header: 'Actions',
         enableSorting: false,
+        enableResizing: false,
         cell: ({ row }) => (
           <UserRowActions
             theme={theme}
@@ -376,7 +396,7 @@ const UsersTable = () => {
           minHeight: '100vh',
         }}
       >
-        <Stack gap="md" style={{ width: '100%' }}>
+        <Stack gap="md" style={{ maxWidth: '1200px', width: '100%' }}>
           <Flex style={{ alignItems: 'center', paddingBottom: 10 }} gap={15}>
             <Text
               style={{
