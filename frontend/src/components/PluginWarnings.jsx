@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from '@mantine/core';
-import { AlertTriangle, OctagonAlert } from 'lucide-react';
-import { DiscordIcon } from './PluginDetailPanel.jsx';
+import { AlertTriangle, Info, OctagonAlert } from 'lucide-react';
+import dispatcharrLogo from '../images/logo.png';
 
 export const PluginSecurityWarning = ({ children }) => (
   <Box
@@ -27,8 +27,8 @@ export const PluginSecurityWarning = ({ children }) => (
 export const PluginSupportDisclaimer = () => (
   <Box
     style={{
-      background: 'rgba(88, 101, 242, 0.12)',
-      border: '1px solid rgba(88, 101, 242, 0.35)',
+      background: 'rgba(20, 145, 126, 0.1)',
+      border: '1px solid rgba(20, 145, 126, 0.35)',
       borderRadius: 'var(--mantine-radius-sm)',
       padding: '10px 14px',
       display: 'flex',
@@ -36,10 +36,17 @@ export const PluginSupportDisclaimer = () => (
       alignItems: 'flex-start',
     }}
   >
-    <Box style={{ color: '#5865F2', flexShrink: 0, paddingTop: 1 }}>
-      <DiscordIcon size={16} />
+    <Box style={{ flexShrink: 0, paddingTop: 1 }}>
+      <img
+        src={dispatcharrLogo}
+        alt="Dispatcharr"
+        width={16}
+        height={16}
+        draggable={false}
+        style={{ display: 'block', objectFit: 'contain' }}
+      />
     </Box>
-    <Text size="xs" style={{ color: '#8b97f5' }}>
+    <Text size="xs" style={{ color: '#4db8a8' }}>
       Dispatcharr community support cannot assist with third-party plugin
       issues. For help, use the plugin&apos;s Discord thread or submit an issue
       on the plugin&apos;s repository.
@@ -81,7 +88,7 @@ export const PluginInfoNote = ({ children }) => (
     }}
   >
     <Box style={{ color: '#94a3b8', flexShrink: 0, paddingTop: 1 }}>
-      <AlertTriangle size={16} />
+      <Info size={16} />
     </Box>
     <Text size="xs" style={{ color: '#cbd5e1' }}>
       {children}
