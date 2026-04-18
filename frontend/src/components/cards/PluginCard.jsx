@@ -26,6 +26,7 @@ import API from '../../api';
 import PluginDetailPanel from '../PluginDetailPanel.jsx';
 import { compareVersions } from '../pluginUtils.js';
 import {
+  PluginDowngradeWarning,
   PluginSecurityWarning,
   PluginSupportDisclaimer,
 } from '../PluginWarnings.jsx';
@@ -662,6 +663,11 @@ const PluginCard = ({
                 APIs, or perform unwanted actions.
               </PluginSecurityWarning>
               <PluginSupportDisclaimer />
+              {isDown && (
+                <PluginDowngradeWarning>
+                  Downgrading may cause issues with saved settings or data.
+                </PluginDowngradeWarning>
+              )}
               <Text size="sm" fw={500}>Are you sure you want to proceed?</Text>
               <Group justify="flex-end" gap="xs">
                 <Button
