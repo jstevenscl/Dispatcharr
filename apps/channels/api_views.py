@@ -797,16 +797,20 @@ class ChannelViewSet(viewsets.ModelViewSet):
                 if to_remove:
                     channel.channelstream_set.filter(stream_id__in=to_remove).delete()
 
+                to_update = []
                 for order, stream_id in enumerate(normalized_ids):
                     if stream_id in current_links:
                         cs = current_links[stream_id]
                         if cs.order != order:
                             cs.order = order
-                            cs.save(update_fields=["order"])
+                            to_update.append(cs)
                     else:
                         ChannelStream.objects.create(
                             channel=channel, stream_id=stream_id, order=order
                         )
+
+                if to_update:
+                    ChannelStream.objects.bulk_update(to_update, ["order"])
 
         # Return the updated objects (already in memory)
         serialized_channels = ChannelSerializer(
