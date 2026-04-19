@@ -288,6 +288,9 @@ const ChannelsTable = ({ onReady }) => {
     (s) => s.setSelectedChannelIds
   );
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
+  const setExpandedChannelId = useChannelsTableStore(
+    (s) => s.setExpandedChannelId
+  );
   const pagination = useChannelsTableStore((s) => s.pagination);
   const setPagination = useChannelsTableStore((s) => s.setPagination);
   const sorting = useChannelsTableStore((s) => s.sorting);
@@ -694,6 +697,13 @@ const ChannelsTable = ({ onReady }) => {
   const onRowSelectionChange = (newSelection) => {
     setSelectedChannelIds(newSelection);
   };
+
+  const onRowExpansionChange = useCallback(
+    (expandedIds) => {
+      setExpandedChannelId(expandedIds.length > 0 ? expandedIds[0] : null);
+    },
+    [setExpandedChannelId]
+  );
 
   const onPageSizeChange = (e) => {
     setPagination({
@@ -1136,6 +1146,7 @@ const ChannelsTable = ({ onReady }) => {
     enableRowSelection: true,
     enableDragDrop: true,
     onRowSelectionChange: onRowSelectionChange,
+    onRowExpansionChange: onRowExpansionChange,
     state: {
       pagination,
       sorting,
@@ -1151,7 +1162,7 @@ const ChannelsTable = ({ onReady }) => {
           className="tr"
           style={{ display: 'flex', width: '100%' }}
         >
-          <ChannelTableStreams channel={row.original} isExpanded={true} />
+          <ChannelTableStreams channel={row.original} />
         </Box>
       );
     },

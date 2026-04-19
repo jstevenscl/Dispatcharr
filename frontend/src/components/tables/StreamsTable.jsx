@@ -74,19 +74,23 @@ const StreamRowActions = ({
   editStream,
   deleteStream,
   handleWatchStream,
-  selectedChannelIds,
   createChannelFromStream,
   table,
 }) => {
   const tableSize = table?.tableSize ?? 'default';
+  const expandedChannelId = useChannelsTableStore((s) => s.expandedChannelId);
+  const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
+  const targetChannelId =
+    expandedChannelId ||
+    (selectedChannelIds.length === 1 ? selectedChannelIds[0] : null);
   const channelSelectionStreams = useChannelsTableStore(
     (state) =>
-      state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
+      state.channels.find((chan) => chan.id === targetChannelId)?.streams
   );
 
   const addStreamToChannel = async () => {
     await API.updateChannel({
-      id: selectedChannelIds[0],
+      id: targetChannelId,
       streams: [
         ...new Set(
           channelSelectionStreams.map((s) => s.id).concat([row.original.id])
@@ -129,7 +133,7 @@ const StreamRowActions = ({
           onClick={addStreamToChannel}
           style={{ background: 'none' }}
           disabled={
-            selectedChannelIds.length !== 1 ||
+            !targetChannelId ||
             (channelSelectionStreams &&
               channelSelectionStreams
                 .map((s) => s.id)
@@ -331,10 +335,14 @@ const StreamsTable = ({ onReady }) => {
   const fetchChannelGroups = useChannelsStore((s) => s.fetchChannelGroups);
   const channelGroups = useChannelsStore((s) => s.channelGroups);
 
+  const expandedChannelId = useChannelsTableStore((s) => s.expandedChannelId);
   const selectedChannelIds = useChannelsTableStore((s) => s.selectedChannelIds);
+  const targetChannelId =
+    expandedChannelId ||
+    (selectedChannelIds.length === 1 ? selectedChannelIds[0] : null);
   const channelSelectionStreams = useChannelsTableStore(
     (state) =>
-      state.channels.find((chan) => chan.id === selectedChannelIds[0])?.streams
+      state.channels.find((chan) => chan.id === targetChannelId)?.streams
   );
   const channelProfiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
@@ -1033,7 +1041,7 @@ const StreamsTable = ({ onReady }) => {
 
   const addStreamsToChannel = async () => {
     await API.updateChannel({
-      id: selectedChannelIds[0],
+      id: targetChannelId,
       streams: [
         ...new Set(
           channelSelectionStreams.map((s) => s.id).concat(selectedStreamIds)
@@ -1267,20 +1275,12 @@ const StreamsTable = ({ onReady }) => {
               editStream={editStream}
               deleteStream={deleteStream}
               handleWatchStream={handleWatchStream}
-              selectedChannelIds={selectedChannelIds}
               createChannelFromStream={createChannelFromStream}
             />
           );
       }
     },
-    [
-      selectedChannelIds,
-      channelSelectionStreams,
-      theme,
-      editStream,
-      deleteStream,
-      handleWatchStream,
-    ]
+    [theme, editStream, deleteStream, handleWatchStream]
   );
 
   const table = useTable({
@@ -1462,14 +1462,13 @@ const StreamsTable = ({ onReady }) => {
         >
           <Flex gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
             <Tooltip
-              label="Add selected stream(s) to the selected channel"
+              label="Add selected stream(s) to the target channel"
               openDelay={500}
             >
               <Button
                 leftSection={<SquarePlus size={18} />}
                 variant={
-                  selectedStreamIds.length > 0 &&
-                  selectedChannelIds.length === 1
+                  selectedStreamIds.length > 0 && targetChannelId
                     ? 'light'
                     : 'default'
                 }
@@ -1477,14 +1476,12 @@ const StreamsTable = ({ onReady }) => {
                 onClick={addStreamsToChannel}
                 p={5}
                 color={
-                  selectedStreamIds.length > 0 &&
-                  selectedChannelIds.length === 1
+                  selectedStreamIds.length > 0 && targetChannelId
                     ? theme.tailwind.green[5]
                     : undefined
                 }
                 style={
-                  selectedStreamIds.length > 0 &&
-                  selectedChannelIds.length === 1
+                  selectedStreamIds.length > 0 && targetChannelId
                     ? {
                         borderWidth: '1px',
                         borderColor: theme.tailwind.green[5],
@@ -1492,12 +1489,7 @@ const StreamsTable = ({ onReady }) => {
                       }
                     : undefined
                 }
-                disabled={
-                  !(
-                    selectedStreamIds.length > 0 &&
-                    selectedChannelIds.length === 1
-                  )
-                }
+                disabled={!(selectedStreamIds.length > 0 && targetChannelId)}
               >
                 Add to Channel
               </Button>
