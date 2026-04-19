@@ -27,7 +27,6 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { DiscordIcon } from '../PluginDetailPanel.jsx';
 import {
   PluginDowngradeWarning,
   PluginInfoNote,
