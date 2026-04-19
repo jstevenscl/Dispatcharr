@@ -191,56 +191,60 @@ const RowDragHandleCell = ({ rowId }) => {
 };
 
 // Row Component
-const DraggableRow = ({ row, index }) => {
-  const { transform, transition, setNodeRef, isDragging } = useSortable({
-    id: row.original.id,
-  });
+const DraggableRow = React.memo(
+  ({ row, index }) => {
+    const { transform, transition, setNodeRef, isDragging } = useSortable({
+      id: row.original.id,
+    });
 
-  const style = {
-    transform: CSS.Transform.toString(transform), //let dnd-kit do its thing
-    transition: transition,
-    opacity: isDragging ? 0.8 : 1,
-    zIndex: isDragging ? 1 : 0,
-    position: 'relative',
-  };
-  return (
-    <Box
-      ref={setNodeRef}
-      key={row.id}
-      className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'}${row.original.is_stale ? ' stale-stream-row' : ''}`}
-      style={{
-        ...style,
-        display: 'flex',
-        width: '100%',
-        ...(row.getIsSelected() && {
-          backgroundColor: '#163632',
-        }),
-      }}
-    >
-      {row.getVisibleCells().map((cell) => {
-        return (
-          <Box
-            className="td"
-            key={cell.id}
-            style={{
-              flex: cell.column.columnDef.size ? '0 0 auto' : '1 1 0',
-              width: cell.column.columnDef.size
-                ? cell.column.getSize()
-                : undefined,
-              minWidth: 0,
-            }}
-          >
-            <Flex align="center" style={{ height: '100%' }}>
-              <Text component="div" size="xs">
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </Text>
-            </Flex>
-          </Box>
-        );
-      })}
-    </Box>
-  );
-};
+    const style = {
+      transform: CSS.Transform.toString(transform), //let dnd-kit do its thing
+      transition: transition,
+      opacity: isDragging ? 0.8 : 1,
+      zIndex: isDragging ? 1 : 0,
+      position: 'relative',
+    };
+    return (
+      <Box
+        ref={setNodeRef}
+        key={row.id}
+        className={`tr ${index % 2 == 0 ? 'tr-even' : 'tr-odd'}${row.original.is_stale ? ' stale-stream-row' : ''}`}
+        style={{
+          ...style,
+          display: 'flex',
+          width: '100%',
+          ...(row.getIsSelected() && {
+            backgroundColor: '#163632',
+          }),
+        }}
+      >
+        {row.getVisibleCells().map((cell) => {
+          return (
+            <Box
+              className="td"
+              key={cell.id}
+              style={{
+                flex: cell.column.columnDef.size ? '0 0 auto' : '1 1 0',
+                width: cell.column.columnDef.size
+                  ? cell.column.getSize()
+                  : undefined,
+                minWidth: 0,
+              }}
+            >
+              <Flex align="center" style={{ height: '100%' }}>
+                <Text component="div" size="xs">
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </Text>
+              </Flex>
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  },
+  (prev, next) =>
+    prev.row.original === next.row.original && prev.index === next.index
+);
 
 // Stats category display component
 const StatsCategory = ({ categoryName, stats }) => {
@@ -514,20 +518,22 @@ const ChannelStreams = ({ channel }) => {
     setData(channelStreams);
   }, [channelStreams]);
 
+  // Refs so stable callbacks always see the latest values without being in deps
+  const channelRef = useRef(channel);
+  channelRef.current = channel;
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
   const dataIds = useMemo(() => data?.map(({ id }) => id), [data]);
 
-  const removeStream = useCallback(
-    async (stream) => {
-      const newStreamList = data.filter((s) => s.id !== stream.id);
-      await API.updateChannel({
-        ...channel,
-        streams: newStreamList.map((s) => s.id),
-      });
-      await API.requeryChannels();
-      await API.requeryStreams();
-    },
-    [channel, data]
-  );
+  const removeStream = useCallback(async (stream) => {
+    const newStreamList = dataRef.current.filter((s) => s.id !== stream.id);
+    setData(newStreamList);
+    await API.reorderChannelStreams(
+      channelRef.current.id,
+      newStreamList.map((s) => s.id)
+    );
+  }, []);
 
   // M3U account map for quick lookup
   const m3uAccountsMap = useMemo(() => {
@@ -571,9 +577,7 @@ const ChannelStreams = ({ channel }) => {
         accessorKey: 'name',
         cell: ({ row }) => {
           const stream = row.original;
-          const playlistName = playlists[stream.m3u_account]?.name || 'Unknown';
-          const accountName =
-            m3uAccountsMap[stream.m3u_account] || playlistName;
+          const accountName = m3uAccountsMap[stream.m3u_account] || 'Unknown';
 
           return (
             <StreamInfoCell
@@ -604,11 +608,9 @@ const ChannelStreams = ({ channel }) => {
       },
     ],
     [
-      playlists,
       m3uAccountsMap,
       theme,
       authUser.user_level,
-      removeStream,
       toggleAdvancedStats,
       handleWatchStream,
     ]
@@ -617,9 +619,6 @@ const ChannelStreams = ({ channel }) => {
   const table = useReactTable({
     columns,
     data,
-    state: {
-      data,
-    },
     defaultColumn: defaultColumnConfig,
     manualPagination: true,
     manualSorting: true,
