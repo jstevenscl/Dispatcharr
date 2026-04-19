@@ -17,13 +17,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import useChannelsStore from '../../store/channels';
-import { notifications } from '@mantine/notifications';
 import API from '../../api';
 import ChannelForm from '../forms/Channel';
 import ChannelBatchForm from '../forms/ChannelBatch';
 import RecordingForm from '../forms/Recording';
 import { useDebounce, copyToClipboard } from '../../utils';
-import logo from '../../images/logo.png';
 import useVideoStore from '../../store/useVideoStore';
 import useSettingsStore from '../../store/settings';
 import {
@@ -65,7 +63,6 @@ import {
   Tooltip,
   Skeleton,
 } from '@mantine/core';
-import { getCoreRowModel, flexRender } from '@tanstack/react-table';
 import './table.css';
 import useChannelsTableStore from '../../store/channelsTable';
 import ChannelTableStreams from './ChannelTableStreams';
@@ -243,7 +240,12 @@ const ChannelRowActions = React.memo(
         </Center>
       </Box>
     );
-  }
+  },
+  // Custom comparator: only re-render when the actual channel changes.
+  // The row object is a new TanStack Table reference on each render, but
+  // row.original.id is stable. Callbacks read fresh data at call time.
+  (prevProps, nextProps) =>
+    prevProps.row.original.id === nextProps.row.original.id
 );
 
 const ChannelsTable = ({ onReady }) => {
@@ -291,22 +293,16 @@ const ChannelsTable = ({ onReady }) => {
   const sorting = useChannelsTableStore((s) => s.sorting);
   const setSorting = useChannelsTableStore((s) => s.setSorting);
   const totalCount = useChannelsTableStore((s) => s.totalCount);
-  const setChannelStreams = useChannelsTableStore((s) => s.setChannelStreams);
   const allRowIds = useChannelsTableStore((s) => s.allQueryIds);
   const setAllRowIds = useChannelsTableStore((s) => s.setAllQueryIds);
-  const isUnlocked = useChannelsTableStore((s) => s.isUnlocked);
 
   // store/channels
-  const channels = useChannelsStore((s) => s.channels);
-  const channelIds = useChannelsStore((s) => s.channelIds);
+  const hasChannels = useChannelsStore((s) => s.channelIds.length > 0);
   const profiles = useChannelsStore((s) => s.profiles);
   const selectedProfileId = useChannelsStore((s) => s.selectedProfileId);
-  const [tablePrefs, setTablePrefs] = useLocalStorage('channel-table-prefs', {
+  const [, setTablePrefs] = useLocalStorage('channel-table-prefs', {
     pageSize: 50,
   });
-  const selectedProfileChannels = useChannelsStore(
-    (s) => s.profiles[selectedProfileId]?.channels
-  );
 
   // store/settings
   const env_mode = useSettingsStore((s) => s.environment.env_mode);
@@ -317,23 +313,12 @@ const ChannelsTable = ({ onReady }) => {
   const suppressWarning = useWarningsStore((s) => s.suppressWarning);
 
   /**
-   * useMemo
-   */
-  const selectedProfileChannelIds = useMemo(
-    () => new Set(selectedProfileChannels),
-    [selectedProfileChannels]
-  );
-
-  /**
    * useState
    */
   const [channel, setChannel] = useState(null);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [channelBatchModalOpen, setChannelBatchModalOpen] = useState(false);
   const [recordingModalOpen, setRecordingModalOpen] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState(
-    profiles[selectedProfileId]
-  );
   const [showDisabled, setShowDisabled] = useState(true);
   const [showOnlyStreamlessChannels, setShowOnlyStreamlessChannels] =
     useState(false);
@@ -345,7 +330,7 @@ const ChannelsTable = ({ onReady }) => {
     channel_group: '',
     epg: '',
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [, setIsLoading] = useState(true);
 
   const [hdhrUrl, setHDHRUrl] = useState(hdhrUrlBase);
   const [epgUrl, setEPGUrl] = useState(epgUrlBase);
@@ -490,7 +475,7 @@ const ChannelsTable = ({ onReady }) => {
     setIsLoading(true);
 
     try {
-      const [results, ids] = await Promise.all([
+      const [, ids] = await Promise.all([
         API.queryChannels(params),
         API.getAllChannelIds(params),
       ]);
@@ -673,37 +658,38 @@ const ChannelsTable = ({ onReady }) => {
     }
   };
 
-  const createRecording = (channel) => {
+  const createRecording = useCallback((channel) => {
     console.log(`Recording channel ID: ${channel.id}`);
     setChannel(channel);
     setRecordingModalOpen(true);
-  };
+  }, []);
 
-  const getChannelURL = (channel) => {
-    // Make sure we're using the channel UUID consistently
-    if (!channel || !channel.uuid) {
-      console.error('Invalid channel object or missing UUID:', channel);
-      return '';
-    }
+  const getChannelURL = useCallback(
+    (channel) => {
+      // Make sure we're using the channel UUID consistently
+      if (!channel || !channel.uuid) {
+        console.error('Invalid channel object or missing UUID:', channel);
+        return '';
+      }
 
-    const uri = `/proxy/ts/stream/${channel.uuid}`;
-    let channelUrl = `${window.location.protocol}//${window.location.host}${uri}`;
-    if (env_mode == 'dev') {
-      channelUrl = `${window.location.protocol}//${window.location.hostname}:5656${uri}`;
-    }
+      const uri = `/proxy/ts/stream/${channel.uuid}`;
+      let channelUrl = `${window.location.protocol}//${window.location.host}${uri}`;
+      if (env_mode == 'dev') {
+        channelUrl = `${window.location.protocol}//${window.location.hostname}:5656${uri}`;
+      }
 
-    return channelUrl;
-  };
+      return channelUrl;
+    },
+    [env_mode]
+  );
 
-  const handleWatchStream = (channel) => {
-    // Add additional logging to help debug issues
-    console.log(
-      `Watching stream for channel: ${channel.name} (${channel.id}), UUID: ${channel.uuid}`
-    );
-    const url = getChannelURL(channel);
-    console.log(`Stream URL: ${url}`);
-    showVideo(url, 'live', { name: channel.name });
-  };
+  const handleWatchStream = useCallback(
+    (channel) => {
+      const url = getChannelURL(channel);
+      showVideo(url, 'live', { name: channel.name });
+    },
+    [getChannelURL, showVideo]
+  );
 
   const onRowSelectionChange = (newSelection) => {
     setSelectedChannelIds(newSelection);
@@ -861,8 +847,6 @@ const ChannelsTable = ({ onReady }) => {
   }, [fetchData]);
 
   useEffect(() => {
-    setSelectedProfile(profiles[selectedProfileId]);
-
     const profileString =
       selectedProfileId != '0' ? `/${profiles[selectedProfileId].name}` : '';
     setHDHRUrl(`${hdhrUrlBase}${profileString}`);
@@ -1524,12 +1508,12 @@ const ChannelsTable = ({ onReady }) => {
 
           {/* Table or ghost empty state inside Paper */}
           <Box>
-            {channelsTableLength === 0 && channelIds.length === 0 && (
+            {channelsTableLength === 0 && !hasChannels && (
               <ChannelsTableOnboarding editChannel={editChannel} />
             )}
           </Box>
 
-          {(channelsTableLength > 0 || channelIds.length > 0) && (
+          {(channelsTableLength > 0 || hasChannels) && (
             <Box
               style={{
                 display: 'flex',

@@ -43,53 +43,6 @@ const CustomTableBody = ({
   }, [rows]);
 
   const renderTableBodyContents = () => {
-    const virtualized = false;
-
-    if (virtualized) {
-      return (
-        <Box
-          className="tbody"
-          style={{ flex: 1, ...(tableBodyProps && tableBodyProps()) }}
-        >
-          <AutoSizer disableWidth>
-            {({ height }) => {
-              const getItemSize = (index) => {
-                const row = rows[index];
-                const isExpanded = expandedRowIds.includes(row.original.id);
-                console.log(isExpanded);
-
-                // Default row height
-                let rowHeight = 28;
-
-                if (isExpanded && getExpandedRowHeight) {
-                  // If row is expanded, adjust the height to be larger (based on your logic)
-                  // You can get this height from your state, or calculate based on number of items in the expanded row
-                  rowHeight += getExpandedRowHeight(row); // This function would calculate the expanded row's height
-                }
-
-                return rowHeight;
-              };
-
-              return (
-                <List
-                  height={height}
-                  itemCount={rows.length}
-                  itemSize={getItemSize}
-                  width="100%"
-                  overscanCount={10}
-                >
-                  {({ index, style }) => {
-                    const row = rows[index];
-                    return renderTableBodyRow(row, index, style);
-                  }}
-                </List>
-              );
-            }}
-          </AutoSizer>
-        </Box>
-      );
-    }
-
     return (
       <Box className="tbody" style={{ flex: 1 }}>
         {rows.map((row, index) => renderTableBodyRow(row, index))}
