@@ -89,15 +89,9 @@ const StreamRowActions = ({
   );
 
   const addStreamToChannel = async () => {
-    await API.updateChannel({
-      id: targetChannelId,
-      streams: [
-        ...new Set(
-          channelSelectionStreams.map((s) => s.id).concat([row.original.id])
-        ),
-      ],
-    });
-    await API.requeryChannels();
+    await API.addStreamsToChannel(targetChannelId, channelSelectionStreams, [
+      row.original,
+    ]);
   };
 
   const onEdit = useCallback(() => {
@@ -1040,15 +1034,14 @@ const StreamsTable = ({ onReady }) => {
   };
 
   const addStreamsToChannel = async () => {
-    await API.updateChannel({
-      id: targetChannelId,
-      streams: [
-        ...new Set(
-          channelSelectionStreams.map((s) => s.id).concat(selectedStreamIds)
-        ),
-      ],
-    });
-    await API.requeryChannels();
+    // Look up full stream objects from the current page data
+    const selectedIdSet = new Set(selectedStreamIds);
+    const newStreams = data.filter((s) => selectedIdSet.has(s.id));
+    await API.addStreamsToChannel(
+      targetChannelId,
+      channelSelectionStreams,
+      newStreams
+    );
   };
 
   const onRowSelectionChange = (updatedIds) => {
