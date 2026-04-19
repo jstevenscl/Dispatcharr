@@ -637,6 +637,35 @@ export default class API {
     }
   }
 
+  /**
+   * Lightweight stream reorder: PATCHes only the stream order for a channel
+   * without triggering requeryStreams or requeryChannels. The caller is
+   * responsible for optimistic UI updates.
+   */
+  static async reorderChannelStreams(channelId, streamIds) {
+    try {
+      await request(`${host}/api/channels/channels/${channelId}/`, {
+        method: 'PATCH',
+        body: { id: channelId, streams: streamIds },
+      });
+      // Update the channelsTable store in-place with the new stream order
+      const store = useChannelsTableStore.getState();
+      const channel = store.channels.find((c) => c.id === channelId);
+      if (channel) {
+        // Reorder the existing stream objects to match streamIds
+        const streamMap = new Map(channel.streams.map((s) => [s.id, s]));
+        const reorderedStreams = streamIds
+          .map((id) => streamMap.get(id))
+          .filter(Boolean);
+        store.updateChannel({ ...channel, streams: reorderedStreams });
+      }
+    } catch (e) {
+      errorNotification('Failed to reorder streams', e);
+      // On failure, requery to restore correct state
+      await API.requeryChannels();
+    }
+  }
+
   static async updateChannels(ids, values) {
     const body = [];
     for (const id of ids) {

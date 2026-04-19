@@ -643,13 +643,10 @@ const ChannelStreams = ({ channel }) => {
           const newIndex = currentIds.indexOf(over.id);
           const retval = arrayMove(prevData, oldIndex, newIndex);
 
-          const { streams: _, ...channelUpdate } = channel;
-          API.updateChannel({
-            ...channelUpdate,
-            streams: retval.map((row) => row.id),
-          }).then(() => {
-            API.requeryChannels();
-          });
+          API.reorderChannelStreams(
+            channel.id,
+            retval.map((row) => row.id)
+          );
 
           return retval;
         });
