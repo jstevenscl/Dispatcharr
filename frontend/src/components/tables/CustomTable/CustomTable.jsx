@@ -57,11 +57,10 @@ const CustomTable = ({ table }) => {
         expandedRowIds={table.expandedRowIds}
         expandedRowRenderer={table.expandedRowRenderer}
         renderBodyCell={table.renderBodyCell}
-        getExpandedRowHeight={table.getExpandedRowHeight}
         getRowStyles={table.getRowStyles}
-        tableBodyProps={table.tableBodyProps}
         tableCellProps={table.tableCellProps}
         enableDragDrop={table.enableDragDrop}
+        selectedTableIdsSet={table.selectedTableIdsSet}
       />
     </Box>
   );
