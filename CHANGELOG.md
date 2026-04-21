@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Channel form reset on group creation**: creating a new channel group from within the channel create/edit form no longer wipes all filled-in form fields. The newly created group is also automatically selected in the channel group field after it is saved. (Fixes #545)
 - **EPG channel name truncation**: EPG sources that include long `<display-name>` values (e.g. event-based channels with descriptions appended to the name) would crash the channel-parse task with a `value too long for type character varying(255)` PostgreSQL error and silently discard the entire batch. The `EPGData.name`, `Stream.name`, and `Channel.name` fields have been widened to 512 characters, and names exceeding this limit are now truncated with a warning log rather than aborting the import. (Fixes #1134)
 
 ### Added
