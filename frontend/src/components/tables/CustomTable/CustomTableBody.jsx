@@ -60,9 +60,9 @@ const MemoizedTableRow = React.memo(
                         }),
                       }
                     : {
-                        flex: `0 0 ${cell.column.getSize ? cell.column.getSize() : 150}px`,
-                        width: `${cell.column.getSize ? cell.column.getSize() : 150}px`,
-                        maxWidth: `${cell.column.getSize ? cell.column.getSize() : 150}px`,
+                        flex: `0 0 var(--header-${cell.column.id}-size)`,
+                        width: `var(--header-${cell.column.id}-size)`,
+                        maxWidth: `var(--header-${cell.column.id}-size)`,
                       }),
                   ...(tableCellProps && tableCellProps({ cell })),
                 }}

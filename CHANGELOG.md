@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Column resizing in `CustomTable`**: column widths are now propagated to body cells via CSS custom properties (`--header-{id}-size`) injected on the table wrapper, rather than reading `column.getSize()` directly in each cell's React style. This decouples body-cell widths from React renders so that memoized rows (which skip re-renders for performance) still reflect resize changes instantly via CSS cascade.
 - Decoupled row expansion from row selection in `CustomTable`, expanding a channel row no longer also selects it. Added an `onRowExpansionChange` callback to `useTable` so callers can react to expansion changes independently of selection state.
 - Fixed a stale-closure bug in memoized channel row checkboxes, `selectedTableIdsRef` now ensures the checkbox `onChange` handler and `handleShiftSelect` always read the current selection set rather than the stale set captured at render time. Without this, clicking any checkbox after the first would silently deselect previously checked rows.
 - Fixed the "Add to Channel" per-row and bulk buttons in the Streams table not activating when a channel row is expanded. `StreamRowActions` now subscribes to the Zustand store directly (bypassing `React.memo`) so button state updates when `expandedChannelId` or `selectedChannelIds` change without any parent row props changing. Added `targetChannelId` (expanded channel takes priority; falls back to a single selected channel) used by both the per-row and bulk add paths.

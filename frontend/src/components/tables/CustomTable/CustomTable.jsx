@@ -27,6 +27,20 @@ const CustomTable = ({ table }) => {
     return width;
   }, [table, columnSizing]);
 
+  // CSS custom properties for each fixed-width column's current size.
+  // These are injected on the table wrapper and cascade to all descendant cells,
+  // so body cells (which are memoized and don't re-render on resize) still pick
+  // up the new width via CSS cascade without needing a React re-render.
+  const columnSizeVars = useMemo(() => {
+    void columnSizing;
+    return table.getFlatHeaders().reduce((vars, header) => {
+      if (!header.column.columnDef.grow) {
+        vars[`--header-${header.id}-size`] = `${header.getSize()}px`;
+      }
+      return vars;
+    }, {});
+  }, [table, columnSizing]);
+
   return (
     <Box
       className={`divTable table-striped table-size-${tableSize}`}
@@ -36,6 +50,7 @@ const CustomTable = ({ table }) => {
         minWidth: `${minTableWidth}px`,
         display: 'flex',
         flexDirection: 'column',
+        ...columnSizeVars,
       }}
     >
       <CustomTableHeader
