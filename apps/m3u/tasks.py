@@ -1087,6 +1087,8 @@ def process_m3u_batch_direct(account_id, batch, groups, hash_keys):
     streams_to_update = []
     stream_hashes = {}
 
+    name_max_length = Stream._meta.get_field('name').max_length
+
     logger.debug(f"Processing batch of {len(batch)} for M3U account {account_id}")
     if compiled_filters:
         logger.debug(f"Using compiled filters: {[f[1].regex_pattern for f in compiled_filters]}")
@@ -1098,6 +1100,11 @@ def process_m3u_batch_direct(account_id, batch, groups, hash_keys):
             if url and len(url) > 4096:
                 logger.warning(f"Skipping stream '{name}': URL too long ({len(url)} characters, max 4096)")
                 continue
+
+            # Truncate name if it exceeds the model field limit
+            if name and len(name) > name_max_length:
+                logger.warning(f"Stream name too long ({len(name)} > {name_max_length}), truncating: {name[:80]}...")
+                name = name[:name_max_length]
 
             tvg_id, tvg_logo = get_case_insensitive_attr(
                 stream_info["attributes"], "tvg-id", ""

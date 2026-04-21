@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 
+// Stable empty array to avoid creating new references in getChannelStreams
+const emptyStreams = [];
+
 const useChannelsTableStore = create((set, get) => ({
   channels: [],
   pageCount: 0,
@@ -12,6 +15,7 @@ const useChannelsTableStore = create((set, get) => ({
       JSON.parse(localStorage.getItem('channel-table-prefs'))?.pageSize || 50,
   },
   selectedChannelIds: [],
+  expandedChannelId: null,
   allQueryIds: [],
   isUnlocked: false,
 
@@ -38,9 +42,15 @@ const useChannelsTableStore = create((set, get) => ({
     });
   },
 
+  setExpandedChannelId: (expandedChannelId) => {
+    set({
+      expandedChannelId,
+    });
+  },
+
   getChannelStreams: (id) => {
     const channel = get().channels.find((c) => c.id === id);
-    return channel?.streams ?? [];
+    return channel?.streams || emptyStreams;
   },
 
   setPagination: (pagination) => {
