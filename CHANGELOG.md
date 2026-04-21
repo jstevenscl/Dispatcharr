@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **EPG channel name truncation**: EPG sources that include long `<display-name>` values (e.g. event-based channels with descriptions appended to the name) would crash the channel-parse task with a `value too long for type character varying(255)` PostgreSQL error and silently discard the entire batch. The `EPGData.name`, `Stream.name`, and `Channel.name` fields have been widened to 512 characters, and names exceeding this limit are now truncated with a warning log rather than aborting the import. (Fixes #1134)
+
 ### Added
 
 - **Plugin warning & disclaimer components**: extracted shared plugin warning UI into a new `PluginWarnings.jsx` component and normalized warning/disclaimer usage across all plugin action modals. New reusable components: `PluginSecurityWarning` (untrusted code), `PluginSupportDisclaimer` (community support scope), `PluginDowngradeWarning` (version downgrade), `PluginInfoNote` (informational), and `PluginRestartWarning` (backend restart on import). Updated `Plugins.jsx`, `AvailablePluginCard.jsx`, and `PluginCard.jsx` to use the shared components. — Thanks [@sethwv](https://github.com/sethwv)
