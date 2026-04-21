@@ -4,6 +4,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as Yup from 'yup';
 import API from '../../api';
 import {
+  Alert,
   Flex,
   Modal,
   TextInput,
@@ -17,6 +18,7 @@ import {
   NumberInput,
   SegmentedControl,
 } from '@mantine/core';
+import { TriangleAlert } from 'lucide-react';
 import { DateTimePicker } from '@mantine/dates';
 import { useWebSocket } from '../../WebSocket';
 
@@ -115,11 +117,13 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
       }
     }
 
-    // For default profiles, only send name and custom_properties (notes)
+    // Build submit values
     let submitValues;
     if (isDefaultProfile) {
       submitValues = {
         name: values.name,
+        search_pattern: searchPattern || '',
+        replace_pattern: replacePattern || '',
         custom_properties: {
           // Preserve existing custom_properties and add/update notes
           ...(profile?.custom_properties || {}),
@@ -318,11 +322,7 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
     <Modal
       opened={isOpen}
       onClose={onClose}
-      title={
-        isDefaultProfile
-          ? 'Edit Default Profile (Name & Notes Only)'
-          : 'M3U Profile'
-      }
+      title={isDefaultProfile ? 'Edit Default Profile' : 'M3U Profile'}
       size="lg"
     >
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -348,8 +348,39 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
           />
         )}
 
-        {/* Only show search/replace fields for non-default profiles */}
-        {!isDefaultProfile && (
+        {/* Search/replace fields */}
+        {isDefaultProfile ? (
+          <>
+            <Alert
+              icon={<TriangleAlert size={16} />}
+              color="yellow"
+              title="Default Profile"
+              mt="xs"
+            >
+              <Text size="sm">
+                These patterns are applied to every stream in this playlist. If
+                the search pattern doesn&apos;t match a stream URL, the original
+                URL is used as-is.
+              </Text>
+            </Alert>
+            <TextInput
+              label="Search Pattern (Regex)"
+              description="A regular expression matching the part of the stream URL you want to replace."
+              placeholder="e.g. 10\.0\.0\.10"
+              value={searchPattern}
+              onChange={onSearchPatternUpdate}
+              error={errors.search_pattern?.message}
+            />
+            <TextInput
+              label="Replace Pattern"
+              description="The value to substitute in place of the matched text. Use $1, $2, etc. to reference regex capture groups."
+              placeholder="e.g. 192.168.1.100"
+              value={replacePattern}
+              onChange={onReplacePatternUpdate}
+              error={errors.replace_pattern?.message}
+            />
+          </>
+        ) : (
           <>
             {isXC && (
               <SegmentedControl
@@ -438,23 +469,38 @@ const RegexFormAndView = ({ profile = null, m3u, isOpen, onClose }) => {
         <Flex
           mih={50}
           gap="xs"
-          justify="flex-end"
+          justify="space-between"
           align="flex-end"
           style={{ marginBottom: 5 }}
         >
+          {isDefaultProfile && (
+            <Button
+              variant="subtle"
+              color="gray"
+              size="xs"
+              onClick={() => {
+                setSearchPattern('^(.*)$');
+                setReplacePattern('$1');
+                setValue('search_pattern', '^(.*)$');
+                setValue('replace_pattern', '$1');
+              }}
+            >
+              Reset to Defaults
+            </Button>
+          )}
           <Button
             type="submit"
             disabled={isSubmitting}
             size="xs"
-            style={{ width: isSubmitting ? 'auto' : 'auto' }}
+            style={{ marginLeft: isDefaultProfile ? undefined : 'auto' }}
           >
             Submit
           </Button>
         </Flex>
       </form>
 
-      {/* Only show regex demonstration for non-default profiles in advanced mode */}
-      {!isDefaultProfile && (!isXC || xcMode === 'advanced') && (
+      {/* Show regex demonstration for default profiles and non-default profiles in advanced mode */}
+      {(isDefaultProfile || !isXC || xcMode === 'advanced') && (
         <>
           <Title order={4} mt={15} mb={10}>
             Live Regex Demonstration
