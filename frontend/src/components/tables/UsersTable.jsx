@@ -26,6 +26,47 @@ import ConfirmationDialog from '../ConfirmationDialog';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDateTimeFormat, format } from '../../utils/dateTimeUtils.js';
 
+const XCPasswordCell = ({ getValue }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const customProps = getValue() || {};
+  const password = customProps.xc_password || 'N/A';
+
+  return (
+    <Group
+      gap={4}
+      style={{
+        alignItems: 'center',
+        overflow: 'hidden',
+        flexWrap: 'nowrap',
+      }}
+    >
+      <Text
+        size="sm"
+        style={{
+          fontFamily: 'monospace',
+          flex: '1 1 0',
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {password === 'N/A' ? 'N/A' : isVisible ? password : '••••••••'}
+      </Text>
+      {password !== 'N/A' && (
+        <ActionIcon
+          size="xs"
+          variant="transparent"
+          color="gray"
+          onClick={() => setIsVisible((v) => !v)}
+        >
+          {isVisible ? <EyeOff size={12} /> : <Eye size={12} />}
+        </ActionIcon>
+      )}
+    </Group>
+  );
+};
+
 const UserRowActions = ({ theme, row, editUser, deleteUser }) => {
   const [tableSize, _] = useLocalStorage('table-size', 'default');
   const authUser = useAuthStore((s) => s.user);
@@ -92,17 +133,6 @@ const UsersTable = () => {
   const [userToDelete, setUserToDelete] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState({});
-
-  /**
-   * Functions
-   */
-  const togglePasswordVisibility = useCallback((userId) => {
-    setVisiblePasswords((prev) => ({
-      ...prev,
-      [userId]: !prev[userId],
-    }));
-  }, []);
 
   const executeDeleteUser = useCallback(async (id) => {
     setIsLoading(true);
@@ -244,50 +274,7 @@ const UsersTable = () => {
         size: 100,
         minSize: 95,
         enableSorting: false,
-        cell: ({ getValue, row }) => {
-          const userId = row.original.id;
-          const isVisible = visiblePasswords[userId];
-
-          // Extract xc_password from custom_properties
-          let password = 'N/A';
-          const customProps = getValue() || {};
-          password = customProps.xc_password || 'N/A';
-
-          return (
-            <Group
-              gap={4}
-              style={{
-                alignItems: 'center',
-                overflow: 'hidden',
-                flexWrap: 'nowrap',
-              }}
-            >
-              <Text
-                size="sm"
-                style={{
-                  fontFamily: 'monospace',
-                  flex: '1 1 0',
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {password === 'N/A' ? 'N/A' : isVisible ? password : '••••••••'}
-              </Text>
-              {password !== 'N/A' && (
-                <ActionIcon
-                  size="xs"
-                  variant="transparent"
-                  color="gray"
-                  onClick={() => togglePasswordVisibility(userId)}
-                >
-                  {isVisible ? <EyeOff size={12} /> : <Eye size={12} />}
-                </ActionIcon>
-              )}
-            </Group>
-          );
-        },
+        cell: XCPasswordCell,
       },
       {
         header: 'Channel Profiles',
@@ -335,15 +322,7 @@ const UsersTable = () => {
         ),
       },
     ],
-    [
-      theme,
-      editUser,
-      deleteUser,
-      visiblePasswords,
-      togglePasswordVisibility,
-      fullDateFormat,
-      fullDateTimeFormat,
-    ]
+    [theme, editUser, deleteUser, fullDateFormat, fullDateTimeFormat]
   );
 
   const closeUserForm = () => {
