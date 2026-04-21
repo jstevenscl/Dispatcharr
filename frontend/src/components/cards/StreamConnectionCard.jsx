@@ -123,6 +123,7 @@ const StreamConnectionCard = ({
 
   // Get M3U account data from the playlists store
   const m3uAccounts = usePlaylistsStore((s) => s.playlists);
+  const m3uProfiles = usePlaylistsStore((s) => s.profiles);
   // Get users for resolving user_id → username on client rows
   const users = useUsersStore((s) => s.users);
   // Get settings for speed threshold and environment mode
@@ -134,6 +135,19 @@ const StreamConnectionCard = ({
 
   // Get user's date/time format preferences
   const { fullDateTimeFormat } = useDateTimeFormat();
+
+  // Flat map of profile id -> profile for quick lookup
+  const m3uProfilesById = useMemo(() => {
+    const map = {};
+    Object.values(m3uProfiles).forEach((profileList) => {
+      if (Array.isArray(profileList)) {
+        profileList.forEach((p) => {
+          map[p.id] = p;
+        });
+      }
+    });
+    return map;
+  }, [m3uProfiles]);
 
   // Create a map of M3U account IDs to names for quick lookup
   const m3uAccountsMap = useMemo(() => {
@@ -151,16 +165,29 @@ const StreamConnectionCard = ({
 
   // Update M3U profile information when channel data changes
   useEffect(() => {
-    // If the channel data includes M3U profile information, update our state
-    if (channel.m3u_profile || channel.m3u_profile_name) {
+    if (
+      channel.m3u_profile ||
+      channel.m3u_profile_name ||
+      channel.m3u_profile_id
+    ) {
+      const profileFromStore = channel.m3u_profile_id
+        ? m3uProfilesById[channel.m3u_profile_id]
+        : null;
       setCurrentM3UProfile({
         name:
           channel.m3u_profile?.name ||
+          profileFromStore?.name ||
           channel.m3u_profile_name ||
           'Default M3U',
       });
     }
-  }, [channel.m3u_profile, channel.m3u_profile_name, channel.stream_id]);
+  }, [
+    channel.m3u_profile,
+    channel.m3u_profile_name,
+    channel.m3u_profile_id,
+    channel.stream_id,
+    m3uProfilesById,
+  ]);
 
   // Fetch available streams for this channel
   useEffect(() => {

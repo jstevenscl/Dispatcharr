@@ -23,17 +23,16 @@ const showNotificationIfNewChannel = (
 ) => {
   if (currentStats.channels) {
     if (oldChannels[ch.channel_id] === undefined) {
-      // Add null checks to prevent accessing properties on undefined
       const channelId = channelsByUUID[ch.channel_id];
       const channel = channelId ? channels[channelId] : null;
+      const channelName =
+        channel?.name || ch.channel_name || `Channel (${ch.channel_id})`;
 
-      if (channel) {
-        showNotification({
-          title: 'New channel streaming',
-          message: channel.name,
-          color: 'blue.5',
-        });
-      }
+      showNotification({
+        title: 'New channel streaming',
+        message: channelName,
+        color: 'blue.5',
+      });
     }
   }
 };
@@ -66,19 +65,15 @@ const showNotificationIfChannelStopped = (
         const channelId = channelsByUUID[uuid];
         const channel = channelId && channels[channelId];
 
-        if (channel) {
-          showNotification({
-            title: 'Channel streaming stopped',
-            message: channel.name,
-            color: 'blue.5',
-          });
-        } else {
-          showNotification({
-            title: 'Channel streaming stopped',
-            message: `Channel (${uuid})`,
-            color: 'blue.5',
-          });
-        }
+        const channelName =
+          channel?.name ||
+          oldChannels[uuid]?.channel_name ||
+          `Channel (${uuid})`;
+        showNotification({
+          title: 'Channel streaming stopped',
+          message: channelName,
+          color: 'blue.5',
+        });
       }
     }
   }
@@ -498,7 +493,8 @@ const useChannelsStore = create((set, get) => ({
         };
       }
       if (current && typeof current === 'object') {
-        if (!Object.values(current).some((r) => String(r?.id) === target)) return {};
+        if (!Object.values(current).some((r) => String(r?.id) === target))
+          return {};
         const next = { ...current };
         for (const k of Object.keys(next)) {
           try {

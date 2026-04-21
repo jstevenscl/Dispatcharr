@@ -274,7 +274,8 @@ def get_stream_info_for_switch(channel_id: str, target_stream_id: Optional[int] 
             'transcode': transcode,
             'stream_profile': profile_value,
             'stream_id': stream_id,
-            'm3u_profile_id': m3u_profile_id
+            'm3u_profile_id': m3u_profile_id,
+            'stream_name': stream.name,
         }
     except Exception as e:
         logger.error(f"Error getting stream info for switch: {e}", exc_info=True)
