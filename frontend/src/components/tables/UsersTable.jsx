@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useState } from 'react';
 import API from '../../api';
 import UserForm from '../forms/User';
 import useUsersStore from '../../store/users';
+import useChannelsStore from '../../store/channels';
 import useAuthStore from '../../store/auth';
 import { USER_LEVELS, USER_LEVEL_LABELS } from '../../constants';
 import useWarningsStore from '../../store/warnings';
@@ -17,6 +18,8 @@ import {
   useMantineTheme,
   LoadingOverlay,
   Stack,
+  Badge,
+  Tooltip,
 } from '@mantine/core';
 import { CustomTable, useTable } from './CustomTable';
 import ConfirmationDialog from '../ConfirmationDialog';
@@ -39,32 +42,30 @@ const UserRowActions = ({ theme, row, editUser, deleteUser }) => {
     tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
 
   return (
-    <Box style={{ width: '100%', justifyContent: 'left' }}>
-      <Group gap={2} justify="center">
-        <ActionIcon
-          size={iconSize}
-          variant="transparent"
-          color={theme.tailwind.yellow[3]}
-          onClick={onEdit}
-          disabled={authUser.user_level !== USER_LEVELS.ADMIN}
-        >
-          <SquarePen size="18" />
-        </ActionIcon>
+    <Group gap={2} justify="center" wrap="nowrap">
+      <ActionIcon
+        size={iconSize}
+        variant="transparent"
+        color={theme.tailwind.yellow[3]}
+        onClick={onEdit}
+        disabled={authUser.user_level !== USER_LEVELS.ADMIN}
+      >
+        <SquarePen size="18" />
+      </ActionIcon>
 
-        <ActionIcon
-          size={iconSize}
-          variant="transparent"
-          color={theme.tailwind.red[6]}
-          onClick={onDelete}
-          disabled={
-            authUser.user_level !== USER_LEVELS.ADMIN ||
-            authUser.id === row.original.id
-          }
-        >
-          <SquareMinus size="18" />
-        </ActionIcon>
-      </Group>
-    </Box>
+      <ActionIcon
+        size={iconSize}
+        variant="transparent"
+        color={theme.tailwind.red[6]}
+        onClick={onDelete}
+        disabled={
+          authUser.user_level !== USER_LEVELS.ADMIN ||
+          authUser.id === row.original.id
+        }
+      >
+        <SquareMinus size="18" />
+      </ActionIcon>
+    </Group>
   );
 };
 
@@ -76,6 +77,7 @@ const UsersTable = () => {
    * STORES
    */
   const users = useUsersStore((s) => s.users);
+  const profiles = useChannelsStore((s) => s.profiles);
   const authUser = useAuthStore((s) => s.user);
   const isWarningSuppressed = useWarningsStore((s) => s.isWarningSuppressed);
   const suppressWarning = useWarningsStore((s) => s.suppressWarning);
@@ -137,12 +139,22 @@ const UsersTable = () => {
   /**
    * useMemo
    */
+  // Create a profile ID to name lookup map for efficient rendering
+  const profileIdToName = useMemo(() => {
+    const map = {};
+    Object.values(profiles).forEach((profile) => {
+      map[profile.id] = profile.name;
+    });
+    return map;
+  }, [profiles]);
+
   const columns = useMemo(
     () => [
       {
         header: 'User Level',
         accessorKey: 'user_level',
         size: 120,
+        minSize: 80,
         cell: ({ getValue }) => (
           <Text size="sm">{USER_LEVEL_LABELS[getValue()]}</Text>
         ),
@@ -150,7 +162,8 @@ const UsersTable = () => {
       {
         header: 'Username',
         accessorKey: 'username',
-        size: 150,
+        size: 120,
+        minSize: 75,
         cell: ({ getValue }) => (
           <Box
             style={{
@@ -166,6 +179,8 @@ const UsersTable = () => {
       {
         id: 'name',
         header: 'Name',
+        size: 120,
+        minSize: 50,
         accessorFn: (row) =>
           `${row.first_name || ''} ${row.last_name || ''}`.trim(),
         cell: ({ getValue }) => (
@@ -183,7 +198,8 @@ const UsersTable = () => {
       {
         header: 'Email',
         accessorKey: 'email',
-        grow: true,
+        size: 200,
+        minSize: 50,
         cell: ({ getValue }) => (
           <Box
             style={{
@@ -199,7 +215,8 @@ const UsersTable = () => {
       {
         header: 'Date Joined',
         accessorKey: 'date_joined',
-        size: 125,
+        size: 90,
+        minSize: 90,
         cell: ({ getValue }) => {
           const date = getValue();
           return (
@@ -211,6 +228,7 @@ const UsersTable = () => {
         header: 'Last Login',
         accessorKey: 'last_login',
         size: 175,
+        minSize: 85,
         cell: ({ getValue }) => {
           const date = getValue();
           return (
@@ -223,7 +241,8 @@ const UsersTable = () => {
       {
         header: 'XC Password',
         accessorKey: 'custom_properties',
-        size: 125,
+        size: 100,
+        minSize: 95,
         enableSorting: false,
         cell: ({ getValue, row }) => {
           const userId = row.original.id;
@@ -235,10 +254,24 @@ const UsersTable = () => {
           password = customProps.xc_password || 'N/A';
 
           return (
-            <Group gap={4} style={{ alignItems: 'center' }}>
+            <Group
+              gap={4}
+              style={{
+                alignItems: 'center',
+                overflow: 'hidden',
+                flexWrap: 'nowrap',
+              }}
+            >
               <Text
                 size="sm"
-                style={{ fontFamily: 'monospace', minWidth: '60px' }}
+                style={{
+                  fontFamily: 'monospace',
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
               >
                 {password === 'N/A' ? 'N/A' : isVisible ? password : '••••••••'}
               </Text>
@@ -257,10 +290,41 @@ const UsersTable = () => {
         },
       },
       {
+        header: 'Channel Profiles',
+        accessorKey: 'channel_profiles',
+        size: 120,
+        minSize: 116,
+        grow: true,
+        cell: ({ getValue }) => {
+          const userProfiles = getValue() || [];
+          const profileNames = userProfiles
+            .map((id) => profileIdToName[id])
+            .filter(Boolean); // Filter out any undefined values
+          return (
+            <Group gap={4} wrap="wrap" py={4}>
+              {profileNames.length > 0 ? (
+                profileNames.map((name, index) => (
+                  <Tooltip key={index} label={name} withArrow>
+                    <Badge size="sm" variant="light" color="gray">
+                      {name}
+                    </Badge>
+                  </Tooltip>
+                ))
+              ) : (
+                <Badge size="sm" variant="light" color="gray">
+                  All
+                </Badge>
+              )}
+            </Group>
+          );
+        },
+      },
+      {
         id: 'actions',
-        size: 80,
+        size: 65,
         header: 'Actions',
         enableSorting: false,
+        enableResizing: false,
         cell: ({ row }) => (
           <UserRowActions
             theme={theme}
@@ -318,6 +382,7 @@ const UsersTable = () => {
       user_level: renderHeaderCell,
       last_login: renderHeaderCell,
       date_joined: renderHeaderCell,
+      channel_profiles: renderHeaderCell,
       custom_properties: renderHeaderCell,
     },
   });
