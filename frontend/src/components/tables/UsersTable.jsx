@@ -42,32 +42,30 @@ const UserRowActions = ({ theme, row, editUser, deleteUser }) => {
     tableSize == 'default' ? 'sm' : tableSize == 'compact' ? 'xs' : 'md';
 
   return (
-    <Box style={{ width: '100%', justifyContent: 'left' }}>
-      <Group gap={2} justify="center">
-        <ActionIcon
-          size={iconSize}
-          variant="transparent"
-          color={theme.tailwind.yellow[3]}
-          onClick={onEdit}
-          disabled={authUser.user_level !== USER_LEVELS.ADMIN}
-        >
-          <SquarePen size="18" />
-        </ActionIcon>
+    <Group gap={2} justify="center" wrap="nowrap">
+      <ActionIcon
+        size={iconSize}
+        variant="transparent"
+        color={theme.tailwind.yellow[3]}
+        onClick={onEdit}
+        disabled={authUser.user_level !== USER_LEVELS.ADMIN}
+      >
+        <SquarePen size="18" />
+      </ActionIcon>
 
-        <ActionIcon
-          size={iconSize}
-          variant="transparent"
-          color={theme.tailwind.red[6]}
-          onClick={onDelete}
-          disabled={
-            authUser.user_level !== USER_LEVELS.ADMIN ||
-            authUser.id === row.original.id
-          }
-        >
-          <SquareMinus size="18" />
-        </ActionIcon>
-      </Group>
-    </Box>
+      <ActionIcon
+        size={iconSize}
+        variant="transparent"
+        color={theme.tailwind.red[6]}
+        onClick={onDelete}
+        disabled={
+          authUser.user_level !== USER_LEVELS.ADMIN ||
+          authUser.id === row.original.id
+        }
+      >
+        <SquareMinus size="18" />
+      </ActionIcon>
+    </Group>
   );
 };
 
@@ -156,7 +154,7 @@ const UsersTable = () => {
         header: 'User Level',
         accessorKey: 'user_level',
         size: 120,
-        minSize: 80,        
+        minSize: 80,
         cell: ({ getValue }) => (
           <Text size="sm">{USER_LEVEL_LABELS[getValue()]}</Text>
         ),
@@ -201,7 +199,7 @@ const UsersTable = () => {
         header: 'Email',
         accessorKey: 'email',
         size: 200,
-        minSize: 50,        
+        minSize: 50,
         cell: ({ getValue }) => (
           <Box
             style={{
@@ -218,7 +216,7 @@ const UsersTable = () => {
         header: 'Date Joined',
         accessorKey: 'date_joined',
         size: 90,
-        minSize: 90,        
+        minSize: 90,
         cell: ({ getValue }) => {
           const date = getValue();
           return (
@@ -256,7 +254,14 @@ const UsersTable = () => {
           password = customProps.xc_password || 'N/A';
 
           return (
-            <Group gap={4} style={{ alignItems: 'center', overflow: 'hidden', flexWrap: 'nowrap' }}>
+            <Group
+              gap={4}
+              style={{
+                alignItems: 'center',
+                overflow: 'hidden',
+                flexWrap: 'nowrap',
+              }}
+            >
               <Text
                 size="sm"
                 style={{
@@ -288,7 +293,7 @@ const UsersTable = () => {
         header: 'Channel Profiles',
         accessorKey: 'channel_profiles',
         size: 120,
-        minSize: 116,         
+        minSize: 116,
         grow: true,
         cell: ({ getValue }) => {
           const userProfiles = getValue() || [];
@@ -300,11 +305,7 @@ const UsersTable = () => {
               {profileNames.length > 0 ? (
                 profileNames.map((name, index) => (
                   <Tooltip key={index} label={name} withArrow>
-                    <Badge
-                      size="sm"
-                      variant="light"
-                      color="gray"
-                    >
+                    <Badge size="sm" variant="light" color="gray">
                       {name}
                     </Badge>
                   </Tooltip>
@@ -317,7 +318,7 @@ const UsersTable = () => {
             </Group>
           );
         },
-      },      
+      },
       {
         id: 'actions',
         size: 65,
