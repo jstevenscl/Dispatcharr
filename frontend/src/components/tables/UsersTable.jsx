@@ -209,7 +209,7 @@ const UsersTable = () => {
       {
         id: 'name',
         header: 'Name',
-        size: 120,
+        size: 125,
         minSize: 50,
         accessorFn: (row) =>
           `${row.first_name || ''} ${row.last_name || ''}`.trim(),
@@ -228,7 +228,7 @@ const UsersTable = () => {
       {
         header: 'Email',
         accessorKey: 'email',
-        size: 200,
+        size: 125,
         minSize: 50,
         cell: ({ getValue }) => (
           <Box
@@ -271,7 +271,7 @@ const UsersTable = () => {
       {
         header: 'XC Password',
         accessorKey: 'custom_properties',
-        size: 100,
+        size: 125,
         minSize: 95,
         enableSorting: false,
         cell: XCPasswordCell,
