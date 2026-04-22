@@ -256,7 +256,7 @@ const setupLocation = (pathname = '/stats') => {
 
 const setupStores = () => {
   vi.mocked(usePlaylistsStore).mockImplementation((selector) =>
-    selector({ playlists: [] })
+    selector({ playlists: [], profiles: {} })
   );
   vi.mocked(useSettingsStore).mockImplementation((selector) =>
     selector({
