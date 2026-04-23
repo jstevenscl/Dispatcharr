@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import {
   toFriendlyDuration,
+  formatExactDuration,
   useDateTimeFormat,
 } from '../../utils/dateTimeUtils.js';
 import { CustomTable, useTable } from '../tables/CustomTable/index.jsx';
@@ -410,7 +411,7 @@ const StreamConnectionCard = ({
             <Tooltip
               label={
                 exactDuration
-                  ? `${exactDuration.toFixed(1)} seconds`
+                  ? formatExactDuration(exactDuration)
                   : 'Unknown duration'
               }
             >

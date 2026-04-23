@@ -23,6 +23,7 @@ vi.mock('../../../store/users.jsx', () => ({
 // ── dateTimeUtils ─────────────────────────────────────────────────────────────
 vi.mock('../../../utils/dateTimeUtils.js', () => ({
   toFriendlyDuration: vi.fn(() => '1h 23m'),
+  formatExactDuration: vi.fn((s) => `${s.toFixed(1)} seconds`),
   useDateTimeFormat: vi.fn(() => ({ fullDateTimeFormat: 'MM/DD/YYYY h:mm A' })),
 }));
 
