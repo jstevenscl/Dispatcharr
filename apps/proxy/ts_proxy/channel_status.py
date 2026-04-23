@@ -148,9 +148,7 @@ class ChannelStatus:
             }
 
             if 'connected_at' in client_data:
-                connected_at = float(client_data['connected_at'])
-                client_info['connected_at'] = connected_at
-                client_info['connection_duration'] = time.time() - connected_at
+                client_info['connected_at'] = float(client_data['connected_at'])
 
             if 'last_active' in client_data:
                 last_active = float(client_data['last_active'])
@@ -469,8 +467,7 @@ class ChannelStatus:
 
                     connected_at_bytes = proxy_server.redis_client.hget(client_key, 'connected_at')
                     if connected_at_bytes:
-                        connected_at = float(connected_at_bytes)
-                        client_info['connected_since'] = time.time() - connected_at
+                        client_info['connected_at'] = float(connected_at_bytes)
 
                     user_id_bytes = proxy_server.redis_client.hget(client_key, 'user_id')
                     if user_id_bytes:

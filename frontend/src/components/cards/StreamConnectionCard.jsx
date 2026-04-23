@@ -403,8 +403,9 @@ const StreamConnectionCard = ({
         minSize: 60,
         accessorFn: durationAccessor(),
         cell: ({ cell, row }) => {
-          const exactDuration =
-            row.original.connected_since || row.original.connection_duration;
+          const exactDuration = row.original.connected_at
+            ? Date.now() / 1000 - row.original.connected_at
+            : null;
           return (
             <Tooltip
               label={
