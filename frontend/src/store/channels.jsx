@@ -118,6 +118,7 @@ const useChannelsStore = create((set, get) => ({
   stats: {},
   activeChannels: {},
   activeClients: {},
+  activeVodConnections: [],
   recordings: [],
   recurringRules: [],
   isLoading: false,
@@ -500,6 +501,10 @@ const useChannelsStore = create((set, get) => ({
         activeClients: newClients,
       };
     });
+  },
+
+  setVodStats: (stats) => {
+    set({ activeVodConnections: stats.vod_connections || [] });
   },
 
   fetchRecordings: async () => {
