@@ -242,10 +242,40 @@ export default function FloatingVideo() {
     const { volume: savedVolume, muted: savedMuted } = getPlayerPrefs();
     if (typeof savedVolume === 'number') video.volume = savedVolume;
     if (typeof savedMuted === 'boolean') video.muted = savedMuted;
+    // Always start playback from the beginning of the seekable range.
+    let hasSeekedToStart = false;
+    const seekToStart = () => {
+      if (hasSeekedToStart) return;
+      try {
+        let target = 0;
+        if (video.seekable && video.seekable.length > 0) {
+          target = video.seekable.start(0);
+        }
+        // Only apply if we're not already at/near the start.  Avoid
+        // setting currentTime when the video has no duration yet.
+        if (
+          Number.isFinite(target) &&
+          Math.abs((video.currentTime || 0) - target) > 0.25
+        ) {
+          video.currentTime = target;
+        }
+        hasSeekedToStart = true;
+      } catch {
+        // ignore
+      }
+    };
+
     const handleLoadStart = () => setIsLoading(true);
-    const handleLoadedData = () => setIsLoading(false);
+    const handleLoadedMetadata = () => {
+      seekToStart();
+    };
+    const handleLoadedData = () => {
+      setIsLoading(false);
+      seekToStart();
+    };
     const handleCanPlay = () => {
       setIsLoading(false);
+      seekToStart();
       // Auto-play for VOD content
       video.play().catch((e) => {
         console.log('Auto-play prevented:', e);
@@ -275,6 +305,7 @@ export default function FloatingVideo() {
 
     // Add event listeners
     video.addEventListener('loadstart', handleLoadStart);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('error', handleError);
@@ -298,6 +329,10 @@ export default function FloatingVideo() {
 
     if (isHls && Hls.isSupported()) {
       hls = new Hls({
+        // Start playback at the very beginning of the recording rather than
+        // the live edge.  Without this, an in-progress recording would
+        // open at "now" and hide all already-recorded content.
+        startPosition: 0,
         // Allow seeking back to the start of the recording, regardless of
         // current playhead position.  Recordings can be hours long and the
         // user may want to scrub anywhere; we explicitly disable buffer
@@ -330,9 +365,7 @@ export default function FloatingVideo() {
               // ignore
             }
           } else {
-            setLoadError(
-              `HLS playback error: ${data.details || data.type}`
-            );
+            setLoadError(`HLS playback error: ${data.details || data.type}`);
           }
         }
       });
@@ -354,6 +387,7 @@ export default function FloatingVideo() {
     playerRef.current = {
       destroy: () => {
         video.removeEventListener('loadstart', handleLoadStart);
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
         video.removeEventListener('loadeddata', handleLoadedData);
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('error', handleError);
