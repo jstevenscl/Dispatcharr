@@ -62,7 +62,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
 from apps.vod.models import Movie, Series
 from django.db.models import Q
-from django.http import HttpResponse, StreamingHttpResponse, FileResponse, Http404, JsonResponse
+from django.http import HttpResponse, StreamingHttpResponse, FileResponse, Http404, JsonResponse, HttpResponseRedirect
 from django.utils import timezone
 import mimetypes
 from django.conf import settings
@@ -2530,7 +2530,6 @@ class RecordingViewSet(viewsets.ModelViewSet):
             # Redirect to HLS if recording is still in progress
             hls_dir = cp.get("_hls_dir")
             if hls_dir and os.path.isdir(hls_dir):
-                from django.http import HttpResponseRedirect
                 hls_url = request.build_absolute_uri(
                     f"/api/channels/recordings/{pk}/hls/index.m3u8"
                 )
@@ -2598,7 +2597,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
         return response
 
     @action(detail=True, methods=["get"], url_path="hls/(?P<seg_path>.+)")
-    def hls(self, request, pk=None, seg_path="index.m3u8"):
+    def hls(self, request, pk=None, seg_path=None):
         """Serve HLS playlist and segment files for an in-progress (or completed) recording.
 
         Clients connecting during recording should use the m3u8 URL returned in
@@ -2621,7 +2620,6 @@ class RecordingViewSet(viewsets.ModelViewSet):
             cp = recording.custom_properties or {}
             file_path = cp.get("file_path")
             if seg_path.endswith(".m3u8") and file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                from django.http import HttpResponseRedirect
                 return HttpResponseRedirect(
                     request.build_absolute_uri(f"/api/channels/recordings/{pk}/file/")
                 )
@@ -2649,8 +2647,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
                         lines.append(f"{base_url}{stripped}\n")
                     else:
                         lines.append(line)
-            from django.http import HttpResponse as _HR
-            return _HR("".join(lines), content_type="application/x-mpegURL")
+            return HttpResponse("".join(lines), content_type="application/x-mpegURL")
 
         if seg_path.endswith(".ts"):
             # Refresh the viewer heartbeat in Redis so the Celery task knows an
@@ -2663,8 +2660,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
                     _rv.set(f"dvr:hls_viewer:{pk}", "1", ex=20)
             except Exception:
                 pass
-            from django.http import FileResponse as _FR
-            return _FR(open(requested, "rb"), content_type="video/mp2t")
+            return FileResponse(open(requested, "rb"), content_type="video/mp2t")
 
         raise Http404("Unsupported HLS file type")
 
@@ -3018,6 +3014,30 @@ class RecordingViewSet(viewsets.ModelViewSet):
             except Exception as ex:
                 logger.warning(f"Failed to delete HLS directory {path}: {ex}")
 
+        # Clean up empty parent directories up to the recordings root to prevent orphaned folders from accumulating over time.
+        recordings_root = os.path.normpath('/data/recordings')
+
+        def _prune_empty_parents(path: str):
+            if not path or not isinstance(path, str):
+                return
+            try:
+                parent = os.path.dirname(os.path.normpath(path))
+                while (
+                    parent
+                    and parent != recordings_root
+                    and parent.startswith(recordings_root + os.sep)
+                    and os.path.isdir(parent)
+                    and not os.listdir(parent)
+                ):
+                    try:
+                        os.rmdir(parent)
+                        logger.info(f"Removed empty recording directory: {parent}")
+                    except OSError:
+                        break
+                    parent = os.path.dirname(parent)
+            except Exception as ex:
+                logger.debug(f"Unable to prune empty parents for {path}: {ex}")
+
         def _background_cancel():
             # Only stop the DVR client if the recording was actively streaming.
             # Stopping for completed/upcoming recordings would kill an unrelated
@@ -3036,6 +3056,12 @@ class RecordingViewSet(viewsets.ModelViewSet):
             # before the DB delete.
             _safe_remove(file_path)
             _safe_rmtree(hls_dir)
+
+            # If removing the file/HLS dir leaves the show/season folder
+            # empty, clean those up too.  Both paths share the same parent
+            # in normal layouts, but run the prune for each just in case.
+            _prune_empty_parents(file_path)
+            _prune_empty_parents(hls_dir)
 
             try:
                 from django.db import connection as _conn
