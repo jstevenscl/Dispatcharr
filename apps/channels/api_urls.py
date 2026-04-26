@@ -49,6 +49,11 @@ urlpatterns = [
     path('series-rules/bulk-remove/', BulkRemoveSeriesRecordingsAPIView.as_view(), name='bulk_remove_series_recordings'),
     path('series-rules/<path:tvg_id>/', DeleteSeriesRuleAPIView.as_view(), name='delete_series_rule'),
     path('recordings/bulk-delete-upcoming/', BulkDeleteUpcomingRecordingsAPIView.as_view(), name='bulk_delete_upcoming_recordings'),
+    path(
+        'recordings/<int:pk>/hls/<path:seg_path>',
+        RecordingViewSet.as_view({'get': 'hls'}),
+        name='recording-hls',
+    ),
     path('dvr/comskip-config/', ComskipConfigAPIView.as_view(), name='comskip_config'),
 ]
 

@@ -2444,7 +2444,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         # Allow unauthenticated playback of recording files (like other streaming endpoints)
-        if self.action == 'file':
+        if self.action in ('file', 'hls'):
             return [AllowAny()]
         try:
             return [perm() for perm in permission_classes_by_action[self.action]]
@@ -2464,14 +2464,29 @@ class RecordingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="file")
     def file(self, request, pk=None):
-        """Stream a recorded file with HTTP Range support for seeking."""
+        """Stream a completed recording file with HTTP Range support for seeking.
+
+        For in-progress recordings, file_url in custom_properties points to
+        /hls/index.m3u8.  If a client hits this endpoint while the recording
+        is still running (or the MKV is not yet produced), it is redirected to
+        the HLS playlist endpoint.
+        """
         recording = get_object_or_404(Recording, pk=pk)
         cp = recording.custom_properties or {}
         file_path = cp.get("file_path")
         file_name = cp.get("file_name") or "recording"
 
-        if not file_path or not os.path.exists(file_path):
-            raise Http404("Recording file not found")
+        if not file_path or not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            # Redirect to HLS if recording is still in progress
+            hls_dir = cp.get("_hls_dir")
+            if hls_dir and os.path.isdir(hls_dir):
+                from django.http import HttpResponseRedirect
+                hls_url = request.build_absolute_uri(
+                    f"/api/channels/recordings/{pk}/hls/index.m3u8"
+                )
+                return HttpResponseRedirect(hls_url)
+            if not file_path or not os.path.exists(file_path):
+                raise Http404("Recording file not found")
 
         # Guess content type
         ext = os.path.splitext(file_path)[1].lower()
@@ -2531,6 +2546,73 @@ class RecordingViewSet(viewsets.ModelViewSet):
         response["Accept-Ranges"] = "bytes"
         response["Content-Disposition"] = f"inline; filename=\"{file_name}\""
         return response
+
+    @action(detail=True, methods=["get"], url_path="hls/(?P<seg_path>.+)")
+    def hls(self, request, pk=None, seg_path="index.m3u8"):
+        """Serve HLS playlist and segment files for an in-progress (or completed) recording.
+
+        Clients connecting during recording should use the m3u8 URL returned in
+        custom_properties.file_url.  Segment URLs inside the playlist are rewritten
+        to route through this endpoint so authentication and path isolation are
+        preserved.
+        """
+        recording = get_object_or_404(Recording, pk=pk)
+        cp = recording.custom_properties or {}
+        hls_dir = cp.get("_hls_dir")
+
+        if not hls_dir or not os.path.isdir(hls_dir):
+            # HLS dir is gone, recording is likely complete.  Redirect to the
+            # permanent MKV endpoint for .m3u8 requests so clients that still
+            # have the HLS URL bookmarked get a useful response.
+            cp = recording.custom_properties or {}
+            file_path = cp.get("file_path")
+            if seg_path.endswith(".m3u8") and file_path and os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(
+                    request.build_absolute_uri(f"/api/channels/recordings/{pk}/file/")
+                )
+            raise Http404("HLS content not available for this recording")
+
+        # Security: prevent path traversal outside the HLS directory
+        safe_dir = os.path.realpath(hls_dir)
+        requested = os.path.realpath(os.path.join(hls_dir, seg_path))
+        if not requested.startswith(safe_dir + os.sep) and requested != safe_dir:
+            return Response({"error": "Forbidden"}, status=403)
+
+        if not os.path.isfile(requested):
+            raise Http404(f"HLS file not found: {seg_path}")
+
+        if seg_path.endswith(".m3u8"):
+            # Rewrite relative segment lines to absolute URLs through this API
+            base_url = request.build_absolute_uri(
+                f"/api/channels/recordings/{pk}/hls/"
+            )
+            lines = []
+            with open(requested) as _f:
+                for line in _f:
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        lines.append(f"{base_url}{stripped}\n")
+                    else:
+                        lines.append(line)
+            from django.http import HttpResponse as _HR
+            return _HR("".join(lines), content_type="application/x-mpegURL")
+
+        if seg_path.endswith(".ts"):
+            # Refresh the viewer heartbeat in Redis so the Celery task knows an
+            # active client is still fetching segments.  TTL is 20 s, enough for
+            # three 4-second segments plus network margin.
+            try:
+                from core.utils import RedisClient
+                _rv = RedisClient.get_client(max_retries=1, retry_interval=0)
+                if _rv:
+                    _rv.set(f"dvr:hls_viewer:{pk}", "1", ex=20)
+            except Exception:
+                pass
+            from django.http import FileResponse as _FR
+            return _FR(open(requested, "rb"), content_type="video/mp2t")
+
+        raise Http404("Unsupported HLS file type")
 
     @action(detail=True, methods=["post"], url_path="stop")
     def stop(self, request, pk=None):
@@ -2838,7 +2920,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
         cp = instance.custom_properties or {}
         rec_status = cp.get("status", "")
         file_path = cp.get("file_path")
-        temp_ts_path = cp.get("_temp_file_path")
+        hls_dir = cp.get("_hls_dir")
         channel_uuid = str(instance.channel.uuid)
 
         # 1. Delete the DB record (also fires post_delete → revoke_task_on_delete)
@@ -2871,6 +2953,17 @@ class RecordingViewSet(viewsets.ModelViewSet):
             except Exception as ex:
                 logger.warning(f"Failed to delete recording artifact {path}: {ex}")
 
+        def _safe_rmtree(path: str):
+            if not path or not isinstance(path, str):
+                return
+            try:
+                import shutil as _shutil
+                if any(path.startswith(root) for root in allowed_roots) and os.path.isdir(path):
+                    _shutil.rmtree(path)
+                    logger.info(f"Deleted recording HLS directory: {path}")
+            except Exception as ex:
+                logger.warning(f"Failed to delete HLS directory {path}: {ex}")
+
         def _background_cancel():
             # Only stop the DVR client if the recording was actively streaming.
             # Stopping for completed/upcoming recordings would kill an unrelated
@@ -2888,7 +2981,7 @@ class RecordingViewSet(viewsets.ModelViewSet):
             # Best-effort file cleanup in case run_recording already exited
             # before the DB delete.
             _safe_remove(file_path)
-            _safe_remove(temp_ts_path)
+            _safe_rmtree(hls_dir)
 
             try:
                 from django.db import connection as _conn
