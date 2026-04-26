@@ -119,7 +119,6 @@ export default function FloatingVideo() {
   const contentType = useVideoStore((s) => s.contentType);
   const metadata = useVideoStore((s) => s.metadata);
   const hideVideo = useVideoStore((s) => s.hideVideo);
-  const accessToken = useAuthStore((s) => s.accessToken);
 
   const videoRef = useRef(null);
   const playerRef = useRef(null);
@@ -271,10 +270,16 @@ export default function FloatingVideo() {
     };
     const handleLoadedData = () => {
       setIsLoading(false);
+      // hls.js applies its `startPosition` after MEDIA_ATTACHED, which can
+      // run later than `loadedmetadata`. Re-seek here as a safety net so a
+      // hls.js live playlist doesn't snap to the live edge after our first
+      // seek attempt happened against an empty seekable range.
       seekToStart();
     };
     const handleCanPlay = () => {
       setIsLoading(false);
+      // Final fallback for the Safari native-HLS path where seekable.start(0)
+      // is sometimes only valid by the time `canplay` fires.
       seekToStart();
       // Auto-play for VOD content
       video.play().catch((e) => {
@@ -329,9 +334,13 @@ export default function FloatingVideo() {
 
     if (isHls && Hls.isSupported()) {
       hls = new Hls({
-        // Start playback at the very beginning of the recording rather than
-        // the live edge.  Without this, an in-progress recording would
-        // open at "now" and hide all already-recorded content.
+        // Open at the very beginning of the recording rather than the live
+        // edge.  Without this, an in-progress recording would start at "now"
+        // and hide everything already recorded.  hls.js applies this AFTER
+        // MEDIA_ATTACHED, so the listener-driven `seekToStart()` above is
+        // also kept as a safety net for the Safari native-HLS path and for
+        // edge cases where this initial-position logic loses to the user's
+        // first interaction.
         startPosition: 0,
         // Allow seeking back to the start of the recording, regardless of
         // current playhead position.  Recordings can be hours long and the
@@ -347,10 +356,14 @@ export default function FloatingVideo() {
         liveMaxLatencyDurationCount: 10,
         enableWorker: true,
         lowLatencyMode: false,
-        // Inject the JWT into every playlist + segment XHR.
+        // Inject the JWT into every playlist + segment XHR.  Read the token
+        // from the auth store at request time rather than capturing the
+        // closure value at hls.js init, so a refreshed access token mid-
+        // playback is picked up on the next segment fetch.
         xhrSetup: (xhr) => {
-          if (accessToken) {
-            xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+          const token = useAuthStore.getState().accessToken;
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           }
         },
       });
@@ -435,6 +448,14 @@ export default function FloatingVideo() {
           ? `${window.location.origin}${streamUrl}`
           : streamUrl;
 
+      // Read the JWT from the auth store at player-creation time rather than
+      // relying on the closure-captured `accessToken` value.  mpegts.js has
+      // no per-request setup hook (unlike hls.js's xhrSetup), so this header
+      // is baked into the IO loader for the life of the player; we just want
+      // to be sure we use the freshest token available at the moment of
+      // connection rather than whatever React-render snapshot we closed over.
+      const liveAccessToken = useAuthStore.getState().accessToken;
+
       const player = mpegts.createPlayer(
         {
           type: 'mpegts',
@@ -451,8 +472,8 @@ export default function FloatingVideo() {
           autoCleanupMaxBackwardDuration: 120,
           autoCleanupMinBackwardDuration: 60,
           reuseRedirectedURL: true,
-          headers: accessToken
-            ? { Authorization: `Bearer ${accessToken}` }
+          headers: liveAccessToken
+            ? { Authorization: `Bearer ${liveAccessToken}` }
             : undefined,
         }
       );
