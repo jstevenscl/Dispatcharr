@@ -4,6 +4,7 @@ import Draggable from 'react-draggable';
 import useVideoStore from '../store/useVideoStore';
 import useAuthStore from '../store/auth';
 import mpegts from 'mpegts.js';
+import Hls from 'hls.js';
 import { CloseButton, Flex, Loader, Text, Box } from '@mantine/core';
 import {
   applyConstraints,
@@ -279,9 +280,75 @@ export default function FloatingVideo() {
     video.addEventListener('error', handleError);
     video.addEventListener('progress', handleProgress);
 
-    // Set the source
-    video.src = streamUrl;
-    video.load();
+    // HLS handling: in-progress recordings expose .m3u8 playlists (and ended
+    // recordings whose MKV concat hasn't completed yet still serve via /hls/).
+    // Native <video src="*.m3u8"> only works on Safari/iOS, and even there it
+    // cannot follow a growing playlist with a useful seekable window.  Use
+    // hls.js when supported so the user gets a full DVR/timeshift window
+    // across all browsers.  The HLS playlist uses #EXT-X-PLAYLIST-TYPE=EVENT-
+    // style growth (omit_endlist + hls_list_size 0), so hls.js will treat the
+    // entire recorded duration as the seekable range while the recording is
+    // still in progress and as a complete VOD once it ends.
+    const isHls =
+      typeof streamUrl === 'string' &&
+      (streamUrl.includes('.m3u8') ||
+        streamUrl.includes('/hls/index') ||
+        streamUrl.includes('application/vnd.apple.mpegurl'));
+    let hls = null;
+
+    if (isHls && Hls.isSupported()) {
+      hls = new Hls({
+        // Allow seeking back to the start of the recording, regardless of
+        // current playhead position.  Recordings can be hours long and the
+        // user may want to scrub anywhere; we explicitly disable buffer
+        // eviction by setting a very large back-buffer length.
+        backBufferLength: 90 * 60, // 90 minutes
+        maxBufferLength: 60,
+        maxMaxBufferLength: 600,
+        // For an in-progress recording, hls.js refreshes the playlist on
+        // its target-duration cadence; let it follow the live edge but keep
+        // the full DVR window seekable.
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 10,
+        enableWorker: true,
+        lowLatencyMode: false,
+      });
+      hls.on(Hls.Events.ERROR, (_evt, data) => {
+        if (data.fatal) {
+          // eslint-disable-next-line no-console
+          console.error('HLS fatal error:', data.type, data.details);
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            try {
+              hls.startLoad();
+            } catch {
+              // ignore
+            }
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            try {
+              hls.recoverMediaError();
+            } catch {
+              // ignore
+            }
+          } else {
+            setLoadError(
+              `HLS playback error: ${data.details || data.type}`
+            );
+          }
+        }
+      });
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        hls.loadSource(streamUrl);
+      });
+    } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari path: native HLS support, including seekable DVR windows.
+      video.src = streamUrl;
+      video.load();
+    } else {
+      // Plain progressive file (MKV/MP4): native HTML5.
+      video.src = streamUrl;
+      video.load();
+    }
 
     // Store cleanup function
     playerRef.current = {
@@ -291,6 +358,13 @@ export default function FloatingVideo() {
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('error', handleError);
         video.removeEventListener('progress', handleProgress);
+        if (hls) {
+          try {
+            hls.destroy();
+          } catch {
+            // ignore
+          }
+        }
         video.removeAttribute('src');
         video.load();
       },
