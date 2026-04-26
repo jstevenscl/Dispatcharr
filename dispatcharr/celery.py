@@ -49,6 +49,11 @@ app.conf.update(
     worker_task_log_format='%(asctime)s %(levelname)s %(task_name)s: %(message)s',
 )
 
+# Route long-running DVR recordings to a dedicated `dvr` queue consumed by a thread-pool worker.
+app.conf.task_routes = {
+    'apps.channels.tasks.run_recording': {'queue': 'dvr'},
+}
+
 # Add memory cleanup after task completion
 @task_postrun.connect  # Use the imported signal
 def cleanup_task_memory(**kwargs):
