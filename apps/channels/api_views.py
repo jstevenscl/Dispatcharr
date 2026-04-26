@@ -2452,6 +2452,51 @@ class RecordingViewSet(viewsets.ModelViewSet):
         except KeyError:
             return [Authenticated()]
 
+    def _user_can_play_recording(self, request, recording):
+        """Authorization gate for recording playback (file/hls actions).
+
+        Mirrors how live stream endpoints authorize non-admin users, but
+        unlike the XC-style endpoints these URLs carry no credentials of
+        their own, so we require an authenticated session/JWT:
+          * Unauthenticated requests → denied.
+          * Admins (user_level >= 10) → allowed.
+          * Authenticated non-admins → allowed only if the recording's
+            source channel is visible under their channel-profile
+            assignments and within their user_level.
+
+        The network_access_allowed(request, "STREAMS") check applied
+        before this is a network-perimeter gate (e.g. block external IPs
+        from streaming at all); it is not a substitute for per-user
+        authorization.
+        """
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        if getattr(user, "user_level", 0) >= 10:
+            return True
+
+        channel = getattr(recording, "channel", None)
+        if channel is None:
+            # Recording with no source channel, only admins can play.
+            return False
+
+        try:
+            user_profile_count = user.channel_profiles.count()
+        except Exception:
+            user_profile_count = 0
+
+        filters = {
+            "id": channel.id,
+            "user_level__lte": user.user_level,
+        }
+        if user_profile_count > 0:
+            filters["channelprofilemembership__enabled"] = True
+            filters["channelprofilemembership__channel_profile__in"] = (
+                user.channel_profiles.all()
+            )
+            return Channel.objects.filter(**filters).distinct().exists()
+        return Channel.objects.filter(**filters).exists()
+
     @action(detail=True, methods=["post"], url_path="comskip")
     def comskip(self, request, pk=None):
         """Trigger comskip processing for this recording."""
@@ -2475,6 +2520,8 @@ class RecordingViewSet(viewsets.ModelViewSet):
         if not network_access_allowed(request, "STREAMS"):
             return JsonResponse({"error": "Forbidden"}, status=403)
         recording = get_object_or_404(Recording, pk=pk)
+        if not self._user_can_play_recording(request, recording):
+            return JsonResponse({"error": "Forbidden"}, status=403)
         cp = recording.custom_properties or {}
         file_path = cp.get("file_path")
         file_name = cp.get("file_name") or "recording"
@@ -2562,6 +2609,8 @@ class RecordingViewSet(viewsets.ModelViewSet):
         if not network_access_allowed(request, "STREAMS"):
             return JsonResponse({"error": "Forbidden"}, status=403)
         recording = get_object_or_404(Recording, pk=pk)
+        if not self._user_can_play_recording(request, recording):
+            return JsonResponse({"error": "Forbidden"}, status=403)
         cp = recording.custom_properties or {}
         hls_dir = cp.get("_hls_dir")
 

@@ -347,6 +347,12 @@ export default function FloatingVideo() {
         liveMaxLatencyDurationCount: 10,
         enableWorker: true,
         lowLatencyMode: false,
+        // Inject the JWT into every playlist + segment XHR.
+        xhrSetup: (xhr) => {
+          if (accessToken) {
+            xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+          }
+        },
       });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (data.fatal) {
