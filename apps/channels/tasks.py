@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import gc
 
 from celery import shared_task
+from celery.signals import worker_shutting_down
 from django.utils.text import slugify
 from rapidfuzz import fuzz
 
@@ -30,6 +31,21 @@ import tempfile
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
+
+
+# Flag set by the Celery `worker_shutting_down` signal so in-flight
+# `run_recording` tasks can distinguish a graceful worker shutdown (e.g.
+# `docker stop`, container update) from the natural end of a recording.
+# When set, the post-FFmpeg path leaves the HLS working directory intact
+# and marks the recording "interrupted" so `recover_recordings_on_startup`
+# can resume it on the next boot via the existing path-reuse logic.
+_DVR_SHUTTING_DOWN = False
+
+
+@worker_shutting_down.connect
+def _dvr_mark_shutting_down(**_kwargs):
+    global _DVR_SHUTTING_DOWN
+    _DVR_SHUTTING_DOWN = True
 
 
 _url_validation_cache = {}
@@ -1586,9 +1602,14 @@ def _parse_epg_tv_movie_info(program):
     return is_movie, season, episode, year, sub_title
 
 
-def _build_output_paths(channel, program, start_time, end_time):
+def _build_output_paths(channel, program, start_time, end_time, recording_id):
     """
-    Build (final_path, temp_ts_path, final_filename) using DVR templates.
+    Build (final_path, hls_dir, final_filename) using DVR templates.
+
+    The HLS working directory is hidden and tagged with the recording id
+    (e.g. ``.dvr_71_hls``) so it cannot collide with another recording's
+    files and so orphan-cleanup utilities can identify internal scratch
+    directories unambiguously.
     """
     from core.models import CoreSettings
     # Root for DVR recordings: fixed to /data/recordings inside the container
@@ -1655,19 +1676,17 @@ def _build_output_paths(channel, program, start_time, end_time):
     final_path = rel_path if rel_path.startswith('/') else os.path.join(library_root, rel_path)
     final_path = os.path.normpath(final_path)
 
-    # Avoid overwriting an existing file from a different recording.
-    # Check the MKV file and its associated HLS working directory.
+    # Avoid overwriting an existing MKV from a different recording.  The HLS
+    # working directory is keyed by recording id, so it cannot collide and is
+    # not part of this check.
     base, ext = os.path.splitext(final_path)
     counter = 1
     while True:
-        candidate_base = final_path[:-len(ext)]  # strip extension
-        hls_dir_candidate = candidate_base + '_hls'
         try:
             mkv_occupied = os.stat(final_path).st_size > 0
         except OSError:
             mkv_occupied = False
-        hls_occupied = os.path.isdir(hls_dir_candidate)
-        if not mkv_occupied and not hls_occupied:
+        if not mkv_occupied:
             break
         counter += 1
         final_path = f"{base}_{counter}{ext}"
@@ -1675,9 +1694,8 @@ def _build_output_paths(channel, program, start_time, end_time):
     # Ensure directory exists
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
 
-    # Derive HLS working directory alongside the final MKV
-    base_no_ext = os.path.splitext(os.path.basename(final_path))[0]
-    hls_dir = os.path.join(os.path.dirname(final_path), f"{base_no_ext}_hls")
+    # HLS working directory: hidden and id-tagged alongside the final MKV.
+    hls_dir = os.path.join(os.path.dirname(final_path), f".dvr_{recording_id}_hls")
     return final_path, hls_dir, os.path.basename(final_path)
 
 
@@ -1821,7 +1839,37 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
                 program.update(epg_match)
                 cp["program"] = program
 
-        final_path, hls_dir, filename = _build_output_paths(channel, program, start_time, end_time)
+        # Resume into the existing working set if this task is a recovery run.
+        # `recover_recordings_on_startup` re-dispatches `run_recording` for an
+        # interrupted recording with `_hls_dir` and `file_path` already set in
+        # custom_properties.  Re-running `_build_output_paths` would allocate a
+        # fresh `Foo_2.mkv` / `.dvr_{id}_hls` pair and orphan the original
+        # segments, producing two MKVs at the end.  Reuse the original paths
+        # whenever the HLS directory is still on disk.
+        existing_hls = cp.get("_hls_dir")
+        existing_file = cp.get("file_path")
+        if (
+            existing_hls
+            and existing_file
+            and os.path.isdir(existing_hls)
+        ):
+            final_path = existing_file
+            hls_dir = existing_hls
+            filename = os.path.basename(final_path)
+            try:
+                _seg_count = sum(
+                    1 for f in os.listdir(hls_dir) if f.endswith(".ts")
+                )
+            except OSError:
+                _seg_count = 0
+            logger.info(
+                f"run_recording {recording_id}: resuming into existing HLS dir "
+                f"{hls_dir} ({_seg_count} segment(s)), final={final_path}"
+            )
+        else:
+            final_path, hls_dir, filename = _build_output_paths(
+                channel, program, start_time, end_time, recording_id
+            )
         cp["file_name"] = filename
         cp["file_path"] = final_path
         cp["_hls_dir"] = hls_dir
@@ -2213,6 +2261,37 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
         except subprocess.TimeoutExpired:
             ffmpeg_proc.kill()
 
+    # If the loop broke because the Celery worker is shutting down (e.g.
+    # docker stop, container update) and the recording window is still open,
+    # leave the HLS working directory intact and mark the recording as
+    # interrupted.  `recover_recordings_on_startup` will re-dispatch this task
+    # on the next boot, and the resume-path logic in the prep block will
+    # adopt the existing `_hls_dir` and `file_path` so FFmpeg appends to the
+    # same playlist and the eventual concat produces a single MKV.
+    if _DVR_SHUTTING_DOWN and time.time() < end_timestamp:
+        try:
+            _shutdown_rec = Recording.objects.filter(id=recording_id).first()
+            if _shutdown_rec:
+                _shutdown_cp = _shutdown_rec.custom_properties or {}
+                # Preserve _hls_dir / file_path / file_url exactly as they are
+                # so the HLS endpoint keeps serving until the worker dies and
+                # so recovery can find the working directory on next boot.
+                _shutdown_cp["status"] = "interrupted"
+                _shutdown_cp["interrupted_reason"] = "server_shutdown"
+                _shutdown_cp["ended_at"] = str(datetime.now())
+                _shutdown_rec.custom_properties = _shutdown_cp
+                _shutdown_rec.save(update_fields=["custom_properties"])
+        except Exception as _se:
+            logger.warning(
+                f"DVR recording {recording_id}: failed to flag interrupted on shutdown: {_se}"
+            )
+        logger.info(
+            f"DVR recording {recording_id}: worker shutting down with "
+            f"{int(end_timestamp - time.time())}s of recording window remaining; "
+            f"leaving HLS dir intact for resume on next boot, skipping concat."
+        )
+        return
+
     if not _stream_confirmed and not interrupted:
         interrupted = True
         interrupted_reason = f"no_stream_data: {last_error or 'ffmpeg_failed'}"
@@ -2355,17 +2434,101 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
                 ],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             )
-            if (
+            _ok = (
                 concat_result.returncode == 0
                 and os.path.exists(final_path)
                 and os.path.getsize(final_path) > 0
-            ):
-                remux_success = True
-                logger.info(
-                    f"DVR recording {recording_id}: HLS→MKV concat succeeded — "
-                    f"{len(segments)} segments → {os.path.basename(final_path)} "
-                    f"({os.path.getsize(final_path):,} bytes)"
+            )
+            _fallback_used = False
+            # MP4-intermediate fallback: some MPEG-TS streams (parameter set
+            # changes mid-stream, weird PMT updates, audio discontinuities)
+            # fail to mux directly into Matroska but go through an MP4
+            # container cleanly, which can then be remuxed losslessly to
+            # MKV.  Try this before declaring the recording lost.
+            if not _ok:
+                logger.warning(
+                    f"DVR recording {recording_id}: direct HLS\u2192MKV concat failed "
+                    f"(rc={concat_result.returncode}); attempting MP4-intermediate "
+                    f"fallback. stderr: {(concat_result.stderr or '')[:300]}"
                 )
+                try:
+                    if os.path.exists(final_path) and os.path.getsize(final_path) == 0:
+                        os.remove(final_path)
+                except OSError:
+                    pass
+                _intermediate_mp4 = os.path.join(
+                    hls_dir, f".dvr_{recording_id}_intermediate.mp4"
+                )
+                try:
+                    if os.path.exists(_intermediate_mp4):
+                        os.remove(_intermediate_mp4)
+                except OSError:
+                    pass
+                _mp4_concat = subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-f", "concat", "-safe", "0",
+                        "-i", concat_list_path,
+                        "-c", "copy",
+                        "-bsf:a", "aac_adtstoasc",
+                        _intermediate_mp4,
+                    ],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                if (
+                    _mp4_concat.returncode == 0
+                    and os.path.exists(_intermediate_mp4)
+                    and os.path.getsize(_intermediate_mp4) > 0
+                ):
+                    _mp4_to_mkv = subprocess.run(
+                        [
+                            "ffmpeg", "-y",
+                            "-i", _intermediate_mp4,
+                            "-c", "copy",
+                            final_path,
+                        ],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                    )
+                    if (
+                        _mp4_to_mkv.returncode == 0
+                        and os.path.exists(final_path)
+                        and os.path.getsize(final_path) > 0
+                    ):
+                        _ok = True
+                        _fallback_used = True
+                    else:
+                        logger.error(
+                            f"DVR recording {recording_id}: MP4\u2192MKV remux step "
+                            f"failed (rc={_mp4_to_mkv.returncode}). stderr: "
+                            f"{(_mp4_to_mkv.stderr or '')[:300]}"
+                        )
+                else:
+                    logger.error(
+                        f"DVR recording {recording_id}: HLS\u2192MP4 concat fallback "
+                        f"failed (rc={_mp4_concat.returncode}). stderr: "
+                        f"{(_mp4_concat.stderr or '')[:300]}"
+                    )
+                try:
+                    if os.path.exists(_intermediate_mp4):
+                        os.remove(_intermediate_mp4)
+                except OSError:
+                    pass
+
+            if _ok:
+                remux_success = True
+                if _fallback_used:
+                    logger.info(
+                        f"DVR recording {recording_id}: HLS\u2192MP4\u2192MKV fallback "
+                        f"concat succeeded \u2014 {len(segments)} segments \u2192 "
+                        f"{os.path.basename(final_path)} "
+                        f"({os.path.getsize(final_path):,} bytes)"
+                    )
+                else:
+                    logger.info(
+                        f"DVR recording {recording_id}: HLS\u2192MKV concat succeeded \u2014 "
+                        f"{len(segments)} segments \u2192 {os.path.basename(final_path)} "
+                        f"({os.path.getsize(final_path):,} bytes)"
+                    )
                 # Update DB so *new* client requests go to /file/ (the final MKV)
                 # rather than the soon-to-be-removed /hls/ endpoint.  Important:
                 # we do NOT clear _hls_dir here, active viewers still in the
@@ -2432,9 +2595,10 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
                     logger.warning(f"DVR recording {recording_id}: post-rmtree DB update failed: {_post_e}")
             else:
                 logger.error(
-                    f"DVR recording {recording_id}: HLS→MKV concat failed "
-                    f"(rc={concat_result.returncode}). Keeping HLS segments for recovery. "
-                    f"stderr: {(concat_result.stderr or '')[:500]}"
+                    f"DVR recording {recording_id}: all HLS\u2192MKV concat attempts "
+                    f"failed (direct rc={concat_result.returncode}, MP4 fallback also "
+                    f"failed). Keeping HLS segments for recovery. stderr: "
+                    f"{(concat_result.stderr or '')[:500]}"
                 )
         except Exception as _ce:
             logger.error(f"DVR recording {recording_id}: concat exception: {_ce}")

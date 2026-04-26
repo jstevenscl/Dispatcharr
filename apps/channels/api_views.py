@@ -62,13 +62,14 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from apps.epg.models import EPGData
 from apps.vod.models import Movie, Series
 from django.db.models import Q
-from django.http import HttpResponse, StreamingHttpResponse, FileResponse, Http404
+from django.http import HttpResponse, StreamingHttpResponse, FileResponse, Http404, JsonResponse
 from django.utils import timezone
 import mimetypes
 from django.conf import settings
 
 from rest_framework.pagination import PageNumberPagination
 
+from dispatcharr.utils import network_access_allowed
 
 
 logger = logging.getLogger(__name__)
@@ -2471,6 +2472,8 @@ class RecordingViewSet(viewsets.ModelViewSet):
         is still running (or the MKV is not yet produced), it is redirected to
         the HLS playlist endpoint.
         """
+        if not network_access_allowed(request, "STREAMS"):
+            return JsonResponse({"error": "Forbidden"}, status=403)
         recording = get_object_or_404(Recording, pk=pk)
         cp = recording.custom_properties or {}
         file_path = cp.get("file_path")
@@ -2556,6 +2559,8 @@ class RecordingViewSet(viewsets.ModelViewSet):
         to route through this endpoint so authentication and path isolation are
         preserved.
         """
+        if not network_access_allowed(request, "STREAMS"):
+            return JsonResponse({"error": "Forbidden"}, status=403)
         recording = get_object_or_404(Recording, pk=pk)
         cp = recording.custom_properties or {}
         hls_dir = cp.get("_hls_dir")
