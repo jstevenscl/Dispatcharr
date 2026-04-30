@@ -15,6 +15,7 @@ from .api_views import (
     RecordingViewSet,
     RecurringRecordingRuleViewSet,
     GetChannelStreamsAPIView,
+    GetChannelStreamStatsAPIView,
     SeriesRulesAPIView,
     DeleteSeriesRuleAPIView,
     EvaluateSeriesRulesAPIView,
@@ -41,6 +42,7 @@ urlpatterns = [
     path('logos/bulk-delete/', BulkDeleteLogosAPIView.as_view(), name='bulk_delete_logos'),
     path('logos/cleanup/', CleanupUnusedLogosAPIView.as_view(), name='cleanup_unused_logos'),
     path('channels/<int:channel_id>/streams/', GetChannelStreamsAPIView.as_view(), name='get_channel_streams'),
+    path('channels/<int:channel_id>/streams/stats/', GetChannelStreamStatsAPIView.as_view(), name='get_channel_stream_stats'),
     path('profiles/<int:profile_id>/channels/<int:channel_id>/', UpdateChannelMembershipAPIView.as_view(), name='update_channel_membership'),
     path('profiles/<int:profile_id>/channels/bulk-update/', BulkUpdateChannelMembershipAPIView.as_view(), name='bulk_update_channel_membership'),
     # DVR series rules (order matters: specific routes before catch-all slug)

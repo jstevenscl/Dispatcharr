@@ -1007,6 +1007,27 @@ export default class API {
     }
   }
 
+  /**
+   * Fetches a stats delta for a channel's streams. Errors are swallowed
+   * since this is a background refresh.
+   */
+  static async getChannelStreamStats(channelId, since, ids) {
+    try {
+      const params = new URLSearchParams();
+      if (since) params.set('since', since);
+      if (Array.isArray(ids) && ids.length > 0) {
+        params.set('ids', ids.join(','));
+      }
+      const qs = params.toString();
+      const response = await request(
+        `${host}/api/channels/channels/${channelId}/streams/stats/${qs ? `?${qs}` : ''}`
+      );
+      return Array.isArray(response) ? response : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   static async queryStreams(params) {
     try {
       const response = await request(

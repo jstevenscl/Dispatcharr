@@ -2237,6 +2237,99 @@ class GetChannelStreamsAPIView(APIView):
         return Response(serializer.data)
 
 
+class GetChannelStreamStatsAPIView(APIView):
+    """Returns a stats delta for a channel's streams (id, stream_stats,
+    stream_stats_updated_at). Supports `since` (ISO 8601) and `ids`
+    (comma-separated) query params."""
+
+    def get_permissions(self):
+        try:
+            return [
+                perm() for perm in permission_classes_by_method[self.request.method]
+            ]
+        except KeyError:
+            return [Authenticated()]
+
+    @extend_schema(
+        description=(
+            "Return a minimal stats delta for the streams attached to a "
+            "channel. Used by the channel table to refresh `stream_stats` "
+            "on row expand and after a preview closes without re-pulling "
+            "full stream rows."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="since",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "ISO 8601 timestamp. Returns only streams whose "
+                    "`stream_stats_updated_at` is strictly newer than this "
+                    "value. Omit to return all streams for the channel."
+                ),
+            ),
+            OpenApiParameter(
+                name="ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Comma-separated stream IDs to restrict the response "
+                    "to. Combined with `since` via AND."
+                ),
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="ChannelStreamStatsDelta",
+                fields={
+                    "id": serializers.IntegerField(),
+                    "stream_stats": serializers.JSONField(allow_null=True),
+                    "stream_stats_updated_at": serializers.DateTimeField(allow_null=True),
+                },
+                many=True,
+            ),
+            400: inline_serializer(
+                name="ChannelStreamStatsErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
+    def get(self, request, channel_id):
+        from django.utils.dateparse import parse_datetime
+
+        get_object_or_404(Channel, id=channel_id)
+
+        qs = Stream.objects.filter(channels=channel_id)
+
+        since_raw = request.query_params.get("since")
+        if since_raw:
+            since_dt = parse_datetime(since_raw)
+            if since_dt is None:
+                return Response(
+                    {"detail": "Invalid 'since' value. Expected ISO 8601."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(stream_stats_updated_at__gt=since_dt)
+
+        ids_raw = request.query_params.get("ids")
+        if ids_raw:
+            try:
+                ids = [int(x) for x in ids_raw.split(",") if x.strip()]
+            except ValueError:
+                return Response(
+                    {"detail": "Invalid 'ids' value. Expected comma-separated integers."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(id__in=ids)
+
+        data = list(
+            qs.values("id", "stream_stats", "stream_stats_updated_at")
+        )
+        return Response(data)
+
+
 class UpdateChannelMembershipAPIView(APIView):
     permission_classes = [IsOwnerOfObject]
 
