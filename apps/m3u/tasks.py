@@ -2354,12 +2354,11 @@ def sync_auto_channels(account_id, scan_start_time=None):
             ).values_list('channel_id', flat=True)
         )
 
-        orphaned_count = orphaned_channels.count()
-        if orphaned_count > 0:
-            orphaned_channels.delete()
-            channels_deleted += orphaned_count
+        deleted_total, _ = orphaned_channels.delete()
+        if deleted_total:
+            channels_deleted += deleted_total
             logger.info(
-                f"Deleted {orphaned_count} orphaned auto channels with no valid streams"
+                f"Deleted {deleted_total} orphaned auto channels with no valid streams"
             )
 
         logger.info(
@@ -3188,16 +3187,17 @@ def send_m3u_update(account_id, action, progress, **kwargs):
         "action": action,
     }
 
-    # Add the status and message if not already in kwargs
-    try:
-        account = M3UAccount.objects.get(id=account_id)
-        if account:
+    # Only fetch the account when we actually need to fill in missing fields.
+    # Many callers in tight loops already pass status/message; skip the DB hit then.
+    if "status" not in kwargs or "message" not in kwargs:
+        try:
+            account = M3UAccount.objects.only("status", "last_message").get(id=account_id)
             if "status" not in kwargs:
                 data["status"] = account.status
             if "message" not in kwargs and account.last_message:
                 data["message"] = account.last_message
-    except:
-        pass  # If account can't be retrieved, continue without these fields
+        except Exception:
+            pass
 
     # Add the additional key-value pairs from kwargs
     data.update(kwargs)
