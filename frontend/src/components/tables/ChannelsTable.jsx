@@ -689,7 +689,7 @@ const ChannelsTable = ({ onReady }) => {
   const handleWatchStream = useCallback(
     (channel) => {
       const url = getChannelURL(channel);
-      showVideo(url, 'live', { name: channel.name });
+      showVideo(url, 'live', { name: channel.name, channelId: channel.id });
     },
     [getChannelURL, showVideo]
   );

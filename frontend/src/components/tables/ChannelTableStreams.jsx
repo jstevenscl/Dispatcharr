@@ -575,12 +575,19 @@ const ChannelStreams = ({ channel }) => {
     if (wasVisible && !isVideoVisible) {
       const meta = lastPreviewMetaRef.current;
       lastPreviewMetaRef.current = null;
-      const streamId = meta && meta.streamId;
+      const channelId = channelRef.current?.id;
+      const previewedStreamId = meta && meta.streamId;
+      const previewedChannelId = meta && meta.channelId;
       if (
-        streamId != null &&
-        (dataRef.current || []).some((s) => s.id === streamId)
+        previewedStreamId != null &&
+        (dataRef.current || []).some((s) => s.id === previewedStreamId)
       ) {
-        refreshStats({ ids: [streamId] });
+        refreshStats({ ids: [previewedStreamId] });
+      } else if (
+        previewedChannelId != null &&
+        previewedChannelId === channelId
+      ) {
+        refreshStats();
       }
     }
   }, [isVideoVisible, refreshStats]);
