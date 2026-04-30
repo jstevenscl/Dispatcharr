@@ -1763,6 +1763,36 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
         )
         return
 
+    # --- Per-recording active lock (prevents concurrent ffmpeg processes
+    # writing to the same HLS dir when duplicate recovery dispatches occur). ---
+    # The lock is refreshed inside the main loop below; if a worker crashes
+    # the TTL expires within ~45s and recovery can re-acquire it.
+    _active_lock_key = f"dvr:recording-active:{recording_id}"
+    _active_lock_ttl = 45
+    _active_lock_redis = None
+    try:
+        from core.utils import RedisClient
+        _active_lock_redis = RedisClient.get_client()
+    except Exception:
+        _active_lock_redis = None
+
+    if _active_lock_redis is not None:
+        try:
+            if not _active_lock_redis.set(
+                _active_lock_key, "1", ex=_active_lock_ttl, nx=True
+            ):
+                logger.warning(
+                    f"run_recording {recording_id}: another worker holds the "
+                    f"active-recording lock, aborting duplicate dispatch."
+                )
+                return
+        except Exception as _le:
+            logger.warning(
+                f"run_recording {recording_id}: active-lock acquisition error "
+                f"({type(_le).__name__}: {_le}), proceeding without lock."
+            )
+            _active_lock_redis = None
+
     # --- Clean up the one-off PeriodicTask that dispatched this task ---
     try:
         from apps.channels.signals import revoke_task, _dvr_task_name
@@ -2095,10 +2125,24 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
         _stream_confirmed = False
         _last_seg_count = hls_start_number
         _last_new_seg_time = time.time()
+        _last_active_lock_refresh = 0.0
+        _active_lock_refresh_interval = 15.0
 
         while ffmpeg_proc.poll() is None:
             time.sleep(0.5)
             now = time.time()
+
+            # Refresh the per-recording active lock so a concurrent worker
+            # cannot acquire it and start a duplicate ffmpeg.
+            if (
+                _active_lock_redis is not None
+                and now - _last_active_lock_refresh >= _active_lock_refresh_interval
+            ):
+                try:
+                    _active_lock_redis.expire(_active_lock_key, _active_lock_ttl)
+                except Exception:
+                    pass
+                _last_active_lock_refresh = now
 
             segs_now = [
                 f for f in os.listdir(hls_dir)
@@ -2736,6 +2780,14 @@ def run_recording(recording_id, channel_id, start_time_str, end_time_str):
     except Exception:
         pass
 
+    # Release the per-recording active lock so a follow-up dispatch (e.g.
+    # manual re-record) does not have to wait for TTL expiry.
+    if _active_lock_redis is not None:
+        try:
+            _active_lock_redis.delete(_active_lock_key)
+        except Exception:
+            pass
+
 
 @shared_task
 def recover_recordings_on_startup():
@@ -2752,12 +2804,21 @@ def recover_recordings_on_startup():
         from .signals import schedule_recording_task, revoke_task
 
         redis = RedisClient.get_client()
-        if redis:
-            lock_key = "dvr:recover_lock"
-            # Set lock with 10-minute TTL; must be long enough for Phase 2
-            # ffmpeg remux operations on large files.
-            if not redis.set(lock_key, "1", ex=600, nx=True):
-                return "Recovery already in progress"
+        if redis is None:
+            # Fail closed: without Redis we cannot guarantee single-execution
+            # across workers, and running unguarded has been shown to start
+            # duplicate ffmpeg processes against the same HLS output dir.
+            logger.warning(
+                "recover_recordings_on_startup: Redis unavailable, "
+                "skipping recovery to avoid duplicate recording dispatch."
+            )
+            return "Redis unavailable"
+
+        lock_key = "dvr:recover_lock"
+        # Set lock with 10-minute TTL; must be long enough for Phase 2
+        # ffmpeg remux operations on large files.
+        if not redis.set(lock_key, "1", ex=600, nx=True):
+            return "Recovery already in progress"
 
         now = timezone.now()
 
@@ -2788,6 +2849,22 @@ def recover_recordings_on_startup():
                         f"(status={current_status!r}, already in terminal/active state)."
                     )
                     continue
+
+                # If a live worker still holds the per-recording active lock,
+                # skip recovery, that worker is currently writing to the HLS
+                # output dir and re-dispatching `run_recording` would spawn a
+                # second ffmpeg racing on the same files. The lock auto-expires
+                # within ~45s if the worker died, so this only blocks recovery
+                # while the recording is genuinely live.
+                try:
+                    if redis.exists(f"dvr:recording-active:{rec.id}"):
+                        logger.info(
+                            f"recover_recordings_on_startup: skipping recording {rec.id} "
+                            f"(active-recording lock held by live worker)."
+                        )
+                        continue
+                except Exception:
+                    pass
 
                 # Mark interrupted due to restart; will flip to 'recording' when task starts
                 cp["status"] = "interrupted"
