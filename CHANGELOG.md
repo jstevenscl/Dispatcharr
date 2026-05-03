@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-05-03
+
 ### Security
 
 - **HDHomeRun discovery endpoints now respect the `M3U_EPG` network access policy**. `DiscoverAPIView`, `LineupAPIView`, `LineupStatusAPIView`, and `HDHRDeviceXMLAPIView` were marked `AllowAny` so HDHR clients (Plex, Emby, Jellyfin, Channels DVR, etc.) can discover the tuner without authenticating, but they were not gated by any network allowlist. The lineup enumerates every channel name and per-channel UUID stream URL, so any client that could reach the server could full-enumerate the lineup. All four views now call `network_access_allowed(request, "M3U_EPG")` and return `403 Forbidden` for clients outside the allowlist, matching the gating already applied to the M3U and EPG endpoints (and matching what the Network Access settings UI already advertised: "Limit access to M3U, EPG, and HDHR URLs"). Operators with a restrictive `M3U_EPG` policy will see HDHR discovery start being blocked for off-LAN clients on upgrade; loosen the policy if remote HDHR access is required.
