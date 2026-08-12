@@ -23,3 +23,11 @@ models
 .idea
 .vite/
 uv.lock
+# AI-agent tooling / local task tracking -- never tracked in this fork
+# (used only to stage upstream PRs; keep history clean for maintainers)
+.beads/
+.claude/
+.codex/
+.agents/
+AGENTS.md
+CLAUDE.md
