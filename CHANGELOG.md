@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **VOD episode sync no longer wipes most of a series' episodes from a single short provider response.** `batch_process_episodes` deleted every `M3UEpisodeRelation` missing from whatever it had just fetched, with no grace period and no distinction between a genuine removal and a truncated/incomplete fetch (a slow upstream, a transient network hiccup, a provider mid-update) -- there is no status code or header that tells the two apart. In practice: a user mid-episode, a routine playlist refresh, and the show goes from a full season list to empty in the client (TiviMate, Dispatcharr's own guide), with nothing having actually changed upstream. A response that would remove more than half of a series' on-file episode relations in one pass is now treated as a likely-incomplete fetch and skipped for that pass (a later complete refresh still reconciles normally); every episode actually present in the response is still created/updated regardless. Small, genuine removals (a handful of episodes pulled from the catalog) still apply immediately, and the guard does not block cleanup on series with only a few episodes on file.
 ## [0.30.0] - 2026-08-29
 
 ### Added
