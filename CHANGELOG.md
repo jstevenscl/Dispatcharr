@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ## [0.31.0] - 2026-09-13
 
 ### Added
@@ -97,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Forwarded Host and scheme are trusted only from configured proxies.** `get_host_and_port` / `build_absolute_uri_with_port` use the same `request_from_trusted_proxy` gate as client IP detection, so `X-Forwarded-Host` / `X-Forwarded-Proto` from an untrusted peer cannot rewrite absolute URLs in M3U, EPG, HDHR, or similar responses.
 - **Stream rehash is admin-only.** `POST` to the rehash-streams endpoint requires `IsAdmin` instead of any authenticated user.
 - **Modular Compose no longer publishes Postgres to the host.** The `db` service keeps `5432` on the Docker network only (`POSTGRES_HOST=db`); web and celery still connect as before.
+
+### Fixed (EDM fork patch, on top of 0.31.0)
+
+- **VOD episode sync no longer wipes most of a series' episodes from a single short provider response.** `batch_process_episodes` deleted every `M3UEpisodeRelation` missing from whatever it had just fetched, with no grace period and no distinction between a genuine removal and a truncated/incomplete fetch (a slow upstream, a transient network hiccup, a provider mid-update) -- there is no status code or header that tells the two apart. In practice: a user mid-episode, a routine playlist refresh, and the show goes from a full season list to empty in the client (TiviMate, Dispatcharr's own guide), with nothing having actually changed upstream. A response that would remove more than half of a series' on-file episode relations in one pass is now treated as a likely-incomplete fetch and skipped for that pass (a later complete refresh still reconciles normally); every episode actually present in the response is still created/updated regardless. Small, genuine removals (a handful of episodes pulled from the catalog) still apply immediately, and the guard does not block cleanup on series with only a few episodes on file.
+- **VOD movie/series relations no longer duplicate-key error and abort a whole sync batch when a provider reissues a `stream_id`.** A provider re-issuing a movie/series' `stream_id` (a re-encode, a catalog rebuild, or -- for EDM's own XC feed -- any category-placement edit) used to hit Dispatcharr's `(movie, account)`/`(series, account)` uniqueness on insert, raising an `IntegrityError` that rolled back the whole batch and silently skipped `last_seen` refresh for every other movie/series in it. The existing relation is now re-targeted onto the reissued id instead of inserting a duplicate.
+- **`cleanup_orphaned_vod_content` has a real grace period and fractional guard**, matching the same "one incomplete pass shouldn't look like a mass removal" principle as the episode-sync guard above.
 
 ## [0.30.0] - 2026-08-29
 
