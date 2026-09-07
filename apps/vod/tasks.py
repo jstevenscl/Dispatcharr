@@ -738,6 +738,29 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
         if stream_id in existing_relations:
             # Update existing relation
             relation = existing_relations[stream_id]
+            identity_mismatch = relation.movie_id is not None and (not movie.pk or movie.pk != relation.movie_id)
+            if identity_mismatch and not (tmdb_id or imdb_id):
+                # This stream_id already has a tracked relation, but a plain
+                # name+year rematch (no tmdb/imdb id in this response -- EDM's
+                # own XC feed never sends one at all) landed on a DIFFERENT
+                # Movie row than the one already linked. A provider that
+                # never supplies external ids is only ever matched by
+                # name+year, and that match is unstable: lookup_by_name_year
+                # excludes any row that has since acquired a tmdb/imdb id, so
+                # a single transient blank/changed year is enough to "lose"
+                # the real row and manufacture a new, empty one here --
+                # silently orphaning the original (and, for series,
+                # cascading to delete every episode under it). Without a
+                # strong id actually asserting the identity changed, keep the
+                # relation pointed at its current, already-established movie
+                # and just refresh that movie's own fields instead of
+                # swapping it out from under an existing relation.
+                logger.warning(
+                    f"Movie relation for stream_id={stream_id} (account {account.name}) already links movie "
+                    f"id={relation.movie_id}, but this pass's name+year match resolved to a different movie "
+                    f"id={movie.id} with no tmdb/imdb id to justify it -- keeping the existing linkage."
+                )
+                movie = relation.movie
             relation.movie = movie
             relation.category = category
             relation.container_extension = movie_data.get('container_extension', 'mp4')
@@ -1142,6 +1165,24 @@ def process_series_batch(account, batch, categories, relations, scan_start_time=
         if series_id in existing_relations:
             # Update existing relation
             relation = existing_relations[series_id]
+            identity_mismatch = relation.series_id is not None and (not series.pk or series.pk != relation.series_id)
+            if identity_mismatch and not (series_props.get('tmdb_id') or series_props.get('imdb_id')):
+                # Same hazard as process_movie_batch's identical guard -- see
+                # its comment. EDM's own XC feed never sends a tmdb/imdb id
+                # for series at all, so a plain name+year rematch is the ONLY
+                # path ever taken for it, and that match is unstable: a
+                # transient blank/changed year silently "loses" the real
+                # Series row and manufactures a new, empty one here --
+                # orphaning the original and cascading (via FK) to delete
+                # every episode under it. Keep the relation pointed at its
+                # already-established series without a strong id to justify
+                # the swap.
+                logger.warning(
+                    f"Series relation for external_series_id={series_id} (account {account.name}) already links "
+                    f"series id={relation.series_id}, but this pass's name+year match resolved to a different "
+                    f"series id={series.id} with no tmdb/imdb id to justify it -- keeping the existing linkage."
+                )
+                series = relation.series
             relation.series = series
             relation.category = category
             # Merge so list sync updates basic_data without dropping detail
