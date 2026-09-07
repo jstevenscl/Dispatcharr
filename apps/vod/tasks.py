@@ -26,6 +26,18 @@ EPISODE_STALE_DELETE_MIN_EXISTING = 5
 # provider fetch rather than a real removal -- see the guard's own comment.
 EPISODE_STALE_DELETE_MAX_FRACTION = 0.5
 
+# cleanup_orphaned_vod_content's own movie/series relation cleanup is the same
+# class of hazard one level up: client.get_series()/get_vod_streams() is a
+# single API call per refresh, and a transient truncated/incomplete response
+# (a slow provider, a network hiccup, momentary contention on the provider's
+# own DB under load) looks identical to "this content was really removed" --
+# with no per-model grace period, a relation missing from just one pass was
+# deleted immediately, cascading (via FK) to delete every episode under it,
+# then the orphaned Series/Movie row itself. See CLEANUP_STALE_DELETE_MIN_EXISTING/
+# CLEANUP_STALE_DELETE_MAX_FRACTION below and refresh_vod_content's call site.
+CLEANUP_STALE_DELETE_MIN_EXISTING = 20
+CLEANUP_STALE_DELETE_MAX_FRACTION = 0.5
+
 
 def _empty_categories_should_abort(categories_data, account, category_type):
     """True when an empty provider response would wipe existing group selections."""
@@ -114,9 +126,16 @@ def refresh_vod_content(account_id):
 
         logger.info(f"Batch VOD refresh completed for account {account.name} in {duration:.2f} seconds")
 
-        # Cleanup orphaned VOD content after refresh (scoped to this account only)
+        # Cleanup orphaned VOD content after refresh (scoped to this account only).
+        # stale_days=2, not 0: refresh_vod_content runs on every regular M3U
+        # refresh cycle, and client.get_series()/get_vod_streams() is a single
+        # API call -- a relation genuinely missing from just one pass (a slow
+        # provider, a transient network hiccup) must survive to the next
+        # refresh rather than being deleted (and cascading to every episode
+        # under it) on first absence. See cleanup_orphaned_vod_content's own
+        # fractional guard for the second layer of defense.
         logger.info(f"Starting cleanup of orphaned VOD content for account {account.name}")
-        cleanup_result = cleanup_orphaned_vod_content(account_id=account_id, scan_start_time=start_time)
+        cleanup_result = cleanup_orphaned_vod_content(stale_days=2, account_id=account_id, scan_start_time=start_time)
         logger.info(f"VOD cleanup completed: {cleanup_result}")
 
         # Send completion notification
@@ -1800,16 +1819,51 @@ def cleanup_orphaned_vod_content(stale_days=0, scan_start_time=None, account_id=
     else:
         logger.info("Cleaning up stale VOD content across all accounts")
 
-    # Clean up stale movie relations (haven't been seen in the specified days)
+    # Existing-count scope matches base_filters (per-account when account_id is
+    # given, else global) -- the fraction has to be measured against the same
+    # population the stale count was drawn from.
+    existing_filters = {'m3u_account_id': account_id} if account_id else {}
+
+    # Clean up stale movie relations (haven't been seen in the specified days).
+    # Guarded the same way as the series relations below -- see this
+    # function's docstring / CLEANUP_STALE_DELETE_MAX_FRACTION's comment.
     stale_movie_relations = M3UMovieRelation.objects.filter(**base_filters)
     stale_movie_count = stale_movie_relations.count()
-    stale_movie_relations.delete()
+    existing_movie_count = M3UMovieRelation.objects.filter(**existing_filters).count()
+    if (
+        stale_movie_count > 0
+        and existing_movie_count >= CLEANUP_STALE_DELETE_MIN_EXISTING
+        and stale_movie_count / existing_movie_count > CLEANUP_STALE_DELETE_MAX_FRACTION
+    ):
+        logger.warning(
+            f"Refusing to remove {stale_movie_count}/{existing_movie_count} movie relations as stale in one pass "
+            f"(account_id={account_id}) -- looks like a short/incomplete provider fetch rather than a real mass "
+            f"removal. Skipping this pass; a later complete refresh will reconcile it normally."
+        )
+        stale_movie_count = 0
+    else:
+        stale_movie_relations.delete()
 
     # Clean up stale series relations.
-    # Episode relations are removed via CASCADE on the series_relation FK.
+    # Episode relations are removed via CASCADE on the series_relation FK, so
+    # this guard is exactly as consequential as batch_process_episodes' own --
+    # a wrongly-deleted series relation here wipes every episode under it too.
     stale_series_relations = M3USeriesRelation.objects.filter(**base_filters)
     stale_series_count = stale_series_relations.count()
-    stale_series_relations.delete()
+    existing_series_count = M3USeriesRelation.objects.filter(**existing_filters).count()
+    if (
+        stale_series_count > 0
+        and existing_series_count >= CLEANUP_STALE_DELETE_MIN_EXISTING
+        and stale_series_count / existing_series_count > CLEANUP_STALE_DELETE_MAX_FRACTION
+    ):
+        logger.warning(
+            f"Refusing to remove {stale_series_count}/{existing_series_count} series relations as stale in one pass "
+            f"(account_id={account_id}) -- looks like a short/incomplete provider fetch rather than a real mass "
+            f"removal. Skipping this pass; a later complete refresh will reconcile it normally."
+        )
+        stale_series_count = 0
+    else:
+        stale_series_relations.delete()
 
     # Clean up movies with no relations (orphaned)
     # Safe to delete even during account-specific cleanup because if ANY account
