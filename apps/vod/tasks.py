@@ -647,6 +647,28 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
         ).select_related('movie')
     }
 
+    # A provider can reissue a movie's stream_id (a re-encode, a catalog
+    # rebuild, or -- for EDM's own XC feed -- any edit to a movie's category
+    # placement, since its exported stream_id is assigned per-placement) --
+    # the movie itself hasn't changed, but a stream_id-only lookup above
+    # won't find it, and blind-inserting a second relation for the same
+    # (movie, account) pair violates vod_m3umovierelation_movie_account_uniq
+    # (only one relation per movie per account, ever). That single
+    # IntegrityError previously aborted this whole batch's transaction,
+    # silently preventing last_seen from being refreshed for up to 999 OTHER
+    # legitimate movies in the same batch -- which is what fed
+    # cleanup_orphaned_vod_content's stale-relation sweep with content that
+    # never actually left the catalog. Indexed by movie id (only matched,
+    # already-existing movies can possibly already have a relation) so a
+    # stream_id miss can re-target the existing relation instead.
+    existing_movie_ids = [m.id for m in existing_movies.values() if m.pk]
+    existing_relations_by_movie_id = {
+        rel.movie_id: rel for rel in M3UMovieRelation.objects.filter(
+            m3u_account=account,
+            movie_id__in=existing_movie_ids,
+        )
+    } if existing_movie_ids else {}
+
     # Process each movie
     for movie_key, data in movie_keys.items():
         movie_props = data['props']
@@ -710,6 +732,9 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
             movies_to_create.append(movie)
 
         # Handle relation
+        reissued_relation = None if stream_id in existing_relations else (
+            existing_relations_by_movie_id.get(movie.id) if movie.pk else None
+        )
         if stream_id in existing_relations:
             # Update existing relation
             relation = existing_relations[stream_id]
@@ -724,6 +749,27 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
                 'basic_data': movie_data,
             }
             relation.last_seen = scan_start_time or timezone.now()  # Mark as seen during this scan
+            relations_to_update.append(relation)
+        elif reissued_relation is not None:
+            # stream_id was reissued for a movie this account already has a
+            # relation to -- re-target the existing relation onto the new
+            # stream_id rather than inserting a second one. See
+            # existing_relations_by_movie_id's comment above.
+            relation = reissued_relation
+            logger.info(
+                f"Movie '{movie.name}' stream_id reissued ({relation.stream_id} -> {stream_id}) for account "
+                f"{account.name}; re-targeting the existing relation instead of inserting a duplicate"
+            )
+            relation.stream_id = stream_id
+            relation.movie = movie
+            relation.category = category
+            relation.container_extension = movie_data.get('container_extension', 'mp4')
+            existing_rel_cp = relation.custom_properties or {}
+            relation.custom_properties = {
+                **existing_rel_cp,
+                'basic_data': movie_data,
+            }
+            relation.last_seen = scan_start_time or timezone.now()
             relations_to_update.append(relation)
         else:
             # Create new relation
@@ -809,7 +855,7 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
 
             if relations_to_update:
                 M3UMovieRelation.objects.bulk_update(relations_to_update, [
-                    'movie', 'category', 'container_extension', 'custom_properties', 'last_seen'
+                    'movie', 'category', 'container_extension', 'custom_properties', 'last_seen', 'stream_id'
                 ])
 
         logger.info("Movie batch processing completed successfully!")
@@ -1020,6 +1066,19 @@ def process_series_batch(account, batch, categories, relations, scan_start_time=
         ).select_related('series')
     }
 
+    # Same reissue hazard as process_movie_batch's existing_relations_by_movie_id
+    # -- see its comment. vod_m3useriesrelation_series_account_uniq allows only
+    # one relation per (series, account), so a provider-reissued
+    # external_series_id must re-target the existing relation, not insert a
+    # second one and abort this whole batch's transaction.
+    existing_series_ids = [s.id for s in existing_series.values() if s.pk]
+    existing_relations_by_series_id = {
+        rel.series_id: rel for rel in M3USeriesRelation.objects.filter(
+            m3u_account=account,
+            series_id__in=existing_series_ids,
+        )
+    } if existing_series_ids else {}
+
     # Process each series
     for series_key, data in series_keys.items():
         series_props = data['props']
@@ -1093,6 +1152,26 @@ def process_series_batch(account, batch, categories, relations, scan_start_time=
                 'basic_data': series_data,
             }
             relation.last_seen = scan_start_time or timezone.now()  # Mark as seen during this scan
+            relations_to_update.append(relation)
+        elif series.pk and series.id in existing_relations_by_series_id:
+            # external_series_id was reissued for a series this account
+            # already has a relation to -- re-target the existing relation
+            # onto the new id rather than inserting a second one. See
+            # existing_relations_by_series_id's comment above.
+            relation = existing_relations_by_series_id[series.id]
+            logger.info(
+                f"Series '{series.name}' external_series_id reissued ({relation.external_series_id} -> {series_id}) "
+                f"for account {account.name}; re-targeting the existing relation instead of inserting a duplicate"
+            )
+            relation.external_series_id = series_id
+            relation.series = series
+            relation.category = category
+            existing_rel_cp = relation.custom_properties or {}
+            relation.custom_properties = {
+                **existing_rel_cp,
+                'basic_data': series_data,
+            }
+            relation.last_seen = scan_start_time or timezone.now()
             relations_to_update.append(relation)
         else:
             # Create new relation
@@ -1178,7 +1257,7 @@ def process_series_batch(account, batch, categories, relations, scan_start_time=
 
             if relations_to_update:
                 M3USeriesRelation.objects.bulk_update(relations_to_update, [
-                    'series', 'category', 'custom_properties', 'last_seen'
+                    'series', 'category', 'custom_properties', 'last_seen', 'external_series_id'
                 ])
 
         logger.info("Series batch processing completed successfully!")
