@@ -19,6 +19,40 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
+def _pop_reissued_relation(relations_by_obj_id, obj_id, category_id):
+    """Pop one reissue candidate for obj_id from a {obj_id: [relation, ...]}
+    map -- obj_id alone is not a unique key: a movie/series can hold one
+    relation per category it's placed in for the same account (confirmed
+    live 2026-11-02: distinct movie_id count 182,430 vs relation count
+    225,881 on dispatch01 -- about 43k movies already have 2+ relations).
+
+    Real gap found live 2026-11-02 investigating a VOD category undercount
+    (EDM placements for "Christmas Movies": 1467, Dispatcharr relations: only
+    929 -- 63% retention vs 86% catalog-wide): the original reissue-matching
+    here kept just ONE relation per obj_id in a plain dict. For a movie/
+    series placed in multiple categories, only the FIRST category's
+    occurrence in a batch could ever find and re-target its prior relation;
+    every other category's occurrence found nothing left to reissue onto and
+    created a brand-new relation instead, orphaning the old one (left
+    pointing at a now-dead id) until cleanup_orphaned_vod_content's stale
+    sweep deleted it outright -- silently losing that category membership.
+
+    Preferring an exact category match first (falling back to any remaining
+    candidate) means each category's own prior relation gets reissued onto
+    its own new id instead of the batch grabbing whichever one happens to
+    come first -- while still satisfying the single-category case exactly
+    as before (see test_reissued_stream_id_relation_retarget.py, which this
+    must keep passing: a movie/series with only one relation to begin with
+    always finds it here, same as the plain-dict version did)."""
+    candidates = relations_by_obj_id.get(obj_id)
+    if not candidates:
+        return None
+    for i, rel in enumerate(candidates):
+        if rel.category_id == category_id:
+            return candidates.pop(i)
+    return candidates.pop(0)
+
 # See batch_process_episodes' stale-relation-delete guard: below this many
 # existing relations for a series, even a genuine full removal is a small
 # absolute count, so the fraction-based guard is skipped rather than blocking
@@ -709,12 +743,13 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
     # already-existing movies can possibly already have a relation) so a
     # stream_id miss can re-target the existing relation instead.
     existing_movie_ids = [m.id for m in existing_movies.values() if m.pk]
-    existing_relations_by_movie_id = {
-        rel.movie_id: rel for rel in M3UMovieRelation.objects.filter(
+    existing_relations_by_movie_id: dict = {}
+    if existing_movie_ids:
+        for rel in M3UMovieRelation.objects.filter(
             m3u_account=account,
             movie_id__in=existing_movie_ids,
-        )
-    } if existing_movie_ids else {}
+        ):
+            existing_relations_by_movie_id.setdefault(rel.movie_id, []).append(rel)
 
     # Process each movie
     for movie_key, data in movie_keys.items():
@@ -783,12 +818,14 @@ def process_movie_batch(account, batch, categories, relations, scan_start_time=N
             movie_data = occ['movie_data']
 
             # A provider can reissue a movie's stream_id (see
-            # existing_relations_by_movie_id's comment above) -- only ever
-            # re-target ONE existing relation per movie per batch (.pop() so a
-            # genuine second occurrence for the same movie in this same batch
-            # still gets its own new relation instead of stealing this one back).
+            # _pop_reissued_relation's docstring) -- pops one candidate per
+            # obj_id, preferring this occurrence's own category, so a movie
+            # placed in multiple categories reissues each category's own
+            # prior relation instead of the batch's first occurrence
+            # claiming the only tracked one and starving the rest.
             reissued_relation = None if stream_id in existing_relations else (
-                existing_relations_by_movie_id.pop(movie.id, None) if movie.pk else None
+                _pop_reissued_relation(existing_relations_by_movie_id, movie.id, category.id if category else None)
+                if movie.pk else None
             )
 
             if stream_id in existing_relations:
@@ -1150,12 +1187,13 @@ def process_series_batch(account, batch, categories, relations, scan_start_time=
     # external_series_id must re-target the existing relation, not insert a
     # second one and abort this whole batch's transaction.
     existing_series_ids = [s.id for s in existing_series.values() if s.pk]
-    existing_relations_by_series_id = {
-        rel.series_id: rel for rel in M3USeriesRelation.objects.filter(
+    existing_relations_by_series_id: dict = {}
+    if existing_series_ids:
+        for rel in M3USeriesRelation.objects.filter(
             m3u_account=account,
             series_id__in=existing_series_ids,
-        )
-    } if existing_series_ids else {}
+        ):
+            existing_relations_by_series_id.setdefault(rel.series_id, []).append(rel)
 
     # Process each series
     for series_key, data in series_keys.items():
@@ -1221,12 +1259,13 @@ def process_series_batch(account, batch, categories, relations, scan_start_time=
             series_data = occ['series_data']
 
             # external_series_id can be reissued the same way stream_id can
-            # (see existing_relations_by_series_id's comment above) -- only
-            # ever re-target ONE existing relation per series per batch
-            # (.pop() so a genuine second occurrence for the same series in
-            # this same batch still gets its own new relation).
+            # (see _pop_reissued_relation's docstring) -- same per-category
+            # preference as process_movie_batch, for the same reason: a
+            # series placed in multiple categories must reissue each
+            # category's own prior relation, not just the first one found.
             reissued_relation = None if series_id in existing_relations else (
-                existing_relations_by_series_id.pop(series.id, None) if series.pk else None
+                _pop_reissued_relation(existing_relations_by_series_id, series.id, category.id if category else None)
+                if series.pk else None
             )
 
             if series_id in existing_relations:
