@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 def _pop_reissued_relation(relations_by_obj_id, obj_id, category_id):
-    """Pop one reissue candidate for obj_id from a {obj_id: [relation, ...]}
-    map -- obj_id alone is not a unique key: a movie/series can hold one
-    relation per category it's placed in for the same account (confirmed
-    live 2026-11-02: distinct movie_id count 182,430 vs relation count
-    225,881 on dispatch01 -- about 43k movies already have 2+ relations).
+    """Pop the reissue candidate for obj_id+category_id from a
+    {obj_id: [relation, ...]} map -- obj_id alone is not a unique key: a
+    movie/series can hold one relation per category it's placed in for the
+    same account (confirmed live 2026-11-02: distinct movie_id count 182,430
+    vs relation count 225,881 on dispatch01 -- about 43k movies already have
+    2+ relations).
 
     Real gap found live 2026-11-02 investigating a VOD category undercount
     (EDM placements for "Christmas Movies": 1467, Dispatcharr relations: only
@@ -38,20 +39,31 @@ def _pop_reissued_relation(relations_by_obj_id, obj_id, category_id):
     pointing at a now-dead id) until cleanup_orphaned_vod_content's stale
     sweep deleted it outright -- silently losing that category membership.
 
-    Preferring an exact category match first (falling back to any remaining
-    candidate) means each category's own prior relation gets reissued onto
-    its own new id instead of the batch grabbing whichever one happens to
-    come first -- while still satisfying the single-category case exactly
-    as before (see test_reissued_stream_id_relation_retarget.py, which this
-    must keep passing: a movie/series with only one relation to begin with
-    always finds it here, same as the plain-dict version did)."""
+    An earlier version of this fix fell back to popping any remaining
+    candidate when no exact category match existed. That reintroduced the
+    same collapse one level up: a movie already tracked in one category that
+    newly appears in a second, never-before-seen category would steal its
+    one existing relation into the new category instead of gaining a second
+    relation -- still only ever one relation per movie, just drifting
+    between categories batch to batch (confirmed live 2026-11-02 right after
+    deploying that version: "Christmas Movies" only grew from ~458 to 958 of
+    1467 placements, not to the full count). There is no longer a
+    uniqueness constraint forcing a steal here (migration
+    0007_drop_legacy_relation_account_uniq already dropped
+    vod_m3umovierelation_movie_account_uniq / ..._series_account_uniq), so a
+    miss can safely fall through to creating a genuinely new relation
+    instead. Matching only the exact category still satisfies the
+    single-category case (see test_reissued_stream_id_relation_retarget.py,
+    which always passes category_id=None for both passes, so the first
+    candidate IS the exact match -- no fallback was ever needed for it to
+    pass)."""
     candidates = relations_by_obj_id.get(obj_id)
     if not candidates:
         return None
     for i, rel in enumerate(candidates):
         if rel.category_id == category_id:
             return candidates.pop(i)
-    return candidates.pop(0)
+    return None
 
 # See batch_process_episodes' stale-relation-delete guard: below this many
 # existing relations for a series, even a genuine full removal is a small
